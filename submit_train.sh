@@ -65,8 +65,10 @@ export GRAD_CLIP=1.0
 
 # ── Training ────────────────────────────────────────────────
 export N_STEPS=50000
-export MICROBATCH=8
-export GRAD_ACCUM=4
+# Halved from UWYK's 8 to fit the bigger 2D-head model in 80GB.
+# Effective batch stays at 32 (UWYK App. G value) via GRAD_ACCUM=8.
+export MICROBATCH=4
+export GRAD_ACCUM=8
 export N_CONTEXT_TRAIN=1000
 export N_QUERY_TRAIN=250
 
