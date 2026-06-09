@@ -45,11 +45,13 @@ HEADS    = 4
 DROPOUT  = 0.0
 
 # ── Training ──────────────────────────────────────────────────────────────────
+# N_STEPS and LOG_EVERY overridable via env (so the same script works for the
+# 200-step smoke test, 5K medium run, and longer runs without code edits).
 N_CONTEXT_TRAIN = 100
 N_QUERY_TRAIN   = 30
-N_STEPS         = 200
+N_STEPS         = int(os.environ.get('N_STEPS', 200))
 LR              = 1e-3
-LOG_EVERY       = 20
+LOG_EVERY       = int(os.environ.get('LOG_EVERY', 20))
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
 N_CONTEXT_EVAL  = 200
