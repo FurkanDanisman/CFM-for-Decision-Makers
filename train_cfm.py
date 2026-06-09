@@ -20,6 +20,7 @@ import os
 import math
 import time
 import glob
+import signal
 import contextlib
 import torch
 import torch.optim as optim
@@ -193,6 +194,16 @@ def main():
     print_config()
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
+    # SIGTERM handler — SLURM sends SIGTERM ~60s before SIGKILL on wall-clock
+    # timeout. Catch it, finish the current step, save a checkpoint, and exit
+    # cleanly. Avoids losing up to CHECKPOINT_EVERY steps of progress.
+    interrupted = {'flag': False}
+    def _sigterm_handler(signum, frame):
+        print(f"\n[signal] Received signal {signum} — will save checkpoint and exit at next step boundary")
+        interrupted['flag'] = True
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+    signal.signal(signal.SIGINT, _sigterm_handler)
+
     # Streaming data
     print(f"[stream] starting DataLoader (workers={STREAM_WORKERS}, microbatch={MICROBATCH})")
     train_loader = make_streaming_loader(
@@ -289,6 +300,14 @@ def main():
             path = os.path.join(CHECKPOINT_DIR, f'step_{step}.pt')
             save_checkpoint(path, step, model, optimizer, scheduler, edges)
             print(f"  → checkpoint saved: {path}")
+
+        # SIGTERM-driven graceful shutdown (SLURM time-out approaching)
+        if interrupted['flag']:
+            path = os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt')
+            save_checkpoint(path, step, model, optimizer, scheduler, edges)
+            print(f"  → interrupt checkpoint saved: {path}")
+            print(f"  Exiting cleanly. Resubmit submit_train.sh to resume.")
+            sys.exit(0)
 
     # Final checkpoint
     final_path = os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt')
