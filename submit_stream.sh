@@ -19,11 +19,17 @@ set -e
 cd $SCRATCH/CFM-for-Decision-Makers
 mkdir -p logs
 
-# UWYK source path — required for SCMSampler / BinarizingMechanism
+# UWYK source path — required for SCMSampler / BinarizingMechanism.
+# Trillium compute nodes have no internet, so this MUST exist already.
+# Clone it from the login node:
+#   cd $SCRATCH && git clone --depth 1 \
+#     https://github.com/ArikReuter/Graphs4CausalFoundationModels.git g4cfm
 export UWYK_SRC=$SCRATCH/g4cfm/src
 if [ ! -d "$UWYK_SRC" ]; then
-    echo "Cloning UWYK source to $UWYK_SRC ..."
-    git clone --depth 1 https://github.com/ArikReuter/Graphs4CausalFoundationModels.git $SCRATCH/g4cfm
+    echo "ERROR: UWYK_SRC not found at $UWYK_SRC"
+    echo "Clone it on the login node (compute nodes lack internet):"
+    echo "    cd \$SCRATCH && git clone --depth 1 https://github.com/ArikReuter/Graphs4CausalFoundationModels.git g4cfm"
+    exit 1
 fi
 
 module purge
