@@ -83,6 +83,7 @@ export N_QUERY_TRAIN=250
 
 # ── Precision ───────────────────────────────────────────────
 export USE_BF16=1
+export USE_CHECKPOINT=1
 
 # ── Streaming data ──────────────────────────────────────────
 export STREAM_WORKERS=8

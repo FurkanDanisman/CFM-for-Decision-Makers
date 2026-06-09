@@ -49,6 +49,7 @@ export GRAD_ACCUM=8
 export N_CONTEXT_TRAIN=1000
 export N_QUERY_TRAIN=250
 export USE_BF16=1
+export USE_CHECKPOINT=1
 export STREAM_WORKERS=8
 
 # ── Short run, no checkpoint resume ────────────────────────

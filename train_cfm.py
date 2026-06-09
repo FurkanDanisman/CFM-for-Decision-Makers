@@ -68,6 +68,11 @@ N_QUERY_TRAIN   = int(os.environ.get('N_QUERY_TRAIN', 250))
 # Precision
 USE_BF16        = os.environ.get('USE_BF16', '1') == '1'
 
+# Activation checkpointing — recomputes block forward during backward to
+# halve activation memory. Needed at UWYK scale because nn.MultiheadAttention
+# under autocast can't dispatch to Flash Attention.
+USE_CHECKPOINT  = os.environ.get('USE_CHECKPOINT', '1') == '1'
+
 # Streaming
 STREAM_WORKERS  = int(os.environ.get('STREAM_WORKERS', 8))
 STREAM_SEED     = int(os.environ.get('STREAM_SEED', 42))
@@ -99,6 +104,7 @@ def print_config():
         print(f"GPU:           {torch.cuda.get_device_name(0)}")
         print(f"Free memory:   {torch.cuda.mem_get_info()[0] / 1e9:.1f} GB")
     print(f"Precision:     {'bf16 autocast' if USE_BF16 else 'fp32'}")
+    print(f"Checkpoint:    activation checkpointing {'on' if USE_CHECKPOINT else 'off'}")
     print(f"J:             {J}  (output_dim = {OUTPUT_DIM})")
     print(f"Model:         d_model={D_MODEL}  depth={DEPTH}  heads={HEADS}  hidden_mult={HIDDEN_MULT}")
     print(f"Optimizer:     Adam(lr={LR:.0e}, wd={WEIGHT_DECAY:.0e})  grad_clip={GRAD_CLIP}")
@@ -236,6 +242,7 @@ def main():
         normalize_features=True,
         normalize_treatment=False,
         use_treatment_in_query=False,
+        use_checkpoint=USE_CHECKPOINT,
     ).to(DEVICE)
 
     n_params = sum(p.numel() for p in model.parameters())
