@@ -164,6 +164,12 @@ class InterventionalPFN(nn.Module):
         # If False (default for our paired-outcome head), T_intv is filled
         # with `self.null_t_intv` — the learned null token.
         use_treatment_in_query: bool = False,
+        # Gradient checkpointing on TwoWayBlock — keeps only one block's
+        # activations in memory at a time. Recomputes during backward, so
+        # ~30% slower but ~50% less peak memory. Needed because
+        # nn.MultiheadAttention under autocast does not dispatch to Flash
+        # Attention and materializes a 3.3 GB N×N matrix per layer.
+        use_checkpoint: bool = False,
         # Backward-compat with previous wrapper (ignored, kept for kwarg parity)
         normalize_treatment: bool = False,
     ):
@@ -175,6 +181,7 @@ class InterventionalPFN(nn.Module):
         self.n_sample_attention_sink_rows = n_sample_attention_sink_rows
         self.n_feature_attention_sink_cols = n_feature_attention_sink_cols
         self.use_treatment_in_query = use_treatment_in_query
+        self.use_checkpoint = use_checkpoint
 
         # === Embedding MLPs ===
         if use_same_row_mlp:
@@ -389,8 +396,18 @@ class InterventionalPFN(nn.Module):
 
         n_sink_cols = self.n_feature_attention_sink_cols
 
-        for blk in self.blocks:
-            x = blk(x, N_train=n_sink_rows + N, N_test=M)
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+            N_train_eff = n_sink_rows + N
+            for blk in self.blocks:
+                x = checkpoint(
+                    lambda x_, blk_=blk: blk_(x_, N_train=N_train_eff, N_test=M),
+                    x,
+                    use_reentrant=False,
+                )
+        else:
+            for blk in self.blocks:
+                x = blk(x, N_train=n_sink_rows + N, N_test=M)
 
         # Readout: label column of test rows
         label_pos = n_sink_cols + self.num_features + 1
