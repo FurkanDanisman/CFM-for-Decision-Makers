@@ -2,7 +2,9 @@
 #SBATCH --account=def-zhijing
 #SBATCH --job-name=cfm-smoke
 #SBATCH --time=00:30:00
-#SBATCH --gres=gpu:h100:1
+#SBATCH --nodes=1
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --output=logs/smoke_%j.out
