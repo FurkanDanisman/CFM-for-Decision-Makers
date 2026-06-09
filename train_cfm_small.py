@@ -83,7 +83,7 @@ def load_samples(data_dir: str) -> list:
 
 def make_batch(samples: list, n_context: int, n_query: int):
     """
-    Pick one SCM, subsample rows.
+    Pick one cached SCM, subsample rows.
     Query has no T — model fills the T slot internally.
     """
     s = samples[torch.randint(0, len(samples), (1,)).item()]
@@ -101,6 +101,30 @@ def make_batch(samples: list, n_context: int, n_query: int):
     Y_do1  = s['Y_do1'][qry].unsqueeze(0)              # (1, m, 1)
 
     return X_obs, T_obs, Y_obs, X_intv, Y_do0, Y_do1  # no T_intv
+
+
+def make_batch_streaming(stream_iter, n_context: int, n_query: int):
+    """
+    Pull one fresh SCM task from the streaming DataLoader, subsample rows.
+    Same return signature as `make_batch`.
+    """
+    s = next(stream_iter)              # DataLoader yields dict of (1, ...)-shaped tensors
+    # squeeze the DataLoader batch dim of 1 → (N, ...) shapes match cached path
+    s = {k: v.squeeze(0) for k, v in s.items()}
+    n = min(n_context, s['X_obs'].shape[0])
+    m = min(n_query,   s['X_intv'].shape[0])
+
+    ctx = torch.randperm(s['X_obs'].shape[0])[:n]
+    qry = torch.randperm(s['X_intv'].shape[0])[:m]
+
+    X_obs  = s['X_obs'][ctx].unsqueeze(0)
+    T_obs  = s['T_obs'][ctx].unsqueeze(0)
+    Y_obs  = s['Y_obs'][ctx].squeeze(-1).unsqueeze(0)
+    X_intv = s['X_intv'][qry].unsqueeze(0)
+    Y_do0  = s['Y_do0'][qry].unsqueeze(0)
+    Y_do1  = s['Y_do1'][qry].unsqueeze(0)
+
+    return X_obs, T_obs, Y_obs, X_intv, Y_do0, Y_do1
 
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
@@ -250,13 +274,34 @@ def main():
     # More precisely: -(log(1/9) + log(1/J²) - 2·log(bw)) ≈ log(9) + 2·log(2) ≈ 3.58
     print(f"Expected loss at init (uniform softmax): ~{math.log(9) + 2*math.log(2):.4f} nats\n")
 
-    all_samples = load_samples(DATA_DIR)
-    train_samples = all_samples[:4]
-    test_sample   = all_samples[4]
-
-    # Fit edges from Y_obs (mirror of UWYK BarDistribution.fit() — one-shot,
-    # at startup; then fixed for the entire training run).
-    edges = fit_edges_2d(train_samples, J)
+    # Streaming mode? STREAM_DATA=1 turns on PairedInterventionalDataset; otherwise use cached .pt files.
+    stream_mode = os.environ.get('STREAM_DATA', '0') == '1'
+    if stream_mode:
+        from data.PairedInterventionalDataset import make_streaming_loader
+        n_workers = int(os.environ.get('STREAM_WORKERS', 4))
+        seed_base = int(os.environ.get('STREAM_SEED', 42))
+        print(f"[stream] using PairedInterventionalDataset (workers={n_workers}, seed_base={seed_base})")
+        train_loader = make_streaming_loader(
+            batch_size=1, num_workers=n_workers, seed_base=seed_base,
+        )
+        train_iter = iter(train_loader)
+        # Edges still fitted from a small warm-up pull (mirrors UWYK BarDistribution.fit())
+        warmup = []
+        n_warmup = int(os.environ.get('STREAM_WARMUP', 4))
+        print(f"[stream] drawing {n_warmup} warm-up tasks for edge fitting…")
+        for _ in range(n_warmup):
+            s = next(train_iter)
+            warmup.append({k: v.squeeze(0) for k, v in s.items()})
+        edges = fit_edges_2d(warmup, J)
+        # Use one of the warm-up tasks as the eval / test sample (for sanity output only)
+        test_sample = warmup[-1]
+        train_samples = None  # not used in streaming mode
+    else:
+        all_samples = load_samples(DATA_DIR)
+        train_samples = all_samples[:4]
+        test_sample   = all_samples[4]
+        train_iter = None
+        edges = fit_edges_2d(train_samples, J)
 
     model = InterventionalPFN(
         num_features=NUM_FEATURES,
@@ -283,9 +328,14 @@ def main():
     losses = []
     model.train()
     for step in range(1, N_STEPS + 1):
-        X_obs, T_obs, Y_obs, X_intv, Y_do0, Y_do1 = make_batch(
-            train_samples, N_CONTEXT_TRAIN, N_QUERY_TRAIN
-        )
+        if stream_mode:
+            X_obs, T_obs, Y_obs, X_intv, Y_do0, Y_do1 = make_batch_streaming(
+                train_iter, N_CONTEXT_TRAIN, N_QUERY_TRAIN
+            )
+        else:
+            X_obs, T_obs, Y_obs, X_intv, Y_do0, Y_do1 = make_batch(
+                train_samples, N_CONTEXT_TRAIN, N_QUERY_TRAIN
+            )
         X_obs  = X_obs.to(DEVICE)
         T_obs  = T_obs.to(DEVICE)
         Y_obs  = Y_obs.to(DEVICE)
