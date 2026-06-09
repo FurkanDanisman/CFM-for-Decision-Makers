@@ -68,6 +68,62 @@ def make_edges(J: int, y_min: float = -1.0, y_max: float = 1.0) -> Tensor:
     return torch.linspace(y_min, y_max, steps=J + 1)
 
 
+def fit_edges_2d(
+    samples,
+    J: int,
+    max_fit_items: int | None = None,
+    max_fit_batches: int | None = None,
+    eps: float = 1e-8,
+) -> Tensor:
+    """
+    One-shot edge fitting, mirror of UWYK's BarDistribution.fit().
+
+    Collects Y_obs values from a warm-up iterable (list of samples or batches),
+    computes y_min = min(Y_obs), y_max = max(Y_obs), and returns
+    `linspace(y_min, y_max, J+1)`. Edges are fixed for the whole training run
+    after this call. Interventional values that fall outside [y_min, y_max]
+    are handled by the half-Gaussian tails (same as 1D UWYK).
+
+    samples: iterable of dict-like items each providing a 'Y_obs' tensor.
+    max_fit_items:  early stop after this many Y_obs scalars seen (UWYK arg).
+    max_fit_batches: early stop after this many items consumed (UWYK arg).
+
+    Same edges are used on both axes (Y_do0 and Y_do1) — the preprocessor
+    scales them with the *same* transform, so they live on the same support.
+    """
+    ys = []
+    n_collected = 0
+    batch_count = 0
+    for s in samples:
+        y_obs = s['Y_obs'].reshape(-1).float()
+        y_obs = y_obs[torch.isfinite(y_obs)]
+        ys.append(y_obs)
+        n_collected += y_obs.numel()
+        batch_count += 1
+        if max_fit_items is not None and n_collected >= max_fit_items:
+            break
+        if max_fit_batches is not None and batch_count >= max_fit_batches:
+            break
+
+    if not ys:
+        raise ValueError("fit_edges_2d: no Y_obs collected.")
+
+    y_all = torch.cat(ys, dim=0)
+    if y_all.numel() == 0:
+        raise ValueError("fit_edges_2d: all Y_obs were non-finite.")
+
+    y_min = float(y_all.min().item())
+    y_max = float(y_all.max().item())
+    span  = y_max - y_min
+    if span <= 0 or not math.isfinite(span):
+        # Degenerate (constant target) — fall back to a tiny window so edges remain valid.
+        y_min, y_max = y_min - 0.5, y_min + 0.5
+
+    print(f"[BarDistribution2D] Fitting edges from {n_collected} Y_obs values "
+          f"over {batch_count} samples → y_min={y_min:.6f}, y_max={y_max:.6f}")
+    return make_edges(J, y_min, y_max)
+
+
 def neg_log_prob_2d(
     pred:  Tensor,
     y0:    Tensor,

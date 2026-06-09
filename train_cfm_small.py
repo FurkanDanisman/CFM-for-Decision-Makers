@@ -27,7 +27,7 @@ sys.path.insert(0, REPO_SRC)
 sys.path.insert(0, R_PFN_DIR)
 
 from models.InterventionalPFN import InterventionalPFN
-from losses.BarDistribution2D import make_edges, neg_log_prob_2d, total_params
+from losses.BarDistribution2D import make_edges, fit_edges_2d, neg_log_prob_2d, total_params
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 J            = 100
@@ -252,7 +252,9 @@ def main():
     train_samples = all_samples[:4]
     test_sample   = all_samples[4]
 
-    edges = make_edges(J, Y_MIN, Y_MAX)
+    # Fit edges from Y_obs (mirror of UWYK BarDistribution.fit() — one-shot,
+    # at startup; then fixed for the entire training run).
+    edges = fit_edges_2d(train_samples, J)
 
     model = InterventionalPFN(
         num_features=NUM_FEATURES,
