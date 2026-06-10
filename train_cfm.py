@@ -220,17 +220,13 @@ def main():
     train_iter = iter(train_loader)
 
     # Warm-up draws for edge fitting
-    print(f"[stream] drawing {STREAM_WARMUP} warm-up tasks for edge fitting…", flush=True)
+    print(f"[stream] drawing {STREAM_WARMUP} warm-up tasks for edge fitting…")
     warmup_samples = []
-    warm_t0 = time.time()
-    for i_warmup in range(STREAM_WARMUP):
-        t0 = time.time()
+    for _ in range(STREAM_WARMUP):
         b = next(train_iter)
-        print(f"  [stream] warmup {i_warmup+1}/{STREAM_WARMUP} fetched in {time.time()-t0:.1f}s", flush=True)
         # Each batch has MICROBATCH tasks; unpack so fit_edges_2d sees per-task dicts
         for i in range(MICROBATCH):
             warmup_samples.append({k: v[i] for k, v in b.items()})
-    print(f"[stream] warmup total: {time.time()-warm_t0:.1f}s for {STREAM_WARMUP*MICROBATCH} SCMs", flush=True)
     edges = fit_edges_2d(warmup_samples, J).to(DEVICE)
 
     # Model
@@ -250,7 +246,7 @@ def main():
     ).to(DEVICE)
 
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"Model parameters: {n_params:,}", flush=True)
+    print(f"Model parameters: {n_params:,}")
 
     optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     scheduler = make_scheduler(optimizer, N_STEPS, WARMUP_FRAC, MIN_LR_RATIO)
@@ -267,8 +263,8 @@ def main():
     autocast_ctx = (lambda: torch.autocast(device_type='cuda', dtype=torch.bfloat16)) \
         if use_amp else (lambda: contextlib.nullcontext())
 
-    print(f"\n{'step':>7}  {'loss':>10}  {'lr':>10}  {'wall':>8}", flush=True)
-    print("─" * 42, flush=True)
+    print(f"\n{'step':>7}  {'loss':>10}  {'lr':>10}  {'wall':>8}")
+    print("─" * 42)
     model.train()
     t0 = time.time()
 
@@ -305,7 +301,7 @@ def main():
             wall = time.time() - t0
             lr_now = scheduler.get_last_lr()[0]
             avg_loss = accum_loss / GRAD_ACCUM
-            print(f"{step:>7}  {avg_loss:>10.4f}  {lr_now:>10.2e}  {wall:>7.1f}s", flush=True)
+            print(f"{step:>7}  {avg_loss:>10.4f}  {lr_now:>10.2e}  {wall:>7.1f}s")
 
         if step % CHECKPOINT_EVERY == 0:
             path = os.path.join(CHECKPOINT_DIR, f'step_{step}.pt')
