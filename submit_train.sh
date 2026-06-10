@@ -91,15 +91,16 @@ export USE_BF16=1
 export USE_CHECKPOINT=1
 
 # ── Streaming data ──────────────────────────────────────────
-# Reads from a pre-generated disk corpus instead of streaming SCMs.
-# Why: PairedInterventionalDataset hits a fatal C-extension memory bug
-# after a few hundred SCM generations. Pre-generating the corpus once
-# (see submit_corpus.sh) and reading from disk avoids the bug entirely
-# AND restores ~3 s/step throughput because disk reads are ~ms.
-export CORPUS_DIR=$SCRATCH/CFM-for-Decision-Makers/outputs_corpus
-export STREAM_WORKERS=4
+# STREAM_WORKERS=0 — single-process data loading. Two earlier runs
+# crashed at exactly 32m17s with 'Fatal Python error: none_dealloc'
+# in a worker — a refcount bug at the C-extension level, which is
+# almost always caused by fork() + C extensions + numpy/torch
+# interacting badly. Removing multiprocessing eliminates the most
+# likely root cause. Cost: ~18% slowdown (data on the critical path
+# instead of overlapping with GPU compute) -> ~53h instead of ~45h.
+export STREAM_WORKERS=0
+export STREAM_SEED=$((42 + ${SLURM_JOB_ID:-0}))
 export STREAM_WARMUP=4
-export STREAM_SEED=42
 
 # ── Checkpoints ─────────────────────────────────────────────
 export CHECKPOINT_DIR=$SCRATCH/CFM-for-Decision-Makers/checkpoints
