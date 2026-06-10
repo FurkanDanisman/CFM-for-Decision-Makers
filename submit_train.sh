@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=def-zhijing
 #SBATCH --job-name=cfm-train
-#SBATCH --time=10:00:00
+#SBATCH --time=20:00:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks=1
@@ -11,13 +11,13 @@
 
 # Full UWYK-scale training run on 1 H100.
 #
-# 10-hour SLURM chunks. Total wall-clock is ~60 hours, so submit this script
-# ~6 times in sequence: each invocation runs until the 10h limit, saves a
-# checkpoint, exits cleanly; the next invocation picks up at the latest
-# checkpoint thanks to RESUME=1. Sequence one job depending on another with:
+# 20-hour SLURM chunks. Estimated total wall-clock ~53 hours (single-process
+# data loading), so submit this script 3 times in sequence: each invocation
+# runs until the 20h limit, saves a checkpoint, exits cleanly; the next
+# invocation picks up at the latest checkpoint thanks to RESUME=1. Sequence:
 #
 #   FIRST=$(sbatch --parsable submit_train.sh)
-#   for i in 2 3 4 5 6; do
+#   for i in 2 3; do
 #       FIRST=$(sbatch --parsable --dependency=afterany:$FIRST submit_train.sh)
 #   done
 #
