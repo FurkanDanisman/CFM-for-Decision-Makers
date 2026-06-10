@@ -16,6 +16,17 @@ result from convolving two independent marginal predictives.
 
 ---
 
+## Documentation
+
+| File | Contents |
+|---|---|
+| `README.md` (this file) | Project goals, design overview, how to run |
+| [`docs/CFM_2D_BarDistribution_Design.md`](docs/CFM_2D_BarDistribution_Design.md) | Full design of the 2D BarDistribution head and divergence from the original PDF |
+| [`docs/prior_summary.md`](docs/prior_summary.md) | SCM prior + proposal annotations |
+| [`docs/PROBLEM_TRAINING.md`](docs/PROBLEM_TRAINING.md) | **Read this before touching the training pipeline.** Active bug log + forbidden patterns. |
+| [`docs/Luke.md`](docs/Luke.md) | Hand-off guide for reproducing the training (or the bug) on a new cluster |
+| `CFM_for_Decision_Makers.pdf` | Original proposal |
+
 ## Table of contents
 
 - [Problem](#problem)
@@ -131,7 +142,7 @@ once per (query, context), to convert the coarse `100 × 100` grid into a
 continuous log-concave density. This is the same role MALC plays in the 1D
 UWYK head (logconDens inside `[-1, 1]`), just generalized to 2D.
 
-See [`CFM_2D_BarDistribution_Design.md`](CFM_2D_BarDistribution_Design.md)
+See [`docs/CFM_2D_BarDistribution_Design.md`](docs/CFM_2D_BarDistribution_Design.md)
 for the full rationale and the divergence from the PDF.
 
 ---
@@ -188,18 +199,30 @@ evaluate at any continuous `(y0, y1)` through the same 9-region routing.
 ```
 .
 ├── README.md
-├── CFM_2D_BarDistribution_Design.md   # full design, including divergence from PDF
 ├── CFM_for_Decision_Makers.pdf        # original proposal
-├── prior_summary.md                   # SCM prior + proposal annotations
+│
+├── docs/                              # all design / problem / handoff documents
+│   ├── CFM_2D_BarDistribution_Design.md  # full design, including divergence from PDF
+│   ├── prior_summary.md                  # SCM prior + proposal annotations
+│   ├── PROBLEM_TRAINING.md               # active training-pipeline bug log + forbidden patterns
+│   └── Luke.md                           # hand-off guide for someone reproducing on a new cluster
 │
 ├── generate_paired_samples.py         # data generation (paired Y_do0, Y_do1)
 ├── generate_5_samples.py              # earlier single-outcome generator
-├── train_cfm_small.py                 # training entry point
+├── train_cfm.py                       # production training entry point (UWYK-scale)
+├── train_cfm_small.py                 # smoke / demo training entry point
+├── smoke.py                           # tiny CPU/GPU import + forward+backward check
+│
+├── submit_smoke.sh                    # SLURM: 200-step demo on 1 H100 (~5 min)
+├── submit_scaledup.sh                 # SLURM: 500-step UWYK-config smoke (~30 min)
+├── submit_train.sh                    # SLURM: full 50K-step training, 3 × 20h chained chunks
 │
 ├── models/
-│   └── InterventionalPFN.py           # Transformer PFN
+│   └── InterventionalPFN.py           # Transformer PFN (UWYK body verbatim)
 ├── losses/
 │   └── BarDistribution2D.py           # 9-region 2D loss + MALC inference helpers
+├── data/
+│   └── PairedInterventionalDataset.py # streaming SCM dataset (paired potential outcomes)
 │
 ├── MALC/                              # MALC 2D log-concave density estimator
 │   ├── SUMMARY.md
@@ -307,7 +330,7 @@ This is an **active research prototype**, not a polished library.
   weight to extreme y_out.
 - **Single SCM per task**: paired potential outcomes are coupled within an
   SCM but the model is not constrained to be coherent across SCMs. The
-  R-PFN minimax extension (see `prior_summary.md` and project memory)
+  R-PFN minimax extension (see `docs/prior_summary.md` and project memory)
   addresses this.
 
 ---
