@@ -259,7 +259,27 @@ class PairedInterventionalDataset(Dataset):
         return self.infinite_len
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        return self._generate_one(idx)
+        # Robustness: if a specific SCM in the prior triggers a C-extension
+        # bug (numpy/torch refcount error, etc.), retry up to 5 times with
+        # different seed offsets so one bad task doesn't crash the worker.
+        import gc
+        last_err = None
+        for retry in range(5):
+            try:
+                offset = retry * 1_000_003   # large prime, low collision
+                out = self._generate_one(idx + offset)
+                if retry > 0:
+                    # one bad task burned — force GC to clear any partial state
+                    gc.collect()
+                return out
+            except (RuntimeError, ValueError, ArithmeticError, FloatingPointError) as e:
+                last_err = e
+                gc.collect()
+                continue
+        raise RuntimeError(
+            f"PairedInterventionalDataset.__getitem__({idx}): all 5 retries failed; "
+            f"last error: {last_err}"
+        )
 
     # ----- internal -----------------------------------------------------------
 
@@ -447,6 +467,9 @@ def make_streaming_loader(
         batch_size=batch_size,
         num_workers=num_workers,
         worker_init_fn=_worker_init_fn,
-        persistent_workers=num_workers > 0,
+        # persistent_workers=False so workers can restart if one dies (e.g.,
+        # from a transient C-extension crash) instead of taking the whole
+        # training run down.
+        persistent_workers=False,
         pin_memory=True,
     )
