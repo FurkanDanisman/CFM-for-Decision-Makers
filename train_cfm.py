@@ -78,6 +78,11 @@ STREAM_WORKERS  = int(os.environ.get('STREAM_WORKERS', 8))
 STREAM_SEED     = int(os.environ.get('STREAM_SEED', 42))
 STREAM_WARMUP   = int(os.environ.get('STREAM_WARMUP', 4))
 
+# Disk corpus mode — if set, read pre-generated tasks from disk instead of
+# streaming fresh SCMs. Avoids the SCM-mutation memory-corruption bug and
+# the ~31 s/step bottleneck of single-process streaming.
+CORPUS_DIR      = os.environ.get('CORPUS_DIR', '')
+
 # Checkpoints
 CHECKPOINT_DIR    = os.environ.get('CHECKPOINT_DIR', './checkpoints')
 CHECKPOINT_EVERY  = int(os.environ.get('CHECKPOINT_EVERY', 5000))
@@ -210,14 +215,40 @@ def main():
     signal.signal(signal.SIGTERM, _sigterm_handler)
     signal.signal(signal.SIGINT, _sigterm_handler)
 
-    # Streaming data
-    print(f"[stream] starting DataLoader (workers={STREAM_WORKERS}, microbatch={MICROBATCH})")
-    train_loader = make_streaming_loader(
-        batch_size=MICROBATCH,
-        num_workers=STREAM_WORKERS,
-        seed_base=STREAM_SEED,
-    )
-    train_iter = iter(train_loader)
+    # Data: disk corpus if CORPUS_DIR set, else stream fresh SCMs
+    if CORPUS_DIR:
+        from torch.utils.data import Dataset as _DS, DataLoader as _DL
+        import glob as _glob
+
+        class _CorpusDataset(_DS):
+            def __init__(self, root):
+                self.files = sorted(_glob.glob(os.path.join(root, 'sample_*.pt')))
+                if not self.files:
+                    raise RuntimeError(f"No sample_*.pt files in {root}")
+            def __len__(self): return len(self.files)
+            def __getitem__(self, idx):
+                return torch.load(self.files[idx], weights_only=False)
+
+        ds = _CorpusDataset(CORPUS_DIR)
+        print(f"[corpus] loaded {len(ds)} tasks from {CORPUS_DIR}", flush=True)
+        train_loader = _DL(
+            ds,
+            batch_size=MICROBATCH,
+            shuffle=True,
+            num_workers=STREAM_WORKERS,
+            pin_memory=True,
+            persistent_workers=STREAM_WORKERS > 0,
+            drop_last=True,
+        )
+        train_iter = iter(train_loader)
+    else:
+        print(f"[stream] starting DataLoader (workers={STREAM_WORKERS}, microbatch={MICROBATCH})", flush=True)
+        train_loader = make_streaming_loader(
+            batch_size=MICROBATCH,
+            num_workers=STREAM_WORKERS,
+            seed_base=STREAM_SEED,
+        )
+        train_iter = iter(train_loader)
 
     # Warm-up draws for edge fitting
     print(f"[stream] drawing {STREAM_WARMUP} warm-up tasks for edge fitting…", flush=True)
@@ -277,7 +308,12 @@ def main():
         accum_loss = 0.0
 
         for _ in range(GRAD_ACCUM):
-            batch = next(train_iter)
+            try:
+                batch = next(train_iter)
+            except StopIteration:
+                # Finite corpus exhausted — start a new epoch
+                train_iter = iter(train_loader)
+                batch = next(train_iter)
             batch = subsample_task(batch, N_CONTEXT_TRAIN, N_QUERY_TRAIN)
             for k in batch:
                 batch[k] = batch[k].to(DEVICE, non_blocking=True)
