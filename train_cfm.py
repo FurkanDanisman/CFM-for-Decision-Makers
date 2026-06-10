@@ -15,6 +15,13 @@ Features:
   - Cosine LR schedule with linear warmup
   - Checkpoints every CHECKPOINT_EVERY steps (resumes automatically)
 """
+# Enable faulthandler FIRST, before any heavyweight imports. This installs a
+# trap that dumps the full C-level stack on segfault/abort, so the next
+# `Fatal Python error: none_dealloc` (if any) tells us the exact C function
+# that corrupted the refcount, instead of just the Python frames.
+import faulthandler
+faulthandler.enable()
+
 import sys
 import os
 import math

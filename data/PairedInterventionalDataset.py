@@ -447,6 +447,13 @@ class PairedInterventionalDataset(Dataset):
 
 def _worker_init_fn(worker_id: int):
     """Reseed each worker's sampler so we don't repeat the same SCMs."""
+    # Enable faulthandler in each forked worker process so a C-level crash
+    # here gets a real stack trace, not just the Python frames. fork
+    # inherits state from the parent but per-process handlers must still be
+    # registered.
+    import faulthandler
+    faulthandler.enable()
+
     info = torch.utils.data.get_worker_info()
     ds = info.dataset
     if isinstance(ds, PairedInterventionalDataset):
