@@ -86,14 +86,12 @@ export USE_BF16=1
 export USE_CHECKPOINT=1
 
 # ── Streaming data ──────────────────────────────────────────
-# STREAM_WORKERS=0 — single-process data loading. Two earlier runs
-# crashed at exactly 32m17s with 'Fatal Python error: none_dealloc'
-# in a worker — a refcount bug at the C-extension level, which is
-# almost always caused by fork() + C extensions + numpy/torch
-# interacting badly. Removing multiprocessing eliminates the most
-# likely root cause. Cost: ~18% slowdown (data on the critical path
-# instead of overlapping with GPU compute) -> ~53h instead of ~45h.
-export STREAM_WORKERS=0
+# 4 workers (was 8) — reduces memory pressure inside the data pipeline
+# without losing parallelism (4 is plenty to hide ~150ms SCM sampling
+# behind the ~3 s GPU compute per step).
+export STREAM_WORKERS=4
+# Seed depends on SLURM job ID so each chained restart explores a
+# different SCM sequence. Avoids repeatedly crashing on the same SCM.
 export STREAM_SEED=$((42 + ${SLURM_JOB_ID:-0}))
 export STREAM_WARMUP=4
 
