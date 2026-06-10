@@ -95,22 +95,6 @@ Full config dicts are in `/tmp/g4cfm/generate_5_samples.py`.
 
 ---
 
-## What R-PFN Needs from This Prior
-
-For R-PFN we need the same SCM prior but with the following additions/modifications:
-
-1. **Compatible class sampling**: for each SCM ψ_i, we need to enumerate/sample a set of compatible SCMs Ψ_i (same observational distribution, different graph structures). The paper's code does not do this — it only samples one SCM per training task.
-
-2. **Minimax targets**: for each compatible draw ψ^(c) ∈ Ψ_i, compute τ_{ψ^(c)}(x) at query points. Aggregate to get τ^mm (midpoint) and W (width). These replace the single Y_intv target.
-
-3. **Query covariates**: the paper samples X_intv from the same distribution as X_obs. For R-PFN we may want separate "in-context" query points x^in at which to predict τ^mm(x).
-
-4. **LLM soft prior** (optional, later): the paper has no LLM component. R-PFN wraps the same SCM prior with an LLM-informed edge probability prior on top.
-
-The SCM class (`src/priors/causal_prior/scm/SCM.py`) supports `do`-interventions; we can reuse it to compute τ_ψ(x) for multiple compatible ψ draws.
-
----
-
 ## Verified Output Stats (5 samples, seed=42)
 
 | Sample | X_obs shape | anc_matrix shape | anc -1% | anc 0% | anc 1% |
@@ -153,7 +137,7 @@ The paired head requires generating BOTH Y^do(1) and Y^do(0) from the **same SCM
 
 ### Key Open Issues Identified
 - **Binary vs continuous treatment**: Proposal says t ∈ {0,1} in setup (Section 3) but "Use What You Know" prior uses continuous T. Contradiction needs resolution.
-- **~~DensOLog bivariate version: Does not exist yet — must be built. Entire Section 4.3 depends on it.~~** *(Resolved: 2D MALC implemented in `MALC/malc_2d.py` and `MALC/log_concave_2d_fast.py`. Role is inference-only — see Component 2 above. Not in the training loop.)*
+- **~~DensOLog bivariate version: Does not exist yet — must be built. Entire Section 4.3 depends on it.~~** *(Resolved: 2D MALC implemented in `../MALC/malc_2d.py` and `../MALC/log_concave_2d_fast.py`. Role is inference-only — see Component 2 above. Not in the training loop.)*
 - **Log-concavity assumption**: MALC recovers log-concave densities. The motivating multimodal case (mass at two separated points) is NOT log-concave — this is the exact case MALC will fail to represent as a single component. MALC_2D handles this with a K-component mixture (BIC-selected), so multimodality is supported, but each individual component must still be unimodal.
 - **Shared-rank coupling**: Conservative but potentially wrong. Assumes all individuals respond in same direction across causal worlds.
 - **Architecture for paired head**: Unspecified. How does the transformer accept (do(1), do(0)) simultaneously as a query? Two tokens? Concatenation?
