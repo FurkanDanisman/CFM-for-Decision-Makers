@@ -51,6 +51,11 @@ module load python/3.11
 module load scipy-stack
 source .venv/bin/activate
 
+# Unbuffered Python output — line-buffer everything so we can see progress in
+# real time via tail -f instead of waiting for 4-8 KB to accumulate in
+# Python's stdout buffer.
+export PYTHONUNBUFFERED=1
+
 echo "=== Node info ==="
 hostname
 date
