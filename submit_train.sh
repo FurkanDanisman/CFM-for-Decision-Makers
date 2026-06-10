@@ -86,13 +86,8 @@ export USE_BF16=1
 export USE_CHECKPOINT=1
 
 # ── Streaming data ──────────────────────────────────────────
-# 4 workers (was 8) — reduces memory pressure inside the data pipeline
-# without losing parallelism (4 is plenty to hide ~150ms SCM sampling
-# behind the ~3 s GPU compute per step).
-export STREAM_WORKERS=4
-# Seed depends on SLURM job ID so each chained restart explores a
-# different SCM sequence. Avoids repeatedly crashing on the same SCM.
-export STREAM_SEED=$((42 + ${SLURM_JOB_ID:-0}))
+export STREAM_WORKERS=8
+export STREAM_SEED=42
 export STREAM_WARMUP=4
 
 # ── Checkpoints ─────────────────────────────────────────────
