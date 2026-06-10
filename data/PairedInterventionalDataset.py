@@ -140,24 +140,47 @@ def _clip_outliers(t, q=0.99):
 
 
 def _propagate_paired(obs_scm, intv_scm, treatment_node, n_test):
-    """Propagate intv_scm for both do(T=0) and do(T=1) in one doubled batch."""
+    """
+    Propagate intv_scm for both do(T=0) and do(T=1) in one doubled batch.
+
+    Matches UWYK ``sample_exogenous`` / ``sample_endogenous`` memory layout:
+    the dict entries in ``_fixed_exogenous`` / ``_fixed_endogenous`` are
+    **views** into the corresponding ``_fixed_exogenous_vec`` /
+    ``_fixed_endogenous_vec`` buffers (see SCM.py for the pattern). The
+    earlier version of this function assigned standalone tensors to the
+    dicts; over many calls that produced a fatal `none_dealloc`
+    refcount error in a C extension.
+    """
     B2 = 2 * n_test
+
+    # ── Exogenous: allocate buffer first, fill slices, then build views ──
     total_exo = intv_scm._total_exo_dim
     fixed_exo_vec = torch.zeros(B2, total_exo, dtype=torch.float32)
-    fixed_exo: dict[str, torch.Tensor] = {}
 
     for v in intv_scm._exo_order:
         s, e = intv_scm._exo_slices[v]
         d = e - s
         if v == treatment_node:
+            # First half do(T=0), second half do(T=1)
             t_vals = torch.cat([torch.zeros(n_test), torch.ones(n_test)])
             fixed_exo_vec[:, s:e] = t_vals.reshape(B2, d)
-            fixed_exo[v] = t_vals
         else:
+            # Share noise with obs by tiling each obs sample twice
             old = obs_scm._fixed_exogenous[v]
-            tiled = old.repeat(2)
+            tiled = old.repeat(2) if old.dim() == 1 else old.repeat(2, 1)
             fixed_exo_vec[:, s:e] = tiled.reshape(B2, d)
-            fixed_exo[v] = tiled
+
+    # Build dict entries as VIEWS into the buffer — same pattern as UWYK's
+    # SCM.sample_exogenous so the library's invariants stay intact.
+    fixed_exo: dict[str, torch.Tensor] = {}
+    for v in intv_scm._exo_order:
+        s, e = intv_scm._exo_slices[v]
+        flat = fixed_exo_vec[:, s:e]
+        if intv_scm.use_exogenous_mechanisms:
+            fixed_exo[v] = flat.reshape(B2)
+        else:
+            shp = intv_scm._node_shape.get(v, ())
+            fixed_exo[v] = flat.reshape(B2, *shp) if shp else flat.reshape(B2)
 
     intv_scm._fixed_exogenous_vec = fixed_exo_vec
     intv_scm._fixed_exogenous = fixed_exo
