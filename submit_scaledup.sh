@@ -1,31 +1,34 @@
 #!/bin/bash
-#SBATCH --account=def-zhijing
+#SBATCH --account=aip-rgrosse
 #SBATCH --job-name=cfm-scaled
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=h100:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/scaled_%j.out
-#SBATCH --error=logs/scaled_%j.err
+#SBATCH --output=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/scaled_%j.out
+#SBATCH --error=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/scaled_%j.err
 
 # Short scaled-up test: UWYK Appendix G model dims + real config, but only
 # 500 steps. Catches OOM, throughput, and noise behaviour with real grad
 # accumulation BEFORE committing to the 72-hour run.
 
 set -e
-cd $SCRATCH/CFM-for-Decision-Makers
+PROJ_DIR="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+cd "$PROJ_DIR"
 mkdir -p logs
 
-export UWYK_SRC=$SCRATCH/g4cfm/src
+export UWYK_SRC="$PROJ_DIR/g4cfm/src"
 if [ ! -d "$UWYK_SRC" ]; then
     echo "ERROR: UWYK_SRC not found at $UWYK_SRC"
     exit 1
 fi
 
-module purge
+# venv was built by uv against the module python/3.11 (3.11.5) and is
+# self-contained (include-system-site-packages=false), so all deps — torch,
+# numpy, scipy, clarabel — live inside .venv. Only the base python module is
+# needed; scipy-stack would be ignored by the venv.
 module load python/3.11
-module load scipy-stack
 source .venv/bin/activate
 
 echo "=== Node info ==="
@@ -55,8 +58,8 @@ export STREAM_WORKERS=8
 # ── Short run, no checkpoint resume ────────────────────────
 export N_STEPS=500
 export LOG_EVERY=20
-export CHECKPOINT_DIR=$SCRATCH/CFM-for-Decision-Makers/checkpoints_scaled
+export CHECKPOINT_DIR="$PROJ_DIR/checkpoints_scaled"
 export CHECKPOINT_EVERY=500
 export RESUME=0
 
-time python train_cfm.py
+time python -u train_cfm.py
