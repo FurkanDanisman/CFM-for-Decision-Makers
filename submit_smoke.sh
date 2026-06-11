@@ -1,25 +1,27 @@
 #!/bin/bash
-#SBATCH --account=def-zhijing
+#SBATCH --account=aip-rgrosse
 #SBATCH --job-name=cfm-smoke
 #SBATCH --time=00:30:00
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/smoke_%j.out
-#SBATCH --error=logs/smoke_%j.err
+#SBATCH --output=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/smoke_%j.out
+#SBATCH --error=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/smoke_%j.err
 
-# Trillium smoke test: 200-step demo run of train_cfm_small.py on 1 H100.
+# Smoke test: 200-step demo run of train_cfm_small.py on 1 GPU.
 # Verifies the pipeline (UWYK body + 2D BarDistribution head + paired data)
 # runs end-to-end on GPU with the cluster's torch wheels.
 
 set -e
-cd $SCRATCH/CFM-for-Decision-Makers
+PROJ_DIR="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+cd "$PROJ_DIR"
 mkdir -p logs
 
-module purge
+# venv was built by uv against the module python/3.11 (3.11.5) and is
+# self-contained (include-system-site-packages=false), so all deps live inside
+# .venv. Only the base python module is needed; scipy-stack would be ignored.
 module load python/3.11
-module load scipy-stack
 source .venv/bin/activate
 
 echo "=== Node info ==="
