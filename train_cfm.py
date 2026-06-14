@@ -92,6 +92,10 @@ RESUME            = os.environ.get('RESUME', '1') == '1'
 
 # Logging
 LOG_EVERY     = int(os.environ.get('LOG_EVERY', 100))
+# Dump the offending batch's target/logit ranges when the loss is non-finite or
+# exceeds this threshold — ties training-side instability to the data that
+# produced it. The early warmup losses we've seen spike to ~1e5.
+LOSS_WARN_THRESH = float(os.environ.get('LOSS_WARN_THRESH', 1e3))
 
 # Device
 if torch.cuda.is_available():
@@ -103,6 +107,27 @@ else:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _range_str(t):
+    """min/max/absmax/nonfinite summary of a tensor, robust to NaN/Inf."""
+    tf = t.detach().float()
+    nb = int((~torch.isfinite(tf)).sum())
+    fin = tf[torch.isfinite(tf)]
+    if fin.numel() == 0:
+        return f"all-nonfinite (n={tf.numel()})"
+    return (f"min={fin.min().item():.3g} max={fin.max().item():.3g} "
+            f"absmax={fin.abs().max().item():.3g} nonfinite={nb}/{tf.numel()}")
+
+
+def log_bad_batch(step, loss, batch, logits, reason):
+    """Dump the target/logit ranges for a batch that produced a bad loss."""
+    print(f"  [LOSS-WARN] step {step}: {reason} (loss={loss.item():.4g})")
+    for k in ('Y_obs', 'Y_do0', 'Y_do1'):
+        if k in batch:
+            print(f"      {k:>6}: {_range_str(batch[k])}")
+    print(f"      logits: {_range_str(logits)}")
+    sys.stdout.flush()
+
 
 def print_config():
     print("─" * 72)
@@ -295,7 +320,11 @@ def main():
 
             if torch.isnan(loss) or torch.isinf(loss):
                 print(f"Step {step}: NaN/Inf loss — skipping microbatch")
+                log_bad_batch(step, loss, batch, logits, "non-finite loss")
                 continue
+
+            if loss.item() > LOSS_WARN_THRESH:
+                log_bad_batch(step, loss, batch, logits, f"loss > {LOSS_WARN_THRESH:.0e}")
 
             (loss / GRAD_ACCUM).backward()
             accum_loss += loss.item()
