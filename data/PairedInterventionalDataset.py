@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+import traceback as _tb
 from copy import deepcopy
 from typing import Any
 
@@ -35,8 +37,169 @@ import torch
 from torch.utils.data import Dataset
 
 
+# --- Work around a PyTorch refcount bug (confirmed torch 2.6.0+cu124) ----------
+# copy.deepcopy / copy.copy of a torch.Generator over-decrements the refcount of
+# the None singleton by exactly 1 per call. Each sampled SCM holds one
+# torch.Generator per mechanism (tens of them), so `deepcopy(scm)` in
+# _generate_one leaked ~30-40 None-refs per task. After a few thousand tasks a
+# DataLoader worker drove None's refcount to zero and the process hard-aborted
+# with `Fatal Python error: none_dealloc` (killing training ~step 500).
+#
+# copy._deepcopy_dispatch is consulted *before* any __deepcopy__ hook, and works
+# on torch.Generator (a C type that cannot take a monkeypatched __deepcopy__), so
+# registering a state-based clone here fixes every Generator anywhere in the SCM
+# object graph, in every process that imports this module. A fresh Generator
+# seeded via set_state(get_state()) is verified leak-free (None delta 0/call).
+import copy as _copy
+
+
+def _deepcopy_generator(g: torch.Generator, memo):
+    ng = torch.Generator(device=g.device)
+    ng.set_state(g.get_state())
+    memo[id(g)] = ng
+    return ng
+
+
+if torch.Generator not in _copy._deepcopy_dispatch:
+    _copy._deepcopy_dispatch[torch.Generator] = _deepcopy_generator
+
+
 # --- UWYK source path (set UWYK_SRC env var to override) ----------------------
 _UWYK_SRC = os.environ.get("UWYK_SRC", "/tmp/g4cfm/src")
+
+
+# --- Diagnostics (env-gated) --------------------------------------------------
+# These make the data pipeline self-reporting so we can pin down (a) which exact
+# sample/seed a worker dies on (the `none_dealloc` C abort) and (b) whether that
+# sample is also numerically broken. All cheap relative to ~0.2s/sample SCM gen.
+#
+#   DATA_VALIDATE=1    check each returned tensor for NaN/Inf + target blow-ups
+#   DATA_BREADCRUMB=1  write last (idx,seed) per worker to logs/ so a hard C
+#                      abort (which kills the process with no Python traceback)
+#                      still tells us the culprit sample
+#   DATA_VERBOSE=0     log every sample as it's generated (noisy; off by default)
+#   DATA_TARGET_ABSMAX=10.0  |target| above this is flagged as a scaling blow-up
+#   DATA_REFCOUNT=0    track sys.getrefcount(None) across each __getitem__ and its
+#                      sub-phases. The `none_dealloc` abort is a C-extension
+#                      over-decref of the None singleton that accumulates over
+#                      many calls; this is the only diagnostic that localizes it.
+#                      Logs a [REFCOUNT] line for any phase with a nonzero delta.
+_DATA_VALIDATE   = os.environ.get("DATA_VALIDATE", "1") == "1"
+_DATA_BREADCRUMB = os.environ.get("DATA_BREADCRUMB", "1") == "1"
+_DATA_VERBOSE    = os.environ.get("DATA_VERBOSE", "0") == "1"
+_DATA_REFCOUNT   = os.environ.get("DATA_REFCOUNT", "0") == "1"
+_TARGET_ABSMAX   = float(os.environ.get("DATA_TARGET_ABSMAX", "10.0"))
+_REPO_ROOT       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_BREADCRUMB_DIR  = os.environ.get("DATA_BREADCRUMB_DIR", os.path.join(_REPO_ROOT, "logs"))
+
+
+def _breadcrumb(worker_id: int, idx: int, seed: int, phase: str) -> None:
+    """Overwrite a tiny per-worker file with the sample currently in flight.
+
+    After a fatal C abort, the breadcrumb whose phase is still ENTER (no
+    matching DONE) is the sample that killed the worker. flush() is enough to
+    survive an abort — the page stays in the OS cache.
+    """
+    path = os.path.join(_BREADCRUMB_DIR, f"databreadcrumb_w{worker_id}_pid{os.getpid()}.txt")
+    try:
+        with open(path, "w") as f:
+            f.write(f"{phase} worker={worker_id} idx={idx} seed={seed} t={time.time():.3f}\n")
+            f.flush()
+    except OSError:
+        pass
+
+
+class _NoneRefcountTracker:
+    """Localizes the `none_dealloc` C abort by watching ``sys.getrefcount(None)``.
+
+    The abort is caused by a C extension over-decrementing the None singleton's
+    refcount; it accumulates silently over thousands of calls until None hits
+    zero and the process aborts. A normal sub-step nets a delta of 0 (it INCREFs
+    and DECREFs None the same number of times). A buggy sub-step nets a *negative*
+    delta on at least some calls — that's the leak. We measure the delta across
+    each named phase of ``_generate_one`` and emit a [REFCOUNT] line whenever a
+    phase nets nonzero, plus a running cumulative total per worker so a slow
+    monotonic drift is visible even if no single call looks dramatic.
+
+    sys.getrefcount itself adds a temporary +1 (its own argument ref), but that
+    is constant across both reads so it cancels in the delta — deltas are exact.
+    """
+
+    def __init__(self, worker_id: int, idx: int, seed: int):
+        self.worker_id = worker_id
+        self.idx = idx
+        self.seed = seed
+        self._last = sys.getrefcount(None)
+        self._start = self._last
+
+    def mark(self, phase: str) -> None:
+        cur = sys.getrefcount(None)
+        delta = cur - self._last
+        self._last = cur
+        if delta != 0:
+            sys.stderr.write(
+                f"[REFCOUNT] worker={self.worker_id} idx={self.idx} seed={self.seed} "
+                f"phase={phase}: None refcount delta={delta:+d} (now={cur})\n"
+            )
+            sys.stderr.flush()
+
+    def finish(self) -> None:
+        net = sys.getrefcount(None) - self._start
+        if net != 0:
+            sys.stderr.write(
+                f"[REFCOUNT] worker={self.worker_id} idx={self.idx} seed={self.seed} "
+                f"NET None refcount delta={net:+d} over this sample — "
+                f"a negative drift here is the source of the eventual none_dealloc abort\n"
+            )
+            sys.stderr.flush()
+
+
+class _NullTracker:
+    """No-op tracker so the hot path stays branch-light when DATA_REFCOUNT=0."""
+
+    def mark(self, phase: str) -> None:  # noqa: D401
+        pass
+
+    def finish(self) -> None:
+        pass
+
+
+def sample_metrics(out: dict) -> dict:
+    """Aggregate finiteness/magnitude metrics for one generated sample."""
+    n_nonfinite = 0
+    target_absmax = 0.0
+    per_field: dict[str, str] = {}
+    for k, v in out.items():
+        if not torch.is_tensor(v) or v.numel() == 0:
+            continue
+        tf = v.detach().float()
+        nb = int((~torch.isfinite(tf)).sum())
+        n_nonfinite += nb
+        fin = tf[torch.isfinite(tf)]
+        amax = float(fin.abs().max()) if fin.numel() else float("inf")
+        if k in ("Y_obs", "Y_do0", "Y_do1"):
+            target_absmax = max(target_absmax, amax)
+        if nb or amax > _TARGET_ABSMAX:
+            per_field[k] = f"absmax={amax:.3g} nonfinite={nb}/{tf.numel()}"
+    return {"n_nonfinite": n_nonfinite, "target_absmax": target_absmax, "per_field": per_field}
+
+
+def _validate_sample(out: dict, idx: int, seed: int, worker_id: int) -> list[str]:
+    """Log [DATA-WARN] for any non-finite values or target scaling blow-ups."""
+    m = sample_metrics(out)
+    problems: list[str] = []
+    if m["n_nonfinite"]:
+        problems.append(f"{m['n_nonfinite']} non-finite values")
+    if m["target_absmax"] > _TARGET_ABSMAX:
+        problems.append(f"target |max|={m['target_absmax']:.3g} (≫1 — scaling blow-up)")
+    if problems:
+        fields = "  ".join(f"{k}[{v}]" for k, v in m["per_field"].items())
+        sys.stderr.write(
+            f"[DATA-WARN] worker={worker_id} idx={idx} seed={seed}: "
+            f"{'; '.join(problems)}  | {fields}\n"
+        )
+        sys.stderr.flush()
+    return problems
 
 
 # --- Default SCM config (verbatim from generate_paired_samples.py) ------------
@@ -282,11 +445,39 @@ class PairedInterventionalDataset(Dataset):
         return self.infinite_len
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
-        return self._generate_one(idx)
+        info = torch.utils.data.get_worker_info()
+        worker_id = info.id if info is not None else -1
+        seed = self.seed_base + idx
+
+        if _DATA_BREADCRUMB:
+            _breadcrumb(worker_id, idx, seed, "ENTER")
+        if _DATA_VERBOSE:
+            sys.stderr.write(f"[DATA] worker={worker_id} idx={idx} seed={seed} generating…\n")
+            sys.stderr.flush()
+
+        tracker = _NoneRefcountTracker(worker_id, idx, seed) if _DATA_REFCOUNT else _NullTracker()
+        try:
+            out = self._generate_one(idx, tracker)
+        except Exception:
+            # A Python-level failure (e.g. the gave-up RuntimeError) — make it
+            # name the seed so it's reproducible, then re-raise.
+            sys.stderr.write(
+                f"[DATA-ERR] worker={worker_id} idx={idx} seed={seed} raised:\n{_tb.format_exc()}\n"
+            )
+            sys.stderr.flush()
+            raise
+
+        if _DATA_VALIDATE:
+            _validate_sample(out, idx, seed, worker_id)
+        if _DATA_BREADCRUMB:
+            _breadcrumb(worker_id, idx, seed, "DONE")
+        return out
 
     # ----- internal -----------------------------------------------------------
 
-    def _generate_one(self, idx: int) -> dict[str, Any]:
+    def _generate_one(self, idx: int, tracker=None) -> dict[str, Any]:
+        if tracker is None:
+            tracker = _NullTracker()
         torch.manual_seed(self.seed_base + idx)
         seed = self.seed_base + idx
 
@@ -371,16 +562,21 @@ class PairedInterventionalDataset(Dataset):
             # Couldn't find a usable SCM in max_outer_attempts tries
             raise RuntimeError(f"PairedInterventionalDataset: gave up after {self.max_outer_attempts} attempts at idx={idx}")
 
+        tracker.mark("scm_search")  # sampler.sample + binarise + obs propagate loop
+
         # Interventional propagation with the paired-noise trick
         intv_scm = deepcopy(scm)
         intv_scm.intervene(treatment_node)
+        tracker.mark("deepcopy_intervene")
 
         scm.sample_exogenous(self.n_test)
         scm._fixed_endogenous_vec = None
         scm.sample_endogenous(self.n_test)
         obs_test = scm.propagate(self.n_test)
+        tracker.mark("obs_test_propagate")
 
         res0, res1 = _propagate_paired(scm, intv_scm, treatment_node, self.n_test)
+        tracker.mark("propagate_paired")
         Y_do0_raw = res0[target_node].reshape(-1, 1).float()
         Y_do1_raw = res1[target_node].reshape(-1, 1).float()
 
@@ -431,7 +627,9 @@ class PairedInterventionalDataset(Dataset):
                 anc = padded
         except Exception:
             anc = torch.full((self.max_features + 2, self.max_features + 2), 0.0)
+        tracker.mark("ancestor_matrix")
 
+        tracker.finish()
         return {
             "X_obs":   X_obs,
             "T_obs":   T_obs,
