@@ -1,0 +1,39 @@
+=== Node info ===
+kn173
+Thu Jun 11 08:11:11 PM EDT 2026
+name, memory.total [MiB], memory.free [MiB]
+NVIDIA H100 80GB HBM3, 81559 MiB, 81079 MiB
+=================
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Free memory:   84.5 GB
+Precision:     bf16 autocast
+Checkpoint:    activation checkpointing on
+J:             100  (output_dim = 10013)
+Model:         d_model=256  depth=8  heads=8  hidden_mult=4
+Optimizer:     Adam(lr=1e-04, wd=1e-05)  grad_clip=1.0
+Schedule:      cosine  warmup_frac=0.1  min_lr_ratio=0.1
+Training:      steps=50000  microbatch=4  grad_accum=8
+                effective_batch = 32
+                N_context=1000  N_query=250
+Streaming:     workers=8  seed_base=42  warmup=4
+Checkpoint:    dir=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/checkpoints  every=5000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[stream] starting DataLoader (workers=8, microbatch=4)
+[stream] drawing 4 warm-up tasks for edge fitting…
+[BarDistribution2D] Fitting edges from 16000 Y_obs values over 16 samples → y_min=-1.000000, y_max=1.000000
+Model parameters: 16,119,072
+
+   step        loss          lr      wall
+──────────────────────────────────────────
+      1   4086.6270    2.00e-08      6.3s
+Step 71: NaN/Inf loss — skipping microbatch
+    100   3003.9652    2.00e-06    616.2s
+    200      4.2748    4.00e-06   1277.7s
+Step 287: NaN/Inf loss — skipping microbatch
+    300  154274.4465    6.00e-06   2123.1s
+    400      2.7136    8.00e-06   2880.2s
+Step 418: NaN/Inf loss — skipping microbatch
+    500      2.7050    1.00e-05   3576.5s

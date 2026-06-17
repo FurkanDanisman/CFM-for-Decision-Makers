@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --account=def-zhijing
+#SBATCH --account=aip-rgrosse
 #SBATCH --job-name=cfm-train
 #SBATCH --time=20:00:00
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-node=h100:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --output=logs/train_%j.out
-#SBATCH --error=logs/train_%j.err
+#SBATCH --output=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/train_%j.out
+#SBATCH --error=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/logs/train_%j.err
 
 # Full UWYK-scale training run on 1 H100.
 #
@@ -34,21 +34,21 @@
 #   - checkpoints every 5,000 steps to $SCRATCH/CFM-for-Decision-Makers/checkpoints/
 
 set -e
-cd $SCRATCH/CFM-for-Decision-Makers
+PROJ_DIR="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+cd "$PROJ_DIR"
 mkdir -p logs checkpoints
 
-# UWYK source (must be cloned from a login node — compute nodes have no internet)
-export UWYK_SRC=$SCRATCH/g4cfm/src
+export UWYK_SRC="$PROJ_DIR/g4cfm/src"
 if [ ! -d "$UWYK_SRC" ]; then
     echo "ERROR: UWYK_SRC not found at $UWYK_SRC"
-    echo "Clone it on the login node:"
-    echo "    cd \$SCRATCH && git clone --depth 1 https://github.com/ArikReuter/Graphs4CausalFoundationModels.git g4cfm"
+    echo "Clone it:  git clone --depth 1 https://github.com/ArikReuter/Graphs4CausalFoundationModels.git \"$PROJ_DIR/g4cfm\""
     exit 1
 fi
 
-module purge
+# venv was built by uv against the module python/3.11 (3.11.5) and is
+# self-contained (include-system-site-packages=false), so all deps live inside
+# .venv. Only the base python module is needed; scipy-stack would be ignored.
 module load python/3.11
-module load scipy-stack
 source .venv/bin/activate
 
 echo "=== Node info ==="
@@ -91,11 +91,11 @@ export STREAM_SEED=42
 export STREAM_WARMUP=4
 
 # ── Checkpoints ─────────────────────────────────────────────
-export CHECKPOINT_DIR=$SCRATCH/CFM-for-Decision-Makers/checkpoints
+export CHECKPOINT_DIR="$PROJ_DIR/checkpoints"
 export CHECKPOINT_EVERY=5000
 export RESUME=1
 
 # ── Logging ─────────────────────────────────────────────────
 export LOG_EVERY=100
 
-time python train_cfm.py
+time python -u train_cfm.py
