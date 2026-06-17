@@ -173,10 +173,36 @@ def main():
     last_print = t0
     ok = 0
     py_err = 0
+
+    # Y statistics — to see whether UWYK's data prior occasionally emits
+    # extreme |Y_intv| values that would explain the loss spikes
+    # (e.g., target at |Y|=100 + tail sigma=0.02 -> density ~ exp(-1e7) -> loss ~ 1e7).
+    y_intv_abs_max = 0.0
+    y_intv_max_seen_idx = -1
+    n_yi_over_5    = 0
+    n_yi_over_50   = 0
+    n_yi_over_500  = 0
+    n_yi_over_5000 = 0
+
     for i in range(N_ITERATIONS):
         try:
-            _ = ds[i]
+            sample = ds[i]
             ok += 1
+
+            # Sample is a tuple — extract Y_intv (the interventional outcome).
+            # Default ordering for InterventionalDataset is:
+            #   (X_obs, T_obs, Y_obs, X_intv, T_intv, Y_intv, [anc])
+            # The 6th element (index 5) is Y_intv.
+            y_intv = sample[5]
+            y_abs = float(y_intv.abs().max().item())
+
+            if y_abs > y_intv_abs_max:
+                y_intv_abs_max = y_abs
+                y_intv_max_seen_idx = i
+            if y_abs > 5:    n_yi_over_5    += 1
+            if y_abs > 50:   n_yi_over_50   += 1
+            if y_abs > 500:  n_yi_over_500  += 1
+            if y_abs > 5000: n_yi_over_5000 += 1
         except Exception as e:
             # Non-fatal Python exception (e.g., a rejected SCM). Log and continue.
             py_err += 1
@@ -189,13 +215,21 @@ def main():
             eta = (N_ITERATIONS - i - 1) / rate if rate > 0 else 0
             print(
                 f"  [{int(now - t0):>5}s] {i + 1:>6}/{N_ITERATIONS}  "
-                f"ok={ok}  py_err={py_err}  rate={rate:.1f}/s  ETA={eta / 60:.1f}min",
+                f"ok={ok}  py_err={py_err}  rate={rate:.1f}/s  ETA={eta / 60:.1f}min  "
+                f"|Y_intv|max={y_intv_abs_max:.2f}  "
+                f">5:{n_yi_over_5} >50:{n_yi_over_50} >500:{n_yi_over_500} >5000:{n_yi_over_5000}",
                 flush=True,
             )
             last_print = now
 
     print(f"\nDONE: {ok}/{N_ITERATIONS} ok, {py_err} python errors, "
           f"total {time.time() - t0:.1f}s — NO fatal crash", flush=True)
+    print(f"\nY_intv extremity summary:", flush=True)
+    print(f"  global max |Y_intv| = {y_intv_abs_max:.4f}  (first seen at idx {y_intv_max_seen_idx})", flush=True)
+    print(f"  samples with |Y_intv| > 5    : {n_yi_over_5}  ({100*n_yi_over_5/max(1,ok):.2f}%)", flush=True)
+    print(f"  samples with |Y_intv| > 50   : {n_yi_over_50}  ({100*n_yi_over_50/max(1,ok):.2f}%)", flush=True)
+    print(f"  samples with |Y_intv| > 500  : {n_yi_over_500}  ({100*n_yi_over_500/max(1,ok):.2f}%)", flush=True)
+    print(f"  samples with |Y_intv| > 5000 : {n_yi_over_5000}  ({100*n_yi_over_5000/max(1,ok):.2f}%)", flush=True)
 
 
 if __name__ == "__main__":
