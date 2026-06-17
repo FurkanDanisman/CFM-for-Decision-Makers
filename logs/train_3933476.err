@@ -1,0 +1,54 @@
+Fatal Python error: none_dealloc: deallocating None: bug likely caused by a refcount error in a C extension
+Python runtime state: initialized
+
+Thread 0x000015547a6296c0 (most recent call first):
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/socket.py", line 294 in accept
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/connection.py", line 608 in accept
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/connection.py", line 462 in accept
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/resource_sharer.py", line 138 in _serve
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 975 in run
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 1038 in _bootstrap_inner
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 995 in _bootstrap
+
+Thread 0x0000155478f746c0 (most recent call first):
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 320 in wait
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/queues.py", line 231 in _feed
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 975 in run
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 1038 in _bootstrap_inner
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/threading.py", line 995 in _bootstrap
+
+Current thread 0x0000155555414040 (most recent call first):
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/data/PairedInterventionalDataset.py", line 285 in __getitem__
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/_utils/fetch.py", line 52 in <listcomp>
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/_utils/fetch.py", line 52 in fetch
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/_utils/worker.py", line 349 in _worker_loop
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/process.py", line 108 in run
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/process.py", line 314 in _bootstrap
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/popen_fork.py", line 71 in _launch
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/popen_fork.py", line 19 in __init__
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/context.py", line 281 in _Popen
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/context.py", line 224 in _Popen
+  File "/cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v3/Compiler/gcccore/python/3.11.5/lib/python3.11/multiprocessing/process.py", line 121 in start
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 1146 in __init__
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 422 in _get_iterator
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/dataloader.py", line 486 in __iter__
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/train_cfm.py", line 227 in main
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/train_cfm.py", line 334 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 22)
+Traceback (most recent call last):
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/train_cfm.py", line 334, in <module>
+    main()
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/train_cfm.py", line 292, in main
+    loss = neg_log_prob_2d(
+           ^^^^^^^^^^^^^^^^
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/losses/BarDistribution2D.py", line 150, in neg_log_prob_2d
+    bin_width = float((edges[-1] - edges[0]).item() / J)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/project/6105522/lukez/CFM-for-Decision-Makers/.venv/lib/python3.11/site-packages/torch/utils/data/_utils/signal_handling.py", line 73, in handler
+    _error_if_any_worker_fails()
+RuntimeError: DataLoader worker (pid 1100260) is killed by signal: Aborted. 
+
+real	53m0.004s
+user	95m43.268s
+sys	13m51.552s

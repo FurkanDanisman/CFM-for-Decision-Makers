@@ -1,0 +1,1481 @@
+=== Node info ===
+kn177
+Sun Jun 14 03:02:44 PM EDT 2026
+name, memory.total [MiB], memory.free [MiB]
+NVIDIA H100 80GB HBM3, 81559 MiB, 81079 MiB
+=================
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Free memory:   84.5 GB
+Precision:     bf16 autocast
+Checkpoint:    activation checkpointing on
+J:             100  (output_dim = 10013)
+Model:         d_model=256  depth=8  heads=8  hidden_mult=4
+Optimizer:     Adam(lr=1e-04, wd=1e-05)  grad_clip=1.0
+Schedule:      cosine  warmup_frac=0.1  min_lr_ratio=0.1
+Training:      steps=50000  microbatch=4  grad_accum=8
+                effective_batch = 32
+                N_context=1000  N_query=250
+Streaming:     workers=8  seed_base=42  warmup=4
+Checkpoint:    dir=/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/checkpoints  every=5000  resume=False
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[stream] starting DataLoader (workers=8, microbatch=4)
+[stream] drawing 4 warm-up tasks for edge fitting…
+[BarDistribution2D] Fitting edges from 16000 Y_obs values over 16 samples → y_min=-1.000000, y_max=1.000000
+Model parameters: 16,119,072
+
+   step        loss          lr      wall
+──────────────────────────────────────────
+  [LOSS-WARN] step 1: loss > 1e+03 (loss=4962)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.52 max=19.3 absmax=19.3 nonfinite=0/1000
+       Y_do1: min=-2.61 max=19.3 absmax=19.3 nonfinite=0/1000
+      logits: min=-4.03 max=4.41 absmax=4.41 nonfinite=0/10013000
+  [LOSS-WARN] step 1: loss > 1e+03 (loss=2130)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.78 max=12.8 absmax=12.8 nonfinite=0/1000
+       Y_do1: min=-7.48 max=13.1 absmax=13.1 nonfinite=0/1000
+      logits: min=-4.03 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 1: loss > 1e+03 (loss=1620)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-11 max=8.02 absmax=11 nonfinite=0/1000
+       Y_do1: min=-12 max=7.55 absmax=12 nonfinite=0/1000
+      logits: min=-3.97 max=4.16 absmax=4.16 nonfinite=0/10013000
+      1   1275.6342    2.00e-08      4.2s
+  [LOSS-WARN] step 2: loss > 1e+03 (loss=2632)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.54 max=16.4 absmax=16.4 nonfinite=0/1000
+       Y_do1: min=-1.3 max=16.4 absmax=16.4 nonfinite=0/1000
+      logits: min=-4.06 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 2: loss > 1e+03 (loss=2391)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-18.7 max=5.84 absmax=18.7 nonfinite=0/1000
+       Y_do1: min=-18.7 max=5.84 absmax=18.7 nonfinite=0/1000
+      logits: min=-4.06 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 2: loss > 1e+03 (loss=1.619e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-45.7 max=3.24 absmax=45.7 nonfinite=0/1000
+       Y_do1: min=-45.6 max=3.19 absmax=45.6 nonfinite=0/1000
+      logits: min=-4.06 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 3: loss > 1e+03 (loss=4.553e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.6 max=180 absmax=180 nonfinite=0/1000
+       Y_do1: min=-15.6 max=179 absmax=179 nonfinite=0/1000
+      logits: min=-4.03 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 3: loss > 1e+03 (loss=8909)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.06 max=27.4 absmax=27.4 nonfinite=0/1000
+       Y_do1: min=-1.06 max=27.4 absmax=27.4 nonfinite=0/1000
+      logits: min=-4 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 3: loss > 1e+03 (loss=1136)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.36 max=4.55 absmax=6.36 nonfinite=0/1000
+       Y_do1: min=-6.36 max=4.59 absmax=6.36 nonfinite=0/1000
+      logits: min=-3.94 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 3: loss > 1e+03 (loss=2.259e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-12.6 max=43.6 absmax=43.6 nonfinite=0/1000
+       Y_do1: min=-12.6 max=43.6 absmax=43.6 nonfinite=0/1000
+      logits: min=-4 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 3: loss > 1e+03 (loss=1.375e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.97 max=233 absmax=233 nonfinite=0/1000
+       Y_do1: min=-2.28 max=233 absmax=233 nonfinite=0/1000
+      logits: min=-3.98 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 4: loss > 1e+03 (loss=1895)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.55 max=13.4 absmax=13.4 nonfinite=0/1000
+       Y_do1: min=-1.56 max=13.4 absmax=13.4 nonfinite=0/1000
+      logits: min=-4.16 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 4: loss > 1e+03 (loss=4616)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.18 max=17.7 absmax=17.7 nonfinite=0/1000
+       Y_do1: min=-2.35 max=16 absmax=16 nonfinite=0/1000
+      logits: min=-4 max=4.31 absmax=4.31 nonfinite=0/10013000
+  [LOSS-WARN] step 4: loss > 1e+03 (loss=4.056e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.6 max=90.1 absmax=90.1 nonfinite=0/1000
+       Y_do1: min=-15.6 max=192 absmax=192 nonfinite=0/1000
+      logits: min=-4 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 4: loss > 1e+03 (loss=2117)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.21 max=9.79 absmax=9.79 nonfinite=0/1000
+       Y_do1: min=-1.11 max=9.33 absmax=9.33 nonfinite=0/1000
+      logits: min=-4.06 max=5.06 absmax=5.06 nonfinite=0/10013000
+  [LOSS-WARN] step 4: loss > 1e+03 (loss=3357)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.26 max=16.6 absmax=16.6 nonfinite=0/1000
+       Y_do1: min=-4.26 max=16.6 absmax=16.6 nonfinite=0/1000
+      logits: min=-4.19 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 5: loss > 1e+03 (loss=1439)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.87 max=9.18 absmax=9.18 nonfinite=0/1000
+       Y_do1: min=-1.87 max=9.17 absmax=9.17 nonfinite=0/1000
+      logits: min=-3.98 max=4.06 absmax=4.06 nonfinite=0/10013000
+  [LOSS-WARN] step 6: loss > 1e+03 (loss=1.138e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-8.96 max=39.1 absmax=39.1 nonfinite=0/1000
+       Y_do1: min=-8.98 max=30.9 absmax=30.9 nonfinite=0/1000
+      logits: min=-4.03 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 7: loss > 1e+03 (loss=3258)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.78 max=15.8 absmax=15.8 nonfinite=0/1000
+       Y_do1: min=-2.11 max=15.7 absmax=15.7 nonfinite=0/1000
+      logits: min=-4.19 max=4.16 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 7: loss > 1e+03 (loss=1.425e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.89 max=32.3 absmax=32.3 nonfinite=0/1000
+       Y_do1: min=-2.98 max=32.2 absmax=32.2 nonfinite=0/1000
+      logits: min=-4 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 7: loss > 1e+03 (loss=9.045e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.61 max=93.2 absmax=93.2 nonfinite=0/1000
+       Y_do1: min=-2.61 max=93.2 absmax=93.2 nonfinite=0/1000
+      logits: min=-4 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 8: loss > 1e+03 (loss=1.689e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-11.5 max=33.1 absmax=33.1 nonfinite=0/1000
+       Y_do1: min=-13.8 max=29.8 absmax=29.8 nonfinite=0/1000
+      logits: min=-3.98 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 9: loss > 1e+03 (loss=4408)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-41.2 max=2.22 absmax=41.2 nonfinite=0/1000
+       Y_do1: min=-24.7 max=2.41 absmax=24.7 nonfinite=0/1000
+      logits: min=-4.03 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 9: loss > 1e+03 (loss=3.074e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-21.3 max=40.6 absmax=40.6 nonfinite=0/1000
+       Y_do1: min=-21.8 max=40.1 absmax=40.1 nonfinite=0/1000
+      logits: min=-3.98 max=4.31 absmax=4.31 nonfinite=0/10013000
+  [LOSS-WARN] step 10: loss > 1e+03 (loss=1.512e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.92 max=32.5 absmax=32.5 nonfinite=0/1000
+       Y_do1: min=-5.92 max=30.2 absmax=30.2 nonfinite=0/1000
+      logits: min=-4.06 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 10: loss > 1e+03 (loss=1759)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.58 max=15.6 absmax=15.6 nonfinite=0/1000
+       Y_do1: min=-1.13 max=12.5 absmax=12.5 nonfinite=0/1000
+      logits: min=-4.03 max=4.47 absmax=4.47 nonfinite=0/10013000
+  [LOSS-WARN] step 10: loss > 1e+03 (loss=5652)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.16 max=21.7 absmax=21.7 nonfinite=0/1000
+       Y_do1: min=-6.51 max=22.5 absmax=22.5 nonfinite=0/1000
+      logits: min=-4.06 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 11: loss > 1e+03 (loss=6.914e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-36.1 max=57.2 absmax=57.2 nonfinite=0/1000
+       Y_do1: min=-36.2 max=57.1 absmax=57.1 nonfinite=0/1000
+      logits: min=-4.06 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 11: loss > 1e+03 (loss=1744)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.82 max=15.8 absmax=15.8 nonfinite=0/1000
+       Y_do1: min=-2.59 max=13.6 absmax=13.6 nonfinite=0/1000
+      logits: min=-4.03 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 12: loss > 1e+03 (loss=1426)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.89 max=10.7 absmax=10.7 nonfinite=0/1000
+       Y_do1: min=-6.89 max=10.7 absmax=10.7 nonfinite=0/1000
+      logits: min=-4.09 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 12: loss > 1e+03 (loss=1500)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.8 max=2.44 absmax=15.8 nonfinite=0/1000
+       Y_do1: min=-15.8 max=2.44 absmax=15.8 nonfinite=0/1000
+      logits: min=-3.98 max=4.38 absmax=4.38 nonfinite=0/10013000
+  [LOSS-WARN] step 12: loss > 1e+03 (loss=2481)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.99 max=13.8 absmax=13.8 nonfinite=0/1000
+       Y_do1: min=-2.73 max=13.8 absmax=13.8 nonfinite=0/1000
+      logits: min=-3.95 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 14: loss > 1e+03 (loss=3139)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-24 max=3.17 absmax=24 nonfinite=0/1000
+       Y_do1: min=-24.3 max=2.82 absmax=24.3 nonfinite=0/1000
+      logits: min=-3.97 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 14: loss > 1e+03 (loss=2745)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-8.45 max=16.3 absmax=16.3 nonfinite=0/1000
+       Y_do1: min=-8.19 max=16.3 absmax=16.3 nonfinite=0/1000
+      logits: min=-4.03 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 14: loss > 1e+03 (loss=1378)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-13.6 max=4.9 absmax=13.6 nonfinite=0/1000
+       Y_do1: min=-13.5 max=5 absmax=13.5 nonfinite=0/1000
+      logits: min=-4.03 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 15: loss > 1e+03 (loss=5089)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-16 max=12.7 absmax=16 nonfinite=0/1000
+       Y_do1: min=-16 max=14.8 absmax=16 nonfinite=0/1000
+      logits: min=-3.97 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 16: loss > 1e+03 (loss=4478)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.23 max=14.5 absmax=14.5 nonfinite=0/1000
+       Y_do1: min=-6.24 max=14.8 absmax=14.8 nonfinite=0/1000
+      logits: min=-4.06 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 16: loss > 1e+03 (loss=1279)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.4 max=3.24 absmax=15.4 nonfinite=0/1000
+       Y_do1: min=-15.4 max=3.02 absmax=15.4 nonfinite=0/1000
+      logits: min=-4.31 max=4.25 absmax=4.31 nonfinite=0/10013000
+  [LOSS-WARN] step 16: loss > 1e+03 (loss=1024)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.5 max=5.68 absmax=5.68 nonfinite=0/1000
+       Y_do1: min=-2.59 max=8.28 absmax=8.28 nonfinite=0/1000
+      logits: min=-4 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 16: loss > 1e+03 (loss=2123)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.01 max=15.5 absmax=15.5 nonfinite=0/1000
+       Y_do1: min=-1 max=16 absmax=16 nonfinite=0/1000
+      logits: min=-4.03 max=4.62 absmax=4.62 nonfinite=0/10013000
+  [LOSS-WARN] step 17: loss > 1e+03 (loss=1170)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.85 max=9.94 absmax=9.94 nonfinite=0/1000
+       Y_do1: min=-2.2 max=10.4 absmax=10.4 nonfinite=0/1000
+      logits: min=-4.06 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 17: loss > 1e+03 (loss=1041)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-12.6 max=1.43 absmax=12.6 nonfinite=0/1000
+       Y_do1: min=-12.6 max=1.43 absmax=12.6 nonfinite=0/1000
+      logits: min=-4 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 17: loss > 1e+03 (loss=2.913e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-71.3 max=3.29 absmax=71.3 nonfinite=0/1000
+       Y_do1: min=-71.3 max=3.29 absmax=71.3 nonfinite=0/1000
+      logits: min=-3.98 max=4.59 absmax=4.59 nonfinite=0/10013000
+  [LOSS-WARN] step 18: loss > 1e+03 (loss=2380)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.96 max=11.3 absmax=11.3 nonfinite=0/1000
+       Y_do1: min=-2.96 max=11.3 absmax=11.3 nonfinite=0/1000
+      logits: min=-4.03 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 18: loss > 1e+03 (loss=1.371e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.64 max=1.28e+03 absmax=1.28e+03 nonfinite=0/1000
+       Y_do1: min=-2.65 max=1.28e+03 absmax=1.28e+03 nonfinite=0/1000
+      logits: min=-4 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 18: loss > 1e+03 (loss=1040)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.42 max=10.4 absmax=10.4 nonfinite=0/1000
+       Y_do1: min=-3.42 max=10.4 absmax=10.4 nonfinite=0/1000
+      logits: min=-4.06 max=4.41 absmax=4.41 nonfinite=0/10013000
+  [LOSS-WARN] step 18: loss > 1e+03 (loss=9407)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.88 max=49.1 absmax=49.1 nonfinite=0/1000
+       Y_do1: min=-1.56 max=50.2 absmax=50.2 nonfinite=0/1000
+      logits: min=-4.06 max=4.44 absmax=4.44 nonfinite=0/10013000
+  [LOSS-WARN] step 19: loss > 1e+03 (loss=4932)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-30.1 max=3.66 absmax=30.1 nonfinite=0/1000
+       Y_do1: min=-30.1 max=3.67 absmax=30.1 nonfinite=0/1000
+      logits: min=-3.97 max=4.34 absmax=4.34 nonfinite=0/10013000
+  [LOSS-WARN] step 19: loss > 1e+03 (loss=5007)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-30.8 max=6.15 absmax=30.8 nonfinite=0/1000
+       Y_do1: min=-30.8 max=6.15 absmax=30.8 nonfinite=0/1000
+      logits: min=-3.89 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 19: loss > 1e+03 (loss=4.105e+13)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.03e+06 max=2.72 absmax=2.03e+06 nonfinite=0/1000
+       Y_do1: min=-2.03e+06 max=2.85 absmax=2.03e+06 nonfinite=0/1000
+      logits: min=-3.97 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 20: loss > 1e+03 (loss=5898)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.08 max=21.2 absmax=21.2 nonfinite=0/1000
+       Y_do1: min=-1.07 max=20.6 absmax=20.6 nonfinite=0/1000
+      logits: min=-4.25 max=4.38 absmax=4.38 nonfinite=0/10013000
+  [LOSS-WARN] step 20: loss > 1e+03 (loss=1.583e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-47.8 max=14.5 absmax=47.8 nonfinite=0/1000
+       Y_do1: min=-47.8 max=14.5 absmax=47.8 nonfinite=0/1000
+      logits: min=-3.97 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 21: loss > 1e+03 (loss=1.168e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.31 max=37 absmax=37 nonfinite=0/1000
+       Y_do1: min=-1.31 max=37.3 absmax=37.3 nonfinite=0/1000
+      logits: min=-3.94 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 22: loss > 1e+03 (loss=3.42e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.44 max=639 absmax=639 nonfinite=0/1000
+       Y_do1: min=-1.71 max=639 absmax=639 nonfinite=0/1000
+      logits: min=-4.44 max=4.72 absmax=4.72 nonfinite=0/10013000
+  [LOSS-WARN] step 22: loss > 1e+03 (loss=1187)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.49 max=14.2 absmax=14.2 nonfinite=0/1000
+       Y_do1: min=-1.13 max=12.7 absmax=12.7 nonfinite=0/1000
+      logits: min=-3.98 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 23: loss > 1e+03 (loss=3450)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.8 max=10.8 absmax=15.8 nonfinite=0/1000
+       Y_do1: min=-15.8 max=11 absmax=15.8 nonfinite=0/1000
+      logits: min=-4.44 max=4.22 absmax=4.44 nonfinite=0/10013000
+  [LOSS-WARN] step 23: loss > 1e+03 (loss=5923)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-33.6 max=10.7 absmax=33.6 nonfinite=0/1000
+       Y_do1: min=-33.6 max=10.7 absmax=33.6 nonfinite=0/1000
+      logits: min=-4.03 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 23: loss > 1e+03 (loss=1896)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.71 max=5.32 absmax=5.32 nonfinite=0/1000
+       Y_do1: min=-2.49 max=13.9 absmax=13.9 nonfinite=0/1000
+      logits: min=-4.03 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 26: loss > 1e+03 (loss=1570)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-13.9 max=8.89 absmax=13.9 nonfinite=0/1000
+       Y_do1: min=-13.9 max=8.73 absmax=13.9 nonfinite=0/1000
+      logits: min=-4 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 26: loss > 1e+03 (loss=2982)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.89 max=13 absmax=13 nonfinite=0/1000
+       Y_do1: min=-1.89 max=15.5 absmax=15.5 nonfinite=0/1000
+      logits: min=-3.98 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 27: loss > 1e+03 (loss=1463)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.52 max=16.4 absmax=16.4 nonfinite=0/1000
+       Y_do1: min=-3.53 max=17.1 absmax=17.1 nonfinite=0/1000
+      logits: min=-3.97 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 27: loss > 1e+03 (loss=2451)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.97 max=14 absmax=14 nonfinite=0/1000
+       Y_do1: min=-6.96 max=8.42 absmax=8.42 nonfinite=0/1000
+      logits: min=-3.92 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 27: loss > 1e+03 (loss=1.039e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.49 max=462 absmax=462 nonfinite=0/1000
+       Y_do1: min=-4.78 max=424 absmax=424 nonfinite=0/1000
+      logits: min=-3.89 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 27: loss > 1e+03 (loss=1.31e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.81 max=141 absmax=141 nonfinite=0/1000
+       Y_do1: min=-2.71 max=141 absmax=141 nonfinite=0/1000
+      logits: min=-4.06 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 28: loss > 1e+03 (loss=3086)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.76 max=18.5 absmax=18.5 nonfinite=0/1000
+       Y_do1: min=-6.07 max=16.4 absmax=16.4 nonfinite=0/1000
+      logits: min=-3.97 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 29: loss > 1e+03 (loss=8296)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-13.8 max=25.8 absmax=25.8 nonfinite=0/1000
+       Y_do1: min=-13.7 max=25.9 absmax=25.9 nonfinite=0/1000
+      logits: min=-3.97 max=4.12 absmax=4.12 nonfinite=0/10013000
+  [LOSS-WARN] step 30: loss > 1e+03 (loss=2.346e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.4 max=1.63e+03 absmax=1.63e+03 nonfinite=0/1000
+       Y_do1: min=-2.4 max=1.63e+03 absmax=1.63e+03 nonfinite=0/1000
+      logits: min=-4.06 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 31: loss > 1e+03 (loss=3.56e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-9.46 max=883 absmax=883 nonfinite=0/1000
+       Y_do1: min=-9.46 max=883 absmax=883 nonfinite=0/1000
+      logits: min=-4.06 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 32: loss > 1e+03 (loss=4704)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-16.3 max=29.6 absmax=29.6 nonfinite=0/1000
+       Y_do1: min=-16.3 max=29.6 absmax=29.6 nonfinite=0/1000
+      logits: min=-3.91 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 33: loss > 1e+03 (loss=2350)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-17.2 max=5.13 absmax=17.2 nonfinite=0/1000
+       Y_do1: min=-17.2 max=5.13 absmax=17.2 nonfinite=0/1000
+      logits: min=-3.92 max=4.44 absmax=4.44 nonfinite=0/10013000
+  [LOSS-WARN] step 33: loss > 1e+03 (loss=2437)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.69 max=20.9 absmax=20.9 nonfinite=0/1000
+       Y_do1: min=-3.69 max=21.4 absmax=21.4 nonfinite=0/1000
+      logits: min=-3.91 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 34: loss > 1e+03 (loss=1.854e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.68 max=3.27e+03 absmax=3.27e+03 nonfinite=0/1000
+       Y_do1: min=-1.16 max=1.68e+03 absmax=1.68e+03 nonfinite=0/1000
+      logits: min=-4.06 max=4.09 absmax=4.09 nonfinite=0/10013000
+  [LOSS-WARN] step 35: loss > 1e+03 (loss=4.185e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.12 max=103 absmax=103 nonfinite=0/1000
+       Y_do1: min=-1.08 max=101 absmax=101 nonfinite=0/1000
+      logits: min=-3.89 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 35: loss > 1e+03 (loss=3.399e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-316 max=45.7 absmax=316 nonfinite=0/1000
+       Y_do1: min=-315 max=46 absmax=315 nonfinite=0/1000
+      logits: min=-4 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 37: loss > 1e+03 (loss=6006)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.17 max=38.1 absmax=38.1 nonfinite=0/1000
+       Y_do1: min=-1.2 max=38.6 absmax=38.6 nonfinite=0/1000
+      logits: min=-4.91 max=4.34 absmax=4.91 nonfinite=0/10013000
+  [LOSS-WARN] step 38: loss > 1e+03 (loss=3091)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1 max=24.6 absmax=24.6 nonfinite=0/1000
+       Y_do1: min=-1 max=24.6 absmax=24.6 nonfinite=0/1000
+      logits: min=-3.94 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 39: loss > 1e+03 (loss=2.6e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-31.9 max=283 absmax=283 nonfinite=0/1000
+       Y_do1: min=-31.9 max=258 absmax=258 nonfinite=0/1000
+      logits: min=-3.88 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 40: loss > 1e+03 (loss=4929)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.44 max=40.4 absmax=40.4 nonfinite=0/1000
+       Y_do1: min=-1.46 max=40.4 absmax=40.4 nonfinite=0/1000
+      logits: min=-3.88 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 40: loss > 1e+03 (loss=1150)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.85 max=19.4 absmax=19.4 nonfinite=0/1000
+       Y_do1: min=-4.84 max=19.5 absmax=19.5 nonfinite=0/1000
+      logits: min=-3.97 max=4.34 absmax=4.34 nonfinite=0/10013000
+  [LOSS-WARN] step 40: loss > 1e+03 (loss=1.092e+09)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-60.9 max=1.64e+04 absmax=1.64e+04 nonfinite=0/1000
+       Y_do1: min=-60.6 max=1.65e+04 absmax=1.65e+04 nonfinite=0/1000
+      logits: min=-3.97 max=4.53 absmax=4.53 nonfinite=0/10013000
+  [LOSS-WARN] step 42: loss > 1e+03 (loss=1.386e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.94 max=75 absmax=75 nonfinite=0/1000
+       Y_do1: min=-2.96 max=75 absmax=75 nonfinite=0/1000
+      logits: min=-3.92 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 44: loss > 1e+03 (loss=1.675e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.35 max=909 absmax=909 nonfinite=0/1000
+       Y_do1: min=-1.31 max=852 absmax=852 nonfinite=0/1000
+      logits: min=-3.84 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 45: loss > 1e+03 (loss=7.139e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-153 max=2.26 absmax=153 nonfinite=0/1000
+       Y_do1: min=-153 max=2.11 absmax=153 nonfinite=0/1000
+      logits: min=-3.86 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 45: loss > 1e+03 (loss=1363)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-21 max=2.56 absmax=21 nonfinite=0/1000
+       Y_do1: min=-21.3 max=2.57 absmax=21.3 nonfinite=0/1000
+      logits: min=-3.95 max=4.16 absmax=4.16 nonfinite=0/10013000
+  [LOSS-WARN] step 45: loss > 1e+03 (loss=1719)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.6 max=1.3 absmax=15.6 nonfinite=0/1000
+       Y_do1: min=-15.6 max=1.21 absmax=15.6 nonfinite=0/1000
+      logits: min=-3.91 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 47: loss > 1e+03 (loss=5984)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-32.4 max=36.6 absmax=36.6 nonfinite=0/1000
+       Y_do1: min=-32.4 max=36.6 absmax=36.6 nonfinite=0/1000
+      logits: min=-3.83 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 51: loss > 1e+03 (loss=1553)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.48 max=30.8 absmax=30.8 nonfinite=0/1000
+       Y_do1: min=-2.08 max=30.6 absmax=30.6 nonfinite=0/1000
+      logits: min=-3.91 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 53: loss > 1e+03 (loss=4.31e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-9.99 max=518 absmax=518 nonfinite=0/1000
+       Y_do1: min=-8.64 max=519 absmax=519 nonfinite=0/1000
+      logits: min=-3.78 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 53: loss > 1e+03 (loss=1247)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.59 max=29.8 absmax=29.8 nonfinite=0/1000
+       Y_do1: min=-1.57 max=29.9 absmax=29.9 nonfinite=0/1000
+      logits: min=-3.91 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 55: loss > 1e+03 (loss=1099)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-17.5 max=2.14 absmax=17.5 nonfinite=0/1000
+       Y_do1: min=-17.5 max=2.12 absmax=17.5 nonfinite=0/1000
+      logits: min=-3.84 max=4.19 absmax=4.19 nonfinite=0/10013000
+  [LOSS-WARN] step 55: loss > 1e+03 (loss=5381)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-51.6 max=1.15 absmax=51.6 nonfinite=0/1000
+       Y_do1: min=-55.2 max=1.19 absmax=55.2 nonfinite=0/1000
+      logits: min=-3.78 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 56: loss > 1e+03 (loss=2854)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-28.8 max=14.1 absmax=28.8 nonfinite=0/1000
+       Y_do1: min=-28.8 max=14.1 absmax=28.8 nonfinite=0/1000
+      logits: min=-3.8 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 56: loss > 1e+03 (loss=1065)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.61 max=8.22 absmax=8.22 nonfinite=0/1000
+       Y_do1: min=-1 max=29.1 absmax=29.1 nonfinite=0/1000
+      logits: min=-4.06 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 57: loss > 1e+03 (loss=1.792e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-10.1 max=19.7 absmax=19.7 nonfinite=0/1000
+       Y_do1: min=-10.8 max=27.3 absmax=27.3 nonfinite=0/1000
+      logits: min=-3.97 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 57: loss > 1e+03 (loss=1.797e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-97.9 max=5.18 absmax=97.9 nonfinite=0/1000
+       Y_do1: min=-97.9 max=5.18 absmax=97.9 nonfinite=0/1000
+      logits: min=-3.84 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 58: loss > 1e+03 (loss=4.209e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-170 max=1.8e+03 absmax=1.8e+03 nonfinite=0/1000
+       Y_do1: min=-170 max=1.8e+03 absmax=1.8e+03 nonfinite=0/1000
+      logits: min=-3.83 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 59: loss > 1e+03 (loss=2.999e+08)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-63.6 max=1.65e+04 absmax=1.65e+04 nonfinite=0/1000
+       Y_do1: min=-63.6 max=1.65e+04 absmax=1.65e+04 nonfinite=0/1000
+      logits: min=-4.16 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 60: loss > 1e+03 (loss=2594)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.8 max=36.4 absmax=36.4 nonfinite=0/1000
+       Y_do1: min=-5.06 max=44.4 absmax=44.4 nonfinite=0/1000
+      logits: min=-3.84 max=4.25 absmax=4.25 nonfinite=0/10013000
+  [LOSS-WARN] step 61: loss > 1e+03 (loss=1776)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.09 max=30 absmax=30 nonfinite=0/1000
+       Y_do1: min=-3.58 max=30 absmax=30 nonfinite=0/1000
+      logits: min=-3.88 max=4.22 absmax=4.22 nonfinite=0/10013000
+  [LOSS-WARN] step 66: loss > 1e+03 (loss=2875)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-46 max=2.98 absmax=46 nonfinite=0/1000
+       Y_do1: min=-46 max=2.55 absmax=46 nonfinite=0/1000
+      logits: min=-3.8 max=4.31 absmax=4.31 nonfinite=0/10013000
+  [LOSS-WARN] step 68: loss > 1e+03 (loss=4.901e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.23 max=252 absmax=252 nonfinite=0/1000
+       Y_do1: min=-2.23 max=294 absmax=294 nonfinite=0/1000
+      logits: min=-4.03 max=4.34 absmax=4.34 nonfinite=0/10013000
+  [LOSS-WARN] step 70: loss > 1e+03 (loss=2128)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-15.6 max=55.1 absmax=55.1 nonfinite=0/1000
+       Y_do1: min=-15.6 max=55.1 absmax=55.1 nonfinite=0/1000
+      logits: min=-3.94 max=4.28 absmax=4.28 nonfinite=0/10013000
+  [LOSS-WARN] step 72: loss > 1e+03 (loss=1.179e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.63 max=227 absmax=227 nonfinite=0/1000
+       Y_do1: min=-5.64 max=227 absmax=227 nonfinite=0/1000
+      logits: min=-4.03 max=4.47 absmax=4.47 nonfinite=0/10013000
+  [LOSS-WARN] step 73: loss > 1e+03 (loss=3504)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-32.9 max=74.5 absmax=74.5 nonfinite=0/1000
+       Y_do1: min=-32.9 max=74.5 absmax=74.5 nonfinite=0/1000
+      logits: min=-3.92 max=4.44 absmax=4.44 nonfinite=0/10013000
+  [LOSS-WARN] step 77: loss > 1e+03 (loss=5.877e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.13 max=345 absmax=345 nonfinite=0/1000
+       Y_do1: min=-1.15 max=345 absmax=345 nonfinite=0/1000
+      logits: min=-4.06 max=4.34 absmax=4.34 nonfinite=0/10013000
+  [LOSS-WARN] step 79: loss > 1e+03 (loss=1.16e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.63 max=154 absmax=154 nonfinite=0/1000
+       Y_do1: min=-6.39 max=154 absmax=154 nonfinite=0/1000
+      logits: min=-3.98 max=4.47 absmax=4.47 nonfinite=0/10013000
+  [LOSS-WARN] step 80: loss > 1e+03 (loss=1232)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-42.5 max=9.96 absmax=42.5 nonfinite=0/1000
+       Y_do1: min=-42.2 max=9.96 absmax=42.2 nonfinite=0/1000
+      logits: min=-3.94 max=4.41 absmax=4.41 nonfinite=0/10013000
+  [LOSS-WARN] step 82: loss > 1e+03 (loss=1.142e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-429 max=2.87 absmax=429 nonfinite=0/1000
+       Y_do1: min=-429 max=2.81 absmax=429 nonfinite=0/1000
+      logits: min=-4.09 max=4.41 absmax=4.41 nonfinite=0/10013000
+  [LOSS-WARN] step 85: loss > 1e+03 (loss=2570)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.64 max=90.3 absmax=90.3 nonfinite=0/1000
+       Y_do1: min=-5.63 max=90.4 absmax=90.4 nonfinite=0/1000
+      logits: min=-4.06 max=4.38 absmax=4.38 nonfinite=0/10013000
+  [LOSS-WARN] step 86: loss > 1e+03 (loss=9.177e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.25 max=469 absmax=469 nonfinite=0/1000
+       Y_do1: min=-4.31 max=467 absmax=467 nonfinite=0/1000
+      logits: min=-4 max=4.47 absmax=4.47 nonfinite=0/10013000
+  [LOSS-WARN] step 90: loss > 1e+03 (loss=1.151e+09)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.03e+03 max=6.34e+04 absmax=6.34e+04 nonfinite=0/1000
+       Y_do1: min=-1.03e+03 max=6.34e+04 absmax=6.34e+04 nonfinite=0/1000
+      logits: min=-4.06 max=4.5 absmax=4.5 nonfinite=0/10013000
+  [LOSS-WARN] step 92: loss > 1e+03 (loss=3533)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.01 max=110 absmax=110 nonfinite=0/1000
+       Y_do1: min=-5.33 max=110 absmax=110 nonfinite=0/1000
+      logits: min=-4.19 max=4.53 absmax=4.53 nonfinite=0/10013000
+  [LOSS-WARN] step 93: loss > 1e+03 (loss=5436)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.6 max=152 absmax=152 nonfinite=0/1000
+       Y_do1: min=-2.6 max=152 absmax=152 nonfinite=0/1000
+      logits: min=-4.53 max=4.53 absmax=4.53 nonfinite=0/10013000
+  [LOSS-WARN] step 95: loss > 1e+03 (loss=1116)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-35.8 max=48.5 absmax=48.5 nonfinite=0/1000
+       Y_do1: min=-35.8 max=48.5 absmax=48.5 nonfinite=0/1000
+      logits: min=-4.12 max=4.5 absmax=4.5 nonfinite=0/10013000
+  [LOSS-WARN] step 96: loss > 1e+03 (loss=4.062e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.28 max=425 absmax=425 nonfinite=0/1000
+       Y_do1: min=-1.28 max=425 absmax=425 nonfinite=0/1000
+      logits: min=-4.34 max=4.59 absmax=4.59 nonfinite=0/10013000
+  [LOSS-WARN] step 100: loss > 1e+03 (loss=1.912e+11)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.58 max=9.35e+03 absmax=9.35e+03 nonfinite=0/1000
+       Y_do1: min=-2.61 max=1.28e+06 absmax=1.28e+06 nonfinite=0/1000
+      logits: min=-4.41 max=4.59 absmax=4.59 nonfinite=0/10013000
+    100  23897847859.7387    2.00e-06    374.4s
+  [LOSS-WARN] step 102: loss > 1e+03 (loss=2.43e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-19.7 max=3.54e+03 absmax=3.54e+03 nonfinite=0/1000
+       Y_do1: min=-19.6 max=3.54e+03 absmax=3.54e+03 nonfinite=0/1000
+      logits: min=-4.22 max=4.59 absmax=4.59 nonfinite=0/10013000
+  [LOSS-WARN] step 104: loss > 1e+03 (loss=1758)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.03 max=112 absmax=112 nonfinite=0/1000
+       Y_do1: min=-6.16 max=112 absmax=112 nonfinite=0/1000
+      logits: min=-4.28 max=4.69 absmax=4.69 nonfinite=0/10013000
+  [LOSS-WARN] step 107: loss > 1e+03 (loss=1.053e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-34.8 max=284 absmax=284 nonfinite=0/1000
+       Y_do1: min=-34.8 max=284 absmax=284 nonfinite=0/1000
+      logits: min=-4.22 max=4.72 absmax=4.72 nonfinite=0/10013000
+  [LOSS-WARN] step 110: loss > 1e+03 (loss=1339)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.52 max=42.9 absmax=42.9 nonfinite=0/1000
+       Y_do1: min=-7.54 max=137 absmax=137 nonfinite=0/1000
+      logits: min=-4.28 max=5.06 absmax=5.06 nonfinite=0/10013000
+  [LOSS-WARN] step 111: loss > 1e+03 (loss=1570)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.24 max=117 absmax=117 nonfinite=0/1000
+       Y_do1: min=-3.53 max=117 absmax=117 nonfinite=0/1000
+      logits: min=-4.16 max=5.03 absmax=5.03 nonfinite=0/10013000
+  [LOSS-WARN] step 126: loss > 1e+03 (loss=1.493e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-27.1 max=1.58e+04 absmax=1.58e+04 nonfinite=0/1000
+       Y_do1: min=-27.7 max=32.7 absmax=32.7 nonfinite=0/1000
+      logits: min=-4.47 max=6.31 absmax=6.31 nonfinite=0/10013000
+  [LOSS-WARN] step 126: loss > 1e+03 (loss=1.059e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.98e+03 max=1.69 absmax=2.98e+03 nonfinite=0/1000
+       Y_do1: min=-2.98e+03 max=1.07 absmax=2.98e+03 nonfinite=0/1000
+      logits: min=-4.34 max=6.19 absmax=6.19 nonfinite=0/10013000
+  [LOSS-WARN] step 131: loss > 1e+03 (loss=1.127e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.24 max=376 absmax=376 nonfinite=0/1000
+       Y_do1: min=-1.11 max=374 absmax=374 nonfinite=0/1000
+      logits: min=-4.5 max=6.75 absmax=6.75 nonfinite=0/10013000
+  [LOSS-WARN] step 131: loss > 1e+03 (loss=1306)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.91 max=143 absmax=143 nonfinite=0/1000
+       Y_do1: min=-4.91 max=143 absmax=143 nonfinite=0/1000
+      logits: min=-4.69 max=6.81 absmax=6.81 nonfinite=0/10013000
+  [LOSS-WARN] step 133: loss > 1e+03 (loss=4644)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-156 max=3.36 absmax=156 nonfinite=0/1000
+       Y_do1: min=-152 max=5.26 absmax=152 nonfinite=0/1000
+      logits: min=-4.84 max=6.97 absmax=6.97 nonfinite=0/10013000
+  [LOSS-WARN] step 138: loss > 1e+03 (loss=1.867e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-283 max=488 absmax=488 nonfinite=0/1000
+       Y_do1: min=-283 max=489 absmax=489 nonfinite=0/1000
+      logits: min=-4.75 max=7.44 absmax=7.44 nonfinite=0/10013000
+  [LOSS-WARN] step 140: loss > 1e+03 (loss=1.444e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-8.38 max=1.56e+03 absmax=1.56e+03 nonfinite=0/1000
+       Y_do1: min=-7.85 max=1.72e+03 absmax=1.72e+03 nonfinite=0/1000
+      logits: min=-4.81 max=7.53 absmax=7.53 nonfinite=0/10013000
+  [LOSS-WARN] step 141: loss > 1e+03 (loss=2.032e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-13.3 max=2.09e+03 absmax=2.09e+03 nonfinite=0/1000
+       Y_do1: min=-13.1 max=2.13e+03 absmax=2.13e+03 nonfinite=0/1000
+      logits: min=-5.03 max=7.66 absmax=7.66 nonfinite=0/10013000
+  [LOSS-WARN] step 142: loss > 1e+03 (loss=1.043e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.13e+03 max=319 absmax=1.13e+03 nonfinite=0/1000
+       Y_do1: min=-1.13e+03 max=319 absmax=1.13e+03 nonfinite=0/1000
+      logits: min=-4.81 max=7.75 absmax=7.75 nonfinite=0/10013000
+  [LOSS-WARN] step 143: loss > 1e+03 (loss=2352)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.15 max=230 absmax=230 nonfinite=0/1000
+       Y_do1: min=-7.19 max=230 absmax=230 nonfinite=0/1000
+      logits: min=-4.94 max=7.81 absmax=7.81 nonfinite=0/10013000
+  [LOSS-WARN] step 154: loss > 1e+03 (loss=1404)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2 max=202 absmax=202 nonfinite=0/1000
+       Y_do1: min=-2 max=202 absmax=202 nonfinite=0/1000
+      logits: min=-5.19 max=8.62 absmax=8.62 nonfinite=0/10013000
+  [LOSS-WARN] step 156: loss > 1e+03 (loss=2236)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-200 max=7.39 absmax=200 nonfinite=0/1000
+       Y_do1: min=-200 max=7.39 absmax=200 nonfinite=0/1000
+      logits: min=-5.25 max=8.88 absmax=8.88 nonfinite=0/10013000
+  [LOSS-WARN] step 160: loss > 1e+03 (loss=5.838e+13)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.56 max=3.37e+07 absmax=3.37e+07 nonfinite=0/1000
+       Y_do1: min=-4.52 max=3.39e+07 absmax=3.39e+07 nonfinite=0/1000
+      logits: min=-5.5 max=9.06 absmax=9.06 nonfinite=0/10013000
+  [LOSS-WARN] step 162: loss > 1e+03 (loss=3630)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-266 max=3.44 absmax=266 nonfinite=0/1000
+       Y_do1: min=-267 max=2.98 absmax=267 nonfinite=0/1000
+      logits: min=-5.47 max=9.25 absmax=9.25 nonfinite=0/10013000
+  [LOSS-WARN] step 167: loss > 1e+03 (loss=2983)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1 max=342 absmax=342 nonfinite=0/1000
+       Y_do1: min=-1.13 max=342 absmax=342 nonfinite=0/1000
+      logits: min=-5.66 max=9.62 absmax=9.62 nonfinite=0/10013000
+  [LOSS-WARN] step 179: loss > 1e+03 (loss=1.177e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.11e+04 max=1.54 absmax=1.11e+04 nonfinite=0/1000
+       Y_do1: min=-1.11e+04 max=1.91 absmax=1.11e+04 nonfinite=0/1000
+      logits: min=-6.03 max=10.8 absmax=10.8 nonfinite=0/10013000
+  [LOSS-WARN] step 184: loss > 1e+03 (loss=1.127e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-27 max=785 absmax=785 nonfinite=0/1000
+       Y_do1: min=-27 max=785 absmax=785 nonfinite=0/1000
+      logits: min=-6.19 max=11 absmax=11 nonfinite=0/10013000
+  [LOSS-WARN] step 193: loss > 1e+03 (loss=3.895e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.1 max=5.42 absmax=5.42 nonfinite=0/1000
+       Y_do1: min=-5.09 max=1.39e+03 absmax=1.39e+03 nonfinite=0/1000
+      logits: min=-6.31 max=11.4 absmax=11.4 nonfinite=0/10013000
+  [LOSS-WARN] step 198: loss > 1e+03 (loss=8712)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-363 max=405 absmax=405 nonfinite=0/1000
+       Y_do1: min=-363 max=406 absmax=406 nonfinite=0/1000
+      logits: min=-6.31 max=11.7 absmax=11.7 nonfinite=0/10013000
+    200      4.1766    4.00e-06    749.7s
+  [LOSS-WARN] step 211: loss > 1e+03 (loss=3.345e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.65 max=1.66e+04 absmax=1.66e+04 nonfinite=0/1000
+       Y_do1: min=-3.85 max=1.66e+04 absmax=1.66e+04 nonfinite=0/1000
+      logits: min=-6.5 max=13 absmax=13 nonfinite=0/10013000
+  [LOSS-WARN] step 212: loss > 1e+03 (loss=3037)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-59.5 max=506 absmax=506 nonfinite=0/1000
+       Y_do1: min=-60.9 max=500 absmax=500 nonfinite=0/1000
+      logits: min=-6.59 max=13.1 absmax=13.1 nonfinite=0/10013000
+  [LOSS-WARN] step 216: loss > 1e+03 (loss=1714)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-304 max=19.6 absmax=304 nonfinite=0/1000
+       Y_do1: min=-304 max=19.6 absmax=304 nonfinite=0/1000
+      logits: min=-6.84 max=13.5 absmax=13.5 nonfinite=0/10013000
+  [LOSS-WARN] step 216: loss > 1e+03 (loss=9.381e+18)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.13e+06 max=2.92e+10 absmax=2.92e+10 nonfinite=0/1000
+       Y_do1: min=-8.3e+06 max=2.96e+10 absmax=2.96e+10 nonfinite=0/1000
+      logits: min=-6.84 max=13.6 absmax=13.6 nonfinite=0/10013000
+  [LOSS-WARN] step 218: loss > 1e+03 (loss=1.163e+12)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.35 max=1.06e+07 absmax=1.06e+07 nonfinite=0/1000
+       Y_do1: min=-7.44 max=1.06e+07 absmax=1.06e+07 nonfinite=0/1000
+      logits: min=-6.72 max=13.8 absmax=13.8 nonfinite=0/10013000
+  [LOSS-WARN] step 228: loss > 1e+03 (loss=2.825e+08)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.59 max=1.93e+05 absmax=1.93e+05 nonfinite=0/1000
+       Y_do1: min=-4.59 max=1.61e+05 absmax=1.61e+05 nonfinite=0/1000
+      logits: min=-7.12 max=14.9 absmax=14.9 nonfinite=0/10013000
+  [LOSS-WARN] step 230: loss > 1e+03 (loss=5191)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-22.8 max=798 absmax=798 nonfinite=0/1000
+       Y_do1: min=-22.6 max=798 absmax=798 nonfinite=0/1000
+      logits: min=-7.16 max=15.1 absmax=15.1 nonfinite=0/10013000
+  [LOSS-WARN] step 245: loss > 1e+03 (loss=1428)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-323 max=6.5 absmax=323 nonfinite=0/1000
+       Y_do1: min=-322 max=7.49 absmax=322 nonfinite=0/1000
+      logits: min=-7.62 max=16.2 absmax=16.2 nonfinite=0/10013000
+  [LOSS-WARN] step 246: loss > 1e+03 (loss=4443)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-588 max=13.6 absmax=588 nonfinite=0/1000
+       Y_do1: min=-589 max=13.6 absmax=589 nonfinite=0/1000
+      logits: min=-7.69 max=16.2 absmax=16.2 nonfinite=0/10013000
+  [LOSS-WARN] step 247: loss > 1e+03 (loss=2.03e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-805 max=2.93 absmax=805 nonfinite=0/1000
+       Y_do1: min=-805 max=3.29 absmax=805 nonfinite=0/1000
+      logits: min=-7.66 max=16.4 absmax=16.4 nonfinite=0/10013000
+  [LOSS-WARN] step 250: loss > 1e+03 (loss=1212)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-17 max=255 absmax=255 nonfinite=0/1000
+       Y_do1: min=-17 max=255 absmax=255 nonfinite=0/1000
+      logits: min=-7.56 max=16.4 absmax=16.4 nonfinite=0/10013000
+  [LOSS-WARN] step 252: loss > 1e+03 (loss=2.72e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.54e+03 max=18.1 absmax=1.54e+03 nonfinite=0/1000
+       Y_do1: min=-1.54e+03 max=18.1 absmax=1.54e+03 nonfinite=0/1000
+      logits: min=-7.66 max=16.2 absmax=16.2 nonfinite=0/10013000
+  [LOSS-WARN] step 260: loss > 1e+03 (loss=4.129e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.91e+04 max=7.01e+03 absmax=1.91e+04 nonfinite=0/1000
+       Y_do1: min=-1.91e+04 max=7.01e+03 absmax=1.91e+04 nonfinite=0/1000
+      logits: min=-7.44 max=16.4 absmax=16.4 nonfinite=0/10013000
+  [LOSS-WARN] step 261: loss > 1e+03 (loss=7047)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-813 max=55 absmax=813 nonfinite=0/1000
+       Y_do1: min=-813 max=55 absmax=813 nonfinite=0/1000
+      logits: min=-7.53 max=16.5 absmax=16.5 nonfinite=0/10013000
+  [LOSS-WARN] step 269: loss > 1e+03 (loss=3.534e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.04e+03 max=7.29e+03 absmax=7.29e+03 nonfinite=0/1000
+       Y_do1: min=-1.04e+03 max=7.29e+03 absmax=7.29e+03 nonfinite=0/1000
+      logits: min=-7.59 max=16.9 absmax=16.9 nonfinite=0/10013000
+  [LOSS-WARN] step 282: loss > 1e+03 (loss=1568)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.54 max=431 absmax=431 nonfinite=0/1000
+       Y_do1: min=-1.28 max=432 absmax=432 nonfinite=0/1000
+      logits: min=-7.69 max=17.6 absmax=17.6 nonfinite=0/10013000
+Step 287: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 287: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-1.23 max=1.69 absmax=1.69 nonfinite=250/1000
+       Y_do1: min=-1.27 max=1.65 absmax=1.65 nonfinite=250/1000
+      logits: min=-7.75 max=17.9 absmax=17.9 nonfinite=2503250/10013000
+  [LOSS-WARN] step 300: loss > 1e+03 (loss=7492)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.67 max=816 absmax=816 nonfinite=0/1000
+       Y_do1: min=-3.77 max=816 absmax=816 nonfinite=0/1000
+      logits: min=-7.38 max=17.5 absmax=17.5 nonfinite=0/10013000
+  [LOSS-WARN] step 300: loss > 1e+03 (loss=1453)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-32.3 max=486 absmax=486 nonfinite=0/1000
+       Y_do1: min=-32.3 max=486 absmax=486 nonfinite=0/1000
+      logits: min=-7.41 max=17.5 absmax=17.5 nonfinite=0/10013000
+    300   1120.2641    6.00e-06   1124.7s
+  [LOSS-WARN] step 309: loss > 1e+03 (loss=2.648e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-12.6 max=1.82e+03 absmax=1.82e+03 nonfinite=0/1000
+       Y_do1: min=-12.6 max=1.82e+03 absmax=1.82e+03 nonfinite=0/1000
+      logits: min=-7.25 max=17.5 absmax=17.5 nonfinite=0/10013000
+  [LOSS-WARN] step 319: loss > 1e+03 (loss=1.291e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.22e+03 max=26.5 absmax=1.22e+03 nonfinite=0/1000
+       Y_do1: min=-1.06e+03 max=26.5 absmax=1.06e+03 nonfinite=0/1000
+      logits: min=-6.97 max=17.1 absmax=17.1 nonfinite=0/10013000
+  [LOSS-WARN] step 322: loss > 1e+03 (loss=4004)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-638 max=20.3 absmax=638 nonfinite=0/1000
+       Y_do1: min=-603 max=20.3 absmax=603 nonfinite=0/1000
+      logits: min=-6.91 max=17.4 absmax=17.4 nonfinite=0/10013000
+  [LOSS-WARN] step 325: loss > 1e+03 (loss=1.261e+09)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.68 max=3.96e+05 absmax=3.96e+05 nonfinite=0/1000
+       Y_do1: min=-5.58 max=3.96e+05 absmax=3.96e+05 nonfinite=0/1000
+      logits: min=-6.94 max=17.2 absmax=17.2 nonfinite=0/10013000
+  [LOSS-WARN] step 326: loss > 1e+03 (loss=2725)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-233 max=591 absmax=591 nonfinite=0/1000
+       Y_do1: min=-213 max=591 absmax=591 nonfinite=0/1000
+      logits: min=-6.94 max=17.2 absmax=17.2 nonfinite=0/10013000
+  [LOSS-WARN] step 329: loss > 1e+03 (loss=1.256e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.63e+04 max=10.9 absmax=3.63e+04 nonfinite=0/1000
+       Y_do1: min=-3.63e+04 max=13 absmax=3.63e+04 nonfinite=0/1000
+      logits: min=-6.88 max=17.4 absmax=17.4 nonfinite=0/10013000
+  [LOSS-WARN] step 338: loss > 1e+03 (loss=1700)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.76 max=634 absmax=634 nonfinite=0/1000
+       Y_do1: min=-2.46 max=299 absmax=299 nonfinite=0/1000
+      logits: min=-7.25 max=17.8 absmax=17.8 nonfinite=0/10013000
+  [LOSS-WARN] step 360: loss > 1e+03 (loss=2.179e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.41 max=1.08e+03 absmax=1.08e+03 nonfinite=0/1000
+       Y_do1: min=-2.41 max=1.08e+03 absmax=1.08e+03 nonfinite=0/1000
+      logits: min=-7.47 max=18.5 absmax=18.5 nonfinite=0/10013000
+  [LOSS-WARN] step 364: loss > 1e+03 (loss=4.818e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.71 max=3.29e+03 absmax=3.29e+03 nonfinite=0/1000
+       Y_do1: min=-1.89 max=3.29e+03 absmax=3.29e+03 nonfinite=0/1000
+      logits: min=-7.53 max=18.9 absmax=18.9 nonfinite=0/10013000
+  [LOSS-WARN] step 366: loss > 1e+03 (loss=4.856e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.18 max=1.38e+03 absmax=1.38e+03 nonfinite=0/1000
+       Y_do1: min=-11.5 max=1.38e+03 absmax=1.38e+03 nonfinite=0/1000
+      logits: min=-7.59 max=19 absmax=19 nonfinite=0/10013000
+  [LOSS-WARN] step 373: loss > 1e+03 (loss=1.547e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.1 max=2.18e+03 absmax=2.18e+03 nonfinite=0/1000
+       Y_do1: min=-1.01 max=8.86 absmax=8.86 nonfinite=0/1000
+      logits: min=-7.88 max=19.9 absmax=19.9 nonfinite=0/10013000
+  [LOSS-WARN] step 394: loss > 1e+03 (loss=1.724e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.16 max=6.6e+04 absmax=6.6e+04 nonfinite=0/1000
+       Y_do1: min=-1.25 max=6.6e+04 absmax=6.6e+04 nonfinite=0/1000
+      logits: min=-7.81 max=20.5 absmax=20.5 nonfinite=0/10013000
+  [LOSS-WARN] step 400: loss > 1e+03 (loss=3781)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-682 max=3.43 absmax=682 nonfinite=0/1000
+       Y_do1: min=-681 max=5.94 absmax=681 nonfinite=0/1000
+      logits: min=-7.81 max=20.5 absmax=20.5 nonfinite=0/10013000
+    400    475.6400    8.00e-06   1499.9s
+  [LOSS-WARN] step 402: loss > 1e+03 (loss=1.095e+08)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-14.5 max=1.15e+05 absmax=1.15e+05 nonfinite=0/1000
+       Y_do1: min=-14.5 max=1.15e+05 absmax=1.15e+05 nonfinite=0/1000
+      logits: min=-7.84 max=20.6 absmax=20.6 nonfinite=0/10013000
+  [LOSS-WARN] step 405: loss > 1e+03 (loss=1.166e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.22 max=1.81e+03 absmax=1.81e+03 nonfinite=0/1000
+       Y_do1: min=-7.26 max=1.49e+03 absmax=1.49e+03 nonfinite=0/1000
+      logits: min=-7.88 max=20.4 absmax=20.4 nonfinite=0/10013000
+  [LOSS-WARN] step 405: loss > 1e+03 (loss=2.235e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-25.8 max=1.87e+03 absmax=1.87e+03 nonfinite=0/1000
+       Y_do1: min=-25.8 max=1.88e+03 absmax=1.88e+03 nonfinite=0/1000
+      logits: min=-7.84 max=20.4 absmax=20.4 nonfinite=0/10013000
+  [LOSS-WARN] step 410: loss > 1e+03 (loss=3.292e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.98 max=1.57 absmax=1.98 nonfinite=0/1000
+       Y_do1: min=-2.1 max=1.05e+05 absmax=1.05e+05 nonfinite=0/1000
+      logits: min=-7.97 max=21.5 absmax=21.5 nonfinite=0/10013000
+  [LOSS-WARN] step 421: loss > 1e+03 (loss=2.807e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.18 max=2.83e+03 absmax=2.83e+03 nonfinite=0/1000
+       Y_do1: min=-1.18 max=2.94e+03 absmax=2.94e+03 nonfinite=0/1000
+      logits: min=-8.19 max=22.5 absmax=22.5 nonfinite=0/10013000
+  [LOSS-WARN] step 422: loss > 1e+03 (loss=9.591e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.26 max=3.08e+03 absmax=3.08e+03 nonfinite=0/1000
+       Y_do1: min=-1.26 max=3.08e+03 absmax=3.08e+03 nonfinite=0/1000
+      logits: min=-8.19 max=22.5 absmax=22.5 nonfinite=0/10013000
+  [LOSS-WARN] step 436: loss > 1e+03 (loss=6.609e+15)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.54 max=1.53e+09 absmax=1.53e+09 nonfinite=0/1000
+       Y_do1: min=-1.59 max=1.53e+09 absmax=1.53e+09 nonfinite=0/1000
+      logits: min=-8.31 max=22.9 absmax=22.9 nonfinite=0/10013000
+  [LOSS-WARN] step 438: loss > 1e+03 (loss=2769)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.75 max=688 absmax=688 nonfinite=0/1000
+       Y_do1: min=-2.03 max=688 absmax=688 nonfinite=0/1000
+      logits: min=-8.31 max=22.8 absmax=22.8 nonfinite=0/10013000
+  [LOSS-WARN] step 465: loss > 1e+03 (loss=2364)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-461 max=508 absmax=508 nonfinite=0/1000
+       Y_do1: min=-461 max=508 absmax=508 nonfinite=0/1000
+      logits: min=-8.81 max=23.5 absmax=23.5 nonfinite=0/10013000
+  [LOSS-WARN] step 466: loss > 1e+03 (loss=1562)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.48 max=438 absmax=438 nonfinite=0/1000
+       Y_do1: min=-1.14 max=360 absmax=360 nonfinite=0/1000
+      logits: min=-8.81 max=24.9 absmax=24.9 nonfinite=0/10013000
+  [LOSS-WARN] step 476: loss > 1e+03 (loss=1.172e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.63 max=2.26e+04 absmax=2.26e+04 nonfinite=0/1000
+       Y_do1: min=-1.32 max=2.26e+04 absmax=2.26e+04 nonfinite=0/1000
+      logits: min=-8.88 max=25.6 absmax=25.6 nonfinite=0/10013000
+  [LOSS-WARN] step 484: loss > 1e+03 (loss=5.136e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.27e+04 max=325 absmax=3.27e+04 nonfinite=0/1000
+       Y_do1: min=-3.27e+04 max=325 absmax=3.27e+04 nonfinite=0/1000
+      logits: min=-9.25 max=26.5 absmax=26.5 nonfinite=0/10013000
+  [LOSS-WARN] step 497: loss > 1e+03 (loss=1.42e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.72e+03 max=140 absmax=1.72e+03 nonfinite=0/1000
+       Y_do1: min=-1.72e+03 max=140 absmax=1.72e+03 nonfinite=0/1000
+      logits: min=-9.88 max=27.4 absmax=27.4 nonfinite=0/10013000
+    500      3.1837    1.00e-05   1875.0s
+  [LOSS-WARN] step 506: loss > 1e+03 (loss=2522)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-18.8 max=1.07e+03 absmax=1.07e+03 nonfinite=0/1000
+       Y_do1: min=-18.8 max=1.07e+03 absmax=1.07e+03 nonfinite=0/1000
+      logits: min=-9.94 max=26.8 absmax=26.8 nonfinite=0/10013000
+  [LOSS-WARN] step 519: loss > 1e+03 (loss=7725)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.79 max=1.54e+03 absmax=1.54e+03 nonfinite=0/1000
+       Y_do1: min=-1.79 max=29.6 absmax=29.6 nonfinite=0/1000
+      logits: min=-10.5 max=28.9 absmax=28.9 nonfinite=0/10013000
+  [LOSS-WARN] step 532: loss > 1e+03 (loss=5338)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.64 max=1.49e+03 absmax=1.49e+03 nonfinite=0/1000
+       Y_do1: min=-1.64 max=1.49e+03 absmax=1.49e+03 nonfinite=0/1000
+      logits: min=-10.1 max=29 absmax=29 nonfinite=0/10013000
+  [LOSS-WARN] step 533: loss > 1e+03 (loss=5.131e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-433 max=1.58e+05 absmax=1.58e+05 nonfinite=0/1000
+       Y_do1: min=-433 max=1.58e+05 absmax=1.58e+05 nonfinite=0/1000
+      logits: min=-10.2 max=29.1 absmax=29.1 nonfinite=0/10013000
+Step 545: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 545: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-2.27 max=1.44 absmax=2.27 nonfinite=250/1000
+       Y_do1: min=-2.27 max=1.37 absmax=2.27 nonfinite=250/1000
+      logits: min=-10.5 max=29.1 absmax=29.1 nonfinite=2503250/10013000
+  [LOSS-WARN] step 555: loss > 1e+03 (loss=3776)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.27 max=1.36e+03 absmax=1.36e+03 nonfinite=0/1000
+       Y_do1: min=-1.27 max=1.36e+03 absmax=1.36e+03 nonfinite=0/1000
+      logits: min=-10.5 max=29.6 absmax=29.6 nonfinite=0/10013000
+  [LOSS-WARN] step 566: loss > 1e+03 (loss=5.296e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.59 max=5.84e+03 absmax=5.84e+03 nonfinite=0/1000
+       Y_do1: min=-2.59 max=4.88e+03 absmax=4.88e+03 nonfinite=0/1000
+      logits: min=-10.1 max=29.2 absmax=29.2 nonfinite=0/10013000
+  [LOSS-WARN] step 566: loss > 1e+03 (loss=2.148e+08)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.97e+03 max=2.51e+05 absmax=2.51e+05 nonfinite=0/1000
+       Y_do1: min=-2.97e+03 max=2.51e+05 absmax=2.51e+05 nonfinite=0/1000
+      logits: min=-10.2 max=29.5 absmax=29.5 nonfinite=0/10013000
+  [LOSS-WARN] step 589: loss > 1e+03 (loss=3.33e+13)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.06 max=1.51e+08 absmax=1.51e+08 nonfinite=0/1000
+       Y_do1: min=-1.62 max=1.51e+08 absmax=1.51e+08 nonfinite=0/1000
+      logits: min=-10.1 max=31.1 absmax=31.1 nonfinite=0/10013000
+  [LOSS-WARN] step 598: loss > 1e+03 (loss=1391)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-27.9 max=713 absmax=713 nonfinite=0/1000
+       Y_do1: min=-27.9 max=713 absmax=713 nonfinite=0/1000
+      logits: min=-10.1 max=31.6 absmax=31.6 nonfinite=0/10013000
+    600      4.2510    1.20e-05   2248.1s
+  [LOSS-WARN] step 621: loss > 1e+03 (loss=1034)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-500 max=40.9 absmax=500 nonfinite=0/1000
+       Y_do1: min=-500 max=24.2 absmax=500 nonfinite=0/1000
+      logits: min=-10.7 max=33 absmax=33 nonfinite=0/10013000
+  [LOSS-WARN] step 636: loss > 1e+03 (loss=2.68e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.25 max=4.55e+04 absmax=4.55e+04 nonfinite=0/1000
+       Y_do1: min=-1.25 max=3.7e+04 absmax=3.7e+04 nonfinite=0/1000
+      logits: min=-10.8 max=34 absmax=34 nonfinite=0/10013000
+  [LOSS-WARN] step 639: loss > 1e+03 (loss=6651)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.66 max=2.11e+03 absmax=2.11e+03 nonfinite=0/1000
+       Y_do1: min=-2.27 max=2.11e+03 absmax=2.11e+03 nonfinite=0/1000
+      logits: min=-10.9 max=33.5 absmax=33.5 nonfinite=0/10013000
+  [LOSS-WARN] step 649: loss > 1e+03 (loss=4493)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.12 max=1.83e+03 absmax=1.83e+03 nonfinite=0/1000
+       Y_do1: min=-4.02 max=1.83e+03 absmax=1.83e+03 nonfinite=0/1000
+      logits: min=-11.1 max=34.8 absmax=34.8 nonfinite=0/10013000
+  [LOSS-WARN] step 688: loss > 1e+03 (loss=2457)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.38 max=1.36e+03 absmax=1.36e+03 nonfinite=0/1000
+       Y_do1: min=-1.34 max=1.35e+03 absmax=1.35e+03 nonfinite=0/1000
+      logits: min=-11.4 max=37 absmax=37 nonfinite=0/10013000
+  [LOSS-WARN] step 698: loss > 1e+03 (loss=4.286e+08)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.35 max=4.76e+05 absmax=4.76e+05 nonfinite=0/1000
+       Y_do1: min=-3.35 max=2.21e+05 absmax=2.21e+05 nonfinite=0/1000
+      logits: min=-11.4 max=38 absmax=38 nonfinite=0/10013000
+    700      3.6446    1.40e-05   2622.9s
+  [LOSS-WARN] step 703: loss > 1e+03 (loss=5590)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-12.8 max=2.12e+03 absmax=2.12e+03 nonfinite=0/1000
+       Y_do1: min=-12.8 max=2.12e+03 absmax=2.12e+03 nonfinite=0/1000
+      logits: min=-11.8 max=39.2 absmax=39.2 nonfinite=0/10013000
+  [LOSS-WARN] step 712: loss > 1e+03 (loss=6977)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.11 max=2.67e+03 absmax=2.67e+03 nonfinite=0/1000
+       Y_do1: min=-1.11 max=2.67e+03 absmax=2.67e+03 nonfinite=0/1000
+      logits: min=-11.6 max=40.5 absmax=40.5 nonfinite=0/10013000
+  [LOSS-WARN] step 731: loss > 1e+03 (loss=4.824e+09)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.44 max=275 absmax=275 nonfinite=0/1000
+       Y_do1: min=-2.05 max=2.48e+06 absmax=2.48e+06 nonfinite=0/1000
+      logits: min=-12.2 max=42 absmax=42 nonfinite=0/10013000
+  [LOSS-WARN] step 760: loss > 1e+03 (loss=2.294e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.34 max=1.2e+05 absmax=1.2e+05 nonfinite=0/1000
+       Y_do1: min=-1 max=3.93 absmax=3.93 nonfinite=0/1000
+      logits: min=-11.9 max=41 absmax=41 nonfinite=0/10013000
+  [LOSS-WARN] step 767: loss > 1e+03 (loss=1768)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.45 max=1.5e+03 absmax=1.5e+03 nonfinite=0/1000
+       Y_do1: min=-3.51 max=1.5e+03 absmax=1.5e+03 nonfinite=0/1000
+      logits: min=-12 max=42.5 absmax=42.5 nonfinite=0/10013000
+  [LOSS-WARN] step 772: loss > 1e+03 (loss=1.315e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.55 max=1.32 absmax=1.55 nonfinite=0/1000
+       Y_do1: min=-1.1 max=2.55e+03 absmax=2.55e+03 nonfinite=0/1000
+      logits: min=-11.8 max=42.5 absmax=42.5 nonfinite=0/10013000
+  [LOSS-WARN] step 774: loss > 1e+03 (loss=1237)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.86 max=564 absmax=564 nonfinite=0/1000
+       Y_do1: min=-2.89 max=866 absmax=866 nonfinite=0/1000
+      logits: min=-11.8 max=42.2 absmax=42.2 nonfinite=0/10013000
+  [LOSS-WARN] step 785: loss > 1e+03 (loss=4002)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.56e+03 max=267 absmax=1.56e+03 nonfinite=0/1000
+       Y_do1: min=-1.56e+03 max=267 absmax=1.56e+03 nonfinite=0/1000
+      logits: min=-11.6 max=40.5 absmax=40.5 nonfinite=0/10013000
+  [LOSS-WARN] step 785: loss > 1e+03 (loss=4.442e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.94 max=7.13e+03 absmax=7.13e+03 nonfinite=0/1000
+       Y_do1: min=-4.95 max=7.13e+03 absmax=7.13e+03 nonfinite=0/1000
+      logits: min=-11.9 max=43 absmax=43 nonfinite=0/10013000
+    800      1.0497    1.60e-05   2997.8s
+  [LOSS-WARN] step 804: loss > 1e+03 (loss=1423)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-9.19 max=1.08e+03 absmax=1.08e+03 nonfinite=0/1000
+       Y_do1: min=-9.15 max=830 absmax=830 nonfinite=0/1000
+      logits: min=-12.4 max=45.2 absmax=45.2 nonfinite=0/10013000
+  [LOSS-WARN] step 830: loss > 1e+03 (loss=2892)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-38.1 max=2e+03 absmax=2e+03 nonfinite=0/1000
+       Y_do1: min=-39.8 max=1.83e+03 absmax=1.83e+03 nonfinite=0/1000
+      logits: min=-12.1 max=45.2 absmax=45.2 nonfinite=0/10013000
+  [LOSS-WARN] step 838: loss > 1e+03 (loss=2.605e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.2 max=2.05e+04 absmax=2.05e+04 nonfinite=0/1000
+       Y_do1: min=-3.2 max=1.21e+04 absmax=1.21e+04 nonfinite=0/1000
+      logits: min=-12.3 max=47.2 absmax=47.2 nonfinite=0/10013000
+  [LOSS-WARN] step 863: loss > 1e+03 (loss=1188)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.82 max=1.08e+03 absmax=1.08e+03 nonfinite=0/1000
+       Y_do1: min=-4.6 max=1.15e+03 absmax=1.15e+03 nonfinite=0/1000
+      logits: min=-13.6 max=49 absmax=49 nonfinite=0/10013000
+  [LOSS-WARN] step 867: loss > 1e+03 (loss=2333)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-7.56 max=1.17e+03 absmax=1.17e+03 nonfinite=0/1000
+       Y_do1: min=-7.56 max=1.17e+03 absmax=1.17e+03 nonfinite=0/1000
+      logits: min=-12.9 max=49.8 absmax=49.8 nonfinite=0/10013000
+  [LOSS-WARN] step 872: loss > 1e+03 (loss=2328)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.12 max=1.8e+03 absmax=1.8e+03 nonfinite=0/1000
+       Y_do1: min=-1.03 max=2.05e+03 absmax=2.05e+03 nonfinite=0/1000
+      logits: min=-12.9 max=50.5 absmax=50.5 nonfinite=0/10013000
+  [LOSS-WARN] step 880: loss > 1e+03 (loss=2.368e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.41 max=8.58e+04 absmax=8.58e+04 nonfinite=0/1000
+       Y_do1: min=-3.41 max=1.28e+05 absmax=1.28e+05 nonfinite=0/1000
+      logits: min=-13 max=51.8 absmax=51.8 nonfinite=0/10013000
+    900      0.6091    1.80e-05   3372.8s
+  [LOSS-WARN] step 911: loss > 1e+03 (loss=1443)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.2 max=798 absmax=798 nonfinite=0/1000
+       Y_do1: min=-1.57 max=790 absmax=790 nonfinite=0/1000
+      logits: min=-12.7 max=51.2 absmax=51.2 nonfinite=0/10013000
+  [LOSS-WARN] step 918: loss > 1e+03 (loss=3407)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-9.55 max=1.93e+03 absmax=1.93e+03 nonfinite=0/1000
+       Y_do1: min=-9.28 max=75.3 absmax=75.3 nonfinite=0/1000
+      logits: min=-13.6 max=53.8 absmax=53.8 nonfinite=0/10013000
+  [LOSS-WARN] step 939: loss > 1e+03 (loss=6780)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.96 max=1.7e+03 absmax=1.7e+03 nonfinite=0/1000
+       Y_do1: min=-7.14 max=1.7e+03 absmax=1.7e+03 nonfinite=0/1000
+      logits: min=-13.1 max=53.5 absmax=53.5 nonfinite=0/10013000
+  [LOSS-WARN] step 985: loss > 1e+03 (loss=5.743e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.56e+03 max=3.04e+05 absmax=3.04e+05 nonfinite=0/1000
+       Y_do1: min=-4.56e+03 max=1.85e+05 absmax=1.85e+05 nonfinite=0/1000
+      logits: min=-13.6 max=58.8 absmax=58.8 nonfinite=0/10013000
+  [LOSS-WARN] step 995: loss > 1e+03 (loss=1716)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1e+03 max=1.52e+03 absmax=1.52e+03 nonfinite=0/1000
+       Y_do1: min=-1e+03 max=1.52e+03 absmax=1.52e+03 nonfinite=0/1000
+      logits: min=-13.6 max=62.2 absmax=62.2 nonfinite=0/10013000
+   1000     23.8912    2.00e-05   3747.1s
+  [LOSS-WARN] step 1005: loss > 1e+03 (loss=7.729e+14)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.03 max=1.11e+09 absmax=1.11e+09 nonfinite=0/1000
+       Y_do1: min=-1.13 max=1.5e+09 absmax=1.5e+09 nonfinite=0/1000
+      logits: min=-13.1 max=63 absmax=63 nonfinite=0/10013000
+  [LOSS-WARN] step 1010: loss > 1e+03 (loss=1481)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.38e+03 max=24.9 absmax=1.38e+03 nonfinite=0/1000
+       Y_do1: min=-1.38e+03 max=24.9 absmax=1.38e+03 nonfinite=0/1000
+      logits: min=-13.6 max=63.2 absmax=63.2 nonfinite=0/10013000
+  [LOSS-WARN] step 1013: loss > 1e+03 (loss=1.002e+14)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.7 max=3.9e+08 absmax=3.9e+08 nonfinite=0/1000
+       Y_do1: min=-4.22 max=3.9e+08 absmax=3.9e+08 nonfinite=0/1000
+      logits: min=-13.9 max=64.5 absmax=64.5 nonfinite=0/10013000
+  [LOSS-WARN] step 1042: loss > 1e+03 (loss=3.842e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.23 max=2.43e+04 absmax=2.43e+04 nonfinite=0/1000
+       Y_do1: min=-2.23 max=2.43e+04 absmax=2.43e+04 nonfinite=0/1000
+      logits: min=-14.2 max=68.5 absmax=68.5 nonfinite=0/10013000
+  [LOSS-WARN] step 1066: loss > 1e+03 (loss=1.017e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.92 max=1e+03 absmax=1e+03 nonfinite=0/1000
+       Y_do1: min=-1.91 max=2.76 absmax=2.76 nonfinite=0/1000
+      logits: min=-13.4 max=64.5 absmax=64.5 nonfinite=0/10013000
+  [LOSS-WARN] step 1087: loss > 1e+03 (loss=3495)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.16 max=3.15e+03 absmax=3.15e+03 nonfinite=0/1000
+       Y_do1: min=-1.68 max=3.15e+03 absmax=3.15e+03 nonfinite=0/1000
+      logits: min=-14.5 max=71 absmax=71 nonfinite=0/10013000
+   1100      2.0937    2.20e-05   4122.6s
+  [LOSS-WARN] step 1107: loss > 1e+03 (loss=3067)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.48 max=2.52e+03 absmax=2.52e+03 nonfinite=0/1000
+       Y_do1: min=-2.68 max=2.52e+03 absmax=2.52e+03 nonfinite=0/1000
+      logits: min=-14.8 max=75.5 absmax=75.5 nonfinite=0/10013000
+  [LOSS-WARN] step 1121: loss > 1e+03 (loss=1.174e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-14.5 max=1.95e+04 absmax=1.95e+04 nonfinite=0/1000
+       Y_do1: min=-15.5 max=1.95e+04 absmax=1.95e+04 nonfinite=0/1000
+      logits: min=-15.1 max=76.5 absmax=76.5 nonfinite=0/10013000
+  [LOSS-WARN] step 1130: loss > 1e+03 (loss=8234)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-47.8 max=2.04e+03 absmax=2.04e+03 nonfinite=0/1000
+       Y_do1: min=-47.8 max=2.04e+03 absmax=2.04e+03 nonfinite=0/1000
+      logits: min=-14.8 max=79 absmax=79 nonfinite=0/10013000
+   1200      0.8423    2.40e-05   4497.8s
+  [LOSS-WARN] step 1212: loss > 1e+03 (loss=1.789e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.18e+03 max=3.48 absmax=1.18e+03 nonfinite=0/1000
+       Y_do1: min=-2.48 max=2.85e+03 absmax=2.85e+03 nonfinite=0/1000
+      logits: min=-15 max=88 absmax=88 nonfinite=0/10013000
+  [LOSS-WARN] step 1218: loss > 1e+03 (loss=1772)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.82 max=2.96e+03 absmax=2.96e+03 nonfinite=0/1000
+       Y_do1: min=-2.11 max=2.96e+03 absmax=2.96e+03 nonfinite=0/1000
+      logits: min=-15.4 max=91 absmax=91 nonfinite=0/10013000
+Step 1233: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 1233: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-1.59 max=1.3 absmax=1.59 nonfinite=250/1000
+       Y_do1: min=-1.57 max=1.31 absmax=1.57 nonfinite=250/1000
+      logits: min=-16.4 max=94.5 absmax=94.5 nonfinite=2503250/10013000
+  [LOSS-WARN] step 1288: loss > 1e+03 (loss=5920)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-18.7 max=4.26e+03 absmax=4.26e+03 nonfinite=0/1000
+       Y_do1: min=-18.7 max=4.26e+03 absmax=4.26e+03 nonfinite=0/1000
+      logits: min=-15.8 max=97 absmax=97 nonfinite=0/10013000
+   1300      0.6637    2.60e-05   4873.0s
+  [LOSS-WARN] step 1317: loss > 1e+03 (loss=3.62e+09)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.25 max=5.23e+06 absmax=5.23e+06 nonfinite=0/1000
+       Y_do1: min=-4.23 max=5.23e+06 absmax=5.23e+06 nonfinite=0/1000
+      logits: min=-16.6 max=106 absmax=106 nonfinite=0/10013000
+  [LOSS-WARN] step 1318: loss > 1e+03 (loss=1.861e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.42 max=4.1e+05 absmax=4.1e+05 nonfinite=0/1000
+       Y_do1: min=-1.42 max=1.6e+04 absmax=1.6e+04 nonfinite=0/1000
+      logits: min=-16.4 max=107 absmax=107 nonfinite=0/10013000
+  [LOSS-WARN] step 1371: loss > 1e+03 (loss=1974)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.85 max=4.61e+03 absmax=4.61e+03 nonfinite=0/1000
+       Y_do1: min=-1.72 max=106 absmax=106 nonfinite=0/1000
+      logits: min=-16.8 max=116 absmax=116 nonfinite=0/10013000
+  [LOSS-WARN] step 1375: loss > 1e+03 (loss=8.322e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-10.8 max=2.01e+04 absmax=2.01e+04 nonfinite=0/1000
+       Y_do1: min=-10.4 max=2.01e+04 absmax=2.01e+04 nonfinite=0/1000
+      logits: min=-16.8 max=110 absmax=110 nonfinite=0/10013000
+  [LOSS-WARN] step 1386: loss > 1e+03 (loss=1.709e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.57e+04 max=58.7 absmax=2.57e+04 nonfinite=0/1000
+       Y_do1: min=-2.57e+04 max=58.7 absmax=2.57e+04 nonfinite=0/1000
+      logits: min=-16.8 max=114 absmax=114 nonfinite=0/10013000
+   1400      1.1816    2.80e-05   5248.3s
+  [LOSS-WARN] step 1409: loss > 1e+03 (loss=2146)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-34.4 max=3.71e+03 absmax=3.71e+03 nonfinite=0/1000
+       Y_do1: min=-34.3 max=3.71e+03 absmax=3.71e+03 nonfinite=0/1000
+      logits: min=-17.1 max=121 absmax=121 nonfinite=0/10013000
+  [LOSS-WARN] step 1429: loss > 1e+03 (loss=6.381e+17)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-535 max=6.55e+10 absmax=6.55e+10 nonfinite=0/1000
+       Y_do1: min=-535 max=6.55e+10 absmax=6.55e+10 nonfinite=0/1000
+      logits: min=-17.4 max=126 absmax=126 nonfinite=0/10013000
+  [LOSS-WARN] step 1433: loss > 1e+03 (loss=2.228e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.4e+04 max=4.56 absmax=1.4e+04 nonfinite=0/1000
+       Y_do1: min=-5.18 max=7.34 absmax=7.34 nonfinite=0/1000
+      logits: min=-17.5 max=128 absmax=128 nonfinite=0/10013000
+  [LOSS-WARN] step 1435: loss > 1e+03 (loss=5716)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2e+03 max=6.32e+03 absmax=6.32e+03 nonfinite=0/1000
+       Y_do1: min=-2e+03 max=6.32e+03 absmax=6.32e+03 nonfinite=0/1000
+      logits: min=-17.6 max=128 absmax=128 nonfinite=0/10013000
+  [LOSS-WARN] step 1437: loss > 1e+03 (loss=2.34e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.32e+04 max=1.93e+03 absmax=3.32e+04 nonfinite=0/1000
+       Y_do1: min=-3.32e+04 max=1.93e+03 absmax=3.32e+04 nonfinite=0/1000
+      logits: min=-17.9 max=122 absmax=122 nonfinite=0/10013000
+  [LOSS-WARN] step 1437: loss > 1e+03 (loss=7.03e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-60.7 max=1.27e+04 absmax=1.27e+04 nonfinite=0/1000
+       Y_do1: min=-60.7 max=1.27e+04 absmax=1.27e+04 nonfinite=0/1000
+      logits: min=-18 max=129 absmax=129 nonfinite=0/10013000
+  [LOSS-WARN] step 1437: loss > 1e+03 (loss=3.246e+11)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1 max=6.23e+07 absmax=6.23e+07 nonfinite=0/1000
+       Y_do1: min=-1 max=6.23e+07 absmax=6.23e+07 nonfinite=0/1000
+      logits: min=-18.1 max=128 absmax=128 nonfinite=0/10013000
+  [LOSS-WARN] step 1451: loss > 1e+03 (loss=5.201e+12)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.01 max=1.14e+03 absmax=1.14e+03 nonfinite=0/1000
+       Y_do1: min=-1 max=1.28e+08 absmax=1.28e+08 nonfinite=0/1000
+      logits: min=-18.9 max=136 absmax=136 nonfinite=0/10013000
+Step 1457: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 1457: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-1.38 max=1.06 absmax=1.38 nonfinite=250/1000
+       Y_do1: min=-1.38 max=1 absmax=1.38 nonfinite=250/1000
+      logits: min=-19 max=134 absmax=134 nonfinite=2503250/10013000
+  [LOSS-WARN] step 1472: loss > 1e+03 (loss=4.718e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.42e+04 max=5.09e+04 absmax=5.09e+04 nonfinite=0/1000
+       Y_do1: min=-2.42e+04 max=5.61e+04 absmax=5.61e+04 nonfinite=0/1000
+      logits: min=-18.6 max=135 absmax=135 nonfinite=0/10013000
+   1500      1.8100    3.00e-05   5623.4s
+  [LOSS-WARN] step 1516: loss > 1e+03 (loss=1.8e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.37 max=5.11e+05 absmax=5.11e+05 nonfinite=0/1000
+       Y_do1: min=-1.94 max=5.12e+05 absmax=5.12e+05 nonfinite=0/1000
+      logits: min=-19.5 max=145 absmax=145 nonfinite=0/10013000
+  [LOSS-WARN] step 1525: loss > 1e+03 (loss=2.408e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.91 max=1.56e+04 absmax=1.56e+04 nonfinite=0/1000
+       Y_do1: min=-1.96 max=6.31e+05 absmax=6.31e+05 nonfinite=0/1000
+      logits: min=-19.5 max=148 absmax=148 nonfinite=0/10013000
+Step 1558: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 1558: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-1 max=3.78 absmax=3.78 nonfinite=250/1000
+       Y_do1: min=-1.05 max=3.02 absmax=3.02 nonfinite=250/1000
+      logits: min=-19.5 max=149 absmax=149 nonfinite=2503250/10013000
+  [LOSS-WARN] step 1569: loss > 1e+03 (loss=9.074e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-3.48 max=2.75e+04 absmax=2.75e+04 nonfinite=0/1000
+       Y_do1: min=-3.48 max=2.75e+04 absmax=2.75e+04 nonfinite=0/1000
+      logits: min=-19.9 max=153 absmax=153 nonfinite=0/10013000
+  [LOSS-WARN] step 1573: loss > 1e+03 (loss=1.349e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-8.85 max=1.13e+04 absmax=1.13e+04 nonfinite=0/1000
+       Y_do1: min=-8.85 max=1.13e+04 absmax=1.13e+04 nonfinite=0/1000
+      logits: min=-19.5 max=154 absmax=154 nonfinite=0/10013000
+  [LOSS-WARN] step 1576: loss > 1e+03 (loss=3106)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.68e+03 max=2.94 absmax=2.68e+03 nonfinite=0/1000
+       Y_do1: min=-2.72e+03 max=2.79 absmax=2.72e+03 nonfinite=0/1000
+      logits: min=-19.8 max=155 absmax=155 nonfinite=0/10013000
+   1600      0.4180    3.20e-05   5998.4s
+  [LOSS-WARN] step 1655: loss > 1e+03 (loss=2.096e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-41 max=1.45e+04 absmax=1.45e+04 nonfinite=0/1000
+       Y_do1: min=-41 max=1.45e+04 absmax=1.45e+04 nonfinite=0/1000
+      logits: min=-18.8 max=159 absmax=159 nonfinite=0/10013000
+  [LOSS-WARN] step 1670: loss > 1e+03 (loss=3.425e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-36.6 max=5.8e+04 absmax=5.8e+04 nonfinite=0/1000
+       Y_do1: min=-36.6 max=5.8e+04 absmax=5.8e+04 nonfinite=0/1000
+      logits: min=-20.8 max=165 absmax=165 nonfinite=0/10013000
+   1700     -0.0130    3.40e-05   6373.8s
+  [LOSS-WARN] step 1770: loss > 1e+03 (loss=1.025e+16)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.28 max=1.62e+10 absmax=1.62e+10 nonfinite=0/1000
+       Y_do1: min=-1.39 max=1.55e+10 absmax=1.55e+10 nonfinite=0/1000
+      logits: min=-21.6 max=183 absmax=183 nonfinite=0/10013000
+  [LOSS-WARN] step 1787: loss > 1e+03 (loss=4713)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-41.5 max=8.38e+03 absmax=8.38e+03 nonfinite=0/1000
+       Y_do1: min=-40.4 max=8.38e+03 absmax=8.38e+03 nonfinite=0/1000
+      logits: min=-20 max=175 absmax=175 nonfinite=0/10013000
+  [LOSS-WARN] step 1788: loss > 1e+03 (loss=2.545e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.61 max=8.19e+04 absmax=8.19e+04 nonfinite=0/1000
+       Y_do1: min=-6.61 max=8.19e+04 absmax=8.19e+04 nonfinite=0/1000
+      logits: min=-22.8 max=192 absmax=192 nonfinite=0/10013000
+   1800      0.7662    3.60e-05   6748.9s
+  [LOSS-WARN] step 1814: loss > 1e+03 (loss=4214)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.55 max=1.07e+04 absmax=1.07e+04 nonfinite=0/1000
+       Y_do1: min=-1.55 max=1.07e+04 absmax=1.07e+04 nonfinite=0/1000
+      logits: min=-22.9 max=197 absmax=197 nonfinite=0/10013000
+  [LOSS-WARN] step 1825: loss > 1e+03 (loss=1407)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-19.8 max=3.83e+03 absmax=3.83e+03 nonfinite=0/1000
+       Y_do1: min=-19.8 max=3.83e+03 absmax=3.83e+03 nonfinite=0/1000
+      logits: min=-23 max=199 absmax=199 nonfinite=0/10013000
+  [LOSS-WARN] step 1846: loss > 1e+03 (loss=1864)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.47 max=6.68e+03 absmax=6.68e+03 nonfinite=0/1000
+       Y_do1: min=-7.03 max=6.68e+03 absmax=6.68e+03 nonfinite=0/1000
+      logits: min=-23.1 max=203 absmax=203 nonfinite=0/10013000
+  [LOSS-WARN] step 1876: loss > 1e+03 (loss=2.451e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-288 max=2.38e+04 absmax=2.38e+04 nonfinite=0/1000
+       Y_do1: min=-288 max=2.38e+04 absmax=2.38e+04 nonfinite=0/1000
+      logits: min=-21.1 max=196 absmax=196 nonfinite=0/10013000
+   1900      0.6025    3.80e-05   7124.2s
+  [LOSS-WARN] step 1912: loss > 1e+03 (loss=1495)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.06e+03 max=4.2 absmax=4.06e+03 nonfinite=0/1000
+       Y_do1: min=-4.06e+03 max=4.2 absmax=4.06e+03 nonfinite=0/1000
+      logits: min=-22 max=203 absmax=203 nonfinite=0/10013000
+  [LOSS-WARN] step 1947: loss > 1e+03 (loss=3.94e+11)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.05 max=1.22e+08 absmax=1.22e+08 nonfinite=0/1000
+       Y_do1: min=-1 max=1.96 absmax=1.96 nonfinite=0/1000
+      logits: min=-24 max=220 absmax=220 nonfinite=0/10013000
+   2000      0.5239    4.00e-05   7499.3s
+  [LOSS-WARN] step 2021: loss > 1e+03 (loss=7.171e+04)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.88 max=4.64e+04 absmax=4.64e+04 nonfinite=0/1000
+       Y_do1: min=-2.78 max=4.81e+04 absmax=4.81e+04 nonfinite=0/1000
+      logits: min=-22.6 max=224 absmax=224 nonfinite=0/10013000
+  [LOSS-WARN] step 2030: loss > 1e+03 (loss=1.77e+07)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.04 max=1.63e+04 absmax=1.63e+04 nonfinite=0/1000
+       Y_do1: min=-1.45 max=8.69e+05 absmax=8.69e+05 nonfinite=0/1000
+      logits: min=-24.6 max=234 absmax=234 nonfinite=0/10013000
+  [LOSS-WARN] step 2031: loss > 1e+03 (loss=2.422e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.62 max=8.65e+04 absmax=8.65e+04 nonfinite=0/1000
+       Y_do1: min=-2.69 max=8.66e+04 absmax=8.66e+04 nonfinite=0/1000
+      logits: min=-22.9 max=227 absmax=227 nonfinite=0/10013000
+  [LOSS-WARN] step 2033: loss > 1e+03 (loss=2896)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-2.59 max=1.02e+04 absmax=1.02e+04 nonfinite=0/1000
+       Y_do1: min=-2.51 max=1.02e+04 absmax=1.02e+04 nonfinite=0/1000
+      logits: min=-23.5 max=233 absmax=233 nonfinite=0/10013000
+  [LOSS-WARN] step 2080: loss > 1e+03 (loss=8854)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.04 max=1.89e+04 absmax=1.89e+04 nonfinite=0/1000
+       Y_do1: min=-1.18 max=1.89e+04 absmax=1.89e+04 nonfinite=0/1000
+      logits: min=-24.4 max=243 absmax=243 nonfinite=0/10013000
+  [LOSS-WARN] step 2099: loss > 1e+03 (loss=7130)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-8.54e+03 max=2.69 absmax=8.54e+03 nonfinite=0/1000
+       Y_do1: min=-8.54e+03 max=1.86 absmax=8.54e+03 nonfinite=0/1000
+      logits: min=-22.1 max=231 absmax=231 nonfinite=0/10013000
+   2100      0.6585    4.20e-05   7874.6s
+   2200      0.9272    4.40e-05   8249.9s
+  [LOSS-WARN] step 2239: loss > 1e+03 (loss=1238)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.62 max=5.34e+03 absmax=5.34e+03 nonfinite=0/1000
+       Y_do1: min=-7.13 max=5.29e+03 absmax=5.29e+03 nonfinite=0/1000
+      logits: min=-21.8 max=248 absmax=248 nonfinite=0/10013000
+  [LOSS-WARN] step 2246: loss > 1e+03 (loss=1.16e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-6.96e+04 max=7.46 absmax=6.96e+04 nonfinite=0/1000
+       Y_do1: min=-6.96e+04 max=7.45 absmax=6.96e+04 nonfinite=0/1000
+      logits: min=-18.4 max=226 absmax=226 nonfinite=0/10013000
+Step 2247: NaN/Inf loss — skipping microbatch
+  [LOSS-WARN] step 2247: non-finite loss (loss=nan)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=1000/4000
+       Y_do0: min=-3.11 max=1.28 absmax=3.11 nonfinite=250/1000
+       Y_do1: min=-3.11 max=1.88 absmax=3.11 nonfinite=250/1000
+      logits: min=-21 max=252 absmax=252 nonfinite=2503250/10013000
+  [LOSS-WARN] step 2253: loss > 1e+03 (loss=3.17e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.88 max=260 absmax=260 nonfinite=0/1000
+       Y_do1: min=-1.94 max=2.44e+05 absmax=2.44e+05 nonfinite=0/1000
+      logits: min=-20.4 max=246 absmax=246 nonfinite=0/10013000
+  [LOSS-WARN] step 2254: loss > 1e+03 (loss=2122)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.46 max=7.03e+03 absmax=7.03e+03 nonfinite=0/1000
+       Y_do1: min=-1.39 max=7.03e+03 absmax=7.03e+03 nonfinite=0/1000
+      logits: min=-20.9 max=256 absmax=256 nonfinite=0/10013000
+  [LOSS-WARN] step 2269: loss > 1e+03 (loss=3.789e+06)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1 max=3.34e+05 absmax=3.34e+05 nonfinite=0/1000
+       Y_do1: min=-1.23 max=3.34e+05 absmax=3.34e+05 nonfinite=0/1000
+      logits: min=-21.8 max=262 absmax=262 nonfinite=0/10013000
+  [LOSS-WARN] step 2279: loss > 1e+03 (loss=1.747e+10)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.53 max=2.47e+07 absmax=2.47e+07 nonfinite=0/1000
+       Y_do1: min=-55.8 max=2.47e+07 absmax=2.47e+07 nonfinite=0/1000
+      logits: min=-19.9 max=251 absmax=251 nonfinite=0/10013000
+  [LOSS-WARN] step 2286: loss > 1e+03 (loss=1.95e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.35 max=4.57e+04 absmax=4.57e+04 nonfinite=0/1000
+       Y_do1: min=-1.05 max=4.57e+04 absmax=4.57e+04 nonfinite=0/1000
+      logits: min=-19.9 max=260 absmax=260 nonfinite=0/10013000
+  [LOSS-WARN] step 2287: loss > 1e+03 (loss=2553)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-1.03 max=1.04e+04 absmax=1.04e+04 nonfinite=0/1000
+       Y_do1: min=-2.46 max=4.65 absmax=4.65 nonfinite=0/1000
+      logits: min=-21.1 max=268 absmax=268 nonfinite=0/10013000
+   2300      0.4727    4.60e-05   8625.0s
+  [LOSS-WARN] step 2337: loss > 1e+03 (loss=1.671e+05)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-4.99e+04 max=3.33 absmax=4.99e+04 nonfinite=0/1000
+       Y_do1: min=-4.99e+04 max=4.24 absmax=4.99e+04 nonfinite=0/1000
+      logits: min=-19.2 max=256 absmax=256 nonfinite=0/10013000
+  [LOSS-WARN] step 2366: loss > 1e+03 (loss=4.84e+10)
+       Y_obs: min=-1 max=1 absmax=1 nonfinite=0/4000
+       Y_do0: min=-5.18 max=1.14e+07 absmax=1.14e+07 nonfinite=0/1000
+       Y_do1: min=-5.17 max=2.28e+07 absmax=2.28e+07 nonfinite=0/1000
+      logits: min=-19.1 max=268 absmax=268 nonfinite=0/10013000
+   2400      0.3288    4.80e-05   8999.8s

@@ -1,0 +1,1 @@
+ENTER worker=2 idx=77001 seed=77043 t=1781472782.933
