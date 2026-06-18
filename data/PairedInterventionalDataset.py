@@ -302,9 +302,15 @@ def _clip_outliers(t, q=0.99):
     return t.clamp(lo, hi)
 
 
-def _propagate_paired(obs_scm, intv_scm, treatment_node, n_test):
+def _propagate_paired(obs_scm, intv_scm, treatment_node, n_test, t0_value, t1_value):
     """
-    Propagate intv_scm for both do(T=0) and do(T=1) in one doubled batch.
+    Propagate intv_scm for both do(T=t0_value) and do(T=t1_value) in one
+    doubled batch.
+
+    t0_value / t1_value are the SCM's two binary treatment levels chosen by
+    BinarizingMechanism.from_observational_data — sampled from observed T
+    quantiles so downstream MLPs see in-distribution inputs. The caller
+    remaps T_obs to model-facing {0,1} after propagation.
 
     Matches UWYK ``sample_exogenous`` / ``sample_endogenous`` memory layout:
     the dict entries in ``_fixed_exogenous`` / ``_fixed_endogenous`` are
@@ -324,8 +330,11 @@ def _propagate_paired(obs_scm, intv_scm, treatment_node, n_test):
         s, e = intv_scm._exo_slices[v]
         d = e - s
         if v == treatment_node:
-            # First half do(T=0), second half do(T=1)
-            t_vals = torch.cat([torch.zeros(n_test), torch.ones(n_test)])
+            # First half do(T=t0_value), second half do(T=t1_value).
+            t_vals = torch.cat([
+                torch.full((n_test,), t0_value),
+                torch.full((n_test,), t1_value),
+            ])
             fixed_exo_vec[:, s:e] = t_vals.reshape(B2, d)
         else:
             # Share noise with obs by tiling each obs sample twice
@@ -525,12 +534,19 @@ class PairedInterventionalDataset(Dataset):
                 scm.sample_endogenous(self.n_train)
                 obs_cont = scm.propagate(self.n_train)
                 t_cont = obs_cont[treatment_node].reshape(-1).float()
-                q = min(0.5 + 0.05 * bin_try, 0.95)
-                threshold = torch.quantile(t_cont, q).item()
-                bin_mech = self._BinarizingMechanism(
-                    wrapped_mechanism=original_mech, threshold=threshold, t0=0.0, t1=1.0,
-                )
+                # UWYK's factory samples threshold + t0/t1 from observed T
+                # quantiles so downstream MLPs see in-distribution T values.
+                try:
+                    bin_mech = self._BinarizingMechanism.from_observational_data(
+                        wrapped_mechanism=original_mech, obs_values=t_cont,
+                    )
+                except ValueError:
+                    # Factory raises when sampled t0 == t1 (SCM emitted
+                    # constant T). Retry; outer loop rejects if all fail.
+                    continue
                 scm.mechanisms[treatment_node] = bin_mech
+                t0_value = bin_mech.t0
+                t1_value = bin_mech.t1
 
                 scm.sample_exogenous(self.n_train)
                 scm._fixed_endogenous_vec = None
@@ -575,7 +591,7 @@ class PairedInterventionalDataset(Dataset):
         obs_test = scm.propagate(self.n_test)
         tracker.mark("obs_test_propagate")
 
-        res0, res1 = _propagate_paired(scm, intv_scm, treatment_node, self.n_test)
+        res0, res1 = _propagate_paired(scm, intv_scm, treatment_node, self.n_test, t0_value, t1_value)
         tracker.mark("propagate_paired")
         Y_do0_raw = res0[target_node].reshape(-1, 1).float()
         Y_do1_raw = res1[target_node].reshape(-1, 1).float()
@@ -599,7 +615,10 @@ class PairedInterventionalDataset(Dataset):
         X_obs = _pad_x(X_obs_s, self.max_features)
         X_intv = _pad_x(X_intv_s, self.max_features)
 
-        T_obs = T_obs_raw.clamp(0.0, 1.0)
+        # T_obs_raw holds the SCM's two binary values (t0_value, t1_value sampled
+        # from observed T quantiles, NOT necessarily {0,1}). Remap to model-facing
+        # {0,1} using the midpoint for float-safe comparison.
+        T_obs = (T_obs_raw > (t0_value + t1_value) / 2.0).float()
 
         # --- ancestor matrix -------------------------------------------------
         try:

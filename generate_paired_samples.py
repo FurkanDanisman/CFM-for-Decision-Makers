@@ -139,20 +139,26 @@ def clip_outliers(t, q=OUTLIER_Q):
     return t.clamp(lo, hi)
 
 
-def propagate_paired(obs_scm, intv_scm, treatment_node, n_test):
+def propagate_paired(obs_scm, intv_scm, treatment_node, n_test, t0_value, t1_value):
     """
-    Propagate intv_scm for BOTH do(T=0) and do(T=1) in a single doubled batch.
+    Propagate intv_scm for BOTH do(T=t0_value) and do(T=t1_value) in a single
+    doubled batch.
 
-    Uses a 2*n_test batch: first n_test rows have T=0, last n_test rows have T=1.
-    The same ε_k is shared between row k (T=0) and row k+n_test (T=1), giving
-    proper coupled potential outcomes.
+    t0_value / t1_value are the SCM's two binary treatment levels chosen by
+    BinarizingMechanism.from_observational_data — sampled from observed T
+    quantiles so downstream MLPs see in-distribution inputs. They are remapped
+    to model-facing {0,1} by the caller, after propagation.
+
+    Uses a 2*n_test batch: first n_test rows have T=t0_value, last n_test rows
+    have T=t1_value. The same ε_k is shared between row k and row k+n_test,
+    giving proper coupled potential outcomes.
 
     Using a mixed batch avoids the batch-norm cancellation bug that occurs when
     all samples have the same treatment value (BN would normalize it away).
 
     Returns:
-        res0: dict of node values for the first n_test rows (do(T=0))
-        res1: dict of node values for the last n_test rows (do(T=1))
+        res0: dict of node values for the first n_test rows  (do(T=t0_value))
+        res1: dict of node values for the last  n_test rows  (do(T=t1_value))
     """
     B2 = 2 * n_test  # doubled batch
 
@@ -165,8 +171,11 @@ def propagate_paired(obs_scm, intv_scm, treatment_node, n_test):
         s, e = intv_scm._exo_slices[v]
         d = e - s
         if v == treatment_node:
-            # First half T=0, second half T=1
-            t_vals = torch.cat([torch.zeros(n_test), torch.ones(n_test)])
+            # First half do(T=t0_value), second half do(T=t1_value).
+            t_vals = torch.cat([
+                torch.full((n_test,), t0_value),
+                torch.full((n_test,), t1_value),
+            ])
             fixed_exo_vec[:, s:e] = t_vals.reshape(B2, d)
             fixed_exo[v] = t_vals  # shape (B2,) with use_exo_mech=True
         else:
@@ -253,9 +262,12 @@ def generate_sample(idx, seed_base=42):
         feature_nodes = [n for n in all_nodes if n != treatment_node and n != target_node]
         original_mech = scm.mechanisms[treatment_node]
 
-        # ── 3. Binarize treatment with t0=0, t1=1 ────────────────────────────
-        # Get continuous T values, then set threshold = median so we split ~50/50.
-        # Retry if binarization collapses all T to one value.
+        # ── 3. Binarize treatment via UWYK's quantile-based factory ──────────
+        # BinarizingMechanism.from_observational_data samples threshold and
+        # t0/t1 from observed T quantiles, so downstream MLPs see T values
+        # inside the SCM's natural range. T_obs gets remapped to {0,1} for the
+        # model AFTER propagation (see step 8).
+        # Retry if binarization collapses all T to one value (degenerate SCM).
         binarized_ok = False
         for bin_try in range(10):
             scm.sample_exogenous(N_TRAIN)
@@ -264,18 +276,19 @@ def generate_sample(idx, seed_base=42):
             obs_cont = scm.propagate(N_TRAIN)
             t_cont = obs_cont[treatment_node].reshape(-1).float()
 
-            # Use a quantile slightly above 0.5 to avoid median-split issues
-            q = 0.5 + 0.05 * bin_try   # 0.50, 0.55, 0.60, ...  up to 0.95
-            q = min(q, 0.95)
-            threshold = torch.quantile(t_cont, q).item()
-
-            bin_mech = BinarizingMechanism(
-                wrapped_mechanism=original_mech,
-                threshold=threshold,
-                t0=0.0,
-                t1=1.0,
-            )
+            try:
+                bin_mech = BinarizingMechanism.from_observational_data(
+                    wrapped_mechanism=original_mech,
+                    obs_values=t_cont,
+                )
+            except ValueError:
+                # Factory raises when sampled t0 == t1 (SCM emitted constant
+                # T despite fresh noise). Retry with new noise; if all 10
+                # attempts fail, the outer loop rejects the SCM.
+                continue
             scm.mechanisms[treatment_node] = bin_mech
+            t0_value = bin_mech.t0
+            t1_value = bin_mech.t1
 
             # ── 4. Re-sample observational data with binary treatment ──────────
             scm.sample_exogenous(N_TRAIN)
@@ -323,7 +336,7 @@ def generate_sample(idx, seed_base=42):
     # Propagate a doubled batch (N_TEST T=0 rows + N_TEST T=1 rows) so that
     # batch norm sees mixed treatment values (avoids BN constant-cancellation).
     # Same ε_k for row k and row k+N_TEST → proper coupled potential outcomes.
-    res0, res1 = propagate_paired(scm, intv_scm, treatment_node, N_TEST)
+    res0, res1 = propagate_paired(scm, intv_scm, treatment_node, N_TEST, t0_value, t1_value)
     Y_do0_raw = res0[target_node].reshape(-1, 1).float()
     Y_do1_raw = res1[target_node].reshape(-1, 1).float()
 
@@ -361,8 +374,10 @@ def generate_sample(idx, seed_base=42):
     X_obs  = pad_x(X_obs_s,  MAX_FEATURES)
     X_intv = pad_x(X_intv_s, MAX_FEATURES)
 
-    # T_obs: keep as literal {0, 1} — no standardization
-    T_obs = T_obs_raw.clamp(0.0, 1.0)  # ensure exactly 0 or 1
+    # T_obs_raw holds the SCM's two binary values (t0_value, t1_value sampled
+    # from observed T quantiles, NOT necessarily {0,1}). Remap to model-facing
+    # {0,1} using the midpoint for float-safe comparison.
+    T_obs = (T_obs_raw > (t0_value + t1_value) / 2.0).float()
 
     # ── 9. Ancestor matrix ────────────────────────────────────────────────────
     try:
