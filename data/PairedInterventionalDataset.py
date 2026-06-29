@@ -184,6 +184,39 @@ def sample_metrics(out: dict) -> dict:
     return {"n_nonfinite": n_nonfinite, "target_absmax": target_absmax, "per_field": per_field}
 
 
+def _contains_nan_or_inf(sample: dict) -> bool:
+    """True if any tensor in ``sample`` has NaN or Inf — mirrors UWYK's
+    InterventionalDataset._contains_nan (we additionally reject Inf since our
+    BarDistribution2D NLL diverges on either)."""
+    for v in sample.values():
+        if torch.is_tensor(v) and not torch.isfinite(v).all():
+            return True
+    return False
+
+
+def _sample_passes_thresholds(
+    sample: dict,
+    min_var: float,
+    min_unique_frac: float,
+) -> tuple[bool, str]:
+    """UWYK-style post-hoc filter: reject samples where any of Y_obs / Y_do0 /
+    Y_do1 collapse to near-constant. Mirrors UWYK's min_target_variance and
+    min_unique_target_fraction checks (InterventionalDataset.py lines 1067–1114),
+    applied across all three Y arms instead of (Y_obs, Y_intv)."""
+    for k in ("Y_obs", "Y_do0", "Y_do1"):
+        v = sample.get(k)
+        if v is None or not torch.is_tensor(v):
+            continue
+        flat = v.reshape(-1).float()
+        if min_var is not None and float(flat.var()) < min_var:
+            return False, f"{k} var={float(flat.var()):.3g} < {min_var}"
+        if min_unique_frac is not None and flat.numel() > 0:
+            frac = float(torch.unique(flat).numel()) / flat.numel()
+            if frac < min_unique_frac:
+                return False, f"{k} unique-frac={frac:.3g} < {min_unique_frac}"
+    return True, ""
+
+
 def _validate_sample(out: dict, idx: int, seed: int, worker_id: int) -> list[str]:
     """Log [DATA-WARN] for any non-finite values or target scaling blow-ups."""
     m = sample_metrics(out)
@@ -426,6 +459,12 @@ class PairedInterventionalDataset(Dataset):
         outlier_q: float = 0.99,
         epsilon: float = 1e-8,
         infinite_len: int = 10**9,
+        # UWYK post-hoc reject thresholds (mirror their defaults).
+        # The retry loop in __getitem__ resamples the SCM with an offset seed
+        # whenever a sample fails any of these checks.
+        max_nan_retries: int = 10,
+        min_target_variance: float | None = 1e-2,
+        min_unique_target_fraction: float | None = 0.2,
     ):
         super().__init__()
         if _UWYK_SRC not in sys.path:
@@ -445,6 +484,9 @@ class PairedInterventionalDataset(Dataset):
         self.outlier_q = outlier_q
         self.epsilon = epsilon
         self.infinite_len = infinite_len
+        self.max_nan_retries = max_nan_retries
+        self.min_target_variance = min_target_variance
+        self.min_unique_target_fraction = min_unique_target_fraction
 
         # One sampler per process. DataLoader workers each get their own via
         # ``worker_init_fn`` (set in :func:`make_streaming_loader`).
@@ -465,16 +507,72 @@ class PairedInterventionalDataset(Dataset):
             sys.stderr.flush()
 
         tracker = _NoneRefcountTracker(worker_id, idx, seed) if _DATA_REFCOUNT else _NullTracker()
-        try:
-            out = self._generate_one(idx, tracker)
-        except Exception:
-            # A Python-level failure (e.g. the gave-up RuntimeError) — make it
-            # name the seed so it's reproducible, then re-raise.
-            sys.stderr.write(
-                f"[DATA-ERR] worker={worker_id} idx={idx} seed={seed} raised:\n{_tb.format_exc()}\n"
+
+        # Retry-with-offset-seed loop, mirroring UWYK's InterventionalDataset
+        # __getitem__ (lines 551–568). On each retry the SCM is resampled via a
+        # 1_000_000-stride seed offset, so we get a genuinely different SCM each
+        # time rather than the same degenerate one.
+        #
+        # UWYK's fallback on retry exhaustion (their lines 1124–1136) is "use
+        # last sample" — they accept the imperfect sample rather than crash.
+        # We follow the same policy, with one safety twist: we only accept the
+        # last *NaN/Inf-free* sample, since NaN would explode the model loss.
+        out = None
+        out_last_finite = None
+        last_reject_reason = ""
+        for attempt in range(self.max_nan_retries):
+            try:
+                out = self._generate_one(idx, tracker, attempt=attempt)
+            except Exception:
+                sys.stderr.write(
+                    f"[DATA-ERR] worker={worker_id} idx={idx} seed={seed} attempt={attempt} raised:\n{_tb.format_exc()}\n"
+                )
+                sys.stderr.flush()
+                raise
+
+            if _contains_nan_or_inf(out):
+                sys.stderr.write(
+                    f"[DATA-WARN] worker={worker_id} idx={idx}: NaN/Inf in sample "
+                    f"(attempt {attempt + 1}/{self.max_nan_retries}). Resampling.\n"
+                )
+                sys.stderr.flush()
+                continue
+
+            # Remember the last finite (NaN-free) sample — this is what we'll
+            # fall back to if all attempts fail thresholds.
+            out_last_finite = out
+
+            ok, reason = _sample_passes_thresholds(
+                out,
+                self.min_target_variance,
+                self.min_unique_target_fraction,
             )
-            sys.stderr.flush()
-            raise
+            if not ok:
+                last_reject_reason = reason
+                sys.stderr.write(
+                    f"[DATA-WARN] worker={worker_id} idx={idx}: threshold reject "
+                    f"(attempt {attempt + 1}/{self.max_nan_retries}): {reason}. Resampling.\n"
+                )
+                sys.stderr.flush()
+                continue
+
+            break
+        else:
+            # All attempts exhausted — fall back to UWYK's "use last sample"
+            # behaviour for thresholds, but refuse to ship a NaN/Inf sample.
+            if out_last_finite is not None:
+                sys.stderr.write(
+                    f"[DATA-WARN] worker={worker_id} idx={idx}: max retries "
+                    f"({self.max_nan_retries}) exhausted; thresholds never satisfied "
+                    f"(last={last_reject_reason}) — using last NaN/Inf-free sample.\n"
+                )
+                sys.stderr.flush()
+                out = out_last_finite
+            else:
+                raise RuntimeError(
+                    f"PairedInterventionalDataset: idx={idx} produced NaN/Inf in all "
+                    f"{self.max_nan_retries} attempts (no finite fallback available)"
+                )
 
         if _DATA_VALIDATE:
             _validate_sample(out, idx, seed, worker_id)
@@ -484,11 +582,13 @@ class PairedInterventionalDataset(Dataset):
 
     # ----- internal -----------------------------------------------------------
 
-    def _generate_one(self, idx: int, tracker=None) -> dict[str, Any]:
+    def _generate_one(self, idx: int, tracker=None, attempt: int = 0) -> dict[str, Any]:
         if tracker is None:
             tracker = _NullTracker()
-        torch.manual_seed(self.seed_base + idx)
-        seed = self.seed_base + idx
+        # UWYK uses a 1_000_000 stride between attempts so each retry draws a
+        # genuinely different SCM (InterventionalDataset.py line 574).
+        seed = self.seed_base + idx + attempt * 1_000_000
+        torch.manual_seed(seed)
 
         scm = None
         treatment_node = None
@@ -602,9 +702,23 @@ class PairedInterventionalDataset(Dataset):
             else torch.zeros(self.n_test, 0)
         )
 
-        # --- preprocess (same as generate_paired_samples.py) ----------
-        Y_obs_clipped = _clip_outliers(Y_obs_raw.reshape(-1), q=self.outlier_q).reshape(-1, 1)
-        Y_obs, Y_do0, Y_do1 = _scale_to_neg1_pos1(Y_obs_clipped, Y_do0_raw, Y_do1_raw, eps=self.epsilon)
+        # --- preprocess: UWYK-style joint [-1,1] affine over (Y_obs, Y_do0, Y_do1)
+        # Mirrors UWYK's process_from_splits → _fit_apply_target_pipeline: the
+        # affine is computed from the *concatenation* of all Y arms, so any
+        # extreme value in Y_do0/Y_do1 pulls the affine wide enough to contain
+        # the whole sample inside [-1,1]. Replaces the prior "clip Y_obs at q99
+        # then scale with Y_obs-only min/max" path, which left Y_do unbounded.
+        y_all = torch.cat([
+            Y_obs_raw.reshape(-1),
+            Y_do0_raw.reshape(-1),
+            Y_do1_raw.reshape(-1),
+        ])
+        ymin = y_all.min()
+        ymax = y_all.max()
+        rng = (ymax - ymin).clamp(min=self.epsilon)
+        Y_obs = 2.0 * (Y_obs_raw - ymin) / rng - 1.0
+        Y_do0 = 2.0 * (Y_do0_raw - ymin) / rng - 1.0
+        Y_do1 = 2.0 * (Y_do1_raw - ymin) / rng - 1.0
 
         if X_obs_raw.shape[1] > 0:
             X_obs_s, X_intv_s = _standardize(X_obs_raw, X_intv_raw, eps=self.epsilon)
