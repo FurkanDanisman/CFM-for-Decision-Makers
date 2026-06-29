@@ -345,16 +345,22 @@ def generate_sample(idx, seed_base=42):
         [obs_test[n].reshape(N_TEST, -1).float() for n in feature_nodes], dim=1
     ) if feature_nodes else torch.zeros(N_TEST, 0)
 
-    # ── 8. Preprocess ─────────────────────────────────────────────────────────
-    # Remove outliers from Y (clip at 99th percentile computed on training Y)
-    Y_obs_raw = clip_outliers(Y_obs_raw.reshape(-1)).reshape(-1, 1)
-
-    # Scale Y to [-1, 1] using training min/max; apply same scale to Y_do0, Y_do1
-    Y_obs, Y_do0, Y_do1 = scale_to_neg1_pos1(Y_obs_raw, Y_do0_raw, Y_do1_raw)
-
-    # Y_do0 and Y_do1 are NOT clamped — they can go outside [-1,1] because the
-    # interventional distribution differs from the observational one. The
-    # BarDistribution2D tail regions handle out-of-range values.
+    # ── 8. Preprocess: UWYK-style joint [-1,1] affine over (Y_obs, Y_do0, Y_do1)
+    # The affine is computed from the *concatenation* of all three Y arms, so
+    # extreme values in any arm pull the affine wide enough to keep everything
+    # inside [-1,1]. Mirrors UWYK's process_from_splits → _fit_apply_target_pipeline
+    # which concatenates train+test before computing ymin/ymax.
+    y_all = torch.cat([
+        Y_obs_raw.reshape(-1),
+        Y_do0_raw.reshape(-1),
+        Y_do1_raw.reshape(-1),
+    ])
+    ymin = y_all.min()
+    ymax = y_all.max()
+    rng = (ymax - ymin).clamp(min=EPS)
+    Y_obs = 2.0 * (Y_obs_raw - ymin) / rng - 1.0
+    Y_do0 = 2.0 * (Y_do0_raw - ymin) / rng - 1.0
+    Y_do1 = 2.0 * (Y_do1_raw - ymin) / rng - 1.0
 
     # Standardize X features using training statistics (zero-mean, unit-var)
     n_feat = X_obs_raw.shape[1]
