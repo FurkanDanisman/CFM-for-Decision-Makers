@@ -1,0 +1,1 @@
+DONE worker=-1 idx=0 seed=0 t=1783517527.024

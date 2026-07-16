@@ -1,0 +1,212 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Unif}{\mathrm{Unif}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\W}{W}
+\newcommand{\Norm}{\mathcal{N}}
+\newcommand{\Fate}{F_{\mathrm{ATE}}}
+\newcommand{\Flin}{F_{\mathrm{lin}}}
+
+\title{Optimal-Transport Aggregation of CATE Distributions \\ into an ATE Distribution}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Problem statement}
+
+We have $N$ units. For each unit $i \in \{1, \dots, N\}$ a foundational prior network has produced a 2D joint density of the potential outcomes $(Y_i(0), Y_i(1))$, which we have fit with MALC\_2D:
+\[
+  p_i(y_0, y_1) \quad \text{on the same 2D grid for all } i.
+\]
+The conditional average treatment effect (CATE) for unit $i$ is the random variable
+\[
+  D_i \;=\; Y_i(1) \;-\; Y_i(0), \qquad D_i \sim f_i(d).
+\]
+The goal is to aggregate $\{f_1, \dots, f_N\}$ into a single \textbf{population ATE distribution} $\Fate(d)$ that respects the \textbf{modal / causal-world structure} of the inputs: when each $f_i$ is a mixture over $K$ latent ``causal worlds'', $\Fate$ should also have $K$ modes, with each mode being the within-world average of the corresponding mode across units.
+
+\section{Notation}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Symbol & Meaning \\
+\midrule
+$i = 1, \dots, N$ & unit (patient) index \\
+$k = 1, \dots, K$ & causal-world (mode) index \\
+$p_i(y_0, y_1)$ & 2D joint density from MALC\_2D \\
+$f_i(d)$ & 1D CATE density for unit $i$ \\
+$\pi_{i,k}$ & mixing weight of world $k$ for unit $i$, $\sum_k \pi_{i,k} = 1$ \\
+$g_{i,k}(d)$ & within-world density of unit $i$ for world $k$ (log-concave) \\
+$G_{i,k}(d)$ & CDF of $g_{i,k}$ \\
+$Q_{i,k}(\tau) = G_{i,k}^{-1}(\tau)$ & quantile function of $g_{i,k}$ \\
+$g_k^\star(d)$ & per-world 1D 2-Wasserstein barycenter \\
+$w_k$ & aggregate weight of world $k$, $\sum_k w_k = 1$ \\
+$\Fate(d)$ & final ATE distribution \\
+$\W_2$ & 2-Wasserstein distance \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Deriving the 1D CATE density from the 2D joint}
+
+For each unit $i$, change variables from $(Y_0, Y_1)$ to $(Y_0, D)$ with $D = Y_1 - Y_0$. The Jacobian determinant is $1$, so the joint density of $(Y_0, D)$ is
+\[
+  \tilde p_i(y_0, d) \;=\; p_i(y_0, y_0 + d).
+\]
+Marginalising out $y_0$ gives the CATE density
+\begin{equation}
+  \boxed{\;f_i(d) \;=\; \int_{\R} p_i\!\bigl(y_0,\; y_0 + d\bigr)\, dy_0\;}
+  \label{eq:cate-density}
+\end{equation}
+Numerically, we sample $y_0$ on a fine 1D grid covering the range of $p_i$ and approximate the integral by a Riemann sum along anti-diagonal lines $y_1 = y_0 + d$.
+
+\section{Per-unit decomposition with MALC\_BM}
+
+For a chosen $K$, fit each unit's CATE density with MALC\_BM:
+\begin{equation}
+  f_i(d) \;=\; \sum_{k=1}^{K} \pi_{i,k}\, g_{i,k}(d),
+  \qquad \pi_{i,k}\ge 0, \quad \sum_{k=1}^{K}\pi_{i,k} = 1,
+  \label{eq:decomp}
+\end{equation}
+where each $g_{i,k}$ is a \textbf{log-concave 1D density} (the MALC\_BM per-component fit). After fitting, sort components within each unit by mode location so that the index $k$ refers to the same world across all $i$:
+\[
+  \operatorname{mode}(g_{i,1}) < \operatorname{mode}(g_{i,2}) < \cdots < \operatorname{mode}(g_{i,K}).
+\]
+
+\section{1D 2-Wasserstein barycenter --- closed form}
+
+Given $M$ probability measures on $\R$ with densities $\nu_1, \dots, \nu_M$ and weights $\alpha_1, \dots, \alpha_M$ ($\alpha_m \ge 0$, $\sum_m \alpha_m = 1$), the \textbf{2-Wasserstein barycenter} is
+\[
+  \nu^\star \;=\; \arg\min_{\mu} \;\sum_{m=1}^{M} \alpha_m\, \W_2^2(\mu,\, \nu_m).
+\]
+In one dimension this has a closed form via quantile functions. If $Q_m(\tau) = F_m^{-1}(\tau)$ is the quantile function of $\nu_m$, then the barycenter has quantile function
+\begin{equation}
+  \boxed{\;Q^\star(\tau) \;=\; \sum_{m=1}^{M} \alpha_m\, Q_m(\tau), \qquad \tau \in (0, 1).\;}
+  \label{eq:bary-1d}
+\end{equation}
+The barycenter density $\nu^\star$ is recovered from $Q^\star$ by inversion: $\nu^\star$ is the pushforward of the uniform measure on $(0,1)$ by $Q^\star$.
+
+This is a special case of Agueh \& Carlier (2011) and has the property that if all $\nu_m$ are translations of a common shape $\nu_0$ --- $\nu_m(x) = \nu_0(x - c_m)$ --- then $\nu^\star(x) = \nu_0\bigl(x - \sum_m \alpha_m c_m\bigr)$, i.e.\ the barycenter is the canonical shape at the mean translation. Linear (mixture) averaging would \emph{blur} the shape across translations.
+
+\section{Per-world barycenter}
+
+For each world $k$, define the \textbf{renormalised within-world weights}
+\[
+  \alpha_{i,k} \;=\; \frac{\pi_{i,k}}{\sum_{j=1}^{N} \pi_{j,k}}, \qquad i = 1, \dots, N,
+\]
+so $\sum_i \alpha_{i,k} = 1$. The per-world 1D Wasserstein barycenter is
+\begin{equation}
+  \boxed{\;Q_k^\star(\tau) \;=\; \sum_{i=1}^{N} \alpha_{i,k}\, Q_{i,k}(\tau),
+  \qquad g_k^\star(d) \;=\; \bigl(Q_k^\star\bigr)_\# \Unif(0,1).\;}
+  \label{eq:perworld-bary}
+\end{equation}
+In words: at every probability level $\tau$, the world-$k$ barycenter quantile is the $\pi$-weighted average of the world-$k$ quantiles of each unit.
+
+\section{Aggregate ATE distribution}
+
+The aggregate weight of world $k$ across the sample is
+\[
+  w_k \;=\; \frac{1}{N}\sum_{i=1}^{N} \pi_{i,k}, \qquad \sum_{k=1}^{K} w_k = 1.
+\]
+The final ATE distribution is
+\begin{equation}
+  \boxed{\;\Fate(d) \;=\; \sum_{k=1}^{K} w_k\, g_k^\star(d).\;}
+  \label{eq:fate}
+\end{equation}
+This is a $K$-mode density: world $k$ contributes a single mode, located at the within-world average mode, with mass $w_k$ equal to the empirical mean of the per-unit world-$k$ weights.
+
+\section{Comparison with the naive linear mixture}
+
+The pointwise (Monte-Carlo / linear-mixture) aggregator is
+\[
+  \Flin(d) \;=\; \frac{1}{N}\sum_{i=1}^{N} f_i(d).
+\]
+Substituting the MALC\_BM decomposition of each $f_i$,
+\[
+  \Flin(d) \;=\; \frac{1}{N}\sum_{i=1}^{N}\sum_{k=1}^{K} \pi_{i,k}\, g_{i,k}(d)
+              \;=\; \sum_{k=1}^{K} w_k\, h_k(d),
+\]
+where the within-world \textbf{linear mixture} is
+\[
+  h_k(d) \;=\; \sum_{i=1}^{N} \alpha_{i,k}\, g_{i,k}(d).
+\]
+The aggregate world weights $w_k$ are identical; the difference is purely within-world:
+\begin{equation}
+  \Fate(d) - \Flin(d) \;=\; \sum_{k=1}^{K} w_k \bigl[\, g_k^\star(d) - h_k(d) \,\bigr].
+  \label{eq:diff}
+\end{equation}
+If all $g_{i,k}$ coincide ($g_{i,k} = g_k$ for every $i$), then $g_k^\star = h_k = g_k$ and the two aggregators agree. Otherwise --- when there is within-world heterogeneity in shape or location --- $h_k$ is a Wasserstein-smeared version of $g_k^\star$ and is wider than $g_k^\star$ (variance is additive in the linear mixture, while the Wasserstein barycenter averages quantiles, which is variance-preserving under pure translation and shrinks within-world variance under shape mismatch).
+
+\section{Why we cannot skip the decomposition step}
+
+A natural question: can we just compute the 1D Wasserstein barycenter of the $\{f_i\}$ directly, without the MALC\_BM decomposition?
+
+\emph{No}, because the quantile-averaging barycenter does not preserve mixing weights when those weights differ across inputs. Consider two bimodal CATE densities with the \emph{same} mode locations but different weights:
+\[
+  f_1(d) = 0.5\,\Norm(-2, \sigma^2) + 0.5\,\Norm(+2, \sigma^2), \qquad
+  f_2(d) = 0.3\,\Norm(-2, \sigma^2) + 0.7\,\Norm(+2, \sigma^2).
+\]
+The ``correct'' average is $F_{\mathrm{target}} = 0.4\,\Norm(-2, \sigma^2) + 0.6\,\Norm(+2, \sigma^2)$. But the quantile-averaged barycenter $Q^\star(\tau) = \tfrac12 Q_1(\tau) + \tfrac12 Q_2(\tau)$ behaves as
+
+\begin{center}
+\begin{tabular}{cccll}
+\toprule
+$\tau$ range & $Q_1$ & $Q_2$ & $Q^\star$ & comment \\
+\midrule
+$(0, 0.3)$ & $\approx -2$ & $\approx -2$ & $\approx -2$ & left mode \\
+$(0.3, 0.5)$ & $\approx -2$ & $\approx +2$ & $\approx 0$ & phantom mass at 0 \\
+$(0.5, 1)$ & $\approx +2$ & $\approx +2$ & $\approx +2$ & right mode \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The interval $\tau \in (0.3, 0.5)$ where one quantile axis ``switches modes'' before the other contributes a spurious central mode with mass $0.2$. The decomposition step circumvents this by aligning the world axis explicitly: world-1 mass is averaged with world-1 mass, world-2 mass with world-2 mass, independently of any quantile mismatch.
+
+\section{Algorithm summary}
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Inputs.} $N$ units each with 2D MALC\_2D fit $p_i$, a common 1D grid for $d$, the number of causal worlds $K$.
+
+\item \textbf{Per unit $i$:}
+\begin{enumerate}
+  \item Compute CATE density $f_i(d) = \int p_i(y_0, y_0 + d)\, dy_0$ via anti-diagonal integration on the 2D grid.
+  \item Decompose with MALC\_BM at fixed $K$: $f_i = \sum_k \pi_{i,k} g_{i,k}$. Sort components by mode location so that ``world $k$'' is consistent across units.
+\end{enumerate}
+
+\item \textbf{Per world $k = 1, \dots, K$:}
+\begin{enumerate}
+  \item Renormalise weights $\alpha_{i,k} = \pi_{i,k} / \sum_j \pi_{j,k}$.
+  \item Compute the 1D Wasserstein barycenter quantile function $Q_k^\star(\tau) = \sum_i \alpha_{i,k} Q_{i,k}(\tau)$ on a uniform $\tau$-grid.
+  \item Recover the barycenter density $g_k^\star$ from $Q_k^\star$ by inversion / interpolation.
+\end{enumerate}
+
+\item \textbf{Combine.} Aggregate world weights $w_k = \frac{1}{N}\sum_i \pi_{i,k}$ and report
+\[
+  \Fate(d) = \sum_{k=1}^{K} w_k\, g_k^\star(d).
+\]
+
+\item \textbf{Validation.}
+\begin{itemize}
+  \item Sample-size ablation: repeat for $N' < N$, compare $\Fate^{(N')}$ to $\Fate^{(N)}$ or to a known truth.
+  \item Ground-truth simulation: known DGP for $(\pi_{i,k}, g_{i,k})$; report $\W_2(\Fate, F_{\mathrm{true}})$ and $\W_2(\Flin, F_{\mathrm{true}})$.
+\end{itemize}
+\end{enumerate}
+
+\section*{References}
+\begin{itemize}
+\item Agueh, M., Carlier, G. (2011). \emph{Barycenters in the Wasserstein space.} SIAM J.\ Math.\ Anal.
+\item Balabdaoui, F., Jankowski, H., Rufibach, K., Pavlides, M. (2013). \emph{Asymptotics of the discrete log-concave maximum likelihood estimator and related applications.} JRSS B. (used for \texttt{logConDiscrMLE})
+\item Cule, M., Samworth, R., Stewart, M. (2010). \emph{Maximum likelihood estimation of a multidimensional log-concave density.} JRSS B. (used for the 2D MLE in MALC\_2D)
+\item D\"umbgen, L., Rufibach, K. (2009). \emph{Maximum likelihood estimation of a log-concave density: basic properties and uniform consistency.} Bernoulli. (used for the 1D continuous MLE)
+\end{itemize}
+
+\end{document}
