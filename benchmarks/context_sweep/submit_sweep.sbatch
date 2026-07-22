@@ -9,10 +9,15 @@
 # ── Array layout ─────────────────────────────────────────────────────────────
 # Alliance Canada limits array size to 1000. To cover 500 SCMs × 6 N × 2 sources
 # = 6000 SCM-N-source configurations, we batch N_SCMS_PER_TASK SCMs per SLURM
-# task. Total tasks = 2 sources × 6 contexts × N_BATCHES.
+# task. Total tasks = |SOURCES| × N_CONTEXTS × N_BATCHES.
 #
-# Layout:
-#   src_idx   = TASK / (N_CONTEXTS × N_BATCHES)   ∈ {0=prior, 1=poly}
+# Default: SOURCES=(prior poly) → 2×6×10 = 120 tasks, array=0-119.
+# Poly-only mode:  set SOURCES_FILTER=poly (or "prior") to run only one source.
+#                  Poly-only: 60 tasks — submit with --array=0-59.
+# Prior-only:      same, submit --array=0-59.
+#
+# Layout (given the SOURCES you've filtered to):
+#   src_idx   = TASK / (N_CONTEXTS × N_BATCHES)   ∈ {0..|SOURCES|-1}
 #   remain    = TASK % (N_CONTEXTS × N_BATCHES)
 #   N_idx     = remain / N_BATCHES                ∈ {0..N_CONTEXTS-1}
 #   batch_idx = remain % N_BATCHES                ∈ {0..N_BATCHES-1}
@@ -21,25 +26,41 @@
 set -euo pipefail
 mkdir -p logs_sweep results_sweep
 
+# ── Path layout (all env-overridable) ────────────────────────────────────────
+# Two supported layouts:
+#   (a) killarney-style: DEPLOY_ROOT/{R-PFN, external, venv, results_sweep, ...}
+#   (b) trillium-style : R-PFN is DEPLOY_ROOT itself; external is R-PFN/external
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
-REPO="$DEPLOY_ROOT/R-PFN"
-DOPFN="$DEPLOY_ROOT/external/dopfn"
-UWYK_SRC="$DEPLOY_ROOT/external/uwyk/src"
-CAUSALPFN="$DEPLOY_ROOT/external/causalpfn"
-CHECKPOINT="$REPO/checkpoints/step_50000_final.pt"
-UWYK_CKPT_DIR="$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
-OUTDIR="$DEPLOY_ROOT/results_sweep"
+REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
+# If R-PFN dir isn't at $DEPLOY_ROOT/R-PFN, fall back to $DEPLOY_ROOT itself
+if [ ! -d "$REPO/benchmarks" ]; then
+    REPO="$DEPLOY_ROOT"
+fi
+UWYK_SRC="${UWYK_SRC:-$REPO/external/uwyk/src}"
+CAUSALPFN="${CAUSALPFN:-$REPO/external/causalpfn}"
+CHECKPOINT="${CHECKPOINT:-$REPO/checkpoints/step_50000_final.pt}"
+UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_sweep}"
+VENV="${VENV:-$DEPLOY_ROOT/.venv}"
+# Legacy Killarney venv path
+[ ! -f "$VENV/bin/activate" ] && [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && VENV="$DEPLOY_ROOT/venv"
 
 N_SCMS_TOTAL="${N_SCMS_TOTAL:-500}"
 N_SCMS_PER_TASK="${N_SCMS_PER_TASK:-50}"
 N_BATCHES=$(( N_SCMS_TOTAL / N_SCMS_PER_TASK ))    # 500 / 50 = 10
 CONTEXTS=(50 250 500 1000 5000 10000)
 N_CONTEXTS=${#CONTEXTS[@]}                          # 6
-SOURCES=(prior poly)
-N_SOURCES=${#SOURCES[@]}                            # 2
+
+# ── SOURCES_FILTER: run only prior, only poly, or both ────────────────────────
+case "${SOURCES_FILTER:-both}" in
+    prior) SOURCES=(prior) ;;
+    poly)  SOURCES=(poly) ;;
+    both|"") SOURCES=(prior poly) ;;
+    *) echo "unknown SOURCES_FILTER: ${SOURCES_FILTER}" >&2; exit 2 ;;
+esac
+N_SOURCES=${#SOURCES[@]}
 WORKERS="${SLURM_CPUS_PER_TASK:-8}"
 
-# Total tasks = 2 * 6 * 10 = 120 → array=0-119
 TASK=${SLURM_ARRAY_TASK_ID:-0}
 SRC_IDX=$(( TASK / (N_CONTEXTS * N_BATCHES) ))
 REMAIN=$(( TASK % (N_CONTEXTS * N_BATCHES) ))
@@ -51,14 +72,18 @@ SEED_START=$(( BATCH_IDX * N_SCMS_PER_TASK ))
 SEED_END=$(( SEED_START + N_SCMS_PER_TASK - 1 ))
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] TASK=$TASK  SOURCE=$SOURCE  N=$N_CTX  seeds=[$SEED_START..$SEED_END]"
+echo "  REPO=$REPO"
+echo "  UWYK_SRC=$UWYK_SRC"
+echo "  UWYK_CKPT_DIR=$UWYK_CKPT_DIR"
+echo "  CAUSALPFN=$CAUSALPFN"
+echo "  OUTDIR=$OUTDIR"
 
-source "$DEPLOY_ROOT/venv/bin/activate"
+source "$VENV/bin/activate"
 export OMP_NUM_THREADS="$WORKERS"
 export MKL_NUM_THREADS="$WORKERS"
 export OPENBLAS_NUM_THREADS="$WORKERS"
 export PYTHONUNBUFFERED=1
 
-cd "$DOPFN"
 for SEED in $(seq "$SEED_START" "$SEED_END"); do
     OUT_FILE="$OUTDIR/${SOURCE}_seed$(printf '%04d' "$SEED")_N$(printf '%06d' "$N_CTX").npz"
     if [ -f "$OUT_FILE" ]; then
