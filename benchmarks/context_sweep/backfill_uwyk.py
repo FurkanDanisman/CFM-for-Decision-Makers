@@ -115,6 +115,8 @@ def main():
     ap.add_argument('--causalpfn',     required=True)
     ap.add_argument('--n-test',        type=int, default=50,
                     help='must match what run_one.py used (default 50)')
+    ap.add_argument('--source',        choices=['prior', 'poly'], default=None,
+                    help='if set, only backfill this source (skip the other one)')
     ap.add_argument('--limit',         type=int, default=None,
                     help='process at most this many files (for smoke tests)')
     ap.add_argument('--dry-run',       action='store_true',
@@ -124,15 +126,19 @@ def main():
     files = sorted(glob.glob(os.path.join(args.results_dir, '*.npz')))
     print(f"[scan] found {len(files)} npz files", flush=True)
 
-    todo, skipped_have, skipped_badname = [], 0, 0
+    todo, skipped_have, skipped_badname, skipped_src = [], 0, 0, 0
     for fn in files:
         base = os.path.basename(fn)
         m = NAME_RE.match(base)
         if not m:
             skipped_badname += 1; continue
+        if args.source and m.group('src') != args.source:
+            skipped_src += 1; continue
         if _has_uwyk_fields(fn):
             skipped_have += 1; continue
         todo.append((fn, m.group('src'), int(m.group('seed')), int(m.group('N'))))
+    if args.source:
+        print(f"[scan] skipped (other source):    {skipped_src}", flush=True)
 
     print(f"[scan] already have UWYK fields: {skipped_have}", flush=True)
     print(f"[scan] non-matching filename:     {skipped_badname}", flush=True)
