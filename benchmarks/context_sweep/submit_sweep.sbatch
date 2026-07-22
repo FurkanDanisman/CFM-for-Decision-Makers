@@ -3,9 +3,19 @@
 #SBATCH --output=logs_sweep/task_%A_%a.out
 #SBATCH --error=logs_sweep/task_%A_%a.err
 #SBATCH --time=08:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=32
 #SBATCH --array=0-119%50
+# On Trillium:
+#   - Do NOT set --mem: whole-node allocation, 745 GiB always available.
+#   - Submit from a scratch directory (e.g. $SCRATCH/rpfn_sweep) — /project is
+#     read-only on compute nodes, so both #SBATCH --output/--error and any
+#     files the job writes must live under $SCRATCH.
+#   - Account: def-rgrosse or def-zhijing (pass at sbatch time, no #SBATCH default).
+# On Killarney / other Alliance clusters that DO allow per-task mem: uncomment
+# the two lines below.
+##SBATCH --cpus-per-task=8
+##SBATCH --mem=64G
 # ── Array layout ─────────────────────────────────────────────────────────────
 # Alliance Canada limits array size to 1000. To cover 500 SCMs × 6 N × 2 sources
 # = 6000 SCM-N-source configurations, we batch N_SCMS_PER_TASK SCMs per SLURM
