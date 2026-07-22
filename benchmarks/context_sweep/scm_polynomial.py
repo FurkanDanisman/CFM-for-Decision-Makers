@@ -8,8 +8,24 @@ import numpy as np
 import torch
 
 
+def _load_polynomial_dataset_class(causalpfn_root: str):
+    """Load causalpfn's `PolynomialDataset` by file path so we don't collide
+    with our own R-PFN benchmarks/ namespace on sys.path."""
+    import importlib.util
+    import os
+    pkg_dir = os.path.join(causalpfn_root, 'benchmarks')
+    spec = importlib.util.spec_from_file_location(
+        'causalpfn_benchmarks', os.path.join(pkg_dir, '__init__.py'),
+        submodule_search_locations=[pkg_dir],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.PolynomialDataset
+
+
 def sample_as_cate_dataset(scm_seed: int, n_context: int, n_test: int = 50,
-                            x_dim: int | None = None):
+                            x_dim: int | None = None,
+                            causalpfn_root: str | None = None):
     """Return a CATE_Dataset-like namespace for one polynomial SCM.
 
     Notes
@@ -18,7 +34,10 @@ def sample_as_cate_dataset(scm_seed: int, n_context: int, n_test: int = 50,
       We size `n_samples` = n_context + n_test and set `test_ratio` accordingly.
     - `scm_seed` seeds the specific realization index.
     """
-    from benchmarks import PolynomialDataset
+    import os
+    if causalpfn_root is None:
+        causalpfn_root = os.environ.get('CAUSALPFN_ROOT', '/tmp/causalpfn_full')
+    PolynomialDataset = _load_polynomial_dataset_class(causalpfn_root)
 
     n_samples = n_context + n_test
     test_ratio = n_test / n_samples

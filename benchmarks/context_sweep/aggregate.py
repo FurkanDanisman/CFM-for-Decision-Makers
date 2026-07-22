@@ -20,6 +20,7 @@ PRIOR_ATE_TOL = 1e-4
 
 
 VARIANTS = [
+    ('UWYK No-Ancestral',      'uwyk_noanc'),
     ('OURS mean',              'ours_mean'),
     ('OURS MALC-mean',         'ours_malc_mean'),
     ('OURS MALC-mean-msk',     'ours_malc_mean_msk'),

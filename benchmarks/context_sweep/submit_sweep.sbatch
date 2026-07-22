@@ -27,6 +27,7 @@ DOPFN="$DEPLOY_ROOT/external/dopfn"
 UWYK_SRC="$DEPLOY_ROOT/external/uwyk/src"
 CAUSALPFN="$DEPLOY_ROOT/external/causalpfn"
 CHECKPOINT="$REPO/checkpoints/step_50000_final.pt"
+UWYK_CKPT_DIR="$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 OUTDIR="$DEPLOY_ROOT/results_sweep"
 
 N_SCMS_TOTAL="${N_SCMS_TOTAL:-500}"
@@ -65,15 +66,16 @@ for SEED in $(seq "$SEED_START" "$SEED_END"); do
         continue
     fi
     python "$REPO/benchmarks/context_sweep/run_one.py" \
-        --source     "$SOURCE" \
-        --seed       "$SEED" \
-        --n-context  "$N_CTX" \
-        --outdir     "$OUTDIR" \
-        --repo       "$REPO" \
-        --uwyk-src   "$UWYK_SRC" \
-        --causalpfn  "$CAUSALPFN" \
-        --checkpoint "$CHECKPOINT" \
-        --workers    "$WORKERS" || echo "[warn] seed=$SEED failed, continuing"
+        --source        "$SOURCE" \
+        --seed          "$SEED" \
+        --n-context     "$N_CTX" \
+        --outdir        "$OUTDIR" \
+        --repo          "$REPO" \
+        --uwyk-src      "$UWYK_SRC" \
+        --uwyk-ckpt-dir "$UWYK_CKPT_DIR" \
+        --causalpfn     "$CAUSALPFN" \
+        --checkpoint    "$CHECKPOINT" \
+        --workers       "$WORKERS" || echo "[warn] seed=$SEED failed, continuing"
 done
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$TASK"
