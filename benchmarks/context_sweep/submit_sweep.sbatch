@@ -2,9 +2,9 @@
 #SBATCH --job-name=rpfn-ctxsweep
 #SBATCH --output=logs_sweep/task_%A_%a.out
 #SBATCH --error=logs_sweep/task_%A_%a.err
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --array=0-119%50
 # ── Array layout ─────────────────────────────────────────────────────────────
 # Alliance Canada limits array size to 1000. To cover 500 SCMs × 6 N × 2 sources
