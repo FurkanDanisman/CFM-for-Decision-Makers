@@ -138,60 +138,39 @@ for i in range(n_real_features, NUM_FEATURES):
 T_intv_1 = np.full((Q, 1), mean_y_t1, dtype=np.float32)
 T_intv_0 = np.full((Q, 1), mean_y_t0, dtype=np.float32)
 
-# Predict distributions (not just means). If UWYK's predict doesn't support
-# "distribution", we fall back to sampling.
-try:
-    y1_dist = uwyk_model.predict(X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-                                   X_intv=X_intv, T_intv=T_intv_1,
-                                   adjacency_matrix=adj,
-                                   prediction_type='distribution',
-                                   inverse_transform=True)
-    y0_dist = uwyk_model.predict(X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-                                   X_intv=X_intv, T_intv=T_intv_0,
-                                   adjacency_matrix=adj,
-                                   prediction_type='distribution',
-                                   inverse_transform=True)
-    # y*_dist may be a tuple (bin_centers, probs) or an array — normalise to (Q, nbins)
-    if isinstance(y1_dist, tuple):
-        y_centers = np.asarray(y1_dist[0]).reshape(-1)
-        p_y1_per_q = np.asarray(y1_dist[1])
-        p_y0_per_q = np.asarray(y0_dist[1])
-    else:
-        p_y1_per_q = np.asarray(y1_dist)
-        p_y0_per_q = np.asarray(y0_dist)
-        y_centers = np.linspace(-1.0, 1.0, p_y1_per_q.shape[-1])
-    p_y1_per_q = p_y1_per_q.reshape(Q, -1)
-    p_y0_per_q = p_y0_per_q.reshape(Q, -1)
-    use_samples = False
-    print('[predict] using prediction_type="distribution"', flush=True)
-except Exception as exc:
-    print(f'[predict] "distribution" not supported ({exc}); falling back to samples',
-          flush=True)
-    use_samples = True
-    # Fallback: draw N samples per query via prediction_type="samples"
-    N_SAMPLES = 512
-    y1_samples = uwyk_model.predict(X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-                                      X_intv=X_intv, T_intv=T_intv_1,
-                                      adjacency_matrix=adj,
-                                      prediction_type='samples',
-                                      inverse_transform=True, n_samples=N_SAMPLES)
-    y0_samples = uwyk_model.predict(X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-                                      X_intv=X_intv, T_intv=T_intv_0,
-                                      adjacency_matrix=adj,
-                                      prediction_type='samples',
-                                      inverse_transform=True, n_samples=N_SAMPLES)
-    # Estimate density via histogram
-    y_centers = np.linspace(-1.0, 1.0, 100)
-    bw = y_centers[1] - y_centers[0]
-    p_y0_per_q = np.zeros((Q, len(y_centers)))
-    p_y1_per_q = np.zeros((Q, len(y_centers)))
-    for k in range(Q):
-        h0, _ = np.histogram(y0_samples[k].ravel(), bins=len(y_centers) + 1,
-                              range=(y_centers[0] - bw / 2, y_centers[-1] + bw / 2), density=True)
-        h1, _ = np.histogram(y1_samples[k].ravel(), bins=len(y_centers) + 1,
-                              range=(y_centers[0] - bw / 2, y_centers[-1] + bw / 2), density=True)
-        p_y0_per_q[k] = h0[:len(y_centers)]
-        p_y1_per_q[k] = h1[:len(y_centers)]
+# Build UWYK's per-query outcome densities by drawing many samples and
+# histogramming. UWYK's predict only supports "point"|"mode"|"mean"|"sample";
+# to recover the density we histogram over `num_samples` draws.
+N_SAMPLES = int(os.environ.get('UWYK_N_SAMPLES', 1024))
+
+def _predict_samples(T_intv):
+    n = 0; chunks = []
+    while n < N_SAMPLES:
+        # UWYK's "sample" returns ONE draw per (query, call); repeat.
+        r = uwyk_model.predict(
+            X_obs=X_train, T_obs=t_train, Y_obs=y_train,
+            X_intv=X_intv, T_intv=T_intv,
+            adjacency_matrix=adj,
+            prediction_type='sample', inverse_transform=True,
+        )
+        chunks.append(np.asarray(r).reshape(Q, -1))
+        n += chunks[-1].shape[1]
+    return np.concatenate(chunks, axis=1)[:, :N_SAMPLES]
+
+print(f'[predict] sampling  N_SAMPLES={N_SAMPLES} per query per treatment', flush=True)
+y0_samples = _predict_samples(T_intv_0)
+y1_samples = _predict_samples(T_intv_1)
+
+y_centers = np.linspace(-1.0, 1.0, 100)
+bw = y_centers[1] - y_centers[0]
+bin_edges = np.concatenate([[y_centers[0] - bw / 2], y_centers + bw / 2])
+p_y0_per_q = np.zeros((Q, len(y_centers)))
+p_y1_per_q = np.zeros((Q, len(y_centers)))
+for k in range(Q):
+    h0, _ = np.histogram(y0_samples[k].ravel(), bins=bin_edges, density=True)
+    h1, _ = np.histogram(y1_samples[k].ravel(), bins=bin_edges, density=True)
+    p_y0_per_q[k] = h0
+    p_y1_per_q[k] = h1
 
 # ── Also compute posteriors so we can annotate cluster-truth as in plot_mixture_scm
 def posterior_z(xy):
