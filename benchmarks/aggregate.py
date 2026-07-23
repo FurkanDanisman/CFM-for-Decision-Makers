@@ -14,6 +14,7 @@ PEHE_DATASETS = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal']   # paper Table 3 has
 METHODS = [
     ('Do-PFN',                 'dopfn'),
     ('UWYK Ancestral',         'uwyk_anc'),
+    ('UWYK No-Ancestral',      'uwyk_noanc'),
     ('UWYK Baseline',          'uwyk_baseline'),
     ('OURS mean',              'ours_mean'),
     ('OURS MALC-mean',         'ours_malc_mean'),

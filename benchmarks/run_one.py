@@ -142,9 +142,14 @@ def _load_our_model(args):
     return m, edges_np, J, bin_width, centers, NUM_FEATURES, wasserstein_barycenter_1d
 
 
-# ── UWYK-BASELINE backfill: add pehe_uwyk_baseline etc. to an existing npz ──
-def _run_baseline_backfill(args, out_file):
-    """Load dataset + UWYK unconditional ckpt, compute CATE, merge into npz."""
+def _uwyk_only_backfill(args, out_file, variant):
+    """Compute one UWYK variant (baseline|noanc) and merge into an existing npz.
+
+    variant='baseline' → uses args.uwyk_baseline_ckpt_dir + zero adjacency
+    variant='noanc'    → uses args.uwyk_ckpt_dir (ancestral ckpt) + zero adj
+    """
+    assert variant in ('baseline', 'noanc'), variant
+    ckpt_dir = args.uwyk_baseline_ckpt_dir if variant == 'baseline' else args.uwyk_ckpt_dir
     t0 = time.time()
     _orig_torch_load = torch.load
     def _p_load(*a, **kw):
@@ -158,22 +163,21 @@ def _run_baseline_backfill(args, out_file):
     sys.modules['datasets'] = ds_mod
     sys.path.insert(0, args.causalpfn)
 
-    _log(f"[baseline-only] loading {args.dataset} r{args.realization}", t0)
+    _log(f"[{variant}-only] loading {args.dataset} r{args.realization}", t0)
     cd_raw, ad = load_realization(args.dataset, args.realization)
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
 
-    _log("[baseline-only] loading UWYK-BASELINE (unconditional ckpt)", t0)
-    uwyk_baseline_model = _load_uwyk_model(args, args.uwyk_baseline_ckpt_dir)
-
-    _log("[baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)", t0)
-    uwyk_baseline_cate = uwyk_no_ancestral_pipeline(uwyk_baseline_model, cd_raw)
+    _log(f"[{variant}-only] loading UWYK ({variant}) ckpt", t0)
+    uwyk_mdl = _load_uwyk_model(args, ckpt_dir)
+    _log(f"[{variant}-only] inference (target-encoded T, zero adjacency)", t0)
+    cate = uwyk_no_ancestral_pipeline(uwyk_mdl, cd_raw)
 
     true_cate = _to_np(cd_raw.true_cate).reshape(-1)
     extras = {
-        'pehe_uwyk_baseline': np.array(_pehe(true_cate, uwyk_baseline_cate), dtype=np.float64),
-        'err_uwyk_baseline':  np.array(_ate_relerr(true_cate, uwyk_baseline_cate), dtype=np.float64),
-        'ate_uwyk_baseline':  np.array(float(np.mean(uwyk_baseline_cate)), dtype=np.float64),
+        f'pehe_uwyk_{variant}': np.array(_pehe(true_cate, cate), dtype=np.float64),
+        f'err_uwyk_{variant}':  np.array(_ate_relerr(true_cate, cate), dtype=np.float64),
+        f'ate_uwyk_{variant}':  np.array(float(np.mean(cate)), dtype=np.float64),
     }
     with np.load(out_file, allow_pickle=True) as f:
         payload = {k: f[k] for k in f.files}
@@ -181,9 +185,22 @@ def _run_baseline_backfill(args, out_file):
     tmp_path = out_file + '.tmp.npz'
     np.savez(tmp_path, **payload)
     os.replace(tmp_path, out_file)
-    _log(f"[baseline-only] merged into {out_file}  "
-         f"(PEHE={float(extras['pehe_uwyk_baseline']):.3f}  "
-         f"ATE={float(extras['err_uwyk_baseline']):.3f})", t0)
+    _log(f"[{variant}-only] merged into {out_file}  "
+         f"(PEHE={float(extras[f'pehe_uwyk_{variant}']):.3f}  "
+         f"ATE={float(extras[f'err_uwyk_{variant}']):.3f})", t0)
+
+
+# ── UWYK-BASELINE backfill: add pehe_uwyk_baseline etc. to an existing npz ──
+def _run_baseline_backfill(args, out_file):
+    """Legacy wrapper — kept for backward compat with existing sbatch scripts."""
+    _uwyk_only_backfill(args, out_file, variant='baseline')
+
+
+def _run_noanc_backfill(args, out_file):
+    """Backfill UWYK No-Ancestral (ancestral ckpt + zero adjacency)."""
+    _uwyk_only_backfill(args, out_file, variant='noanc')
+
+
 
 
 # ── main ────────────────────────────────────────────────────────────────────
@@ -215,6 +232,11 @@ def main():
                           'existing npz. Skip Do-PFN, UWYK-Ancestral, OURS. Requires '
                           '--uwyk-baseline-ckpt-dir. If the target npz already carries '
                           'pehe_uwyk_baseline, this task is a no-op.')
+    ap.add_argument('--only-uwyk-noanc', action='store_true',
+                     help='Backfill mode: compute ONLY UWYK-No-Ancestral (ancestral ckpt '
+                          '+ zero adjacency at inference) and merge into the existing '
+                          'npz. Skip everything else. Uses --uwyk-ckpt-dir. If the target '
+                          'npz already carries pehe_uwyk_noanc, this task is a no-op.')
     args = ap.parse_args()
 
     n_avail = DATASET_N_TABLES.get(args.dataset, 100)
@@ -237,6 +259,16 @@ def main():
                 print(f'[SKIP] {out_file} already has uwyk_baseline fields.', flush=True)
                 return
         _run_baseline_backfill(args, out_file); return
+
+    if args.only_uwyk_noanc:
+        if not os.path.exists(out_file):
+            print(f'[SKIP] {out_file} does not exist yet — run the full pipeline first.', flush=True)
+            return
+        with np.load(out_file, allow_pickle=True) as _f:
+            if {'pehe_uwyk_noanc', 'err_uwyk_noanc', 'ate_uwyk_noanc'} <= set(_f.files):
+                print(f'[SKIP] {out_file} already has uwyk_noanc fields.', flush=True)
+                return
+        _run_noanc_backfill(args, out_file); return
 
     if os.path.exists(out_file):
         print(f'[SKIP] {out_file} exists.', flush=True); return
@@ -278,6 +310,9 @@ def main():
     _log("UWYK-Ancestral inference (target-encoded T, full-graph adj)", t0)
     uwyk_anc_cate = uwyk_ancestral_pipeline(uwyk_model, cd_raw)
 
+    _log("UWYK-No-Ancestral inference (target-encoded T, zero adj)", t0)
+    uwyk_noanc_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd_raw)
+
     # Free the two transformers before spawning MALC workers — on CPS the
     # combined Do-PFN + UWYK footprint plus 16-worker MALC pool exceeds 64 GB.
     import gc
@@ -317,6 +352,7 @@ def main():
 
     _record('dopfn',              dopfn_cate)
     _record('uwyk_anc',           uwyk_anc_cate)
+    _record('uwyk_noanc',         uwyk_noanc_cate)
     if uwyk_baseline_cate is not None:
         _record('uwyk_baseline',  uwyk_baseline_cate)
     _record('ours_mean',          ours['ours_mean'])

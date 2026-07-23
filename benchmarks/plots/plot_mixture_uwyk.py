@@ -232,13 +232,21 @@ for k in range(Q):
     y_at_Ey1 = float(np.interp(E_y1, y_centers, p_y1))
     ax.plot(E_y0, y_at_Ey0, 'o', color=palette['do0'], markersize=9,
              markeredgecolor='white', markeredgewidth=1.0, zorder=5,
-             label=r'$\mathbb{E}[Y_{do0}]$' if k == 0 else None)
+             label=r'predicted $\mathbb{E}[Y_{do0}]$' if k == 0 else None)
     ax.plot(E_y1, y_at_Ey1, 'o', color=palette['do1'], markersize=9,
              markeredgecolor='white', markeredgewidth=1.0, zorder=5,
-             label=r'$\mathbb{E}[Y_{do1}]$' if k == 0 else None)
-    for z in range(K):
-        ax.axvline(A_VEC[z], color=palette['do0'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
-        ax.axvline(B_VEC[z], color=palette['do1'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
+             label=r'predicted $\mathbb{E}[Y_{do1}]$' if k == 0 else None)
+    # Single true Y_do? per query = Σ_z p(Z|X) · a_z (posterior-weighted).
+    true_y0 = float(sum(p * a for p, a in zip(post, A_VEC)))
+    true_y1 = float(sum(p * b for p, b in zip(post, B_VEC)))
+    ax.axvline(true_y0, color=palette['do0'], ls='--', lw=1.6, alpha=0.9, zorder=4,
+                label=r'true $Y_{do0}$' if k == 0 else None)
+    ax.axvline(true_y1, color=palette['do1'], ls='--', lw=1.6, alpha=0.9, zorder=4,
+                label=r'true $Y_{do1}$' if k == 0 else None)
+    ax.plot(true_y0, 0, marker='*', color=palette['do0'], markersize=13,
+             markeredgecolor='white', markeredgewidth=0.8, clip_on=False, zorder=6)
+    ax.plot(true_y1, 0, marker='*', color=palette['do1'], markersize=13,
+             markeredgecolor='white', markeredgewidth=0.8, clip_on=False, zorder=6)
     ax.set_title(label, fontsize=10)
     ax.grid(alpha=0.3)
     if k == 0: ax.legend(fontsize=8, loc='upper right')
