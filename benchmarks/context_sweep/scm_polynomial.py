@@ -19,13 +19,21 @@ def _load_polynomial_dataset_class(causalpfn_root: str):
     import os
     pkg_init = os.path.join(causalpfn_root or '', 'benchmarks', '__init__.py')
     if causalpfn_root and os.path.isfile(pkg_init):
+        import sys
         pkg_dir = os.path.join(causalpfn_root, 'benchmarks')
         spec = importlib.util.spec_from_file_location(
             'causalpfn_benchmarks', pkg_init,
             submodule_search_locations=[pkg_dir],
         )
         mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        # MUST register in sys.modules BEFORE exec_module so causalpfn's own
+        # `from .acic2016 import …` relative imports can resolve.
+        sys.modules['causalpfn_benchmarks'] = mod
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:
+            sys.modules.pop('causalpfn_benchmarks', None)
+            raise
         return mod.PolynomialDataset
     # Fallback: minimal shim in the same folder
     from scm_polynomial_shim import PolynomialDataset
