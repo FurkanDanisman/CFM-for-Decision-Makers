@@ -43,9 +43,12 @@ UWYK_SRC       = os.environ.get('UWYK_SRC',
 UWYK_VARIANT   = os.environ.get('UWYK_VARIANT', 'baseline').lower()
 if UWYK_VARIANT not in ('baseline', 'noanc'):
     raise ValueError(f"UWYK_VARIANT must be 'baseline' or 'noanc', got {UWYK_VARIANT!r}")
+# Default checkpoint = derived from UWYK_SRC (parent = uwyk repo root that has
+# experiments/checkpoints/). Users can still override UWYK_CKPT_DIR explicitly.
+_UWYK_ROOT = os.path.dirname(os.path.abspath(UWYK_SRC.rstrip('/')))
 _DEFAULT_CKPT = {
-    'baseline': '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/experiments/checkpoints/no_graph_conditioning/unconditional',
-    'noanc':    '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0',
+    'baseline': os.path.join(_UWYK_ROOT, 'experiments/checkpoints/no_graph_conditioning/unconditional'),
+    'noanc':    os.path.join(_UWYK_ROOT, 'experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0'),
 }[UWYK_VARIANT]
 UWYK_CKPT_DIR  = os.environ.get('UWYK_CKPT_DIR', _DEFAULT_CKPT)
 
