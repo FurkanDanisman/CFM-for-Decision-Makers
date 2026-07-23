@@ -123,7 +123,12 @@ def main():
                     help='process at most this many files (for smoke tests)')
     ap.add_argument('--dry-run',       action='store_true',
                     help='count what would be processed; do not touch npz files')
+    ap.add_argument('--shard-idx',     type=int, default=0,
+                    help='0-based index of this shard when running in an array')
+    ap.add_argument('--n-shards',      type=int, default=1,
+                    help='total number of shards (interleaved striping of todo)')
     args = ap.parse_args()
+    assert 0 <= args.shard_idx < args.n_shards, "shard-idx must be in [0, n-shards)"
 
     files = sorted(glob.glob(os.path.join(args.results_dir, '*.npz')))
     print(f"[scan] found {len(files)} npz files", flush=True)
@@ -145,6 +150,11 @@ def main():
     print(f"[scan] already have UWYK fields: {skipped_have}", flush=True)
     print(f"[scan] non-matching filename:     {skipped_badname}", flush=True)
     print(f"[scan] to process:                {len(todo)}", flush=True)
+    if args.n_shards > 1:
+        # Interleaved striping balances heterogeneous per-file cost across shards.
+        todo = todo[args.shard_idx::args.n_shards]
+        print(f"[shard] {args.shard_idx}/{args.n_shards}: {len(todo)} files", flush=True)
+
     if args.dry_run:
         return
 
