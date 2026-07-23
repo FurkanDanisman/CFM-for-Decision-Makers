@@ -21,6 +21,7 @@ METHODS = [
     ('OURS MALC-mode',         'ours_malc_mode'),
     ('OURS MALC-mode-msk',     'ours_malc_mode_msk'),
     ('OURS OT-mode',           'ours_ot_mode'),
+    ('OURS OT-mean',           'ours_ot_mean'),
 ]
 
 
@@ -72,7 +73,7 @@ def main():
         for d in DATASETS:
             pehe = bucket[d][key]['pehe']; relerr = bucket[d][key]['relerr']
             big_pehe = d in ('CPS', 'PSID', 'PSIDbal')   # PEHE in raw y units
-            if d in PEHE_DATASETS and label != 'OURS OT-mode':
+            if d in PEHE_DATASETS and label not in ('OURS OT-mode', 'OURS OT-mean'):
                 m, s = _mean_std(pehe); row += f"{_fmt(m, s, big=big_pehe):>15} "
             else:
                 row += f"{'—':>15} "

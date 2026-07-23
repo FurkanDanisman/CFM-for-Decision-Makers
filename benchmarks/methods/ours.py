@@ -270,11 +270,15 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     ours_malc_mode     = est_malc_mode     * scale
     ours_malc_mode_msk = est_malc_mode_msk * scale
 
-    # OT-mode: population-level ATE from W2 barycenter of masked per-query densities
+    # OT-mode + OT-mean: population-level ATE from W2 barycenter of masked
+    # per-query densities. Mode = argmax, Mean = expectation under barycenter.
     ate_bary_scaled = wasserstein_barycenter_1d(p_taus_msk, tau)
     tau_raw = tau * scale
     ate_bary_raw = ate_bary_scaled / scale
     ate_ot_mode_scalar = float(tau_raw[ate_bary_raw.argmax()])
+    d_tau_raw = tau_raw[1] - tau_raw[0]
+    bary_norm = ate_bary_raw / max(ate_bary_raw.sum() * d_tau_raw, 1e-12)
+    ate_ot_mean_scalar = float((tau_raw * bary_norm).sum() * d_tau_raw)
 
     return dict(
         ours_mean          = ours_mean,
@@ -283,4 +287,5 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
         ours_malc_mode     = ours_malc_mode,
         ours_malc_mode_msk = ours_malc_mode_msk,
         ours_ot_mode_ate   = ate_ot_mode_scalar,  # population ATE, not per-query
+        ours_ot_mean_ate   = ate_ot_mean_scalar,  # population ATE, not per-query
     )

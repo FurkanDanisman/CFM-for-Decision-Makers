@@ -125,6 +125,7 @@ axM.grid(alpha=0.3); axM.legend(fontsize=10, loc='upper right')
 fig.suptitle(f'Raw MALC estimate — IHDP realization 0, query {QUERY}',
               fontsize=13, y=1.0)
 fig.tight_layout()
-out_path = os.path.join(REPO, 'benchmarks', 'plots', 'RAW_MALC_example.png')
+out_path = os.path.join(REPO, 'benchmarks', 'plots', 'malc_examples', 'RAW_MALC_example.png')
+os.makedirs(os.path.dirname(out_path), exist_ok=True)
 fig.savefig(out_path, dpi=140, bbox_inches='tight')
 print(f'Saved: {out_path}', flush=True)

@@ -166,10 +166,13 @@ def main():
     _record('ours_malc_mode',     ours['ours_malc_mode'])
     _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
 
-    ot_ate = ours['ours_ot_mode_ate']
-    out['ate_ours_ot_mode'] = ot_ate
     true_ate = out['true_ate']
-    out['err_ours_ot_mode'] = abs(ot_ate - true_ate) / max(abs(true_ate), 1e-9)
+    ot_mode_ate = ours['ours_ot_mode_ate']
+    out['ate_ours_ot_mode'] = ot_mode_ate
+    out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+    ot_mean_ate = ours['ours_ot_mean_ate']
+    out['ate_ours_ot_mean'] = ot_mean_ate
+    out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
 
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
     print(f"[{time.time()-t0:6.1f}s] saved {out_file}", flush=True)

@@ -325,10 +325,13 @@ def main():
     _record('ours_malc_mode',     ours['ours_malc_mode'])
     _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
 
-    # OT-mode gives a single population ATE, not per-query cate
-    ot_ate = ours['ours_ot_mode_ate']
-    out['ate_ours_ot_mode'] = ot_ate
-    out['err_ours_ot_mode'] = abs(ot_ate - true_ate) / max(abs(true_ate), 1e-9)
+    # OT-mode + OT-mean: single population ATE each, not per-query cate
+    ot_mode_ate = ours['ours_ot_mode_ate']
+    ot_mean_ate = ours['ours_ot_mean_ate']
+    out['ate_ours_ot_mode'] = ot_mode_ate
+    out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+    out['ate_ours_ot_mean'] = ot_mean_ate
+    out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
 
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
     _log(f"saved {out_file}  ({out['runtime_s']:.1f}s)", t0)

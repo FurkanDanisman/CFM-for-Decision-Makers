@@ -1,3 +1,0 @@
-UWYK_SRC=/tmp/g4cfm_uwyk/src PYTHONHASHSEED=0 SCM_SEED=2 \
-    QUERY_IDXS=131,470,159,266,35,22 OUT_PREFIX=custom \
-    python /Users/furkandanisman/R-PFN/benchmarks/plots/plot_joint_marginals.py

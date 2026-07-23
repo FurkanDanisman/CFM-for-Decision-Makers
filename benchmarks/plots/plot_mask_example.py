@@ -187,6 +187,7 @@ axC.legend(fontsize=10, loc='best'); axC.grid(alpha=0.3)
 
 fig.suptitle(f'Diagonal masking removes the τ=0 attractor  —  IHDP realization 0, query {best_i}',
              fontsize=13, y=0.995)
-out_path = os.path.join(REPO, 'experiments', 'MASK_example.png')
+out_path = os.path.join(REPO, 'benchmarks', 'plots', 'malc_examples', 'MASK_example.png')
+os.makedirs(os.path.dirname(out_path), exist_ok=True)
 fig.savefig(out_path, dpi=140, bbox_inches='tight')
 print(f'Saved: {out_path}', flush=True)

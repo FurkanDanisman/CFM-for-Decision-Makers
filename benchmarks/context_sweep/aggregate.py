@@ -28,6 +28,7 @@ VARIANTS = [
     ('OURS MALC-mode',         'ours_malc_mode'),
     ('OURS MALC-mode-msk',     'ours_malc_mode_msk'),
     ('OURS OT-mode',           'ours_ot_mode'),
+    ('OURS OT-mean',           'ours_ot_mean'),
 ]
 
 

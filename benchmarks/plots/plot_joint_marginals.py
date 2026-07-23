@@ -58,6 +58,8 @@ _HERE  = os.path.dirname(os.path.abspath(__file__))               # benchmarks/p
 _BENCH = os.path.dirname(_HERE)                                    # benchmarks
 _REPO  = os.path.dirname(_BENCH)                                   # R-PFN
 _CSWEEP = os.path.join(_BENCH, 'context_sweep')                    # for scm_prior
+_OUTDIR = os.path.join(_HERE, 'context_sweep')                     # PNG destination subfolder
+os.makedirs(_OUTDIR, exist_ok=True)
 
 # CLI knobs (env-driven so the script stays as a plain `python plot_...py` call)
 CKPT       = os.environ.get('CHECKPOINT', os.path.join(_REPO, 'checkpoints', 'step_50000_final.pt'))
@@ -210,14 +212,22 @@ if NN == 3:
 else:
     palette_N = plt.cm.viridis(np.linspace(0.15, 0.85, NN))
 
+tau_step = tau_centers[1] - tau_centers[0]
 for k, q in enumerate(QUERY_IDXS):
     ax = axes[k // n_cols][k % n_cols]
     for c, N in enumerate(CONTEXT_SIZES):
         pm = p_mats_by_N[N][k]
         p_tau = _p_tau_from_pmat(pm, seed=1000 * (c + 1) + q)
-        E_tau = float((tau_centers * p_tau).sum() * (tau_centers[1] - tau_centers[0]))
-        ax.plot(tau_centers, p_tau, color=palette_N[c], lw=1.8,
-                label=f'N={N}   E[τ]={E_tau:+.2f}')
+        E_tau  = float((tau_centers * p_tau).sum() * tau_step)
+        M_tau  = float(tau_centers[int(np.argmax(p_tau))])
+        color = palette_N[c]
+        ax.plot(tau_centers, p_tau, color=color, lw=1.8,
+                label=f'N={N}  E[τ]={E_tau:+.2f}  mode={M_tau:+.2f}')
+        # Mean = dashed vertical in the N's color (thicker so it's readable
+        # against the density curve of the same colour)
+        ax.axvline(E_tau, color=color, ls='--', lw=1.8, alpha=0.95, zorder=4)
+        # Mode = dotted vertical in the N's color
+        ax.axvline(M_tau, color=color, ls=':',  lw=1.8, alpha=0.95, zorder=4)
     ax.axvline(true_tau_scaled[q], color='red', ls='--', lw=1.3,
                label=f'true τ = {true_tau_scaled[q]:+.3f}')
     ax.plot(true_tau_scaled[q], 0, 'o', color='red', markersize=9, clip_on=False, zorder=5)
@@ -225,7 +235,7 @@ for k, q in enumerate(QUERY_IDXS):
     ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
     ax.set_xlim(-1.0, 1.0)
     if k % n_cols == 0: ax.set_ylabel(r'$p(\tau)$')
-    ax.grid(alpha=0.3); ax.legend(fontsize=9, loc='upper right')
+    ax.grid(alpha=0.3); ax.legend(fontsize=8, loc='upper right')
 
 fig.suptitle(
     f'Per-query TE distribution at increasing context size  '
@@ -233,7 +243,7 @@ fig.suptitle(
     f'std={true_tau_scaled.std():.2f})',
     fontsize=12, y=0.998)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
-out_te = os.path.join(_HERE, f'{OUT_PREFIX}_TE_distribution.png')
+out_te = os.path.join(_OUTDIR, f'{OUT_PREFIX}_TE_distribution.png')
 fig.savefig(out_te, dpi=130, bbox_inches='tight'); plt.close(fig)
 print(f'Saved: {out_te}', flush=True)
 
@@ -261,7 +271,7 @@ fig.suptitle(
     f'std={true_tau_scaled.std():.2f}',
     fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
-out_joint = os.path.join(_HERE, f'{OUT_PREFIX}_joint_by_context.png')
+out_joint = os.path.join(_OUTDIR, f'{OUT_PREFIX}_joint_by_context.png')
 fig.savefig(out_joint, dpi=130, bbox_inches='tight'); plt.close(fig)
 print(f'Saved: {out_joint}', flush=True)
 
@@ -280,21 +290,31 @@ for r, q in enumerate(QUERY_IDXS):
         p_y1 = p_y1 / max(p_y1.sum() * bin_width, 1e-12)
         ax.plot(centers, p_y0, color=palette['do0'], lw=1.8, label=r'$p(Y_{do0})$')
         ax.plot(centers, p_y1, color=palette['do1'], lw=1.8, label=r'$p(Y_{do1})$')
+        # Predicted means: E[Y_do?] = ∑ y·p(y)·Δy — red dots on the density
+        E_y0 = float((centers * p_y0).sum() * bin_width)
+        E_y1 = float((centers * p_y1).sum() * bin_width)
+        # y-heights for the dots: place ON the curve at that mean so the reader
+        # sees where the peak-weighted average lands vertically as well
+        y_at_Ey0 = float(np.interp(E_y0, centers, p_y0))
+        y_at_Ey1 = float(np.interp(E_y1, centers, p_y1))
+        ax.plot(E_y0, y_at_Ey0, 'o', color='red', markersize=8, zorder=5,
+                label=r'$\mathbb{E}[Y_{do0}]$, $\mathbb{E}[Y_{do1}]$' if (r == 0 and c == 0) else None)
+        ax.plot(E_y1, y_at_Ey1, 'o', color='red', markersize=8, zorder=5)
         ax.axvline(Y_do0[q], color=palette['do0'], ls=':', lw=1.2,
-                    alpha=0.7, label=r'true $Y_{do0}$')
+                    alpha=0.7, label=r'true $Y_{do0}$' if (r == 0 and c == 0) else None)
         ax.axvline(Y_do1[q], color=palette['do1'], ls=':', lw=1.2,
-                    alpha=0.7, label=r'true $Y_{do1}$')
+                    alpha=0.7, label=r'true $Y_{do1}$' if (r == 0 and c == 0) else None)
         ax.set_title(f"query {q}   τ_true={true_tau_scaled[q]:+.2f}   N={N}", fontsize=10)
         if r == Q - 1: ax.set_xlabel(r'$Y$ (scaled)')
         if c == 0:      ax.set_ylabel(r'density')
         ax.grid(alpha=0.3)
-        if r == 0 and c == 0: ax.legend(fontsize=8, loc='upper right')
+        if r == 0 and c == 0: ax.legend(fontsize=7, loc='upper right')
 
 fig.suptitle(
     f'Marginal potential-outcome densities p($Y_{{do0}}$) and p($Y_{{do1}}$) — '
     f'SCM seed={SCM_SEED}',
     fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
-out_marg = os.path.join(_HERE, f'{OUT_PREFIX}_marginals_by_context.png')
+out_marg = os.path.join(_OUTDIR, f'{OUT_PREFIX}_marginals_by_context.png')
 fig.savefig(out_marg, dpi=130, bbox_inches='tight'); plt.close(fig)
 print(f'Saved: {out_marg}', flush=True)
