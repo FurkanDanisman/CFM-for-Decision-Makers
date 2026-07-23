@@ -29,9 +29,13 @@ mkdir -p logs_backfill
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 if [ ! -d "$REPO/benchmarks" ]; then REPO="$DEPLOY_ROOT"; fi
-UWYK_SRC="${UWYK_SRC:-$REPO/external/uwyk/src}"
-UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
-CAUSALPFN="${CAUSALPFN:-$REPO/external/causalpfn}"
+# external/ lives beside R-PFN on killarney (DEPLOY_ROOT/external), or inside
+# R-PFN on trillium — probe both, prefer the beside-R-PFN layout.
+EXTERNAL_ROOT="${EXTERNAL_ROOT:-$DEPLOY_ROOT/external}"
+[ ! -d "$EXTERNAL_ROOT" ] && [ -d "$REPO/external" ] && EXTERNAL_ROOT="$REPO/external"
+UWYK_SRC="${UWYK_SRC:-$EXTERNAL_ROOT/uwyk/src}"
+UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+CAUSALPFN="${CAUSALPFN:-$EXTERNAL_ROOT/causalpfn}"
 RESULTS_DIR="${RESULTS_DIR:-$DEPLOY_ROOT/results_sweep}"
 VENV="${VENV:-$DEPLOY_ROOT/.venv}"
 [ ! -f "$VENV/bin/activate" ] && [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && VENV="$DEPLOY_ROOT/venv"
