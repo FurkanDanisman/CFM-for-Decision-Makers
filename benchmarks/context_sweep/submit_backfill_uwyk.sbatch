@@ -7,20 +7,33 @@
 #SBATCH --mem=32G
 #SBATCH --array=0-19%20
 # ─────────────────────────────────────────────────────────────────────────────
-# Backfill UWYK No-Ancestral fields into existing sweep npz files.
+# Backfill a UWYK variant's predictions into existing sweep npz files.
+#
+# Two variants share this sbatch, selected by the VARIANT env var:
+#   VARIANT=noanc     (default) — Ancestral ckpt + zero adjacency proxy
+#   VARIANT=baseline           — separately-trained unconditional ckpt
+# For VARIANT=baseline the sbatch auto-swaps UWYK_CKPT_DIR to the unconditional
+# checkpoint dir; override UWYK_CKPT_DIR explicitly if your path differs.
 #
 # Each array task processes 1/N_SHARDS of the todo list (interleaved stripe),
 # so files finish in balanced time across the array.
 #
 # Usage on killarney (from your deploy dir, e.g. /scratch/furkanbd/rpfn_bench_kit):
-#   sbatch --account=def-rgrosse \
+#   # No-Ancestral proxy (default)
+#   sbatch --account=aip-rgrosse \
 #          --export=ALL,SOURCES_FILTER=poly \
+#          R-PFN/benchmarks/context_sweep/submit_backfill_uwyk.sbatch
+#
+#   # UWYK-BASELINE (unconditional ckpt)
+#   sbatch --account=aip-rgrosse \
+#          --export=ALL,SOURCES_FILTER=poly,VARIANT=baseline \
 #          R-PFN/benchmarks/context_sweep/submit_backfill_uwyk.sbatch
 #
 # Env overrides:
 #   DEPLOY_ROOT — root that contains R-PFN/ external/ venv/ results_sweep/
 #   SOURCES_FILTER — "prior" | "poly"    (required — one at a time)
-#   N_SHARDS — must match the array size (default 20 → --array=0-19)
+#   VARIANT        — "noanc" | "baseline"    (default: noanc)
+#   N_SHARDS       — must match the array size (default 20 → --array=0-19)
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -34,7 +47,19 @@ if [ ! -d "$REPO/benchmarks" ]; then REPO="$DEPLOY_ROOT"; fi
 EXTERNAL_ROOT="${EXTERNAL_ROOT:-$DEPLOY_ROOT/external}"
 [ ! -d "$EXTERNAL_ROOT" ] && [ -d "$REPO/external" ] && EXTERNAL_ROOT="$REPO/external"
 UWYK_SRC="${UWYK_SRC:-$EXTERNAL_ROOT/uwyk/src}"
-UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+
+VARIANT="${VARIANT:-noanc}"
+case "$VARIANT" in
+    noanc)
+        UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+        ;;
+    baseline)
+        UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional}"
+        ;;
+    *)
+        echo "[error] unknown VARIANT=$VARIANT (expected noanc|baseline)" >&2; exit 2
+        ;;
+esac
 CAUSALPFN="${CAUSALPFN:-$EXTERNAL_ROOT/causalpfn}"
 RESULTS_DIR="${RESULTS_DIR:-$DEPLOY_ROOT/results_sweep}"
 VENV="${VENV:-$DEPLOY_ROOT/.venv}"
@@ -44,7 +69,7 @@ SRC_FILTER="${SOURCES_FILTER:-poly}"
 N_SHARDS="${N_SHARDS:-20}"
 SHARD_IDX="${SLURM_ARRAY_TASK_ID:-0}"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] shard=$SHARD_IDX/$N_SHARDS  source=$SRC_FILTER"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] shard=$SHARD_IDX/$N_SHARDS  source=$SRC_FILTER  variant=$VARIANT"
 echo "  REPO=$REPO"
 echo "  RESULTS_DIR=$RESULTS_DIR"
 echo "  UWYK_CKPT_DIR=$UWYK_CKPT_DIR"
@@ -63,6 +88,7 @@ python "$REPO/benchmarks/context_sweep/backfill_uwyk.py" \
     --causalpfn     "$CAUSALPFN" \
     --source        "$SRC_FILTER" \
     --shard-idx     "$SHARD_IDX" \
-    --n-shards      "$N_SHARDS"
+    --n-shards      "$N_SHARDS" \
+    --variant       "$VARIANT"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE shard=$SHARD_IDX"

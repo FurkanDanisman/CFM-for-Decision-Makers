@@ -1,21 +1,20 @@
-"""Add UWYK No-Ancestral predictions to existing sweep npz files in place.
+"""Add a UWYK variant's predictions to existing sweep npz files in place.
 
-For each existing `<source>_seed<seed>_N<N>.npz` that lacks the uwyk_noanc
-fields, this script:
+Two variants share the same script:
+  * ``noanc`` (default): the paper's Ancestral checkpoint is loaded and fed a
+    zero adjacency at inference — the "no info" proxy used when the paper's
+    separately-trained baseline checkpoint isn't available.
+  * ``baseline``: the paper's separately-trained unconditional checkpoint
+    (``experiments/checkpoints/no_graph_conditioning/unconditional``) is
+    loaded and also fed a zero adjacency (matches its training convention).
 
-  1. Re-samples the SAME SCM (deterministic given `source`, `seed`, `N_context`,
-     `n_test=50`).
-  2. Loads the UWYK Ancestral checkpoint (same as the benchmarks), passes it a
-     zero adjacency (paper's "no info" convention — 0 = edge unknown, −1 = no
-     edge for padded feats), and runs `model.predict` twice.
-  3. Rewrites the npz to include `pehe_uwyk_noanc`, `err_uwyk_noanc`,
-     `ate_uwyk_noanc` alongside the existing OURS fields.
-
-Existing OURS fields are preserved verbatim. Files that already contain the
-UWYK fields are skipped. Safe to interrupt and resume.
+Both variants write independent fields, so both can coexist on the same npz
+files. Existing fields are preserved verbatim. Files that already contain the
+selected variant's fields are skipped, so it's safe to interrupt and resume.
 
 Usage
 -----
+    # Default: reproduce the "No Ancestral Info" proxy on the ancestral ckpt
     python benchmarks/context_sweep/backfill_uwyk.py \\
         --results-dir  ./results_sweep \\
         --repo         $PWD/R-PFN \\
@@ -23,7 +22,11 @@ Usage
         --uwyk-ckpt-dir $PWD/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0 \\
         --causalpfn    $PWD/external/causalpfn
 
-The result: same 5728 files, each now with UWYK No-Ancestral columns.
+    # UWYK-BASELINE: same script, point at the unconditional ckpt
+    python benchmarks/context_sweep/backfill_uwyk.py \\
+        ... \\
+        --uwyk-ckpt-dir $PWD/external/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional \\
+        --variant baseline
 """
 from __future__ import annotations
 import argparse, glob, importlib, os, re, sys, time, traceback
@@ -91,9 +94,13 @@ def _sample_scm(source, seed, N, n_test, uwyk_src, causalpfn_root):
     raise ValueError(source)
 
 
-def _has_uwyk_fields(npz_path):
+def _variant_fields(variant):
+    return {f'pehe_uwyk_{variant}', f'err_uwyk_{variant}', f'ate_uwyk_{variant}'}
+
+
+def _has_uwyk_fields(npz_path, variant):
     with np.load(npz_path, allow_pickle=True) as f:
-        return {'pehe_uwyk_noanc', 'err_uwyk_noanc', 'ate_uwyk_noanc'} <= set(f.files)
+        return _variant_fields(variant) <= set(f.files)
 
 
 def _extend_npz(npz_path, extras):
@@ -127,6 +134,10 @@ def main():
                     help='0-based index of this shard when running in an array')
     ap.add_argument('--n-shards',      type=int, default=1,
                     help='total number of shards (interleaved striping of todo)')
+    ap.add_argument('--variant',       default='noanc', choices=['noanc', 'baseline'],
+                    help='which UWYK variant this run produces (chooses the output '
+                         'field names pehe_uwyk_<variant> etc.). --uwyk-ckpt-dir '
+                         'must be set to match this variant.')
     args = ap.parse_args()
     assert 0 <= args.shard_idx < args.n_shards, "shard-idx must be in [0, n-shards)"
 
@@ -141,13 +152,14 @@ def main():
             skipped_badname += 1; continue
         if args.source and m.group('src') != args.source:
             skipped_src += 1; continue
-        if _has_uwyk_fields(fn):
+        if _has_uwyk_fields(fn, args.variant):
             skipped_have += 1; continue
         todo.append((fn, m.group('src'), int(m.group('seed')), int(m.group('N'))))
     if args.source:
         print(f"[scan] skipped (other source):    {skipped_src}", flush=True)
 
-    print(f"[scan] already have UWYK fields: {skipped_have}", flush=True)
+    print(f"[scan] variant:                   {args.variant}", flush=True)
+    print(f"[scan] already have UWYK-{args.variant} fields: {skipped_have}", flush=True)
     print(f"[scan] non-matching filename:     {skipped_badname}", flush=True)
     print(f"[scan] to process:                {len(todo)}", flush=True)
     if args.n_shards > 1:
@@ -173,10 +185,11 @@ def main():
             true_cate = cd.true_cate.numpy().reshape(-1) if hasattr(cd.true_cate, 'numpy') \
                         else np.asarray(cd.true_cate).reshape(-1)
             uwyk_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd)
+            v = args.variant
             extras = {
-                'pehe_uwyk_noanc': np.array(_pehe(true_cate, uwyk_cate), dtype=np.float64),
-                'err_uwyk_noanc':  np.array(_ate_relerr(true_cate, uwyk_cate), dtype=np.float64),
-                'ate_uwyk_noanc':  np.array(float(np.mean(uwyk_cate)), dtype=np.float64),
+                f'pehe_uwyk_{v}': np.array(_pehe(true_cate, uwyk_cate), dtype=np.float64),
+                f'err_uwyk_{v}':  np.array(_ate_relerr(true_cate, uwyk_cate), dtype=np.float64),
+                f'ate_uwyk_{v}':  np.array(float(np.mean(uwyk_cate)), dtype=np.float64),
             }
             _extend_npz(fn, extras)
             n_ok += 1

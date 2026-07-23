@@ -22,7 +22,7 @@ warnings.filterwarnings('ignore')
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from methods.dopfn import dopfn_pipeline
-from methods.uwyk  import uwyk_ancestral_pipeline
+from methods.uwyk  import uwyk_ancestral_pipeline, uwyk_no_ancestral_pipeline
 from methods.ours  import ours_pipeline
 
 
@@ -94,7 +94,7 @@ def apply_balanced(cd, max_control=500, seed=0):
 
 
 # ── UWYK model loader (isolates the models/ namespace collision with Do-PFN) ─
-def _load_uwyk_model(args):
+def _load_uwyk_model(args, ckpt_dir):
     _saved = {}
     for name in list(sys.modules):
         if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
@@ -111,8 +111,8 @@ def _load_uwyk_model(args):
             del sys.modules[name]
     sys.modules.update(_saved)
     return UWYK_pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
-        checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
+        config_path=os.path.join(ckpt_dir, 'best_model_config.yaml'),
+        checkpoint_path=os.path.join(ckpt_dir, 'best_model.pt'),
         device='cpu', verbose=False,
     ).load()
 
@@ -142,6 +142,50 @@ def _load_our_model(args):
     return m, edges_np, J, bin_width, centers, NUM_FEATURES, wasserstein_barycenter_1d
 
 
+# ── UWYK-BASELINE backfill: add pehe_uwyk_baseline etc. to an existing npz ──
+def _run_baseline_backfill(args, out_file):
+    """Load dataset + UWYK unconditional ckpt, compute CATE, merge into npz."""
+    t0 = time.time()
+    _orig_torch_load = torch.load
+    def _p_load(*a, **kw):
+        kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
+    torch.load = _p_load
+
+    sys.path.insert(0, args.dopfn)
+    ds_mod = types.ModuleType('datasets')
+    _src = open(os.path.join(args.dopfn, 'datasets/__init__.py')).read().split('def load_semi_real')[0]
+    exec(_src, ds_mod.__dict__)
+    sys.modules['datasets'] = ds_mod
+    sys.path.insert(0, args.causalpfn)
+
+    _log(f"[baseline-only] loading {args.dataset} r{args.realization}", t0)
+    cd_raw, ad = load_realization(args.dataset, args.realization)
+    if args.dataset == 'PSIDbal':
+        cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+
+    _log("[baseline-only] loading UWYK-BASELINE (unconditional ckpt)", t0)
+    uwyk_baseline_model = _load_uwyk_model(args, args.uwyk_baseline_ckpt_dir)
+
+    _log("[baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)", t0)
+    uwyk_baseline_cate = uwyk_no_ancestral_pipeline(uwyk_baseline_model, cd_raw)
+
+    true_cate = _to_np(cd_raw.true_cate).reshape(-1)
+    extras = {
+        'pehe_uwyk_baseline': np.array(_pehe(true_cate, uwyk_baseline_cate), dtype=np.float64),
+        'err_uwyk_baseline':  np.array(_ate_relerr(true_cate, uwyk_baseline_cate), dtype=np.float64),
+        'ate_uwyk_baseline':  np.array(float(np.mean(uwyk_baseline_cate)), dtype=np.float64),
+    }
+    with np.load(out_file, allow_pickle=True) as f:
+        payload = {k: f[k] for k in f.files}
+    payload.update(extras)
+    tmp_path = out_file + '.tmp.npz'
+    np.savez(tmp_path, **payload)
+    os.replace(tmp_path, out_file)
+    _log(f"[baseline-only] merged into {out_file}  "
+         f"(PEHE={float(extras['pehe_uwyk_baseline']):.3f}  "
+         f"ATE={float(extras['err_uwyk_baseline']):.3f})", t0)
+
+
 # ── main ────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -155,11 +199,22 @@ def main():
     ap.add_argument('--causalpfn',     required=True, help='Path to CausalPFN repo (has benchmarks/)')
     ap.add_argument('--checkpoint',    required=True, help='Path to our .pt checkpoint')
     ap.add_argument('--uwyk-ckpt-dir', required=True,
-                     help='Path to UWYK final_earlytest_full_conditioning_16773252.0/ dir')
+                     help='Path to UWYK Ancestral checkpoint dir '
+                          '(e.g. .../full_conditioned_model/final_earlytest_full_conditioning_16773252.0)')
+    ap.add_argument('--uwyk-baseline-ckpt-dir', default=None,
+                     help='Path to UWYK separately-trained baseline (unconditional) '
+                          'checkpoint dir (e.g. .../no_graph_conditioning/unconditional). '
+                          'If set, adds pehe_uwyk_baseline / err_uwyk_baseline / '
+                          'ate_uwyk_baseline fields to the output npz.')
     ap.add_argument('--malc-B',        type=int, default=100)
     ap.add_argument('--malc-max-K',    type=int, default=3)
     ap.add_argument('--n-eval',        type=int, default=200)
     ap.add_argument('--workers',       type=int, default=1)
+    ap.add_argument('--only-uwyk-baseline', action='store_true',
+                     help='Backfill mode: compute ONLY UWYK-BASELINE and merge into the '
+                          'existing npz. Skip Do-PFN, UWYK-Ancestral, OURS. Requires '
+                          '--uwyk-baseline-ckpt-dir. If the target npz already carries '
+                          'pehe_uwyk_baseline, this task is a no-op.')
     args = ap.parse_args()
 
     n_avail = DATASET_N_TABLES.get(args.dataset, 100)
@@ -169,6 +224,20 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     out_file = os.path.join(args.outdir, f'{args.dataset}_r{args.realization:03d}.npz')
+
+    if args.only_uwyk_baseline:
+        if not args.uwyk_baseline_ckpt_dir:
+            print('[ERR] --only-uwyk-baseline requires --uwyk-baseline-ckpt-dir', flush=True)
+            sys.exit(2)
+        if not os.path.exists(out_file):
+            print(f'[SKIP] {out_file} does not exist yet — run the full pipeline first.', flush=True)
+            return
+        with np.load(out_file, allow_pickle=True) as _f:
+            if {'pehe_uwyk_baseline', 'err_uwyk_baseline', 'ate_uwyk_baseline'} <= set(_f.files):
+                print(f'[SKIP] {out_file} already has uwyk_baseline fields.', flush=True)
+                return
+        _run_baseline_backfill(args, out_file); return
+
     if os.path.exists(out_file):
         print(f'[SKIP] {out_file} exists.', flush=True); return
 
@@ -190,8 +259,8 @@ def main():
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
 
-    _log("loading UWYK model", t0)
-    uwyk_model = _load_uwyk_model(args)
+    _log("loading UWYK Ancestral model", t0)
+    uwyk_model = _load_uwyk_model(args, args.uwyk_ckpt_dir)
 
     _log("loading Do-PFN", t0)
     from scripts.transformer_prediction_interface.base import DoPFNRegressor
@@ -214,6 +283,16 @@ def main():
     import gc
     del uwyk_model, DoPFNRegressor
     gc.collect()
+
+    uwyk_baseline_cate = None
+    if args.uwyk_baseline_ckpt_dir:
+        _log("loading UWYK-BASELINE (unconditional ckpt)", t0)
+        uwyk_baseline_model = _load_uwyk_model(args, args.uwyk_baseline_ckpt_dir)
+        _log("UWYK-BASELINE inference (target-encoded T, zero adjacency)", t0)
+        uwyk_baseline_cate = uwyk_no_ancestral_pipeline(uwyk_baseline_model, cd_raw)
+        del uwyk_baseline_model
+        gc.collect()
+
     _log("Do-PFN + UWYK released, running OURS", t0)
 
     # OURS: hierarchical clustering matches UWYK's `PreprocessingGraphConditioned
@@ -238,6 +317,8 @@ def main():
 
     _record('dopfn',              dopfn_cate)
     _record('uwyk_anc',           uwyk_anc_cate)
+    if uwyk_baseline_cate is not None:
+        _record('uwyk_baseline',  uwyk_baseline_cate)
     _record('ours_mean',          ours['ours_mean'])
     _record('ours_malc_mean',     ours['ours_malc_mean'])
     _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
