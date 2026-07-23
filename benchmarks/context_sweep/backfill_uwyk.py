@@ -101,7 +101,9 @@ def _extend_npz(npz_path, extras):
     with np.load(npz_path, allow_pickle=True) as f:
         payload = {k: f[k] for k in f.files}
     payload.update(extras)
-    tmp_path = npz_path + '.tmp'
+    # np.savez silently appends `.npz` to any path that doesn't already end
+    # in `.npz`, so use a suffix that already ends in .npz to avoid that.
+    tmp_path = npz_path + '.tmp.npz'
     np.savez(tmp_path, **payload)
     os.replace(tmp_path, npz_path)
 
