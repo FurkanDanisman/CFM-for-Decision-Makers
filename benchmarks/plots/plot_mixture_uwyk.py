@@ -36,19 +36,25 @@ os.makedirs(_OUTDIR, exist_ok=True)
 UWYK_SRC       = os.environ.get('UWYK_SRC',
                                   '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/src')
 
-# UWYK_VARIANT: 'baseline' (separately-trained unconditional ckpt) or 'noanc'
-# (ancestral ckpt with zero adjacency at inference). Determines the default
-# checkpoint dir + the pipeline label. Adjacency at inference is the same in
-# both cases (all-zero for real feats, -1 for padded).
+# UWYK_VARIANT: which UWYK pipeline to visualise.
+#   'baseline'  — separately-trained unconditional ckpt + zero adjacency
+#                 at inference (paper's "no-info" reference)
+#   'noanc'     — ancestral ckpt + zero adjacency at inference (a "hack"
+#                 that we've used elsewhere as a No-Ancestral proxy)
+#   'ancestral' — ancestral ckpt + FULL-graph adjacency at inference
+#                 (upper-bound baseline: sees the DAG)
 UWYK_VARIANT   = os.environ.get('UWYK_VARIANT', 'baseline').lower()
-if UWYK_VARIANT not in ('baseline', 'noanc'):
-    raise ValueError(f"UWYK_VARIANT must be 'baseline' or 'noanc', got {UWYK_VARIANT!r}")
+if UWYK_VARIANT not in ('baseline', 'noanc', 'ancestral'):
+    raise ValueError(f"UWYK_VARIANT must be 'baseline' | 'noanc' | 'ancestral', got {UWYK_VARIANT!r}")
 # Default checkpoint = derived from UWYK_SRC (parent = uwyk repo root that has
 # experiments/checkpoints/). Users can still override UWYK_CKPT_DIR explicitly.
 _UWYK_ROOT = os.path.dirname(os.path.abspath(UWYK_SRC.rstrip('/')))
+_ANCESTRAL_CKPT = os.path.join(_UWYK_ROOT,
+    'experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0')
 _DEFAULT_CKPT = {
-    'baseline': os.path.join(_UWYK_ROOT, 'experiments/checkpoints/no_graph_conditioning/unconditional'),
-    'noanc':    os.path.join(_UWYK_ROOT, 'experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0'),
+    'baseline':  os.path.join(_UWYK_ROOT, 'experiments/checkpoints/no_graph_conditioning/unconditional'),
+    'noanc':     _ANCESTRAL_CKPT,
+    'ancestral': _ANCESTRAL_CKPT,
 }[UWYK_VARIANT]
 UWYK_CKPT_DIR  = os.environ.get('UWYK_CKPT_DIR', _DEFAULT_CKPT)
 
@@ -143,11 +149,20 @@ mean_y_t1 = float(y_train[t_train_orig == 1].mean())
 t_train   = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
 uwyk_model.fit(X_train, t_train, y_train)
 
-# Baseline uses zero-adjacency (no graph info)
-adj = np.zeros((NUM_FEATURES + 2, NUM_FEATURES + 2), dtype=np.float32)
+# Adjacency at inference — depends on variant.
+#   ancestral → T→Y=1, X_i→T=1, X_i→Y=1 for real features (full DAG)
+#   baseline/noanc → zero for real features (no info)
+# In both cases, padded feats set to -1 (absent).
 n_real_features = 2   # only first two features are real; rest are NaN
+adj = np.zeros((NUM_FEATURES + 2, NUM_FEATURES + 2), dtype=np.float32)
+T_idx, Y_idx, feat_offset = 0, 1, 2
+if UWYK_VARIANT == 'ancestral':
+    adj[T_idx, Y_idx] = 1.0
+    for i in range(n_real_features):
+        adj[feat_offset + i, T_idx] = 1.0
+        adj[feat_offset + i, Y_idx] = 1.0
 for i in range(n_real_features, NUM_FEATURES):
-    fi = 2 + i
+    fi = feat_offset + i
     adj[fi, :] = -1.0; adj[:, fi] = -1.0; adj[fi, fi] = -1.0
 
 T_intv_1 = np.full((Q, 1), mean_y_t1, dtype=np.float32)
@@ -215,9 +230,12 @@ for k in range(Q):
     E_y1 = float((y_centers * p_y1).sum() * bw)
     y_at_Ey0 = float(np.interp(E_y0, y_centers, p_y0))
     y_at_Ey1 = float(np.interp(E_y1, y_centers, p_y1))
-    ax.plot(E_y0, y_at_Ey0, 'o', color='red', markersize=8, zorder=5,
-             label=r'$\mathbb{E}[Y_{do0}]$, $\mathbb{E}[Y_{do1}]$' if k == 0 else None)
-    ax.plot(E_y1, y_at_Ey1, 'o', color='red', markersize=8, zorder=5)
+    ax.plot(E_y0, y_at_Ey0, 'o', color=palette['do0'], markersize=9,
+             markeredgecolor='white', markeredgewidth=1.0, zorder=5,
+             label=r'$\mathbb{E}[Y_{do0}]$' if k == 0 else None)
+    ax.plot(E_y1, y_at_Ey1, 'o', color=palette['do1'], markersize=9,
+             markeredgecolor='white', markeredgewidth=1.0, zorder=5,
+             label=r'$\mathbb{E}[Y_{do1}]$' if k == 0 else None)
     for z in range(K):
         ax.axvline(A_VEC[z], color=palette['do0'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
         ax.axvline(B_VEC[z], color=palette['do1'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
@@ -229,8 +247,11 @@ for k in range(Q):
 
 for k in range(Q, n_rows * n_cols):
     axes[k // n_cols][k % n_cols].set_visible(False)
-_variant_pretty = {'baseline': 'Baseline (unconditional ckpt)',
-                    'noanc':    'No-Ancestral (ancestral ckpt + zero adjacency)'}[UWYK_VARIANT]
+_variant_pretty = {
+    'baseline':  'Baseline (unconditional ckpt)',
+    'noanc':     'No-Ancestral (ancestral ckpt + zero adjacency)',
+    'ancestral': 'Ancestral (ancestral ckpt + full-graph adjacency)',
+}[UWYK_VARIANT]
 fig.suptitle(f'UWYK {_variant_pretty}: marginal potential-outcome densities at '
               f'N={N_CONTEXT} — same mixture SCM (K={K})', fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])

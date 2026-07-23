@@ -330,9 +330,12 @@ def _plot_marg(ax, k, N, show_legend):
     E_y1 = float((centers * p_y1).sum() * bin_width)
     y_at_Ey0 = float(np.interp(E_y0, centers, p_y0))
     y_at_Ey1 = float(np.interp(E_y1, centers, p_y1))
-    ax.plot(E_y0, y_at_Ey0, 'o', color='red', markersize=8, zorder=5,
-             label=r'$\mathbb{E}[Y_{do0}]$, $\mathbb{E}[Y_{do1}]$' if show_legend else None)
-    ax.plot(E_y1, y_at_Ey1, 'o', color='red', markersize=8, zorder=5)
+    ax.plot(E_y0, y_at_Ey0, 'o', color=palette['do0'], markersize=9,
+             markeredgecolor='white', markeredgewidth=1.0, zorder=5,
+             label=r'$\mathbb{E}[Y_{do0}]$' if show_legend else None)
+    ax.plot(E_y1, y_at_Ey1, 'o', color=palette['do1'], markersize=9,
+             markeredgecolor='white', markeredgewidth=1.0, zorder=5,
+             label=r'$\mathbb{E}[Y_{do1}]$' if show_legend else None)
     for z in range(K):
         ax.axvline(A_VEC[z], color=palette['do0'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
         ax.axvline(B_VEC[z], color=palette['do1'], ls=':', lw=1.0, alpha=0.3 + 0.6 * post[z])
