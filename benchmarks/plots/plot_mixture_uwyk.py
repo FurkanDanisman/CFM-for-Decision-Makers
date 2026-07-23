@@ -35,8 +35,20 @@ os.makedirs(_OUTDIR, exist_ok=True)
 # Same mixture-SCM knobs as plot_mixture_scm.py — defaults reproduce that fig
 UWYK_SRC       = os.environ.get('UWYK_SRC',
                                   '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/src')
-UWYK_CKPT_DIR  = os.environ.get('UWYK_CKPT_DIR',
-                                  '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/experiments/checkpoints/no_graph_conditioning/unconditional')
+
+# UWYK_VARIANT: 'baseline' (separately-trained unconditional ckpt) or 'noanc'
+# (ancestral ckpt with zero adjacency at inference). Determines the default
+# checkpoint dir + the pipeline label. Adjacency at inference is the same in
+# both cases (all-zero for real feats, -1 for padded).
+UWYK_VARIANT   = os.environ.get('UWYK_VARIANT', 'baseline').lower()
+if UWYK_VARIANT not in ('baseline', 'noanc'):
+    raise ValueError(f"UWYK_VARIANT must be 'baseline' or 'noanc', got {UWYK_VARIANT!r}")
+_DEFAULT_CKPT = {
+    'baseline': '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/experiments/checkpoints/no_graph_conditioning/unconditional',
+    'noanc':    '/Users/furkandanisman/.claude/jobs/7758df90/tmp/uwyk_upstream/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0',
+}[UWYK_VARIANT]
+UWYK_CKPT_DIR  = os.environ.get('UWYK_CKPT_DIR', _DEFAULT_CKPT)
+
 N_CONTEXT      = int(os.environ.get('N_CONTEXT', 1000))
 N_CONTEXT_MAX  = int(os.environ.get('N_CONTEXT_MAX', max(2000, N_CONTEXT + 100)))
 R              = float(os.environ.get('R', 0.7))
@@ -45,7 +57,7 @@ A_VEC = [float(x) for x in os.environ.get('A', '0.4,-0.4,-0.4').split(',')]
 B_VEC = [float(x) for x in os.environ.get('B', '-0.4,-0.4,0.4').split(',')]
 SIGMA_Y = float(os.environ.get('SIGMA_Y', 0.05))
 SEED    = int(os.environ.get('SEED', 0))
-OUT_PREFIX = os.environ.get('OUT_PREFIX', 'mixture3_uwyk_baseline')
+OUT_PREFIX = os.environ.get('OUT_PREFIX', f'mixture3_uwyk_{UWYK_VARIANT}')
 K = len(A_VEC)
 _ANGLES_DEG = [90.0, 210.0, 330.0][:K]
 MU_2D = np.array([[R * np.cos(np.deg2rad(a)), R * np.sin(np.deg2rad(a))]
@@ -214,7 +226,9 @@ for k in range(Q):
 
 for k in range(Q, n_rows * n_cols):
     axes[k // n_cols][k % n_cols].set_visible(False)
-fig.suptitle(f'UWYK-Baseline marginal potential-outcome densities at '
+_variant_pretty = {'baseline': 'Baseline (unconditional ckpt)',
+                    'noanc':    'No-Ancestral (ancestral ckpt + zero adjacency)'}[UWYK_VARIANT]
+fig.suptitle(f'UWYK {_variant_pretty}: marginal potential-outcome densities at '
               f'N={N_CONTEXT} — same mixture SCM (K={K})', fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
 out_path = os.path.join(_OUTDIR, f'{OUT_PREFIX}_marginals.png')
