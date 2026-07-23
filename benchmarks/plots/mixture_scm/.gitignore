@@ -1,0 +1,3 @@
+# Ignore locally-regenerated mixture PNGs so pulls don't clash. The canonical
+# copies live on whoever commits them last from any machine.
+mixture3_*.png
