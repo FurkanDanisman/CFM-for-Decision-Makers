@@ -11,7 +11,8 @@ training/
 ├── train_cfm.py           production trainer — reproduces the shipped ckpt
 ├── train_cfm_small.py     debug / laptop trainer (smaller model, shorter run)
 ├── data/
-│   └── PairedInterventionalDataset.py   streaming dataset (SCM → paired outcomes)
+│   ├── PairedInterventionalDataset.py   UWYK SCM → paired outcomes
+│   └── PairedDoPFNDataset.py            Do-PFN SCM → paired outcomes
 ├── docs/
 │   ├── CFM_2D_BarDistribution_Design.md
 │   └── prior_summary.md
@@ -88,6 +89,26 @@ whose targets contain fewer than 5 unique values (mirrors UWYK's own
 
 **No pre-generated dataset on disk.** The prior draws are cheap enough
 (~0.2 s per SCM at N=1000) that streaming is faster than reading a corpus.
+
+### Do-PFN paired data
+
+`data/PairedDoPFNDataset.py` applies the same marginal-to-joint conversion to
+Do-PFN's SCM prior. Mirroring the UWYK integration, CFM owns the paired
+propagation and preprocessing while importing Do-PFN's original prior through
+`DOPFN_SRC`.
+
+Both arms reuse the same SCM, non-treatment exogenous variables, and mechanism
+noise. The returned fields are `X_obs`, `T_obs`, `Y_obs`, `X_intv`, `Y_do0`,
+and `Y_do1`. Outcome scaling is fitted on `Y_obs` only, so the same transform
+is available at inference and counterfactual outcomes may use the 2D head's
+outer regions.
+
+This dataset is not yet wired into `train_cfm.py`. Its focused tests run with:
+
+```bash
+DOPFN_SRC=/path/to/Do-PFN \
+python -m pytest training/data/test_paired_dopfn_dataset.py -v
+```
 
 ## The shipped checkpoint
 
