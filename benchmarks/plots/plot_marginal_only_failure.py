@@ -188,71 +188,93 @@ def build_phantoms_v2_figure():
       Row 3  three TRUE p(τ)  (colored frames + bold per-case titles)
     No arrows, no suptitle. τ modes at {−3, −1, +1, +3}.
     """
-    fig = plt.figure(figsize=(15.5, 12))
-    gs = fig.add_gridspec(3, 3, height_ratios=[1.4, 0.9, 1.2],
-                           hspace=0.55, wspace=0.30,
-                           left=0.06, right=0.98, top=0.98, bottom=0.05)
+    # Neutral gray palette for the shared marginals so they read as "input"
+    # rather than being confused with any of the coloured cases.
+    GRAY_DARK   = '#4A4A4A'
+    GRAY_MEDIUM = '#8C8C8C'
+
+    fig = plt.figure(figsize=(14, 11.5))
+    # Tighter spacing + slightly narrower row 2 so the layout reads as one
+    # compact block instead of three separated bands.
+    gs = fig.add_gridspec(3, 3, height_ratios=[1.35, 0.85, 1.1],
+                           hspace=0.32, wspace=0.20,
+                           left=0.06, right=0.98, top=0.97, bottom=0.055)
 
     # Row 1: joints
     extent = [GRID_Y.min(), GRID_Y.max(), GRID_Y.min(), GRID_Y.max()]
     for c, ((label, jp, real_taus), color) in enumerate(zip(CASES, CASE_COLORS)):
         ax = fig.add_subplot(gs[0, c])
         Z = kde_2d(jp, GRID_Y, GRID_Y)
-        ax.imshow(Z.T, origin='lower', extent=extent, cmap='Greys', aspect='auto')
+        ax.imshow(Z.T, origin='lower', extent=extent, cmap='Greys',
+                    aspect='auto', vmin=0, vmax=Z.max() * 1.15)
         for (y0, y1) in [(-1, -2), (-1, +2), (+1, -2), (+1, +2)]:
             active = any(pp[0] == (y0, y1) for pp in jp)
             ax.plot(y0, y1, 'o',
                     color=color if active else 'lightgray',
-                    markersize=(15 if active else 7),
+                    markersize=(16 if active else 8),
                     markeredgecolor='black', markeredgewidth=1.4, zorder=5)
         for t in ALL_TAUS:
             xs = np.linspace(-4, 4, 30)
-            ax.plot(xs, xs + t, ls='--', color=color, lw=0.6, alpha=0.35)
+            ax.plot(xs, xs + t, ls='--', color=color, lw=0.6, alpha=0.30)
         for spine in ax.spines.values():
             spine.set_edgecolor(color); spine.set_linewidth(2.4)
         ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
         ax.set_xlabel(r'$Y_{do0}$'); ax.set_ylabel(r'$Y_{do1}$')
         ax.set_title(f'{label}   joint $p(Y_{{do0}}, Y_{{do1}})$',
-                      fontsize=12, color=color, fontweight='bold')
+                      fontsize=12, color=color, fontweight='bold', pad=8)
+        ax.tick_params(axis='both', which='both', length=3, labelsize=9)
 
-    # Row 2: shared marginal, single centered panel
+    # Row 2: shared marginal — GRAY palette so it doesn't clash with the
+    # per-case colors around it.
     ax_marg = fig.add_subplot(gs[1, 1])
     p_y0 = kde_1d(Y0_CENTRES, np.array([0.5, 0.5]), GRID_Y)
     p_y1 = kde_1d(Y1_CENTRES, np.array([0.5, 0.5]), GRID_Y)
-    ax_marg.fill_between(GRID_Y, p_y0, alpha=0.35, color='steelblue')
-    ax_marg.plot(GRID_Y, p_y0, color='steelblue', lw=2.2, label=r'$p(Y_{do0})$')
-    ax_marg.fill_between(GRID_Y, p_y1, alpha=0.35, color='#7B3E9E')
-    ax_marg.plot(GRID_Y, p_y1, color='#7B3E9E', lw=2.2, label=r'$p(Y_{do1})$')
+    ax_marg.fill_between(GRID_Y, p_y0, alpha=0.55, color=GRAY_DARK,
+                          linewidth=0)
+    ax_marg.plot(GRID_Y, p_y0, color=GRAY_DARK, lw=2.0,
+                  label=r'$p(Y_{do0})$')
+    ax_marg.fill_between(GRID_Y, p_y1, alpha=0.35, color=GRAY_MEDIUM,
+                          linewidth=0, hatch='///', edgecolor=GRAY_DARK)
+    ax_marg.plot(GRID_Y, p_y1, color=GRAY_MEDIUM, lw=2.0, ls='--',
+                  label=r'$p(Y_{do1})$')
     ax_marg.set_xlim(-4, 4)
+    ax_marg.set_ylim(0, 1.55)
     ax_marg.set_xlabel(r'$Y$')
     ax_marg.set_ylabel('density')
     ax_marg.set_title(r'Shared marginals — identical across A, B, C',
-                        fontsize=12, fontweight='bold')
-    ax_marg.legend(fontsize=10, loc='upper right')
+                        fontsize=12, fontweight='bold', pad=8, color=GRAY_DARK)
+    ax_marg.legend(fontsize=10, loc='upper right', frameon=True, framealpha=0.95)
     for spine in ax_marg.spines.values():
-        spine.set_edgecolor('#444'); spine.set_linewidth(1.6)
+        spine.set_edgecolor(GRAY_DARK); spine.set_linewidth(1.6)
+    ax_marg.tick_params(axis='both', which='both', length=3, labelsize=9)
+    ax_marg.grid(alpha=0.20)
 
-    # Row 3: TRUE p(τ) per case  (previously row 2 of the phantoms figure)
+    # Row 3: TRUE p(τ) per case
     for c, ((label, jp, real_taus), color) in enumerate(zip(CASES, CASE_COLORS)):
         ax = fig.add_subplot(gs[2, c])
         p_tau = kde_tau(jp, GRID_TAU)
-        ax.fill_between(GRID_TAU, p_tau, alpha=0.30, color=color)
-        ax.plot(GRID_TAU, p_tau, color=color, lw=2.2)
+        ax.fill_between(GRID_TAU, p_tau, alpha=0.30, color=color, linewidth=0)
+        ax.plot(GRID_TAU, p_tau, color=color, lw=2.4)
         for t in ALL_TAUS:
             ax.axvline(t, color='gray', ls=':', lw=0.7, alpha=0.4)
         for t in real_taus:
             ax.plot(t, 0, marker='v', color=color, markersize=12,
-                    markeredgecolor='white', markeredgewidth=0.8, zorder=5, clip_on=False)
+                    markeredgecolor='white', markeredgewidth=0.8, zorder=5,
+                    clip_on=False)
         for spine in ax.spines.values():
             spine.set_edgecolor(color); spine.set_linewidth(2.4)
         real_str = '{' + ', '.join(f'{t:+d}' for t in real_taus) + '}'
-        ax.set_title(f'TRUE  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
-                      fontsize=11, color=color, fontweight='bold')
+        # Prefix with the case letter (A / B / C) so row 3 reads as clearly
+        # paired with row 1 without having to glance at the colour alone.
+        case_letter = label.split('.')[0].strip()   # 'A', 'B', or 'C'
+        ax.set_title(f'{case_letter}. TRUE  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
+                      fontsize=11, color=color, fontweight='bold', pad=8)
         ax.set_xlim(-6, 6)
         ax.set_ylim(0, 1.05)
         ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$')
         if c == 0: ax.set_ylabel(r'$p(\tau)$')
-        ax.grid(alpha=0.25)
+        ax.grid(alpha=0.20)
+        ax.tick_params(axis='both', which='both', length=3, labelsize=9)
 
     return fig
 
