@@ -5,7 +5,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --array=0-410%50
+#SBATCH --array=0-499%50
 # ─────────────────────────────────────────────────────────────────────────────
 # Backfill UWYK No-Ancestral (ancestral ckpt + zero adjacency at inference)
 # into existing RealCause Table 3 npz files WITHOUT touching Do-PFN /
