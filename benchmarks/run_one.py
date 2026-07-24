@@ -201,6 +201,60 @@ def _run_noanc_backfill(args, out_file):
     _uwyk_only_backfill(args, out_file, variant='noanc')
 
 
+def _run_ours_ot_backfill(args, out_file):
+    """Load OURS, rerun the OURS pipeline on the dataset, merge OT-mode + OT-mean
+    into an existing npz. Leaves Do-PFN/UWYK/other OURS fields untouched.
+    Runtime is comparable to the full submit.sbatch task (MALC + workers)."""
+    t0 = time.time()
+    _orig_torch_load = torch.load
+    def _p_load(*a, **kw):
+        kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
+    torch.load = _p_load
+
+    sys.path.insert(0, args.dopfn)
+    ds_mod = types.ModuleType('datasets')
+    _src = open(os.path.join(args.dopfn, 'datasets/__init__.py')).read().split('def load_semi_real')[0]
+    exec(_src, ds_mod.__dict__)
+    sys.modules['datasets'] = ds_mod
+    sys.path.insert(0, args.causalpfn)
+
+    _log(f"[ot-only] loading {args.dataset} r{args.realization}", t0)
+    cd_raw, ad = load_realization(args.dataset, args.realization)
+    if args.dataset == 'PSIDbal':
+        cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+
+    _log("[ot-only] loading OURS", t0)
+    (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
+     wasserstein_barycenter_1d) = _load_our_model(args)
+
+    _log("[ot-only] rerunning OURS pipeline (needed for barycenter)", t0)
+    ours = ours_pipeline(cd_raw, our_model, edges_np, J, bin_width, NUM_FEATURES,
+                          centers, args, wasserstein_barycenter_1d)
+
+    true_cate = _to_np(cd_raw.true_cate).reshape(-1)
+    true_ate  = float(getattr(ad, 'true_ate', np.mean(true_cate)))
+
+    extras = {
+        'ate_ours_ot_mode': np.array(ours['ours_ot_mode_ate'], dtype=np.float64),
+        'err_ours_ot_mode': np.array(
+            abs(ours['ours_ot_mode_ate'] - true_ate) / max(abs(true_ate), 1e-9),
+            dtype=np.float64),
+        'ate_ours_ot_mean': np.array(ours['ours_ot_mean_ate'], dtype=np.float64),
+        'err_ours_ot_mean': np.array(
+            abs(ours['ours_ot_mean_ate'] - true_ate) / max(abs(true_ate), 1e-9),
+            dtype=np.float64),
+    }
+    with np.load(out_file, allow_pickle=True) as f:
+        payload = {k: f[k] for k in f.files}
+    payload.update(extras)
+    tmp_path = out_file + '.tmp.npz'
+    np.savez(tmp_path, **payload)
+    os.replace(tmp_path, out_file)
+    _log(f"[ot-only] merged into {out_file}  "
+         f"(OT-mode ATE={float(extras['ate_ours_ot_mode']):.3f}  "
+         f"OT-mean ATE={float(extras['ate_ours_ot_mean']):.3f})", t0)
+
+
 
 
 # ── main ────────────────────────────────────────────────────────────────────
@@ -237,6 +291,13 @@ def main():
                           '+ zero adjacency at inference) and merge into the existing '
                           'npz. Skip everything else. Uses --uwyk-ckpt-dir. If the target '
                           'npz already carries pehe_uwyk_noanc, this task is a no-op.')
+    ap.add_argument('--only-ours-ot', action='store_true',
+                     help='Backfill mode: rerun OURS and merge ONLY the OT-mode and '
+                          'OT-mean fields (ate_ours_ot_mode, err_ours_ot_mode, '
+                          'ate_ours_ot_mean, err_ours_ot_mean) into the existing npz. '
+                          'Skips Do-PFN, UWYK. Full OURS rerun (MALC + workers), so '
+                          'compute cost is comparable to a fresh submit.sbatch task. '
+                          'If the target npz already carries ate_ours_ot_mean, this is a no-op.')
     args = ap.parse_args()
 
     n_avail = DATASET_N_TABLES.get(args.dataset, 100)
@@ -269,6 +330,16 @@ def main():
                 print(f'[SKIP] {out_file} already has uwyk_noanc fields.', flush=True)
                 return
         _run_noanc_backfill(args, out_file); return
+
+    if args.only_ours_ot:
+        if not os.path.exists(out_file):
+            print(f'[SKIP] {out_file} does not exist yet — run the full pipeline first.', flush=True)
+            return
+        with np.load(out_file, allow_pickle=True) as _f:
+            if 'ate_ours_ot_mean' in _f.files:
+                print(f'[SKIP] {out_file} already has ate_ours_ot_mean.', flush=True)
+                return
+        _run_ours_ot_backfill(args, out_file); return
 
     if os.path.exists(out_file):
         print(f'[SKIP] {out_file} exists.', flush=True); return
