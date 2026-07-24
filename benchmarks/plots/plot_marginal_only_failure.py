@@ -354,8 +354,14 @@ _PANEL_DIR = os.path.join(_OUTDIR, 'panels')
 os.makedirs(_PANEL_DIR, exist_ok=True)
 
 
-def _save_panel_joint(label, jp, color, name):
-    """Render one joint distribution as a stand-alone square figure."""
+def _save_panel_joint(label, jp, color, name, dashed_frame=False):
+    """Render one joint distribution as a stand-alone square figure.
+
+    dashed_frame=True renders the coloured border as a dashed rectangle
+    overlay (spine.set_linestyle('--') looks broken on short edges), used
+    for the Independent case A to mark it as the marginal-only model's
+    implicit assumption rather than a claim about the true coupling.
+    """
     fig, ax = plt.subplots(figsize=(4.6, 4.6))
     Z = kde_2d(jp, GRID_Y, GRID_Y)
     ax.imshow(Z.T, origin='lower',
@@ -370,8 +376,19 @@ def _save_panel_joint(label, jp, color, name):
     for t in ALL_TAUS:
         xs = np.linspace(-4, 4, 30)
         ax.plot(xs, xs + t, ls='--', color=color, lw=0.6, alpha=0.30)
-    for spine in ax.spines.values():
-        spine.set_edgecolor(color); spine.set_linewidth(2.4)
+    if dashed_frame:
+        # Hide the built-in solid spines and overlay a dashed rectangle border
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        from matplotlib.patches import Rectangle
+        border = Rectangle((-4, -4), 8, 8, fill=False,
+                            edgecolor=color, linewidth=2.4,
+                            linestyle=(0, (6, 4)),   # long-dash pattern
+                            zorder=10, clip_on=False)
+        ax.add_patch(border)
+    else:
+        for spine in ax.spines.values():
+            spine.set_edgecolor(color); spine.set_linewidth(2.4)
     ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
     ax.set_xlabel(r'$Y_{do0}$'); ax.set_ylabel(r'$Y_{do1}$')
     ax.set_title(f'{label}   joint $p(Y_{{do0}}, Y_{{do1}})$',
@@ -444,9 +461,10 @@ def _save_panel_te(label, jp, real_taus, color, name):
     print(f'[save] {path}')
 
 
-# joints A, B, C
+# joints A, B, C — A gets a dashed frame (marginal-only implicit assumption)
 for (label, jp, _real), color, tag in zip(CASES, CASE_COLORS, ['A', 'B', 'C']):
-    _save_panel_joint(label, jp, color, f'panel_joint_{tag}')
+    _save_panel_joint(label, jp, color, f'panel_joint_{tag}',
+                       dashed_frame=(tag == 'A'))
 
 # shared marginals
 _save_panel_marginals('panel_marginals')
