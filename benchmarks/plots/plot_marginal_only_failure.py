@@ -272,10 +272,14 @@ def build_phantoms_v2_figure(with_arrows: bool = False):
         for spine in ax.spines.values():
             spine.set_edgecolor(color); spine.set_linewidth(2.4)
         real_str = '{' + ', '.join(f'{t:+d}' for t in real_taus) + '}'
+        # E[τ] under this p(τ) — the estimation a mean-based model would give.
+        E_tau = float((GRID_TAU * p_tau).sum() * (GRID_TAU[1] - GRID_TAU[0]))
+        ax.axvline(E_tau, color=color, ls='--', lw=1.8, alpha=0.95, zorder=6,
+                    label=fr'$\mathbb{{E}}[\tau]={E_tau:+.2f}$')
         # Prefix with the case letter (A / B / C) so row 3 reads as clearly
         # paired with row 1 without having to glance at the colour alone.
         case_letter = label.split('.')[0].strip()   # 'A', 'B', or 'C'
-        ax.set_title(f'{case_letter}. TRUE  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
+        ax.set_title(f'{case_letter}.  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
                       fontsize=11, color=color, fontweight='bold', pad=8)
         ax.set_xlim(-6, 6)
         ax.set_ylim(0, 1.05)
@@ -283,6 +287,7 @@ def build_phantoms_v2_figure(with_arrows: bool = False):
         if c == 0: ax.set_ylabel(r'$p(\tau)$')
         ax.grid(alpha=0.20)
         ax.tick_params(axis='both', which='both', length=3, labelsize=9)
+        ax.legend(fontsize=9, loc='upper right', frameon=True, framealpha=0.95)
 
     # Arrows: joints ↘↓↙ marginal, then marginal ↙↓↘ TE. Colored per case.
     if with_arrows:
@@ -416,17 +421,22 @@ def _save_panel_te(label, jp, real_taus, color, name):
     for t in real_taus:
         ax.plot(t, 0, marker='v', color=color, markersize=12,
                 markeredgecolor='white', markeredgewidth=0.8, zorder=5, clip_on=False)
+    # E[τ] estimation line — dashed vertical at the mean of the distribution.
+    E_tau = float((GRID_TAU * p_tau).sum() * (GRID_TAU[1] - GRID_TAU[0]))
+    ax.axvline(E_tau, color=color, ls='--', lw=1.8, alpha=0.95, zorder=6,
+                label=fr'$\mathbb{{E}}[\tau]={E_tau:+.2f}$')
     for spine in ax.spines.values():
         spine.set_edgecolor(color); spine.set_linewidth(2.4)
     real_str = '{' + ', '.join(f'{t:+d}' for t in real_taus) + '}'
     case_letter = label.split('.')[0].strip()
-    ax.set_title(f'{case_letter}. TRUE  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
+    ax.set_title(f'{case_letter}.  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
                   fontsize=11, color=color, fontweight='bold', pad=8)
     ax.set_xlim(-6, 6); ax.set_ylim(0, 1.05)
     ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$')
     ax.set_ylabel(r'$p(\tau)$')
     ax.grid(alpha=0.20)
     ax.tick_params(axis='both', which='both', length=3, labelsize=9)
+    ax.legend(fontsize=9, loc='upper right', frameon=True, framealpha=0.95)
     fig.tight_layout()
     path = os.path.join(_PANEL_DIR, f'{name}.png')
     fig.savefig(path, dpi=140, bbox_inches='tight')
