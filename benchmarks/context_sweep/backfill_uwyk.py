@@ -38,7 +38,7 @@ _HERE  = os.path.dirname(os.path.abspath(__file__))
 _BENCH = os.path.dirname(_HERE)
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _HERE)
-from methods.uwyk import uwyk_no_ancestral_pipeline
+from methods.uwyk import uwyk_no_ancestral_pipeline, uwyk_ancestral_pipeline
 
 
 NAME_RE = re.compile(r'^(?P<src>prior|poly)_seed(?P<seed>\d+)_N(?P<N>\d+)\.npz$')
@@ -134,10 +134,13 @@ def main():
                     help='0-based index of this shard when running in an array')
     ap.add_argument('--n-shards',      type=int, default=1,
                     help='total number of shards (interleaved striping of todo)')
-    ap.add_argument('--variant',       default='noanc', choices=['noanc', 'baseline'],
+    ap.add_argument('--variant',       default='noanc',
+                    choices=['noanc', 'baseline', 'ancestral'],
                     help='which UWYK variant this run produces (chooses the output '
                          'field names pehe_uwyk_<variant> etc.). --uwyk-ckpt-dir '
-                         'must be set to match this variant.')
+                         'must be set to match this variant. `ancestral` uses '
+                         'the full-graph adjacency at inference; noanc/baseline '
+                         'both use zero adjacency but from different ckpts.')
     args = ap.parse_args()
     assert 0 <= args.shard_idx < args.n_shards, "shard-idx must be in [0, n-shards)"
 
@@ -184,7 +187,9 @@ def main():
             cd = _sample_scm(src, seed, N, args.n_test, args.uwyk_src, args.causalpfn)
             true_cate = cd.true_cate.numpy().reshape(-1) if hasattr(cd.true_cate, 'numpy') \
                         else np.asarray(cd.true_cate).reshape(-1)
-            uwyk_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd)
+            _pipeline = (uwyk_ancestral_pipeline if args.variant == 'ancestral'
+                          else uwyk_no_ancestral_pipeline)
+            uwyk_cate = _pipeline(uwyk_model, cd)
             v = args.variant
             extras = {
                 f'pehe_uwyk_{v}': np.array(_pehe(true_cate, uwyk_cate), dtype=np.float64),

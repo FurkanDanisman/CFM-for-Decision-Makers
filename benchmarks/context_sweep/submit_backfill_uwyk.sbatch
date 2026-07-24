@@ -9,11 +9,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Backfill a UWYK variant's predictions into existing sweep npz files.
 #
-# Two variants share this sbatch, selected by the VARIANT env var:
+# Three variants share this sbatch, selected by the VARIANT env var:
 #   VARIANT=noanc     (default) — Ancestral ckpt + zero adjacency proxy
 #   VARIANT=baseline           — separately-trained unconditional ckpt
-# For VARIANT=baseline the sbatch auto-swaps UWYK_CKPT_DIR to the unconditional
-# checkpoint dir; override UWYK_CKPT_DIR explicitly if your path differs.
+#   VARIANT=ancestral          — Ancestral ckpt + FULL-graph adjacency
+# For each variant the sbatch auto-selects the correct UWYK_CKPT_DIR;
+# override UWYK_CKPT_DIR explicitly if your path differs.
 #
 # Each array task processes 1/N_SHARDS of the todo list (interleaved stripe),
 # so files finish in balanced time across the array.
@@ -32,7 +33,7 @@
 # Env overrides:
 #   DEPLOY_ROOT — root that contains R-PFN/ external/ venv/ results_sweep/
 #   SOURCES_FILTER — "prior" | "poly"    (required — one at a time)
-#   VARIANT        — "noanc" | "baseline"    (default: noanc)
+#   VARIANT        — "noanc" | "baseline" | "ancestral"  (default: noanc)
 #   N_SHARDS       — must match the array size (default 20 → --array=0-19)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -49,15 +50,19 @@ EXTERNAL_ROOT="${EXTERNAL_ROOT:-$DEPLOY_ROOT/external}"
 UWYK_SRC="${UWYK_SRC:-$EXTERNAL_ROOT/uwyk/src}"
 
 VARIANT="${VARIANT:-noanc}"
+_ANCESTRAL_CKPT="$EXTERNAL_ROOT/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 case "$VARIANT" in
     noanc)
-        UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+        UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$_ANCESTRAL_CKPT}"
+        ;;
+    ancestral)
+        UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$_ANCESTRAL_CKPT}"
         ;;
     baseline)
         UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$EXTERNAL_ROOT/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional}"
         ;;
     *)
-        echo "[error] unknown VARIANT=$VARIANT (expected noanc|baseline)" >&2; exit 2
+        echo "[error] unknown VARIANT=$VARIANT (expected noanc|baseline|ancestral)" >&2; exit 2
         ;;
 esac
 CAUSALPFN="${CAUSALPFN:-$EXTERNAL_ROOT/causalpfn}"

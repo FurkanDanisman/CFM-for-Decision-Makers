@@ -20,6 +20,7 @@ PRIOR_ATE_TOL = 1e-4
 
 
 VARIANTS = [
+    ('UWYK Full Ancestral',    'uwyk_ancestral'),
     ('UWYK No-Ancestral',      'uwyk_noanc'),
     ('UWYK Baseline',          'uwyk_baseline'),
     ('OURS mean',              'ours_mean'),
