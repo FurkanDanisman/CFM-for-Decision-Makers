@@ -194,8 +194,11 @@ def build_phantoms_v2_figure(with_arrows: bool = False):
     """
     # Neutral gray palette for the shared marginals so they read as "input"
     # rather than being confused with any of the coloured cases.
-    GRAY_DARK   = '#4A4A4A'
-    GRAY_MEDIUM = '#8C8C8C'
+    # Warm amber palette — distinct from the per-case colors and easier
+    # on the eye than the previous grays.
+    MARG_DARK   = '#B8860B'    # dark goldenrod   (for p(Y_do0))
+    MARG_LIGHT  = '#DAA520'    # goldenrod        (for p(Y_do1))
+    GRAY_DARK, GRAY_MEDIUM = MARG_DARK, MARG_LIGHT   # keep old names local
 
     fig = plt.figure(figsize=(14, 11.5))
     # Tighter spacing + slightly narrower row 2 so the layout reads as one
@@ -248,7 +251,7 @@ def build_phantoms_v2_figure(with_arrows: bool = False):
     ax_marg.set_ylim(0, 1.55)
     ax_marg.set_xlabel(r'$Y$')
     ax_marg.set_ylabel('density')
-    ax_marg.set_title(r'Shared marginals — identical across A, B, C',
+    ax_marg.set_title('Marginal',
                         fontsize=12, fontweight='bold', pad=8, color=GRAY_DARK)
     ax_marg.legend(fontsize=10, loc='upper right', frameon=True, framealpha=0.95)
     for spine in ax_marg.spines.values():
@@ -405,20 +408,20 @@ def _save_panel_marginals(name):
     fig, ax = plt.subplots(figsize=(6.5, 3.8))
     p_y0 = kde_1d(Y0_CENTRES, np.array([0.5, 0.5]), GRID_Y)
     p_y1 = kde_1d(Y1_CENTRES, np.array([0.5, 0.5]), GRID_Y)
-    GRAY_DARK, GRAY_MEDIUM = '#4A4A4A', '#8C8C8C'
-    ax.fill_between(GRID_Y, p_y0, alpha=0.55, color=GRAY_DARK, linewidth=0)
-    ax.plot(GRID_Y, p_y0, color=GRAY_DARK, lw=2.0, label=r'$p(Y_{do0})$')
-    ax.fill_between(GRID_Y, p_y1, alpha=0.35, color=GRAY_MEDIUM,
-                     linewidth=0, hatch='///', edgecolor=GRAY_DARK)
-    ax.plot(GRID_Y, p_y1, color=GRAY_MEDIUM, lw=2.0, ls='--',
+    MARG_DARK, MARG_LIGHT = '#B8860B', '#DAA520'
+    ax.fill_between(GRID_Y, p_y0, alpha=0.55, color=MARG_DARK, linewidth=0)
+    ax.plot(GRID_Y, p_y0, color=MARG_DARK, lw=2.0, label=r'$p(Y_{do0})$')
+    ax.fill_between(GRID_Y, p_y1, alpha=0.35, color=MARG_LIGHT,
+                     linewidth=0, hatch='///', edgecolor=MARG_DARK)
+    ax.plot(GRID_Y, p_y1, color=MARG_LIGHT, lw=2.0, ls='--',
              label=r'$p(Y_{do1})$')
     ax.set_xlim(-4, 4); ax.set_ylim(0, 1.55)
     ax.set_xlabel(r'$Y$'); ax.set_ylabel('density')
-    ax.set_title(r'Shared marginals — identical across A, B, C',
-                  fontsize=12, fontweight='bold', pad=8, color=GRAY_DARK)
+    ax.set_title('Marginal',
+                  fontsize=12, fontweight='bold', pad=8, color=MARG_DARK)
     ax.legend(fontsize=10, loc='upper right', frameon=True, framealpha=0.95)
     for spine in ax.spines.values():
-        spine.set_edgecolor(GRAY_DARK); spine.set_linewidth(1.6)
+        spine.set_edgecolor(MARG_DARK); spine.set_linewidth(1.6)
     ax.tick_params(axis='both', which='both', length=3, labelsize=9)
     ax.grid(alpha=0.20)
     fig.tight_layout()
