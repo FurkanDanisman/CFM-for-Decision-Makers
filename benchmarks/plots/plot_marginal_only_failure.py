@@ -342,3 +342,105 @@ for suffix, with_arrows in [('phantoms_v2', False), ('phantoms_v2_arrows', True)
     fig.savefig(out_path, dpi=140, bbox_inches='tight')
     plt.close(fig)
     print(f'[save] {out_path}')
+
+
+# ── Individual panels — each subplot as its own PNG ───────────────────────
+_PANEL_DIR = os.path.join(_OUTDIR, 'panels')
+os.makedirs(_PANEL_DIR, exist_ok=True)
+
+
+def _save_panel_joint(label, jp, color, name):
+    """Render one joint distribution as a stand-alone square figure."""
+    fig, ax = plt.subplots(figsize=(4.6, 4.6))
+    Z = kde_2d(jp, GRID_Y, GRID_Y)
+    ax.imshow(Z.T, origin='lower',
+                extent=[GRID_Y.min(), GRID_Y.max(), GRID_Y.min(), GRID_Y.max()],
+                cmap='Greys', aspect='auto', vmin=0, vmax=Z.max() * 1.15)
+    for (y0, y1) in [(-1, -2), (-1, +2), (+1, -2), (+1, +2)]:
+        active = any(pp[0] == (y0, y1) for pp in jp)
+        ax.plot(y0, y1, 'o',
+                color=color if active else 'lightgray',
+                markersize=(16 if active else 8),
+                markeredgecolor='black', markeredgewidth=1.4, zorder=5)
+    for t in ALL_TAUS:
+        xs = np.linspace(-4, 4, 30)
+        ax.plot(xs, xs + t, ls='--', color=color, lw=0.6, alpha=0.30)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(color); spine.set_linewidth(2.4)
+    ax.set_xlim(-4, 4); ax.set_ylim(-4, 4)
+    ax.set_xlabel(r'$Y_{do0}$'); ax.set_ylabel(r'$Y_{do1}$')
+    ax.set_title(f'{label}   joint $p(Y_{{do0}}, Y_{{do1}})$',
+                  fontsize=12, color=color, fontweight='bold', pad=8)
+    ax.tick_params(axis='both', which='both', length=3, labelsize=9)
+    fig.tight_layout()
+    path = os.path.join(_PANEL_DIR, f'{name}.png')
+    fig.savefig(path, dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    print(f'[save] {path}')
+
+
+def _save_panel_marginals(name):
+    fig, ax = plt.subplots(figsize=(6.5, 3.8))
+    p_y0 = kde_1d(Y0_CENTRES, np.array([0.5, 0.5]), GRID_Y)
+    p_y1 = kde_1d(Y1_CENTRES, np.array([0.5, 0.5]), GRID_Y)
+    GRAY_DARK, GRAY_MEDIUM = '#4A4A4A', '#8C8C8C'
+    ax.fill_between(GRID_Y, p_y0, alpha=0.55, color=GRAY_DARK, linewidth=0)
+    ax.plot(GRID_Y, p_y0, color=GRAY_DARK, lw=2.0, label=r'$p(Y_{do0})$')
+    ax.fill_between(GRID_Y, p_y1, alpha=0.35, color=GRAY_MEDIUM,
+                     linewidth=0, hatch='///', edgecolor=GRAY_DARK)
+    ax.plot(GRID_Y, p_y1, color=GRAY_MEDIUM, lw=2.0, ls='--',
+             label=r'$p(Y_{do1})$')
+    ax.set_xlim(-4, 4); ax.set_ylim(0, 1.55)
+    ax.set_xlabel(r'$Y$'); ax.set_ylabel('density')
+    ax.set_title(r'Shared marginals — identical across A, B, C',
+                  fontsize=12, fontweight='bold', pad=8, color=GRAY_DARK)
+    ax.legend(fontsize=10, loc='upper right', frameon=True, framealpha=0.95)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(GRAY_DARK); spine.set_linewidth(1.6)
+    ax.tick_params(axis='both', which='both', length=3, labelsize=9)
+    ax.grid(alpha=0.20)
+    fig.tight_layout()
+    path = os.path.join(_PANEL_DIR, f'{name}.png')
+    fig.savefig(path, dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    print(f'[save] {path}')
+
+
+def _save_panel_te(label, jp, real_taus, color, name):
+    fig, ax = plt.subplots(figsize=(5.2, 3.6))
+    p_tau = kde_tau(jp, GRID_TAU)
+    ax.fill_between(GRID_TAU, p_tau, alpha=0.30, color=color, linewidth=0)
+    ax.plot(GRID_TAU, p_tau, color=color, lw=2.4)
+    for t in ALL_TAUS:
+        ax.axvline(t, color='gray', ls=':', lw=0.7, alpha=0.4)
+    for t in real_taus:
+        ax.plot(t, 0, marker='v', color=color, markersize=12,
+                markeredgecolor='white', markeredgewidth=0.8, zorder=5, clip_on=False)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(color); spine.set_linewidth(2.4)
+    real_str = '{' + ', '.join(f'{t:+d}' for t in real_taus) + '}'
+    case_letter = label.split('.')[0].strip()
+    ax.set_title(f'{case_letter}. TRUE  $p(\\tau)$    modes at $\\tau \\in$ {real_str}',
+                  fontsize=11, color=color, fontweight='bold', pad=8)
+    ax.set_xlim(-6, 6); ax.set_ylim(0, 1.05)
+    ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$')
+    ax.set_ylabel(r'$p(\tau)$')
+    ax.grid(alpha=0.20)
+    ax.tick_params(axis='both', which='both', length=3, labelsize=9)
+    fig.tight_layout()
+    path = os.path.join(_PANEL_DIR, f'{name}.png')
+    fig.savefig(path, dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    print(f'[save] {path}')
+
+
+# joints A, B, C
+for (label, jp, _real), color, tag in zip(CASES, CASE_COLORS, ['A', 'B', 'C']):
+    _save_panel_joint(label, jp, color, f'panel_joint_{tag}')
+
+# shared marginals
+_save_panel_marginals('panel_marginals')
+
+# TRUE p(τ) A, B, C
+for (label, jp, real_taus), color, tag in zip(CASES, CASE_COLORS, ['A', 'B', 'C']):
+    _save_panel_te(label, jp, real_taus, color, f'panel_te_{tag}')
