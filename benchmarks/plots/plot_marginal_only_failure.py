@@ -180,13 +180,17 @@ def build_figure(with_text: bool):
     return fig
 
 
-def build_phantoms_v2_figure():
-    """New phantoms-style variant, per user spec:
+def build_phantoms_v2_figure(with_arrows: bool = False):
+    """Phantoms-style variant:
       Row 1  three joints  (colored frames + bold per-case titles)
-      Row 2  a single shared marginal panel (no frame color, no legend text
-             beyond the density labels)
-      Row 3  three TRUE p(τ)  (colored frames + bold per-case titles)
-    No arrows, no suptitle. τ modes at {−3, −1, +1, +3}.
+      Row 2  a single shared marginal panel (gray palette, neutral frame)
+      Row 3  three TRUE p(τ)  (colored frames + A/B/C prefixed titles)
+
+    with_arrows=True adds per-case colored arrows from each joint down to the
+    shared marginal and from the marginal down to each TRUE p(τ), reinforcing
+    the "joint → marginal → TE" flow visually.
+
+    No suptitle. τ modes at {−3, −1, +1, +3}.
     """
     # Neutral gray palette for the shared marginals so they read as "input"
     # rather than being confused with any of the coloured cases.
@@ -200,10 +204,13 @@ def build_phantoms_v2_figure():
                            hspace=0.32, wspace=0.20,
                            left=0.06, right=0.98, top=0.97, bottom=0.055)
 
+    joint_axes, te_axes = [], []
+
     # Row 1: joints
     extent = [GRID_Y.min(), GRID_Y.max(), GRID_Y.min(), GRID_Y.max()]
     for c, ((label, jp, real_taus), color) in enumerate(zip(CASES, CASE_COLORS)):
         ax = fig.add_subplot(gs[0, c])
+        joint_axes.append(ax)
         Z = kde_2d(jp, GRID_Y, GRID_Y)
         ax.imshow(Z.T, origin='lower', extent=extent, cmap='Greys',
                     aspect='auto', vmin=0, vmax=Z.max() * 1.15)
@@ -252,6 +259,7 @@ def build_phantoms_v2_figure():
     # Row 3: TRUE p(τ) per case
     for c, ((label, jp, real_taus), color) in enumerate(zip(CASES, CASE_COLORS)):
         ax = fig.add_subplot(gs[2, c])
+        te_axes.append(ax)
         p_tau = kde_tau(jp, GRID_TAU)
         ax.fill_between(GRID_TAU, p_tau, alpha=0.30, color=color, linewidth=0)
         ax.plot(GRID_TAU, p_tau, color=color, lw=2.4)
@@ -276,6 +284,43 @@ def build_phantoms_v2_figure():
         ax.grid(alpha=0.20)
         ax.tick_params(axis='both', which='both', length=3, labelsize=9)
 
+    # Arrows: joints ↘↓↙ marginal, then marginal ↙↓↘ TE. Colored per case.
+    if with_arrows:
+        fig.canvas.draw()
+
+        def _bbox_center_bottom(ax):
+            bb = ax.get_position()
+            return (bb.x0 + bb.width / 2, bb.y0)
+
+        def _bbox_center_top(ax):
+            bb = ax.get_position()
+            return (bb.x0 + bb.width / 2, bb.y0 + bb.height)
+
+        _TITLE_PAD = 0.025
+        _LABEL_PAD = 0.028
+        ARROW_COLOR = '#555555'   # single neutral color for every arrow
+
+        for ax in joint_axes:
+            src_x, src_y = _bbox_center_bottom(ax)
+            dst_x, dst_y = _bbox_center_top(ax_marg)
+            src = (src_x, src_y - _LABEL_PAD)
+            dst = (dst_x, dst_y + _TITLE_PAD)
+            fig.add_artist(FancyArrowPatch(src, dst,
+                                            transform=fig.transFigure,
+                                            arrowstyle='-|>', mutation_scale=22,
+                                            color=ARROW_COLOR, lw=2.2,
+                                            shrinkA=2, shrinkB=2))
+
+        for ax in te_axes:
+            src_x, src_y = _bbox_center_bottom(ax_marg)
+            dst_x, dst_y = _bbox_center_top(ax)
+            src = (src_x, src_y - _LABEL_PAD)
+            dst = (dst_x, dst_y + _TITLE_PAD)
+            fig.add_artist(FancyArrowPatch(src, dst,
+                                            transform=fig.transFigure,
+                                            arrowstyle='-|>', mutation_scale=22,
+                                            color=ARROW_COLOR, lw=2.2,
+                                            shrinkA=2, shrinkB=2))
     return fig
 
 
@@ -291,8 +336,9 @@ for suffix, with_text in [('minimal', False), ('labelled', True)]:
     plt.close(fig)
     print(f'[save] {out_path}')
 
-fig = build_phantoms_v2_figure()
-out_path = os.path.join(_OUTDIR, 'marginal_only_failure_phantoms_v2.png')
-fig.savefig(out_path, dpi=140, bbox_inches='tight')
-plt.close(fig)
-print(f'[save] {out_path}')
+for suffix, with_arrows in [('phantoms_v2', False), ('phantoms_v2_arrows', True)]:
+    fig = build_phantoms_v2_figure(with_arrows=with_arrows)
+    out_path = os.path.join(_OUTDIR, f'marginal_only_failure_{suffix}.png')
+    fig.savefig(out_path, dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    print(f'[save] {out_path}')
