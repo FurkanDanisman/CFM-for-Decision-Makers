@@ -48,8 +48,8 @@ CKPT       = os.environ.get('CHECKPOINT', os.path.join(_REPO, 'checkpoints', 'st
 CAUSALPFN  = os.environ.get('CAUSALPFN', '')
 DOPFN      = os.environ.get('DOPFN', '')
 REALIZATION = int(os.environ.get('REALIZATION', 0))
-N_CONTEXT  = int(os.environ.get('N_CONTEXT', 10))
-N_QUERIES  = int(os.environ.get('N_QUERIES', 6))
+N_CONTEXT  = int(os.environ.get('N_CONTEXT', 200))
+N_QUERIES  = int(os.environ.get('N_QUERIES', 10))
 MALC_B     = int(os.environ.get('MALC_B', 60))
 N_EVAL     = int(os.environ.get('N_EVAL', 200))
 
@@ -197,8 +197,8 @@ for k in range(N_QUERIES):
 print('[malc] per-query p(τ) done', flush=True)
 
 
-# ── Figure 1: joint distributions ─────────────────────────────────────────
-n_cols = 3
+# ── Figure layout: 5 cols if 10 queries (2×5), else 3 cols ───────────────
+n_cols = 5 if N_QUERIES == 10 else 3
 n_rows = (N_QUERIES + n_cols - 1) // n_cols
 extent = [edges_np[0], edges_np[-1], edges_np[0], edges_np[-1]]
 
