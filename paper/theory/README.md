@@ -6,6 +6,7 @@ LaTeX source for the two theoretical sections.
 |---|---|
 | `variance_reduction.tex` | Theorem 1: joint estimator strictly dominates two-marginal in variance whenever ρ > 0 (matches `plot_variance_reduction.py`) |
 | `malc_multimodal.tex` | Extending log-concave MLE to a K-component MALC mixture — EM steps, bootstrap-based K selection, consistency proposition |
+| `bar_distribution_2d.tex` | Methodology section for the 2D BarDistribution head: three-region density, tail Gaussians with Sheppard-normalised orthant probabilities, correlation derived from the histogram, and the negative log-density loss |
 
 ## References that should live in your `.bib`
 
@@ -30,16 +31,28 @@ LaTeX source for the two theoretical sections.
   journal = {Annals of Statistics},
   volume  = {44}, number = {3}, pages = {954--981}, year = {2016}
 }
+
+@article{sheppard1899application,
+  author  = {Sheppard, W. F.},
+  title   = {On the application of the theory of error to cases of normal distribution and normal correlation},
+  journal = {Philosophical Transactions of the Royal Society of London A},
+  volume  = {192}, pages = {101--167}, year = {1899}
+}
 ```
 
 ## Usage
 
-Include both directly from your main tex file:
+Include all three sections directly from your main tex file:
 
 ```tex
-\input{paper/theory/variance_reduction.tex}
+\input{paper/theory/bar_distribution_2d.tex}
 \input{paper/theory/malc_multimodal.tex}
+\input{paper/theory/variance_reduction.tex}
 ```
+
+A natural order is BarDistribution → MALC → variance reduction, since MALC
+appears as an inference-time step referenced in the BarDistribution section
+and the variance-reduction theorem uses the joint model that both establish.
 
 Cross-reference from the body:
 - `Theorem~\ref{thm:variance-ratio}`
