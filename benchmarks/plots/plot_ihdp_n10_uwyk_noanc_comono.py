@@ -1,32 +1,23 @@
-"""IHDP demonstration — UWYK No-Ancestral pipeline (marginals + naive TE).
+"""IHDP demonstration — UWYK No-Ancestral + comonotonic coupling.
 
-Companion to plot_ihdp_n10.py. Uses the SAME IHDP realisation, SAME
-first-N training observations, and SAME 10 test queries so the resulting
-plots are directly comparable to those in
-``benchmarks/plots/ihdp_n10/UWYK-2DMALC``.
+Companion to plot_ihdp_n10_uwyk_noanc.py. Uses the SAME IHDP realisation,
+SAME first-N training observations, and SAME 10 test queries. The only
+difference is how the treatment-effect distribution is derived from the
+UWYK marginals: instead of assuming independence
+    p_τ(t) = ∫ p_{Y1}(y0 + t) p_{Y0}(y0) dy0                    (naive)
+we use the comonotonic (rank-preserving) coupling
+    U ~ Uniform(0, 1),
+    Y0 = F₀⁻¹(U),   Y1 = F₁⁻¹(U),   τ = F₁⁻¹(U) − F₀⁻¹(U)      (comonotonic)
+This is the coupling of the marginals that MINIMISES Var(τ); it is a
+defensible one-line assumption for potential outcomes because the same
+latent variable (health, ability, etc.) tends to move Y_do0 and Y_do1
+together.
 
-Since UWYK No-Ancestral outputs only 1D BarDistribution marginals per
-treatment arm — not a joint — the treatment-effect distribution can only
-be derived under an independence assumption. This script therefore
-produces:
-
-  UWYK-NOANC/
-    ihdp_n10_marginals.png    p(Y_do0), p(Y_do1) per query
-    ihdp_n10_te.png           naive independence p(τ) per query
-    ihdp_n10_ot.png           W_2 barycenter of the naive per-query p(τ)
-
-No joint plot exists for this pipeline. Runs only where the UWYK
-checkpoint is accessible (typically killarney).
-
-Environment
------------
-  REPO, CAUSALPFN, DOPFN   as in plot_ihdp_n10.py
-  UWYK_SRC                 path to Graphs4CausalFoundationModels/src
-  UWYK_CKPT_DIR            (default: ancestral checkpoint dir derived from UWYK_SRC)
-  REALIZATION, N_CONTEXT,  match the defaults of plot_ihdp_n10.py so the
-  N_QUERIES                same queries and context are used.
-  UWYK_N_SAMPLES           number of samples per query per treatment for
-                            histogram estimation of the marginals (default 1024)
+Outputs:
+  UWYK-NOANC-COMONOTONIC/
+    ihdp_n10_marginals.png    same marginals as UWYK-NOANC
+    ihdp_n10_te.png           comonotonic p(τ) per query
+    ihdp_n10_ot.png           W_2 barycenter of the comonotonic p(τ)
 """
 from __future__ import annotations
 import os, sys, importlib, types
@@ -37,7 +28,7 @@ import matplotlib.pyplot as plt
 _HERE   = os.path.dirname(os.path.abspath(__file__))
 _BENCH  = os.path.dirname(_HERE)
 _REPO   = os.environ.get('REPO', os.path.dirname(_BENCH))
-_OUTDIR = os.path.join(_HERE, 'ihdp_n10', 'UWYK-NOANC')
+_OUTDIR = os.path.join(_HERE, 'ihdp_n10', 'UWYK-NOANC-COMONOTONIC')
 os.makedirs(_OUTDIR, exist_ok=True)
 
 CAUSALPFN     = os.environ.get('CAUSALPFN', '')
@@ -47,6 +38,7 @@ REALIZATION   = int(os.environ.get('REALIZATION', 0))
 N_CONTEXT     = int(os.environ.get('N_CONTEXT', 200))
 N_QUERIES     = int(os.environ.get('N_QUERIES', 10))
 N_SAMPLES     = int(os.environ.get('UWYK_N_SAMPLES', 1024))
+N_TAU_SAMPLES = int(os.environ.get('N_TAU_SAMPLES', 10000))
 CHECKPOINT    = os.environ.get('CHECKPOINT',
                                 os.path.join(_REPO, 'checkpoints', 'step_50000_final.pt'))
 _UWYK_ROOT    = os.path.dirname(os.path.abspath(UWYK_SRC.rstrip('/'))) if UWYK_SRC else ''
@@ -60,15 +52,11 @@ UWYK_CKPT_DIR = os.environ.get(
 if not (os.path.isdir(UWYK_SRC) and os.path.isdir(UWYK_CKPT_DIR)
         and os.path.isfile(os.path.join(UWYK_CKPT_DIR, 'best_model.pt'))
         and os.path.isdir(CAUSALPFN) and os.path.isdir(DOPFN)):
-    print('[skip] UWYK checkpoint / source paths not set correctly:')
-    print(f'   UWYK_SRC       = {UWYK_SRC}')
-    print(f'   UWYK_CKPT_DIR  = {UWYK_CKPT_DIR}')
-    print(f'   CAUSALPFN      = {CAUSALPFN}')
-    print(f'   DOPFN          = {DOPFN}')
+    print('[skip] UWYK checkpoint / source paths not set correctly.')
     sys.exit(0)
 
 
-# ── Load UWYK No-Ancestral checkpoint ────────────────────────────────────
+# ── Load UWYK checkpoint (identical to plot_ihdp_n10_uwyk_noanc.py) ──────
 _saved = {}
 for name in list(sys.modules):
     if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
@@ -96,7 +84,7 @@ NUM_FEATURES = uwyk_model.model.num_features
 print(f'[load] UWYK No-Ancestral  num_features={NUM_FEATURES}', flush=True)
 
 
-# ── Load IHDP realisation + reproduce plot_ihdp_n10's context/queries ────
+# ── Load IHDP (same as plot_ihdp_n10_uwyk_noanc.py) ────────────────────
 sys.path.insert(0, DOPFN)
 ds_mod = types.ModuleType('datasets')
 with open(os.path.join(DOPFN, 'datasets', '__init__.py')) as fp:
@@ -118,12 +106,10 @@ X_context = X_train_full[:N_CONTEXT].astype(np.float32)
 T_context = t_train_full[:N_CONTEXT].astype(np.float32).reshape(-1, 1)
 Y_context = y_train_full[:N_CONTEXT].astype(np.float32).reshape(-1, 1)
 
-# Same Y scaling as plot_ihdp_n10.py: min/max across training Y_train_full
 y_min = float(y_train_full.min()); y_max = float(y_train_full.max())
 y_rng = max(y_max - y_min, 1e-6)
 true_cate_scaled = true_cate * (2.0 / y_rng)
 
-# Query selection by true-τ percentile (identical to plot_ihdp_n10.py)
 order = np.argsort(true_cate_scaled)
 qs = np.linspace(0.05, 0.95, N_QUERIES)
 QUERY_IDXS = order[(qs * (len(true_cate_scaled) - 1)).astype(int)].tolist()
@@ -131,8 +117,6 @@ print(f'[data] IHDP r={REALIZATION}  N_context={N_CONTEXT}  '
       f'queries={QUERY_IDXS}', flush=True)
 
 
-# ── UWYK target encoding + fit ───────────────────────────────────────────
-# Real IHDP has X.shape[1] < UWYK's expected NUM_FEATURES → pad with NaN.
 def _pad_to_features(X):
     d = X.shape[1]
     if d < NUM_FEATURES:
@@ -151,15 +135,12 @@ mean_y_t1 = float(y_train[t_train_orig == 1].mean())
 t_train_enc = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
 uwyk_model.fit(X_train_p, t_train_enc, y_train)
 
-# No-Ancestral adjacency: zero for real features, -1 for padded (absent)
 n_real_features = X_context.shape[1]
 adj = np.zeros((NUM_FEATURES + 2, NUM_FEATURES + 2), dtype=np.float32)
 for i in range(n_real_features, NUM_FEATURES):
     fi = 2 + i
     adj[fi, :] = -1.0; adj[:, fi] = -1.0; adj[fi, fi] = -1.0
 
-
-# ── Sample per-query outcomes at T=0 and T=1 ─────────────────────────────
 X_intv = X_test_p[QUERY_IDXS]
 T_intv_0 = np.full((len(QUERY_IDXS), 1), mean_y_t0, dtype=np.float32)
 T_intv_1 = np.full((len(QUERY_IDXS), 1), mean_y_t1, dtype=np.float32)
@@ -180,17 +161,14 @@ def _predict_samples(T_intv):
 
 
 print(f'[predict] sampling {N_SAMPLES} draws per query per treatment', flush=True)
-Y0_samples = _predict_samples(T_intv_0)     # (N_QUERIES, N_SAMPLES) — in raw Y units
+Y0_samples = _predict_samples(T_intv_0)
 Y1_samples = _predict_samples(T_intv_1)
 
-# Scale to the same [-1, 1] range as OURS
 Y0_scaled = (Y0_samples - y_min) / y_rng * 2.0 - 1.0
 Y1_scaled = (Y1_samples - y_min) / y_rng * 2.0 - 1.0
 
-
-# ── Histogram → marginals p(Y_do0), p(Y_do1) on a shared centers grid ────
 Jn = 100
-edges = np.linspace(-1.5, 1.5, Jn + 1)
+edges   = np.linspace(-1.5, 1.5, Jn + 1)
 centers = 0.5 * (edges[:-1] + edges[1:])
 bin_width = float(centers[1] - centers[0])
 
@@ -203,35 +181,45 @@ for k in range(N_QUERIES):
     p_y1[k] = h1
 
 
-# ── Naive p(τ) via convolution / diagonal-sum ────────────────────────────
+# ── Comonotonic p(τ) from marginals ────────────────────────────────────
+# τ = F_1^{-1}(U) − F_0^{-1}(U) for U ~ Uniform(0, 1).
+# In practice we pair the sorted samples of Y_do0 and Y_do1 rank-by-rank;
+# the difference of the paired vectors is the empirical comonotonic
+# treatment-effect sample, which we then histogram to get p(τ).
 tau_edges   = np.linspace(-3.0, 3.0, 601)
 tau_centers = 0.5 * (tau_edges[:-1] + tau_edges[1:])
 
 
-def _naive_p_tau(p_y0_row, p_y1_row):
-    p_y0_n = p_y0_row / max(p_y0_row.sum(), 1e-12)
-    p_y1_n = p_y1_row / max(p_y1_row.sum(), 1e-12)
-    outer = np.outer(p_y1_n, p_y0_n)                # (Jn, Jn)
-    diag_sums = np.array([np.trace(outer, offset=off)
-                           for off in range(-(Jn - 1), Jn)])
-    tau_naive_grid = np.arange(-(Jn - 1), Jn) * bin_width
-    density = diag_sums / bin_width
-    return np.interp(tau_centers, tau_naive_grid, density,
-                      left=0.0, right=0.0)
+def _comono_p_tau(y0_row, y1_row):
+    # Both rows are 1-D sample vectors of length N_SAMPLES; sort → rank-pair.
+    y0s = np.sort(y0_row)
+    y1s = np.sort(y1_row)
+    n = min(len(y0s), len(y1s))
+    if n < N_TAU_SAMPLES and n > 0:
+        # Upsample via linear quantile interpolation for smoother histograms
+        u = (np.arange(N_TAU_SAMPLES) + 0.5) / N_TAU_SAMPLES
+        q_grid = (np.arange(n) + 0.5) / n
+        y0q = np.interp(u, q_grid, y0s)
+        y1q = np.interp(u, q_grid, y1s)
+    else:
+        y0q, y1q = y0s[:n], y1s[:n]
+    tau = y1q - y0q
+    hist, _ = np.histogram(tau, bins=tau_edges, density=True)
+    return hist
 
 
-p_taus_naive = np.zeros((N_QUERIES, len(tau_centers)))
+p_taus_comono = np.zeros((N_QUERIES, len(tau_centers)))
 for k in range(N_QUERIES):
-    p_taus_naive[k] = _naive_p_tau(p_y0[k], p_y1[k])
+    p_taus_comono[k] = _comono_p_tau(Y0_scaled[k], Y1_scaled[k])
 
 
-# ── Layout ───────────────────────────────────────────────────────────────
+# ── Plotting: layout matches sibling folders ───────────────────────────
 n_cols = 5 if N_QUERIES == 10 else 3
 n_rows = (N_QUERIES + n_cols - 1) // n_cols
 palette = {'do0': '#2E7DAF', 'do1': '#7B3E9E'}
 
 
-# ── Figure: marginals ────────────────────────────────────────────────────
+# ── Marginals (same as UWYK-NOANC, duplicated for a self-contained folder)
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
                           squeeze=False)
 for k, q in enumerate(QUERY_IDXS):
@@ -254,7 +242,7 @@ for k, q in enumerate(QUERY_IDXS):
     if k == 0: ax.legend(fontsize=9, loc='upper right')
 for k in range(N_QUERIES, n_rows * n_cols):
     axes[k // n_cols][k % n_cols].set_visible(False)
-fig.suptitle(f'IHDP r={REALIZATION}   UWYK No-Ancestral marginal densities at N={N_CONTEXT}',
+fig.suptitle(f'IHDP r={REALIZATION}   UWYK No-Ancestral marginals at N={N_CONTEXT}',
               fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
 out = os.path.join(_OUTDIR, 'ihdp_n10_marginals.png')
@@ -262,17 +250,18 @@ fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
 
 
-# ── Figure: naive TE per query ───────────────────────────────────────────
+# ── Comonotonic TE per query ──────────────────────────────────────────
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
                           squeeze=False)
 tau_step = tau_centers[1] - tau_centers[0]
 for k, q in enumerate(QUERY_IDXS):
     ax = axes[k // n_cols][k % n_cols]
-    E_tau_naive = float((tau_centers * p_taus_naive[k]).sum() * tau_step)
-    ax.fill_between(tau_centers, p_taus_naive[k], alpha=0.25, color='#C1420F')
-    ax.plot(tau_centers, p_taus_naive[k], color='#C1420F', lw=2.0,
-             label=f'naive $p(\\tau)$  E={E_tau_naive:+.2f}')
-    ax.axvline(E_tau_naive, color='#C1420F', ls='--', lw=1.4, alpha=0.85)
+    p_tau_comono = p_taus_comono[k]
+    E_tau_comono = float((tau_centers * p_tau_comono).sum() * tau_step)
+    ax.fill_between(tau_centers, p_tau_comono, alpha=0.25, color='#0F8A3C')
+    ax.plot(tau_centers, p_tau_comono, color='#0F8A3C', lw=2.0,
+             label=f'comonotonic $p(\\tau)$  E={E_tau_comono:+.2f}')
+    ax.axvline(E_tau_comono, color='#0F8A3C', ls='--', lw=1.4, alpha=0.85)
     ax.axvline(true_cate_scaled[q], color='red', ls='--', lw=1.4,
                 label=f'true $\\tau$={true_cate_scaled[q]:+.2f}')
     ax.plot(true_cate_scaled[q], 0, 'o', color='red', markersize=9,
@@ -285,7 +274,7 @@ for k, q in enumerate(QUERY_IDXS):
     ax.legend(fontsize=8, loc='upper right')
 for k in range(N_QUERIES, n_rows * n_cols):
     axes[k // n_cols][k % n_cols].set_visible(False)
-fig.suptitle(f'IHDP r={REALIZATION}   UWYK No-Ancestral naive TE (independence) at N={N_CONTEXT}',
+fig.suptitle(f'IHDP r={REALIZATION}   UWYK No-Ancestral comonotonic TE at N={N_CONTEXT}',
               fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
 out = os.path.join(_OUTDIR, 'ihdp_n10_te.png')
@@ -293,22 +282,22 @@ fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
 
 
-# ── Figure: OT barycenter of the naive per-query TEs ─────────────────────
+# ── OT barycenter of the comonotonic per-query TEs ─────────────────────
 sys.path.insert(0, os.path.join(_REPO, 'MALC', 'Optimal_Transport'))
 from ot_barycenter import wasserstein_barycenter_1d
 
-bary = wasserstein_barycenter_1d(p_taus_naive, tau_centers)
+bary = wasserstein_barycenter_1d(p_taus_comono, tau_centers)
 bary_norm = bary / max(bary.sum() * tau_step, 1e-12)
 bary_mode = float(tau_centers[int(np.argmax(bary_norm))])
 bary_mean = float((tau_centers * bary_norm).sum() * tau_step)
-per_q_means = (tau_centers[None, :] * p_taus_naive).sum(axis=1) * tau_step
+per_q_means = (tau_centers[None, :] * p_taus_comono).sum(axis=1) * tau_step
 mean_of_means = float(per_q_means.mean())
 true_ate_local = float(true_cate_scaled.mean())
 
 fig, ax = plt.subplots(figsize=(9, 4.6))
 palette_Q = plt.cm.tab10(np.linspace(0, 0.9, N_QUERIES))
 for k in range(N_QUERIES):
-    ax.plot(tau_centers, p_taus_naive[k], color=palette_Q[k], lw=1.1, alpha=0.35)
+    ax.plot(tau_centers, p_taus_comono[k], color=palette_Q[k], lw=1.1, alpha=0.35)
 ax.fill_between(tau_centers, bary_norm, alpha=0.20, color='#0F8A3C')
 ax.plot(tau_centers, bary_norm, color='#0F8A3C', lw=2.6, label='W₂ barycenter (OT)')
 ax.axvline(true_ate_local, color='red', ls='--', lw=1.6,
@@ -320,7 +309,7 @@ ax.axvline(mean_of_means, color='#C1420F', ls='--', lw=1.6,
 ax.set_xlim(-1.5, 1.5)
 ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
 ax.set_ylabel('density')
-ax.set_title(f'IHDP r={REALIZATION}   UWYK No-Ancestral OT aggregation (naive TE) at N={N_CONTEXT}',
+ax.set_title(f'IHDP r={REALIZATION}   UWYK No-Ancestral OT aggregation (comonotonic TE) at N={N_CONTEXT}',
               fontsize=12)
 ax.legend(fontsize=9, loc='upper left')
 ax.grid(alpha=0.25)
@@ -329,7 +318,7 @@ out = os.path.join(_OUTDIR, 'ihdp_n10_ot.png')
 fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
 
-print(f'\n[summary — UWYK-NOANC   (naive independence-derived p(τ))]')
+print(f'\n[summary — UWYK-NOANC-COMONOTONIC  (rank-preserving coupling)]')
 print(f'  true population ATE (scaled) = {true_ate_local:+.3f}')
 print(f'  mean-of-per-query-means      = {mean_of_means:+.3f}')
 print(f'  W2 barycenter mode           = {bary_mode:+.3f}')

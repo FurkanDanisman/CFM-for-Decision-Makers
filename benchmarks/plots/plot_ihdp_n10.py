@@ -375,16 +375,14 @@ def _plot_ot_figure(densities: np.ndarray, kind: str, outpath: str):
                 label=f'true population ATE = {true_ate_local:+.2f}')
     ax.axvline(bary_mode, color='#0F8A3C', ls='--', lw=1.6,
                 label=f'OT-mode = {bary_mode:+.2f}')
-    ax.axvline(bary_mean, color='#0F8A3C', ls=':', lw=1.9,
-                label=f'OT-mean = {bary_mean:+.2f}')
-    ax.axvline(mean_of_means_local, color='#C1420F', ls=':', lw=1.9,
+    ax.axvline(mean_of_means_local, color='#C1420F', ls='--', lw=1.6,
                 label=f'mean-of-means = {mean_of_means_local:+.2f}')
     ax.set_xlim(-1.0, 1.0)
     ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
     ax.set_ylabel('density')
     ax.set_title(f'IHDP r={REALIZATION}   OT aggregation ({kind}) at N={N_CONTEXT}',
                   fontsize=12)
-    ax.legend(fontsize=9, loc='upper right')
+    ax.legend(fontsize=9, loc='upper left')
     ax.grid(alpha=0.25)
     fig.tight_layout()
     fig.savefig(outpath, dpi=140, bbox_inches='tight'); plt.close(fig)

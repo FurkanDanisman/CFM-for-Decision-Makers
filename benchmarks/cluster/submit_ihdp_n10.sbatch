@@ -9,9 +9,11 @@
 # Regenerate the IHDP N=10 demonstration plots on a compute node.
 #
 # VARIANT env var selects which script(s) to run:
-#   ours   plot_ihdp_n10.py            → UWYK-2DMALC + UWYK-2DMALC-NAIVE
-#   noanc  plot_ihdp_n10_uwyk_noanc.py → UWYK-NOANC
-#   both   both scripts (default)
+#   ours     plot_ihdp_n10.py                    → UWYK-2DMALC + UWYK-2DMALC-NAIVE
+#   noanc    plot_ihdp_n10_uwyk_noanc.py         → UWYK-NOANC
+#   comono   plot_ihdp_n10_uwyk_noanc_comono.py  → UWYK-NOANC-COMONOTONIC
+#   compare  plot_ihdp_n10_marginals_compare.py  → MARGINALS-COMPARE
+#   all      run all four scripts (default)
 #
 # Usage on killarney:
 #   sbatch --account=aip-rgrosse \
@@ -27,7 +29,7 @@ CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
 UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 
-VARIANT="${VARIANT:-both}"
+VARIANT="${VARIANT:-all}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] VARIANT=$VARIANT"
 echo "  DEPLOY_ROOT=$DEPLOY_ROOT"
@@ -52,11 +54,27 @@ run_noanc () {
         python "$REPO/benchmarks/plots/plot_ihdp_n10_uwyk_noanc.py"
 }
 
+run_comono () {
+    echo ">>> plot_ihdp_n10_uwyk_noanc_comono.py"
+    REPO="$REPO" CAUSALPFN="$CAUSALPFN" DOPFN="$DOPFN" UWYK_SRC="$UWYK_SRC" \
+        python "$REPO/benchmarks/plots/plot_ihdp_n10_uwyk_noanc_comono.py"
+}
+
+run_compare () {
+    echo ">>> plot_ihdp_n10_marginals_compare.py"
+    REPO="$REPO" CAUSALPFN="$CAUSALPFN" DOPFN="$DOPFN" UWYK_SRC="$UWYK_SRC" \
+        python "$REPO/benchmarks/plots/plot_ihdp_n10_marginals_compare.py"
+}
+
 case "$VARIANT" in
-    ours)  run_ours ;;
-    noanc) run_noanc ;;
-    both)  run_ours; run_noanc ;;
-    *)     echo "[error] unknown VARIANT=$VARIANT (expected ours|noanc|both)" >&2; exit 2 ;;
+    ours)    run_ours ;;
+    noanc)   run_noanc ;;
+    comono)  run_comono ;;
+    compare) run_compare ;;
+    both)    run_ours; run_noanc ;;
+    all)     run_ours; run_noanc; run_comono; run_compare ;;
+    *) echo "[error] unknown VARIANT=$VARIANT (expected ours|noanc|comono|compare|both|all)" >&2
+       exit 2 ;;
 esac
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
