@@ -1,16 +1,40 @@
 # paper/theory/
 
-LaTeX source for the two theoretical sections.
+Consolidated LaTeX source for the theoretical section of the paper.
 
 | File | Purpose |
 |---|---|
-| `variance_reduction.tex` | Theorem 1: joint estimator strictly dominates two-marginal in variance whenever ρ > 0 (matches `plot_variance_reduction.py`) |
-| `malc_multimodal.tex` | Extending log-concave MLE to a K-component MALC mixture — EM steps, bootstrap-based K selection, consistency proposition |
-| `bar_distribution_2d.tex` | Methodology section for the 2D BarDistribution head: three-region density, tail Gaussians with Sheppard-normalised orthant probabilities, correlation derived from the histogram, and the negative log-density loss |
+| `theory.tex` | Single self-contained methodology + theory section covering (1) the 2D BarDistribution head, (2) multimodal density recovery with MALC, (3) population aggregation via the 2-Wasserstein barycenter, and (4) the joint-vs-marginal variance-reduction theorem. |
+
+## What is (and isn't) claimed
+
+- **Formal statements** (theorem / proposition / corollary) are limited to
+  results that either follow from moment calculations, are stated with a
+  citation, or are direct computations from the code.
+- The variance-reduction theorem uses only finite second moments, so it
+  applies unchanged to any log-concave / exponential-family / mixture pair
+  with finite variance. Bivariate normality is used only to describe the
+  Monte-Carlo simulation.
+- The 1D 2-Wasserstein barycenter closed form is cited to Agueh & Carlier
+  (2011).
+- Single-component MALC and its theoretical properties are cited to
+  Danisman, Jankowski & de Souza (2026). The mixture extension (K components,
+  bin-integrated E-step, mode-based initialisation, BIC selection) is
+  described as implemented in the code — no additional asymptotic claim
+  is made about the mixture procedure.
+- Sheppard's identity (orthant probabilities of a centred bivariate normal)
+  is cited to Sheppard (1899).
 
 ## References that should live in your `.bib`
 
 ```
+@article{danisman2026malc,
+  author  = {Danisman, Furkan and Jankowski, Hanna and de Souza, Camila P. E.},
+  title   = {Bandwidth-free nonparametric density estimation for grouped data},
+  journal = {arXiv preprint arXiv:2607.13182},
+  year    = {2026}
+}
+
 @article{cule2010maximum,
   author  = {Cule, Madeleine and Samworth, Richard and Stewart, Michael},
   title   = {Maximum likelihood estimation of a multi-dimensional log-concave density},
@@ -25,11 +49,11 @@ LaTeX source for the two theoretical sections.
   volume  = {33}, number = {4}, pages = {493--509}, year = {2018}
 }
 
-@article{doss2016global,
-  author  = {Doss, Charles R. and Wellner, Jon A.},
-  title   = {Global rates of convergence of the {MLE}s of log-concave and $s$-concave densities},
-  journal = {Annals of Statistics},
-  volume  = {44}, number = {3}, pages = {954--981}, year = {2016}
+@article{aguehcarlier2011barycenters,
+  author  = {Agueh, Martial and Carlier, Guillaume},
+  title   = {Barycenters in the {W}asserstein space},
+  journal = {SIAM Journal on Mathematical Analysis},
+  volume  = {43}, number = {2}, pages = {904--924}, year = {2011}
 }
 
 @article{sheppard1899application,
@@ -42,20 +66,24 @@ LaTeX source for the two theoretical sections.
 
 ## Usage
 
-Include all three sections directly from your main tex file:
+Include from your main tex file with a single `\input`:
 
 ```tex
-\input{paper/theory/bar_distribution_2d.tex}
-\input{paper/theory/malc_multimodal.tex}
-\input{paper/theory/variance_reduction.tex}
+\input{paper/theory/theory.tex}
 ```
 
-A natural order is BarDistribution → MALC → variance reduction, since MALC
-appears as an inference-time step referenced in the BarDistribution section
-and the variance-reduction theorem uses the joint model that both establish.
+Or, if the theoretical section will sit under its own top-level heading:
 
-Cross-reference from the body:
-- `Theorem~\ref{thm:variance-ratio}`
-- `Proposition~\ref{prop:malc-consistency}`
-- `Figure~\ref{fig:variance-reduction}` — populate this with `benchmarks/plots/joint_vs_marginals/variance_reduction.png`
-- `Section~\ref{sec:mixture-scm}` — referenced by the MALC "Limitation" paragraph; point at wherever your mixture-SCM diagnostic figure sits
+```tex
+\section{Theory}
+\input{paper/theory/theory.tex}
+```
+
+Cross-reference from the main body:
+
+- `Theorem~\ref{thm:variance-ratio}` — the variance-reduction result
+- `Corollary~\ref{cor:consistency-clt}` — consistency + CLT statement
+- `Proposition~\ref{prop:agueh-carlier}` — the 1D Wasserstein barycenter closed form
+- `Figure~\ref{fig:variance-reduction}` — populate with
+  `benchmarks/plots/joint_vs_marginals/variance_reduction.png`
+- `Section~\ref{sec:mixture-scm}` — populate with your mixture-SCM diagnostic
