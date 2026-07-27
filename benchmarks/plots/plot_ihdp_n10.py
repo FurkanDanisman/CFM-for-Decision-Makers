@@ -260,18 +260,45 @@ fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
 
 
+# ── Naive TE distribution: p(τ) from marginals under independence ─────────
+# For τ = Y_do1 - Y_do0 with Y_do1 ⊥⊥ Y_do0, the density is the difference
+# convolution   p_τ(t) = ∫ p_{Y1}(y0 + t) p_{Y0}(y0) dy0 . Discretely, we
+# sum along diagonals of the outer product p_{Y1} ⊗ p_{Y0}. Grid resolution
+# is the bin width h; we then interpolate to the MALC tau grid so the naive
+# curve overlays the joint-based one at every panel.
+def _naive_p_tau_from_marginals(pm):
+    p_y0 = pm.sum(axis=1); p_y0 = p_y0 / max(p_y0.sum(), 1e-12)
+    p_y1 = pm.sum(axis=0); p_y1 = p_y1 / max(p_y1.sum(), 1e-12)
+    outer = np.outer(p_y1, p_y0)                              # (J, J)
+    Jn = outer.shape[0]
+    diag_sums = np.array([np.trace(outer, offset=off)
+                           for off in range(-(Jn - 1), Jn)])
+    tau_naive_grid = np.arange(-(Jn - 1), Jn) * bin_width
+    density = diag_sums / bin_width                           # mass → density
+    return np.interp(tau_centers, tau_naive_grid, density,
+                      left=0.0, right=0.0)
+
+
 # ── Figure 3: per-query TE distributions ──────────────────────────────────
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
                           squeeze=False)
 tau_step = tau_centers[1] - tau_centers[0]
 for k, q in enumerate(QUERY_IDXS):
     ax = axes[k // n_cols][k % n_cols]
-    p_tau = p_taus[k]
-    E_tau = float((tau_centers * p_tau).sum() * tau_step)
+    p_tau       = p_taus[k]
+    p_tau_naive = _naive_p_tau_from_marginals(p_mats[k])
+    E_tau       = float((tau_centers * p_tau).sum() * tau_step)
+    E_tau_naive = float((tau_centers * p_tau_naive).sum() * tau_step)
+    # Joint-based (Ours)
     ax.fill_between(tau_centers, p_tau, alpha=0.25, color='#2E4A6F')
     ax.plot(tau_centers, p_tau, color='#2E4A6F', lw=2.0,
-             label=f'$p(\\tau)$  E[$\\tau$]={E_tau:+.2f}')
-    ax.axvline(E_tau, color='#2E4A6F', ls='--', lw=1.6, alpha=0.85)
+             label=f'joint $p(\\tau)$  E={E_tau:+.2f}')
+    ax.axvline(E_tau, color='#2E4A6F', ls='--', lw=1.4, alpha=0.85)
+    # Naive (marginal-only, independence assumption)
+    ax.plot(tau_centers, p_tau_naive, color='#C1420F', lw=1.8, ls='--',
+             label=f'naive $p(\\tau)$  E={E_tau_naive:+.2f}')
+    ax.axvline(E_tau_naive, color='#C1420F', ls=':', lw=1.4, alpha=0.85)
+    # Truth
     ax.axvline(true_cate_scaled[q], color='red', ls='--', lw=1.4,
                 label=f'true $\\tau$={true_cate_scaled[q]:+.2f}')
     ax.plot(true_cate_scaled[q], 0, 'o', color='red', markersize=9,
@@ -284,7 +311,8 @@ for k, q in enumerate(QUERY_IDXS):
     ax.legend(fontsize=8, loc='upper right')
 for k in range(N_QUERIES, n_rows * n_cols):
     axes[k // n_cols][k % n_cols].set_visible(False)
-fig.suptitle(f'IHDP r={REALIZATION}   per-query treatment-effect distributions at N={N_CONTEXT}',
+fig.suptitle(f'IHDP r={REALIZATION}   per-query TE distributions at N={N_CONTEXT}   '
+              '(joint = Ours, naive = independence from marginals)',
               fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
 out = os.path.join(_OUTDIR, 'ihdp_n10_te.png')
