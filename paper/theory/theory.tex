@@ -14,6 +14,17 @@
 %% ---- Bibliography (natbib for \citep) ----
 \usepackage[round,authoryear]{natbib}
 
+%% ---- Algorithms ----
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algnewcommand\algorithmicforeach{\textbf{for each}}
+\algdef{S}[FOR]{ForEach}[1]{\algorithmicforeach\ #1\ \algorithmicdo}
+
+%% ---- Figures ----
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+
 %% ---- Cross-references ----
 \usepackage{hyperref}
 \usepackage{cleveref}
@@ -357,6 +368,62 @@ $p$ (with a deterministic augmentation when $K$ exceeds the number of
 detected peaks); the iterations stop after five consecutive non-improving
 log-likelihoods.
 
+\paragraph{Algorithmic summary.}
+Algorithm~\ref{alg:malc-mixture} collects the mixture EM iterations
+described above and the BIC-based order selection described below into
+a single pipeline. Only the outer BIC loop and the inner refit at
+$K^\star$ vary between the "scan" and "final" stages; both stages
+reuse the same component-fit and E-/M-step primitives.
+
+\begin{algorithm}[t]
+\caption{Mixture MALC from binned probabilities $\{p_{j_0, j_1}\}$.}
+\label{alg:malc-mixture}
+\begin{algorithmic}[1]
+\Require Binned joint $\{p_{j_0, j_1}\}$ on a $K_g \times K_g$ grid;
+maximum order $K_{\max}$; synthetic-sample size $B$; patience $\Pi$.
+\Ensure Multimodal density estimate
+$\hat{p}_{\mathrm{MALC}} = \sum_{k} \hat\pi_k^\star \hat f_k^\star$.
+\Function{FitComponent}{$w_{j_0, j_1}$}\Comment{single MALC on a weighted grid}
+    \State $\hat\mu_\ell \gets$ truncated-normal fixed-point mean per axis
+    \State $\alpha, \beta \gets$ Beta-jitter parameters calibrated so
+        $\mathbb{E}[\text{Beta}] = \hat\mu_\ell$
+    \State draw $B$ bin indices $\{(j_0^b, j_1^b)\}_{b=1}^{B}$ from $w$
+    \State $y_b \gets \text{bin midpoint of }(j_0^b, j_1^b) + \text{jitter}(\alpha, \beta)$
+    \State \Return log-concave MLE \eqref{eq:lc-mle} on $\{y_b\}$
+\EndFunction
+\For{$K \in \{1, \dots, K_{\max}\}$}
+    \State detect modal peaks of $p$; assign each bin to nearest peak via Voronoi \Comment{init}
+    \ForEach{$k \in \{1, \dots, K\}$}
+        \State $f_k^{(0)} \gets \Call{FitComponent}{p \cdot \mathbf{1}\{\text{bin} \in \text{Voronoi cell } k\}}$
+        \State $\pi_k^{(0)} \gets $ prior mass in Voronoi cell $k$
+    \EndFor
+    \State $t \gets 0$; $\ell^{\text{best}} \gets -\infty$; $\text{noimp} \gets 0$
+    \While{$\text{noimp} < \Pi$}
+        \State $F_k^{(t)}(j_0, j_1) \gets \int_{B_{j_0, j_1}} f_k^{(t)}$
+        \State $\gamma_{j_0 j_1, k}^{(t+1)} \gets
+            \pi_k^{(t)} F_k^{(t)}(j_0, j_1) / \sum_l \pi_l^{(t)} F_l^{(t)}(j_0, j_1)$
+        \State $\pi_k^{(t+1)} \gets \sum_{j_0, j_1} p_{j_0, j_1}\, \gamma_{j_0 j_1, k}^{(t+1)}$
+        \State $f_k^{(t+1)} \gets \Call{FitComponent}{p \cdot \gamma_{\cdot, k}^{(t+1)}}$
+        \State $\ell^{(t+1)} \gets \sum_{j_0, j_1} p_{j_0, j_1}\,
+                \log \sum_k \pi_k^{(t+1)} F_k^{(t+1)}(j_0, j_1)$
+        \If{$\ell^{(t+1)} > \ell^{\text{best}}$}
+            \State $\ell^{\text{best}} \gets \ell^{(t+1)}$; $\text{noimp} \gets 0$
+        \Else
+            \State $\text{noimp} \gets \text{noimp} + 1$
+        \EndIf
+        \State $t \gets t + 1$
+    \EndWhile
+    \State $\hat f^{(K)} \gets \sum_k \pi_k^{(t)} f_k^{(t)}$
+    \State $\mathrm{BIC}(K) \gets
+        -2 n_{\mathrm{eff}} \sum_{j_0, j_1} p_{j_0, j_1} \log \hat f^{(K)}(j_0, j_1)
+        + (3K - 1)\log n_{\mathrm{eff}}$
+        \Comment{Eq.~\eqref{eq:bic}}
+\EndFor
+\State $K^\star \gets \arg\!\min_K \mathrm{BIC}(K)$
+\State \Return $\hat p_{\mathrm{MALC}} \gets \hat f^{(K^\star)}$
+\end{algorithmic}
+\end{algorithm}
+
 \paragraph{Order selection by BIC.}
 The number of components is chosen by BIC. Let
 \begin{equation}
@@ -450,14 +517,69 @@ functions:
 \end{proposition}
 
 \paragraph{Implementation.}
-Because $Q^{\star}$ is defined explicitly by
-\eqref{eq:agueh-carlier}, no iterative optimisation is needed. Our
-implementation evaluates each $Q_i$ on a common grid of probability
-levels $\tau_1, \dots, \tau_M \in (0, 1)$, averages the quantile
-values, and recovers the barycenter density on the original $\tau$-grid
-by numerically inverting $Q^{\star}$ and differentiating the resulting
-CDF. All steps are $\mathcal{O}(N\!M)$ vector arithmetic; the barycenter
-is thus much cheaper than the per-query MALC fits it aggregates.
+Because $Q^{\star}$ is defined explicitly by \eqref{eq:agueh-carlier},
+no iterative optimisation is needed. Given the per-query densities on a
+common grid, Algorithm~\ref{alg:ot-barycenter} computes the barycenter
+in three quantile passes and one density-recovery pass. All steps are
+$\mathcal{O}(N \!\cdot\! M)$ vector arithmetic; the barycenter is thus
+much cheaper than the per-query MALC fits it aggregates.
+
+\begin{algorithm}[t]
+\caption{Weighted 2-Wasserstein barycenter of $N$ densities on a common
+grid.}
+\label{alg:ot-barycenter}
+\begin{algorithmic}[1]
+\Require Per-query densities
+$\{\hat{p}_i\}_{i=1}^{N}$ evaluated on grid
+$x_1 < \cdots < x_M$ with spacing $\Delta x$; weights
+$\alpha \in \Delta^{N-1}$ (default uniform); number of quantile levels
+$M_\tau$ (default $4001$).
+\Ensure Barycenter density $p^\star$ on the same grid.
+\State $\tau_j \gets (j - \tfrac{1}{2}) / M_\tau$ \Comment{$j = 1,\dots,M_\tau$}
+\ForEach{$i \in \{1, \dots, N\}$}
+    \State $F_i(x_k) \gets \sum_{\ell \le k} \tfrac{1}{2}\bigl(\hat{p}_i(x_{\ell-1}) + \hat{p}_i(x_\ell)\bigr) \Delta x$
+    \Comment{trapezoidal CDF, $F_i(x_0) = 0$}
+    \State $F_i \gets F_i / F_i(x_M)$
+    \State $Q_i(\tau_j) \gets \operatorname{interp}\bigl(\tau_j;\; F_i,\; x\bigr)$
+    \Comment{invert CDF at each probability level}
+\EndFor
+\State $Q^\star(\tau_j) \gets \sum_{i=1}^{N} \alpha_i\, Q_i(\tau_j)$
+    \Comment{Agueh--Carlier closed form \eqref{eq:agueh-carlier}}
+\State $F^\star(x_k) \gets \operatorname{interp}\bigl(x_k;\; Q^\star,\; \tau\bigr)$
+    \Comment{invert $Q^\star$ back to a CDF on the $x$-grid}
+\State $p^\star(x_k) \gets \bigl(F^\star(x_{k+1}) - F^\star(x_{k-1})\bigr) / (2 \Delta x)$
+    \Comment{central-difference derivative}
+\State $p^\star \gets p^\star / \bigl(\Delta x\, \sum_k p^\star(x_k)\bigr)$
+    \Comment{renormalise to integrate to 1}
+\State \Return $p^\star$
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Illustration on IHDP.}
+Figure~\ref{fig:ihdp-ot} shows the aggregation on IHDP realisation $r{=}0$
+with $N{=}200$ context observations and $N{=}10$ test queries. The ten
+faded per-query densities peak around the individual $\tau$ values that
+the model has inferred for each unit; the barycenter (solid green)
+inherits their shape while collapsing to a single population summary.
+The barycenter mode $\widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mode}} = 0.58$
+is meaningfully closer to the true population ATE $0.63$ than either the
+naive mean-of-means $0.47$ or the barycenter mean
+$\widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mean}} = 0.47$; both mean-based
+estimators underestimate because the per-query densities are
+right-skewed with heavier right shoulders than left, whereas the
+barycenter mode is invariant to this skew.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{../../benchmarks/plots/ihdp_n10/ihdp_n10_ot.png}
+\caption{OT aggregation on IHDP realisation $r{=}0$ with $N{=}200$
+context units. Faded curves: per-query $p(\tau \mid X_i)$ from the
+MALC-smoothed joint. Solid green: 2-Wasserstein barycenter. Vertical
+lines: true population ATE, OT-mode, OT-mean, and the naive mean of
+per-query means. OT-mode ($+0.58$) is closer to the true population ATE
+($+0.63$) than either mean-based estimator ($+0.47$).}
+\label{fig:ihdp-ot}
+\end{figure}
 
 \paragraph{OT-mode and OT-mean point estimates.}
 From $p^{\star}$ we extract two point estimates of the population
