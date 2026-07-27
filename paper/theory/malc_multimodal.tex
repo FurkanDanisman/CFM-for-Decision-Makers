@@ -1,0 +1,153 @@
+\subsection{From unimodal to multimodal density estimation with MALC}
+\label{sec:malc-multimodal}
+
+Our 2D BarDistribution head outputs a discrete grid
+$q \in \Delta^{J^2}$ on
+$\mathcal{Y} \coloneqq [\underline{y}, \overline{y}]^2$
+that approximates
+$p(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X)$.
+Directly reading off point estimates from $q$ is noisy because $q$ is a
+histogram; we therefore project $q$ onto a smooth density class before
+extracting means, modes, or the barycenter used for OT aggregation.
+
+\paragraph{Log-concave densities.}
+A density $f: \mathcal{Y} \to \mathbb{R}_{\ge 0}$ is \emph{log-concave} if
+$\log f$ is concave (with the convention $\log 0 = -\infty$).
+This class is nonparametric but shape-constrained: it contains all
+Gaussians, exponentials, Laplace densities, and every unimodal density
+whose tails decay at least sub-exponentially, yet its MLE exists and is
+unique whenever data span a non-degenerate convex hull
+\citep{cule2010maximum,samworth2018recent}.
+Formally, given samples $y_1, \dots, y_M$ drawn from $q$ the log-concave MLE is
+\begin{equation}
+\hat{f} \;=\; \arg\!\max_{f \in \mathcal{F}_{\mathrm{LC}}}
+\;\;\frac{1}{M}\sum_{m=1}^{M} \log f(y_m),
+\qquad
+\mathcal{F}_{\mathrm{LC}}
+\;=\; \{f \ge 0,\; \int f \!=\! 1,\; \log f \text{ concave}\}.
+\label{eq:lc-mle}
+\end{equation}
+Problem~\eqref{eq:lc-mle} is a convex program: the solution is piecewise
+log-linear, its optimality conditions can be written as linear inequalities
+over a triangulation of the samples, and interior-point solvers return
+$\hat{f}$ in $\mathcal{O}(M^{3/2})$ time.
+
+\paragraph{Limitation.}
+Any $f \in \mathcal{F}_{\mathrm{LC}}$ is unimodal by construction. This is
+too restrictive for our setting: when the posterior over compatible SCMs
+concentrates on multiple clusters (Section~\ref{sec:mixture-scm}), the
+resulting $p(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X)$ is genuinely
+multimodal and \eqref{eq:lc-mle} would flatten every mode into a single
+compromise peak.
+
+\paragraph{The MALC mixture.}
+We extend the log-concave MLE to a \emph{Mixture of Adaptive Log-Concave}
+(MALC) family:
+\begin{equation}
+\mathcal{F}_{\mathrm{MALC}}^{(K)}
+\;=\;
+\left\{\, f \;=\; \sum_{k=1}^{K} \pi_k\, f_k
+\;:\;
+\pi \in \Delta^{K-1},\;\;
+f_k \in \mathcal{F}_{\mathrm{LC}}\;
+\forall k
+\,\right\}.
+\label{eq:malc-family}
+\end{equation}
+Every element is a $K$-component mixture of shape-constrained log-concave
+densities. Membership permits $K$ distinct modes while retaining the
+convex-optimisation guarantees of \eqref{eq:lc-mle} within each component.
+
+\paragraph{EM for a fixed $K$.}
+For a fixed $K$ we maximise
+$\log\!\prod_{m=1}^{M}\!\left[\sum_{k=1}^{K}\pi_k f_k(y_m)\right]$
+by expectation-maximisation. Let $\gamma_{mk}^{(t)}$ be the responsibility
+of component $k$ for sample $m$ at iteration $t$.
+
+\begin{itemize}
+\item \textbf{E-step:}
+\begin{equation}
+\gamma_{mk}^{(t+1)} \;=\; \frac{\pi_k^{(t)}\, f_k^{(t)}(y_m)}
+                                {\sum_{j=1}^{K}\pi_j^{(t)}\, f_j^{(t)}(y_m)}.
+\label{eq:malc-estep}
+\end{equation}
+\item \textbf{M-step for mixture weights:}
+\begin{equation}
+\pi_k^{(t+1)} \;=\; \frac{1}{M}\sum_{m=1}^{M}\gamma_{mk}^{(t+1)}.
+\end{equation}
+\item \textbf{M-step for each component:} solve a \emph{weighted} log-concave
+MLE with the responsibilities as sample weights,
+\begin{equation}
+f_k^{(t+1)} \;=\; \arg\!\max_{f \in \mathcal{F}_{\mathrm{LC}}}
+\sum_{m=1}^{M} \gamma_{mk}^{(t+1)}\,\log f(y_m).
+\label{eq:malc-mstep-lc}
+\end{equation}
+\end{itemize}
+Each M-step in \eqref{eq:malc-mstep-lc} is again a convex problem
+\citep{cule2010maximum}, so every EM iteration is well-posed and the joint
+log-likelihood is monotonically non-decreasing.
+
+\paragraph{Choosing $K$ by bootstrap held-out likelihood.}
+We do not fix $K$ in advance; we let the data decide. Draw $B_{\text{sel}}$
+bootstrap resamples $\mathcal{D}_1^*, \dots, \mathcal{D}_{B_{\text{sel}}}^*$
+from the histogram $q$, and for each candidate order
+$K \in \{1, 2, \dots, K_{\max}\}$ fit
+$\hat{f}^{(K)}_{b} \in \mathcal{F}_{\mathrm{MALC}}^{(K)}$
+on $\mathcal{D}_b^*$ using \eqref{eq:malc-estep}--\eqref{eq:malc-mstep-lc}.
+The selected order is
+\begin{equation}
+K^{\star}
+\;=\;
+\arg\!\max_{K \in \{1,\dots,K_{\max}\}}
+\;\;\frac{1}{B_{\text{sel}}}\sum_{b=1}^{B_{\text{sel}}}\,
+\log \hat{f}^{(K)}_{b}\!\left(\mathcal{D}_b^{\mathrm{oob}}\right),
+\label{eq:malc-select-K}
+\end{equation}
+where $\mathcal{D}_b^{\mathrm{oob}} \coloneqq \mathcal{D} \setminus \mathcal{D}_b^*$
+are the out-of-bag samples. This is an out-of-sample criterion: it
+penalises fitting spurious modes because extra components hurt held-out
+likelihood on data the fit did not see.
+
+\paragraph{Final estimator.}
+With $K^{\star}$ fixed, we refit MALC on the full histogram
+$q$ using an additional $B_{\text{fit}}$ bootstrap replicates and average
+the component parameters to reduce boundary-condition variance:
+\begin{equation}
+\hat{p}_{\mathrm{MALC}}(y \mid X)
+\;=\;
+\frac{1}{B_{\text{fit}}}\sum_{b=1}^{B_{\text{fit}}}
+\sum_{k=1}^{K^{\star}} \pi_{k,b}^{\star}\, f_{k,b}^{\star}(y).
+\label{eq:malc-final}
+\end{equation}
+The resulting $\hat{p}_{\mathrm{MALC}}$ is a smooth, multimodal density
+whose modes correspond to genuinely distinct clusters in $q$ selected by
+\eqref{eq:malc-select-K}, and from which we extract the mean $\hat{\tau}$,
+mode $\arg\!\max\hat{p}_{\mathrm{MALC}}$, and (via 1D projection onto the
+diagonal $y_1 - y_0$) the treatment-effect distribution used for OT
+aggregation.
+
+\begin{proposition}[Consistency-recovery of true modality]
+\label{prop:malc-consistency}
+Assume the true density
+$p^{\star}(y \mid X) \in \mathcal{F}_{\mathrm{MALC}}^{(K^{\star}_{0})}$
+with $K^{\star}_{0} \le K_{\max}$.
+For $M \to \infty$ samples from $q$ that converges to $p^{\star}$ in total
+variation and any $B_{\text{sel}}, B_{\text{fit}} \to \infty$ with
+$B_{\text{sel}}/M \to 0$, the selection rule
+\eqref{eq:malc-select-K} satisfies
+$\Pr\left[K^{\star} = K^{\star}_{0}\right] \to 1$
+and $\hat{p}_{\mathrm{MALC}} \to p^{\star}$ in $L^{1}$.
+\end{proposition}
+
+\begin{proof}[Sketch]
+For each $K \le K^{\star}_{0}$, the population-level held-out likelihood
+$\mathbb{E}_{p^{\star}}[\log f^{(K)}]$ is strictly maximised at
+$K = K^{\star}_{0}$ because $\mathcal{F}_{\mathrm{MALC}}^{(K)}$ contains
+$p^{\star}$ from $K = K^{\star}_{0}$ onwards and is nested. The bootstrap
+average \eqref{eq:malc-select-K} converges to this population maximum by a
+uniform law of large numbers over the compact index set
+$\{1,\dots,K_{\max}\}$. The $L^{1}$ convergence of $\hat{p}_{\mathrm{MALC}}$
+then follows from the consistency of the log-concave MLE within each
+component \citep{cule2010maximum,doss2016global}.
+\qed
+\end{proof}
