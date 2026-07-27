@@ -1,3 +1,43 @@
+\documentclass[11pt]{article}
+
+%% ---- Layout ----
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{parskip}
+
+%% ---- Math ----
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}    % \coloneqq, \DeclarePairedDelimiter, etc.
+\usepackage{bm}
+
+%% ---- Bibliography (natbib for \citep) ----
+\usepackage[round,authoryear]{natbib}
+
+%% ---- Cross-references ----
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+%% ---- Theorem environments ----
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\title{Theory: 2D BarDistribution, mixture MALC,\\
+       optimal-transport aggregation, and variance reduction}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
 %% =============================================================================
 %% Consolidated theoretical section for the CFM / R-PFN paper.
 %%
@@ -570,3 +610,13 @@ and $19.9\times$, matching to within Monte-Carlo error.
 Bivariate normality is convenient for the simulation but is not required
 by Theorem~\ref{thm:variance-ratio}: replacing the simulator with any
 finite-variance joint would produce the same theoretical ratio.
+
+%% =============================================================================
+%% Bibliography stub — swap in your project's .bib file when integrating.
+%% BibTeX entries for the citations used above are listed in the accompanying
+%% README.md (paper/theory/README.md).
+%% =============================================================================
+\bibliographystyle{plainnat}
+% \bibliography{refs}          % <-- point at your project .bib
+
+\end{document}
