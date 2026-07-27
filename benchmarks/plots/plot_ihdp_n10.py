@@ -38,11 +38,18 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-_HERE  = os.path.dirname(os.path.abspath(__file__))
-_BENCH = os.path.dirname(_HERE)
-_REPO  = os.environ.get('REPO', os.path.dirname(_BENCH))
-_OUTDIR = os.path.join(_HERE, 'ihdp_n10')
-os.makedirs(_OUTDIR, exist_ok=True)
+_HERE   = os.path.dirname(os.path.abspath(__file__))
+_BENCH  = os.path.dirname(_HERE)
+_REPO   = os.environ.get('REPO', os.path.dirname(_BENCH))
+# Two output subfolders — Ours (2DMALC joint+MALC+OT) and the ablation
+# UWYK-2DMALC-NAIVE (same marginals we predict, but the treatment-effect
+# distribution is computed under independence rather than from the joint).
+_ROOTDIR      = os.path.join(_HERE, 'ihdp_n10')
+_OUTDIR_JOINT = os.path.join(_ROOTDIR, 'UWYK-2DMALC')
+_OUTDIR_NAIVE = os.path.join(_ROOTDIR, 'UWYK-2DMALC-NAIVE')
+os.makedirs(_OUTDIR_JOINT, exist_ok=True)
+os.makedirs(_OUTDIR_NAIVE, exist_ok=True)
+_OUTDIR = _OUTDIR_JOINT   # legacy alias kept for older figure-1/-2 code below
 
 CKPT       = os.environ.get('CHECKPOINT', os.path.join(_REPO, 'checkpoints', 'step_50000_final.pt'))
 CAUSALPFN  = os.environ.get('CAUSALPFN', '')
@@ -220,12 +227,14 @@ for k in range(N_QUERIES, n_rows * n_cols):
 fig.suptitle(f'IHDP r={REALIZATION}   joint $p(Y_{{do0}}, Y_{{do1}})$   at N={N_CONTEXT}',
               fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
-out = os.path.join(_OUTDIR, 'ihdp_n10_joint.png')
+# Joint plot is only meaningful for the 2DMALC version; UWYK-2DMALC-NAIVE
+# uses the *same* joint predictions but ignores the coupling, so we skip it there.
+out = os.path.join(_OUTDIR_JOINT, 'ihdp_n10_joint.png')
 fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
 
 
-# ── Figure 2: marginals p(Y_do0), p(Y_do1) ────────────────────────────────
+# ── Figure 2: marginals p(Y_do0), p(Y_do1) — same in BOTH folders ─────────
 fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
                           squeeze=False)
 palette = {'do0': '#2E7DAF', 'do1': '#7B3E9E'}
@@ -255,17 +264,19 @@ for k in range(N_QUERIES, n_rows * n_cols):
 fig.suptitle(f'IHDP r={REALIZATION}   marginal potential-outcome densities at N={N_CONTEXT}',
               fontsize=12, y=0.999)
 fig.tight_layout(rect=[0, 0, 1, 0.985])
-out = os.path.join(_OUTDIR, 'ihdp_n10_marginals.png')
-fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
-print(f'[save] {out}')
+for _dir in (_OUTDIR_JOINT, _OUTDIR_NAIVE):
+    out = os.path.join(_dir, 'ihdp_n10_marginals.png')
+    fig.savefig(out, dpi=140, bbox_inches='tight')
+    print(f'[save] {out}')
+plt.close(fig)
 
 
 # ── Naive TE distribution: p(τ) from marginals under independence ─────────
 # For τ = Y_do1 - Y_do0 with Y_do1 ⊥⊥ Y_do0, the density is the difference
-# convolution   p_τ(t) = ∫ p_{Y1}(y0 + t) p_{Y0}(y0) dy0 . Discretely, we
+# convolution   p_τ(t) = ∫ p_{Y1}(y0 + t) p_{Y0}(y0) dy0. Discretely, we
 # sum along diagonals of the outer product p_{Y1} ⊗ p_{Y0}. Grid resolution
 # is the bin width h; we then interpolate to the MALC tau grid so the naive
-# curve overlays the joint-based one at every panel.
+# curve is on the same grid as the joint-based one.
 def _naive_p_tau_from_marginals(pm):
     p_y0 = pm.sum(axis=1); p_y0 = p_y0 / max(p_y0.sum(), 1e-12)
     p_y1 = pm.sum(axis=0); p_y1 = p_y1 / max(p_y1.sum(), 1e-12)
@@ -279,88 +290,124 @@ def _naive_p_tau_from_marginals(pm):
                       left=0.0, right=0.0)
 
 
-# ── Figure 3: per-query TE distributions ──────────────────────────────────
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
-                          squeeze=False)
-tau_step = tau_centers[1] - tau_centers[0]
-for k, q in enumerate(QUERY_IDXS):
-    ax = axes[k // n_cols][k % n_cols]
-    p_tau       = p_taus[k]
-    p_tau_naive = _naive_p_tau_from_marginals(p_mats[k])
-    E_tau       = float((tau_centers * p_tau).sum() * tau_step)
-    E_tau_naive = float((tau_centers * p_tau_naive).sum() * tau_step)
-    # Joint-based (Ours)
-    ax.fill_between(tau_centers, p_tau, alpha=0.25, color='#2E4A6F')
-    ax.plot(tau_centers, p_tau, color='#2E4A6F', lw=2.0,
-             label=f'joint $p(\\tau)$  E={E_tau:+.2f}')
-    ax.axvline(E_tau, color='#2E4A6F', ls='--', lw=1.4, alpha=0.85)
-    # Naive (marginal-only, independence assumption)
-    ax.plot(tau_centers, p_tau_naive, color='#C1420F', lw=1.8, ls='--',
-             label=f'naive $p(\\tau)$  E={E_tau_naive:+.2f}')
-    ax.axvline(E_tau_naive, color='#C1420F', ls=':', lw=1.4, alpha=0.85)
-    # Truth
-    ax.axvline(true_cate_scaled[q], color='red', ls='--', lw=1.4,
-                label=f'true $\\tau$={true_cate_scaled[q]:+.2f}')
-    ax.plot(true_cate_scaled[q], 0, 'o', color='red', markersize=9,
-             clip_on=False, zorder=6)
-    ax.set_xlim(-1.0, 1.0)
-    ax.set_title(f'query {q}', fontsize=10)
-    if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
-    if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau)$')
-    ax.grid(alpha=0.25)
-    ax.legend(fontsize=8, loc='upper right')
-for k in range(N_QUERIES, n_rows * n_cols):
-    axes[k // n_cols][k % n_cols].set_visible(False)
-fig.suptitle(f'IHDP r={REALIZATION}   per-query TE distributions at N={N_CONTEXT}   '
-              '(joint = Ours, naive = independence from marginals)',
-              fontsize=12, y=0.999)
-fig.tight_layout(rect=[0, 0, 1, 0.985])
-out = os.path.join(_OUTDIR, 'ihdp_n10_te.png')
-fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
-print(f'[save] {out}')
-
-
-# ── Figure 4: OT (W2 barycenter) aggregation ──────────────────────────────
-bary = wasserstein_barycenter_1d(p_taus, tau_centers)
-bary_norm = bary / max(bary.sum() * tau_step, 1e-12)
-bary_mode = float(tau_centers[int(np.argmax(bary_norm))])
-bary_mean = float((tau_centers * bary_norm).sum() * tau_step)
-per_query_means = (tau_centers[None, :] * p_taus).sum(axis=1) * tau_step
-mean_of_means = float(per_query_means.mean())
-true_ate = float(true_cate_scaled.mean())
-
-fig, ax = plt.subplots(figsize=(9, 4.6))
-palette_Q = plt.cm.tab10(np.linspace(0, 0.9, N_QUERIES))
-# Faded per-query densities for context
+p_taus_naive = np.zeros_like(p_taus)
 for k in range(N_QUERIES):
-    ax.plot(tau_centers, p_taus[k], color=palette_Q[k], lw=1.1, alpha=0.35)
-# Barycenter on top
-ax.fill_between(tau_centers, bary_norm, alpha=0.20, color='#0F8A3C')
-ax.plot(tau_centers, bary_norm, color='#0F8A3C', lw=2.6,
-         label='W₂ barycenter (OT)')
-# Point estimates
-ax.axvline(true_ate,     color='red',     ls='--', lw=1.6,
-            label=f'true population ATE = {true_ate:+.2f}')
-ax.axvline(bary_mode,    color='#0F8A3C', ls='--', lw=1.6,
-            label=f'OT-mode = {bary_mode:+.2f}')
-ax.axvline(bary_mean,    color='#0F8A3C', ls=':',  lw=1.9,
-            label=f'OT-mean = {bary_mean:+.2f}')
-ax.axvline(mean_of_means, color='#C1420F', ls=':', lw=1.9,
-            label=f'mean-of-means = {mean_of_means:+.2f}')
-ax.set_xlim(-1.0, 1.0)
-ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
-ax.set_ylabel('density')
-ax.set_title(f'IHDP r={REALIZATION}   OT aggregation of per-query $p(\\tau)$   at N={N_CONTEXT}',
-              fontsize=12)
-ax.legend(fontsize=9, loc='upper right')
-ax.grid(alpha=0.25)
-fig.tight_layout()
-out = os.path.join(_OUTDIR, 'ihdp_n10_ot.png')
-fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
-print(f'[save] {out}')
+    p_taus_naive[k] = _naive_p_tau_from_marginals(p_mats[k])
+print('[naive] per-query naive-independence p(τ) computed', flush=True)
 
-print(f'\n[summary]')
+
+# ── Figure 3: per-query TE distributions ──────────────────────────────────
+# 3a. UWYK-2DMALC: joint p(τ) (Ours) with naive overlay for comparison
+# 3b. UWYK-2DMALC-NAIVE: naive p(τ) only (same marginals, ignore joint)
+def _plot_te_figure(include_joint: bool, outpath: str):
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
+                              squeeze=False)
+    tau_step = tau_centers[1] - tau_centers[0]
+    for k, q in enumerate(QUERY_IDXS):
+        ax = axes[k // n_cols][k % n_cols]
+        p_tau       = p_taus[k]
+        p_tau_naive = p_taus_naive[k]
+        E_tau       = float((tau_centers * p_tau).sum() * tau_step)
+        E_tau_naive = float((tau_centers * p_tau_naive).sum() * tau_step)
+        if include_joint:
+            ax.fill_between(tau_centers, p_tau, alpha=0.25, color='#2E4A6F')
+            ax.plot(tau_centers, p_tau, color='#2E4A6F', lw=2.0,
+                     label=f'joint $p(\\tau)$  E={E_tau:+.2f}')
+            ax.axvline(E_tau, color='#2E4A6F', ls='--', lw=1.4, alpha=0.85)
+            ax.plot(tau_centers, p_tau_naive, color='#C1420F', lw=1.8, ls='--',
+                     label=f'naive $p(\\tau)$  E={E_tau_naive:+.2f}')
+            ax.axvline(E_tau_naive, color='#C1420F', ls=':', lw=1.4, alpha=0.85)
+        else:
+            ax.fill_between(tau_centers, p_tau_naive, alpha=0.25, color='#C1420F')
+            ax.plot(tau_centers, p_tau_naive, color='#C1420F', lw=2.0,
+                     label=f'naive $p(\\tau)$  E={E_tau_naive:+.2f}')
+            ax.axvline(E_tau_naive, color='#C1420F', ls='--', lw=1.4, alpha=0.85)
+        ax.axvline(true_cate_scaled[q], color='red', ls='--', lw=1.4,
+                    label=f'true $\\tau$={true_cate_scaled[q]:+.2f}')
+        ax.plot(true_cate_scaled[q], 0, 'o', color='red', markersize=9,
+                 clip_on=False, zorder=6)
+        ax.set_xlim(-1.0, 1.0)
+        ax.set_title(f'query {q}', fontsize=10)
+        if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+        if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau)$')
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8, loc='upper right')
+    for k in range(N_QUERIES, n_rows * n_cols):
+        axes[k // n_cols][k % n_cols].set_visible(False)
+    if include_joint:
+        title = (f'IHDP r={REALIZATION}   per-query TE distributions at N={N_CONTEXT}   '
+                 '(joint = Ours, naive = marginal-only independence)')
+    else:
+        title = (f'IHDP r={REALIZATION}   naive per-query TE at N={N_CONTEXT}   '
+                 '(from marginals under independence)')
+    fig.suptitle(title, fontsize=12, y=0.999)
+    fig.tight_layout(rect=[0, 0, 1, 0.985])
+    fig.savefig(outpath, dpi=140, bbox_inches='tight'); plt.close(fig)
+    print(f'[save] {outpath}')
+
+
+_plot_te_figure(include_joint=True,
+                 outpath=os.path.join(_OUTDIR_JOINT, 'ihdp_n10_te.png'))
+_plot_te_figure(include_joint=False,
+                 outpath=os.path.join(_OUTDIR_NAIVE, 'ihdp_n10_te.png'))
+
+
+# ── Figure 4: OT (W2 barycenter) aggregation ─────────────────────────────
+# One barycenter per set of per-query densities.
+def _plot_ot_figure(densities: np.ndarray, kind: str, outpath: str):
+    tau_step = tau_centers[1] - tau_centers[0]
+    bary = wasserstein_barycenter_1d(densities, tau_centers)
+    bary_norm = bary / max(bary.sum() * tau_step, 1e-12)
+    bary_mode = float(tau_centers[int(np.argmax(bary_norm))])
+    bary_mean = float((tau_centers * bary_norm).sum() * tau_step)
+    per_q_means = (tau_centers[None, :] * densities).sum(axis=1) * tau_step
+    mean_of_means_local = float(per_q_means.mean())
+    true_ate_local = float(true_cate_scaled.mean())
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    palette_Q = plt.cm.tab10(np.linspace(0, 0.9, N_QUERIES))
+    for k in range(N_QUERIES):
+        ax.plot(tau_centers, densities[k], color=palette_Q[k], lw=1.1, alpha=0.35)
+    ax.fill_between(tau_centers, bary_norm, alpha=0.20, color='#0F8A3C')
+    ax.plot(tau_centers, bary_norm, color='#0F8A3C', lw=2.6,
+             label='W₂ barycenter (OT)')
+    ax.axvline(true_ate_local, color='red', ls='--', lw=1.6,
+                label=f'true population ATE = {true_ate_local:+.2f}')
+    ax.axvline(bary_mode, color='#0F8A3C', ls='--', lw=1.6,
+                label=f'OT-mode = {bary_mode:+.2f}')
+    ax.axvline(bary_mean, color='#0F8A3C', ls=':', lw=1.9,
+                label=f'OT-mean = {bary_mean:+.2f}')
+    ax.axvline(mean_of_means_local, color='#C1420F', ls=':', lw=1.9,
+                label=f'mean-of-means = {mean_of_means_local:+.2f}')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+    ax.set_ylabel('density')
+    ax.set_title(f'IHDP r={REALIZATION}   OT aggregation ({kind}) at N={N_CONTEXT}',
+                  fontsize=12)
+    ax.legend(fontsize=9, loc='upper right')
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(outpath, dpi=140, bbox_inches='tight'); plt.close(fig)
+    print(f'[save] {outpath}')
+    return true_ate_local, bary_mode, bary_mean, mean_of_means_local
+
+
+true_ate, bary_mode, bary_mean, mean_of_means = _plot_ot_figure(
+    p_taus, 'joint p(τ)',
+    os.path.join(_OUTDIR_JOINT, 'ihdp_n10_ot.png'))
+true_ate_n, bary_mode_n, bary_mean_n, mean_of_means_n = _plot_ot_figure(
+    p_taus_naive, 'naive p(τ)',
+    os.path.join(_OUTDIR_NAIVE, 'ihdp_n10_ot.png'))
+
+
+print(f'\n[summary — UWYK-2DMALC   (joint p(τ))]')
 print(f'  true population ATE (scaled) = {true_ate:+.3f}')
-print(f'  mean-of-per-query-means     = {mean_of_means:+.3f}')
-print(f'  W2 barycenter mode          = {bary_mode:+.3f}')
-print(f'  W2 barycenter mean          = {bary_mean:+.3f}')
+print(f'  mean-of-per-query-means      = {mean_of_means:+.3f}')
+print(f'  W2 barycenter mode           = {bary_mode:+.3f}')
+print(f'  W2 barycenter mean           = {bary_mean:+.3f}')
+
+print(f'\n[summary — UWYK-2DMALC-NAIVE  (independence-derived p(τ))]')
+print(f'  true population ATE (scaled) = {true_ate_n:+.3f}')
+print(f'  mean-of-per-query-means      = {mean_of_means_n:+.3f}')
+print(f'  W2 barycenter mode           = {bary_mode_n:+.3f}')
+print(f'  W2 barycenter mean           = {bary_mean_n:+.3f}')
