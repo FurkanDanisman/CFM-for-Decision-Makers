@@ -409,3 +409,20 @@ print(f'  true population ATE (scaled) = {true_ate_n:+.3f}')
 print(f'  mean-of-per-query-means      = {mean_of_means_n:+.3f}')
 print(f'  W2 barycenter mode           = {bary_mode_n:+.3f}')
 print(f'  W2 barycenter mean           = {bary_mean_n:+.3f}')
+
+
+# ── Cache arrays so a local matplotlib-only script can re-plot ────────────
+_cache = os.path.join(_OUTDIR_JOINT, 'cache.npz')
+np.savez(
+    _cache,
+    p_mats=p_mats,
+    centers=centers, bin_width=np.float32(bin_width),
+    edges=edges_np,
+    tau_centers=tau_centers,
+    p_taus=p_taus, p_taus_naive=p_taus_naive,
+    true_cate_scaled=true_cate_scaled,
+    QUERY_IDXS=np.asarray(QUERY_IDXS, dtype=np.int64),
+    y_min=np.float32(y_min), y_rng=np.float32(y_rng),
+    realization=np.int32(REALIZATION), n_context=np.int32(N_CONTEXT),
+)
+print(f'[cache] {_cache}')

@@ -268,3 +268,18 @@ fig.tight_layout(rect=[0, 0, 1, 0.985])
 out = os.path.join(_OUTDIR, 'ihdp_n10_marginals_compare.png')
 fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
 print(f'[save] {out}')
+
+
+# ── Cache arrays for local re-plot ────────────────────────────────────────
+_cache = os.path.join(_OUTDIR, 'cache.npz')
+np.savez(
+    _cache,
+    centers=centers, bin_width=np.float32(bin_width),
+    p_y0_ours=p_y0_ours, p_y1_ours=p_y1_ours,
+    p_y0_uwyk=p_y0_uwyk, p_y1_uwyk=p_y1_uwyk,
+    true_cate_scaled=true_cate_scaled,
+    QUERY_IDXS=np.asarray(QUERY_IDXS, dtype=np.int64),
+    y_min=np.float32(y_min), y_rng=np.float32(y_rng),
+    realization=np.int32(REALIZATION), n_context=np.int32(N_CONTEXT),
+)
+print(f'[cache] {_cache}')

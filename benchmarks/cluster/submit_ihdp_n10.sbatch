@@ -13,7 +13,8 @@
 #   noanc    plot_ihdp_n10_uwyk_noanc.py         → UWYK-NOANC
 #   comono   plot_ihdp_n10_uwyk_noanc_comono.py  → UWYK-NOANC-COMONOTONIC
 #   compare  plot_ihdp_n10_marginals_compare.py  → MARGINALS-COMPARE
-#   all      run all four scripts (default)
+#   true     plot_ihdp_n10_true.py               → IHDP-TRUE-TE
+#   all      run all five scripts (default)
 #
 # Usage on killarney:
 #   sbatch --account=aip-rgrosse \
@@ -66,14 +67,21 @@ run_compare () {
         python "$REPO/benchmarks/plots/plot_ihdp_n10_marginals_compare.py"
 }
 
+run_true () {
+    echo ">>> plot_ihdp_n10_true.py"
+    REPO="$REPO" CAUSALPFN="$CAUSALPFN" DOPFN="$DOPFN" \
+        python "$REPO/benchmarks/plots/plot_ihdp_n10_true.py"
+}
+
 case "$VARIANT" in
     ours)    run_ours ;;
     noanc)   run_noanc ;;
     comono)  run_comono ;;
     compare) run_compare ;;
+    true)    run_true ;;
     both)    run_ours; run_noanc ;;
-    all)     run_ours; run_noanc; run_comono; run_compare ;;
-    *) echo "[error] unknown VARIANT=$VARIANT (expected ours|noanc|comono|compare|both|all)" >&2
+    all)     run_ours; run_noanc; run_comono; run_compare; run_true ;;
+    *) echo "[error] unknown VARIANT=$VARIANT (expected ours|noanc|comono|compare|true|both|all)" >&2
        exit 2 ;;
 esac
 
