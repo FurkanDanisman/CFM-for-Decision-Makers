@@ -547,4 +547,125 @@ if compare is not None:
     fig.tight_layout(rect=[0, 0, 1, 0.985])
     _save(fig, 'MARGINALS-COMPARE', 'ihdp_n10_marginals_compare.png')
 
+# ── UWYK-2DMALC-VS-TRUE (Ours plots with the TRUE overlay) ──────────────
+# Uses arrays already loaded from the UWYK-2DMALC and IHDP-TRUE-TE caches.
+if ours is not None and true_ is not None:
+    os.makedirs(os.path.join(_ROOT, 'UWYK-2DMALC-VS-TRUE'), exist_ok=True)
+
+    p_mats           = ours['p_mats']
+    centers_o        = ours['centers']
+    bin_width_o      = float(ours['bin_width'])
+    tau_centers_o    = ours['tau_centers']
+    p_taus_o         = ours['p_taus']
+    true_cate_scaled = ours['true_cate_scaled']
+    QUERY_IDXS       = list(map(int, ours['QUERY_IDXS']))
+    REALIZATION      = int(ours['realization'])
+    N_CONTEXT        = int(ours['n_context'])
+    N_QUERIES        = len(QUERY_IDXS)
+    true_ate         = float(true_cate_scaled.mean())
+
+    # marginals derived from p_mats — same as UWYK-2DMALC
+    p_y0_ours = np.zeros((N_QUERIES, len(centers_o)))
+    p_y1_ours = np.zeros((N_QUERIES, len(centers_o)))
+    for k in range(N_QUERIES):
+        m0 = p_mats[k].sum(axis=1); m1 = p_mats[k].sum(axis=0)
+        p_y0_ours[k] = m0 / max(m0.sum() * bin_width_o, 1e-12)
+        p_y1_ours[k] = m1 / max(m1.sum() * bin_width_o, 1e-12)
+
+    # true arrays on the Ours grid
+    _tc = true_['centers']
+    if len(_tc) != len(centers_o) or float(_tc[0]) != float(centers_o[0]):
+        p_y0_true_grid = np.stack([np.interp(centers_o, _tc, true_['p_y0_true'][k])
+                                    for k in range(N_QUERIES)])
+        p_y1_true_grid = np.stack([np.interp(centers_o, _tc, true_['p_y1_true'][k])
+                                    for k in range(N_QUERIES)])
+    else:
+        p_y0_true_grid = true_['p_y0_true']
+        p_y1_true_grid = true_['p_y1_true']
+    mu0_scaled = true_['mu0_scaled']; mu1_scaled = true_['mu1_scaled']
+    _ttc = true_['tau_centers']
+    if len(_ttc) != len(tau_centers_o) or float(_ttc[0]) != float(tau_centers_o[0]):
+        p_taus_true_grid = np.stack([np.interp(tau_centers_o, _ttc, true_['p_taus_true'][k])
+                                      for k in range(N_QUERIES)])
+    else:
+        p_taus_true_grid = true_['p_taus_true']
+
+    # -- marginals: Ours solid + filled dots, true thin dotted red + red dots
+    _marginals_panel(
+        centers_o, p_y0_ours, p_y1_ours, QUERY_IDXS, true_cate_scaled,
+        f'IHDP r={REALIZATION}   Ours marginals vs TRUE at N={N_CONTEXT}',
+        out_folder='UWYK-2DMALC-VS-TRUE',
+        true_overlay=dict(
+            p_y0_true=p_y0_true_grid, p_y1_true=p_y1_true_grid,
+            mu0_scaled=mu0_scaled, mu1_scaled=mu1_scaled,
+            sigma_scaled=float(true_['sigma_scaled']),
+        ),
+    )
+
+    # -- per-query TE: Ours joint p(τ) filled + true p(τ) as thin red line
+    n_rows, n_cols = _grid_layout(N_QUERIES)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.4 * n_cols, 3.6 * n_rows),
+                              squeeze=False)
+    tau_step = float(tau_centers_o[1] - tau_centers_o[0])
+    for k, q in enumerate(QUERY_IDXS):
+        ax = axes[k // n_cols][k % n_cols]
+        p_o = p_taus_o[k]
+        p_t = p_taus_true_grid[k]
+        E_o = float((tau_centers_o * p_o).sum() * tau_step)
+        E_t = float(mu1_scaled[q] - mu0_scaled[q])
+        ax.fill_between(tau_centers_o, p_o, alpha=0.25, color=COLOR_JOINT)
+        ax.plot(tau_centers_o, p_o, color=COLOR_JOINT, lw=2.0,
+                 label=f'Ours joint $p(\\tau)$  E={E_o:+.2f}')
+        ax.axvline(E_o, color=COLOR_JOINT, ls='--', lw=1.4, alpha=0.85)
+        ax.plot(tau_centers_o, p_t, color=COLOR_TRUE, lw=1.0, ls=':', alpha=0.9,
+                 label=f'true $p(\\tau)$  E={E_t:+.2f}')
+        ax.plot(float(true_cate_scaled[q]), 0, 'o', color=COLOR_TRUE, markersize=9,
+                 clip_on=False, zorder=6)
+        ax.set_xlim(-1.0, 1.0)
+        ax.set_title(f'query {int(q)}', fontsize=10)
+        if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+        if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau)$')
+        ax.grid(alpha=0.25)
+        ax.legend(fontsize=8, loc='upper right')
+    for k in range(N_QUERIES, n_rows * n_cols):
+        axes[k // n_cols][k % n_cols].set_visible(False)
+    fig.suptitle(f'IHDP r={REALIZATION}   Ours joint p(τ) vs TRUE at N={N_CONTEXT}',
+                  fontsize=12, y=0.999)
+    fig.tight_layout(rect=[0, 0, 1, 0.985])
+    _save(fig, 'UWYK-2DMALC-VS-TRUE', 'ihdp_n10_te.png')
+
+    # -- OT: Ours' W2 barycenter, true's W2 barycenter overlay
+    bary_ours = w2_barycenter_1d(p_taus_o, tau_centers_o)
+    bary_ours /= max(bary_ours.sum() * tau_step, 1e-12)
+    bary_true = w2_barycenter_1d(p_taus_true_grid, tau_centers_o)
+    bary_true /= max(bary_true.sum() * tau_step, 1e-12)
+    mode_o = float(tau_centers_o[int(np.argmax(bary_ours))])
+    mode_t = float(tau_centers_o[int(np.argmax(bary_true))])
+    per_q_o = (tau_centers_o[None, :] * p_taus_o).sum(axis=1) * tau_step
+    mom_o = float(per_q_o.mean())
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    palette_Q = plt.cm.tab10(np.linspace(0, 0.9, N_QUERIES))
+    for k in range(N_QUERIES):
+        ax.plot(tau_centers_o, p_taus_o[k], color=palette_Q[k], lw=1.0, alpha=0.30)
+    ax.fill_between(tau_centers_o, bary_ours, alpha=0.20, color=COLOR_OT)
+    ax.plot(tau_centers_o, bary_ours, color=COLOR_OT, lw=2.6,
+             label=f'Ours OT (mode={mode_o:+.2f})')
+    ax.plot(tau_centers_o, bary_true, color=COLOR_TRUE, lw=1.6, ls=':',
+             label=f'true OT (mode={mode_t:+.2f})')
+    ax.axvline(true_ate, color=COLOR_TRUE_ATE, ls='--', lw=1.6,
+                label=f'true population ATE = {true_ate:+.2f}')
+    ax.axvline(mode_o, color=COLOR_OT, ls='--', lw=1.6)
+    ax.axvline(mom_o, color=COLOR_MEAN_MEANS, ls='--', lw=1.6,
+                label=f'Ours mean-of-means = {mom_o:+.2f}')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+    ax.set_ylabel('density')
+    ax.set_title(f'IHDP r={REALIZATION}   Ours OT vs TRUE at N={N_CONTEXT}',
+                  fontsize=12)
+    ax.legend(fontsize=9, loc='upper left')
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    _save(fig, 'UWYK-2DMALC-VS-TRUE', 'ihdp_n10_ot.png')
+
 print('\n[done]')
