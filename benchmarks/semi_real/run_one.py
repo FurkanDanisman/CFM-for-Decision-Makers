@@ -1,8 +1,8 @@
 """Per-(dataset, seed, checkpoint) job for the Do-PFN semi-real benchmark.
 
 Datasets (shipped inside the Do-PFN repo under `data/semi_real/`):
-  - sales_cate       (Amazon Sales; Blöbaum et al. 2024)
-  - law_race_cate    (Law School Admissions; Kusner et al. 2017)
+  - sales       (Amazon Sales; Blöbaum et al. 2024)
+  - law_race    (Law School Admissions; Kusner et al. 2017)
 
 Methods:
   - Do-PFN           (baseline)
@@ -155,7 +155,7 @@ def _compute_true_cate_via_dowhy(train_ds, test_ds):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--dataset',       required=True, choices=['sales_cate', 'law_race_cate'])
+    ap.add_argument('--dataset',       required=True, choices=['sales', 'law_race'])
     ap.add_argument('--seed',          type=int, required=True)
     ap.add_argument('--outdir',        required=True)
     ap.add_argument('--repo',          required=True)

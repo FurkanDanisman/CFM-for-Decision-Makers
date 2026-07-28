@@ -3,8 +3,8 @@
 Runs Do-PFN, UWYK Ancestral, UWYK No-Ancestral, and Ours (2 checkpoints)
 on the two semi-real datasets shipped with the Do-PFN repo:
 
-- **`sales_cate`** — Amazon Sales (Blöbaum et al. 2024).
-- **`law_race_cate`** — Law School Admissions (Kusner et al. 2017 / LSAC 1998).
+- **`sales`** — Amazon Sales (Blöbaum et al. 2024).
+- **`law_race`** — Law School Admissions (Kusner et al. 2017 / LSAC 1998).
 
 Ground-truth CATE is computed via DoWhy on the paper's agreed graph
 (mirrors Do-PFN's `reproduce.ipynb` cell 3). Metric: √PEHE and ε_ATE.

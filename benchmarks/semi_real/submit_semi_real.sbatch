@@ -8,7 +8,7 @@
 #SBATCH --array=0-9%10
 # ── Array layout ──────────────────────────────────────────────────────────
 # 2 datasets × N_SEEDS (default 5) = 10 tasks.
-# Datasets: sales_cate, law_race_cate  (Do-PFN's semi-real benchmarks).
+# Datasets: sales, law_race  (Do-PFN's semi-real benchmarks).
 #
 #   DS_IDX  = TASK / N_SEEDS
 #   SEED    = TASK % N_SEEDS
@@ -40,7 +40,7 @@ OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_semi_real}"
 VENV="${VENV:-$DEPLOY_ROOT/venv}"
 [ ! -f "$VENV/bin/activate" ] && [ -f "$DEPLOY_ROOT/.venv/bin/activate" ] && VENV="$DEPLOY_ROOT/.venv"
 
-DATASETS=(sales_cate law_race_cate)
+DATASETS=(sales law_race)
 N_SEEDS="${N_SEEDS:-5}"
 OURS_ONLY_FLAG=""
 if [ "${OURS_ONLY:-0}" = "1" ]; then OURS_ONLY_FLAG="--ours-only"; fi

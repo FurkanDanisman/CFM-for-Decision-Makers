@@ -10,7 +10,7 @@ import argparse, glob, os
 import numpy as np
 
 
-DATASETS = ['sales_cate', 'law_race_cate']
+DATASETS = ['sales', 'law_race']
 
 OURS_VARIANTS = [
     ('mean',              'ours_mean'),
