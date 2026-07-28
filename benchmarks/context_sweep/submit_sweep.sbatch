@@ -48,6 +48,7 @@ if [ ! -d "$REPO/benchmarks" ]; then
 fi
 UWYK_SRC="${UWYK_SRC:-$REPO/external/uwyk/src}"
 CAUSALPFN="${CAUSALPFN:-$REPO/external/causalpfn}"
+DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
 CHECKPOINT="${CHECKPOINT:-$REPO/checkpoints/step_50000_final.pt}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_sweep}"
@@ -110,6 +111,7 @@ for SEED in $(seq "$SEED_START" "$SEED_END"); do
         --uwyk-ckpt-dir "$UWYK_CKPT_DIR" \
         --causalpfn     "$CAUSALPFN" \
         --checkpoint    "$CHECKPOINT" \
+        --dopfn         "$DOPFN" \
         --workers       "$WORKERS" || echo "[warn] seed=$SEED failed, continuing"
 done
 

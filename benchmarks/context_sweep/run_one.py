@@ -18,7 +18,8 @@ _HERE  = os.path.dirname(os.path.abspath(__file__))
 _BENCH = os.path.dirname(_HERE)
 sys.path.insert(0, _BENCH)
 from methods.ours import ours_pipeline
-from methods.uwyk import uwyk_no_ancestral_pipeline
+from methods.uwyk import uwyk_no_ancestral_pipeline, uwyk_ancestral_pipeline
+from methods.dopfn import dopfn_pipeline
 
 
 DEVICE = torch.device('cpu')
@@ -89,6 +90,9 @@ def main():
     ap.add_argument('--uwyk-ckpt-dir', required=True,
                     help='Path to UWYK Ancestral checkpoint dir '
                          '(e.g. .../full_conditioned_model/final_earlytest_full_conditioning_16773252.0)')
+    ap.add_argument('--dopfn',        default=None,
+                    help='Path to Do-PFN repo (required when --source=poly). '
+                         'Used to import DoPFNRegressor for the poly-only baseline.')
     ap.add_argument('--malc-B',       type=int, default=100)
     ap.add_argument('--malc-max-K',   type=int, default=3)
     ap.add_argument('--n-eval',       type=int, default=200)
@@ -138,9 +142,31 @@ def main():
     print(f"[{time.time()-t0:6.1f}s] UWYK-NoAncestral inference", flush=True)
     uwyk_noanc_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd)
 
+    print(f"[{time.time()-t0:6.1f}s] UWYK-Ancestral inference", flush=True)
+    uwyk_anc_cate = uwyk_ancestral_pipeline(uwyk_model, cd)
+
     import gc
     del uwyk_model
     gc.collect()
+
+    # Do-PFN baseline — poly source only (PEHE reported).
+    dopfn_cate = None
+    if args.source == 'poly':
+        if not args.dopfn:
+            raise SystemExit('--dopfn is required when --source=poly')
+        print(f"[{time.time()-t0:6.1f}s] loading Do-PFN", flush=True)
+        _dopfn_removed = False
+        if args.dopfn in sys.path:
+            sys.path.remove(args.dopfn); _dopfn_removed = True
+        sys.path.insert(0, args.dopfn)
+        from scripts.transformer_prediction_interface.base import DoPFNRegressor
+        if _dopfn_removed:
+            # restore original position (harmless if it was already at head)
+            pass
+        print(f"[{time.time()-t0:6.1f}s] Do-PFN inference", flush=True)
+        dopfn_cate = dopfn_pipeline(cd, DoPFNRegressor)
+        del DoPFNRegressor
+        gc.collect()
 
     print(f"[{time.time()-t0:6.1f}s] loading OURS", flush=True)
     (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
@@ -160,6 +186,10 @@ def main():
         out[f'ate_{name}']  = float(np.mean(cate_pred))
 
     _record('uwyk_noanc',         uwyk_noanc_cate)
+    _record('uwyk_anc',           uwyk_anc_cate)
+    if dopfn_cate is not None:
+        # Only PEHE is written for Do-PFN in the sweep (paper convention).
+        out['pehe_dopfn'] = _pehe(true_cate, dopfn_cate)
     _record('ours_mean',          ours['ours_mean'])
     _record('ours_malc_mean',     ours['ours_malc_mean'])
     _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
