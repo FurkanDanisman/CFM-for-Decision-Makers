@@ -28,6 +28,14 @@ import argparse, gc, importlib, os, sys, time, traceback, types
 import numpy as np
 import torch
 
+# Install the sklearn check_array shim that Do-PFN needs (defined in
+# benchmarks/methods/dopfn.py). Importing that module runs the shim at
+# import time.
+_here = os.path.dirname(os.path.abspath(__file__))
+_bench = os.path.dirname(_here)
+if _bench not in sys.path: sys.path.insert(0, _bench)
+from methods import dopfn as _dopfn_shim   # noqa: F401  (side effect: shim install)
+
 DEVICE = torch.device('cpu')
 RHO_GRID = (0.0, 0.2, 0.4, 0.6, 0.8, 0.95)
 
