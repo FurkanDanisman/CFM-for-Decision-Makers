@@ -390,6 +390,84 @@ regime therefore preserves the same qualitative scaling in $d$ as the
 marginal-only regime, with a constant factor of $2$ advantage.
 
 %% ---------------------------------------------------------------------
+\section{Population aggregation via the 2-Wasserstein barycenter}
+\label{sec:ot-aggregation}
+
+Results 1 and 2 explain what each individual per-query prediction gives
+us. A separate question is how to aggregate $N$ per-query predictions
+$\{p_i(\tau \mid x_i)\}_{i=1}^N$ into a single population-level object.
+The paper uses the 2-Wasserstein barycenter. Here we clarify what that
+buys and, honestly, what it does not.
+
+\begin{theorem}[Barycenter as quantile average]
+\label{thm:barycenter}
+For densities $\{p_i\}_{i=1}^N$ on $\mathbb{R}$ with quantile functions
+$Q_i(u) = F_i^{-1}(u)$, the 2-Wasserstein barycenter $p_{\mathrm{bary}}$
+minimising $\sum_{i=1}^N W_2^2(p_i, p_{\mathrm{bary}})$ has quantile
+function
+\begin{equation}
+  Q_{\mathrm{bary}}(u) \;=\; \tfrac{1}{N}\sum_{i=1}^N Q_i(u).
+  \label{eq:bary-quantile}
+\end{equation}
+Its density is the pushforward of $\mathrm{Uniform}(0,1)$ through
+$Q_{\mathrm{bary}}$.
+\end{theorem}
+
+\begin{proof}
+Standard: the 2-Wasserstein distance on $\mathbb{R}$ is
+$W_2^2(p, q) = \int_0^1 (Q_p(u) - Q_q(u))^2\,du$, so the barycenter
+problem reduces to $\sum_i (Q_i - Q)^2$ minimisation in $L^2(0,1)$,
+whose unique minimiser is the pointwise arithmetic mean of $Q_i$.
+See \citet{aguehcarlier2011barycenters} for the general case.
+\end{proof}
+
+\begin{corollary}[OT-mean equals mean-of-means]
+\label{cor:ot-mean-equals-marg}
+$\mathbb{E}_{p_{\mathrm{bary}}}[\tau] = \tfrac{1}{N}\sum_i \mathbb{E}_{p_i}[\tau]$.
+The barycenter's mean is exactly the mean of the per-query means. For
+estimating the population ATE $\mathbb{E}[\tau]$, the OT barycenter and
+the naive mean-of-means aggregator are equivalent.
+\end{corollary}
+
+\begin{proof}
+$\mathbb{E}_{p_{\mathrm{bary}}}[\tau] = \int_0^1 Q_{\mathrm{bary}}(u)\,du
+ = \tfrac{1}{N}\sum_i \int_0^1 Q_i(u)\,du = \tfrac{1}{N}\sum_i \mathbb{E}_{p_i}[\tau]$.
+\end{proof}
+
+\begin{remark}[What the barycenter adds]
+Corollary~\ref{cor:ot-mean-equals-marg} says the barycenter yields no
+point-estimate improvement over mean-of-means for the ATE. The
+barycenter's actual value is that it produces a full \emph{distribution}
+$p_{\mathrm{bary}}$ from which other functionals of the population
+CATE can be extracted:
+\begin{itemize}
+  \item the modal peak $\arg\max p_{\mathrm{bary}}$ — a robust point
+    summary that is not the mean when the barycenter is skewed;
+  \item quantiles $Q_{\mathrm{bary}}(u)$ at arbitrary $u$, giving
+    uncertainty intervals;
+  \item higher-order moments such as $\mathrm{Var}_{p_{\mathrm{bary}}}(\tau)$,
+    which reflect the spread of unit-level effects across the
+    population and are strictly not recoverable from mean-of-means.
+\end{itemize}
+Mean-of-means discards this shape information. The OT barycenter
+preserves it via~\eqref{eq:bary-quantile}.
+\end{remark}
+
+\begin{remark}[When OT-mode differs from mean-of-means]
+The barycenter's mode differs from its mean only when
+$Q_{\mathrm{bary}}$ is asymmetric. Skew in $Q_{\mathrm{bary}}$
+inherits from skew in the per-query $Q_i$, which reflects
+heterogeneity of unit-level effects in the underlying joint law. On
+symmetric populations (Gaussian-mixture unit effects centred on the
+true CATE), mode and mean coincide and OT gives no advantage. On
+skewed populations, the modal peak can be closer to the population's
+central mass than the mean, giving a lower-bias point estimate at the
+cost of biased-away-from-mean identification target. Whether OT-mode
+improves on mean-of-means for a given dataset is empirical and depends
+on how the population CATE distribution is shaped.
+\end{remark}
+
+%% ---------------------------------------------------------------------
 \section{When the results fail}
 \label{sec:failure-modes}
 
@@ -500,6 +578,11 @@ A.~W.\ van~der~Vaart.
 L{\'a}szl{\'o} Gy{\"o}rfi, Michael Kohler, Adam Krzy\.zak, and Harro Walk.
 \newblock \emph{A Distribution-Free Theory of Nonparametric Regression}.
 \newblock Springer, 2002.
+
+\bibitem[Agueh and Carlier(2011)]{aguehcarlier2011barycenters}
+Martial Agueh and Guillaume Carlier.
+\newblock Barycenters in the Wasserstein space.
+\newblock \emph{SIAM Journal on Mathematical Analysis}, 43(2):904--924, 2011.
 
 \end{thebibliography}
 
