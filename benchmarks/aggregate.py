@@ -4,6 +4,10 @@ Read all per-job npz files in --results and print Table 3 in the paper's format.
 Rows: DoPFN, UWYK, plus every OURS variant.
 Columns: 5 datasets × (√PEHE, ε_ATE). OT-mode has empty PEHE cells on CATE
 datasets.
+
+Optional `--extra DIR:LABEL` appends 7 additional OURS rows read from a second
+results directory (e.g. a run using an alternate checkpoint). LABEL is
+prepended to each Ours row so both variants can be compared side by side.
 """
 import argparse, glob, os
 import numpy as np
@@ -11,19 +15,22 @@ import numpy as np
 DATASETS = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal']
 PEHE_DATASETS = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal']   # paper Table 3 has all five
 
+OURS_VARIANTS = [
+    ('mean',              'ours_mean'),
+    ('MALC-mean',         'ours_malc_mean'),
+    ('MALC-mean-msk',     'ours_malc_mean_msk'),
+    ('MALC-mode',         'ours_malc_mode'),
+    ('MALC-mode-msk',     'ours_malc_mode_msk'),
+    ('OT-mode',           'ours_ot_mode'),
+    ('OT-mean',           'ours_ot_mean'),
+]
+
 METHODS = [
     ('Do-PFN',                 'dopfn'),
     ('UWYK Ancestral',         'uwyk_anc'),
     ('UWYK No-Ancestral',      'uwyk_noanc'),
     ('UWYK Baseline',          'uwyk_baseline'),
-    ('OURS mean',              'ours_mean'),
-    ('OURS MALC-mean',         'ours_malc_mean'),
-    ('OURS MALC-mean-msk',     'ours_malc_mean_msk'),
-    ('OURS MALC-mode',         'ours_malc_mode'),
-    ('OURS MALC-mode-msk',     'ours_malc_mode_msk'),
-    ('OURS OT-mode',           'ours_ot_mode'),
-    ('OURS OT-mean',           'ours_ot_mean'),
-]
+] + [(f'OURS {v}', k) for v, k in OURS_VARIANTS]
 
 
 def _mean_std(a):
@@ -42,13 +49,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--results', required=True, help='Directory of *.npz')
     ap.add_argument('--out',     default=None, help='Optional output text file')
+    ap.add_argument('--extra',   default=None,
+                    help='Optional second results dir + label prefix, e.g. '
+                         '"results_dopfn:OURS[fn=10]". Appends 7 more Ours rows.')
     args = ap.parse_args()
+
+    # ── Parse --extra ────────────────────────────────────────────────────────
+    extra_dir = None; extra_label = None
+    method_list = list(METHODS)   # mutable copy
+    if args.extra:
+        extra_dir, extra_label = args.extra.split(':', 1)
+        if not os.path.isdir(extra_dir):
+            raise SystemExit(f'--extra dir does not exist: {extra_dir}')
+        for v, k in OURS_VARIANTS:
+            method_list.append((f'{extra_label} {v}', f'extra_{k}'))
 
     files = sorted(glob.glob(os.path.join(args.results, '*_r*.npz')))
     print(f"Found {len(files)} result files in {args.results}")
 
     # Bucket: dataset → method_key → (list of pehe, list of relerr)
-    bucket = {d: {k: {'pehe': [], 'relerr': []} for _, k in METHODS} for d in DATASETS}
+    bucket = {d: {k: {'pehe': [], 'relerr': []} for _, k in method_list} for d in DATASETS}
     n_per = {d: 0 for d in DATASETS}
     for fn in files:
         f = np.load(fn, allow_pickle=True)
@@ -63,18 +83,38 @@ def main():
             if pk in f.files: bucket[dname][key]['pehe'].append(float(f[pk]))
             if ek in f.files: bucket[dname][key]['relerr'].append(float(f[ek]))
 
+    # ── Read --extra directory (Ours-only rows) ─────────────────────────────
+    if extra_dir is not None:
+        extra_files = sorted(glob.glob(os.path.join(extra_dir, '*_r*.npz')))
+        print(f"Found {len(extra_files)} extra result files in {extra_dir}")
+        n_per_extra = {d: 0 for d in DATASETS}
+        for fn in extra_files:
+            f = np.load(fn, allow_pickle=True)
+            try:
+                dname = str(f['dataset'])
+            except Exception:
+                continue
+            if dname not in bucket: continue
+            n_per_extra[dname] += 1
+            for _, k in OURS_VARIANTS:
+                pk = f'pehe_{k}'; ek = f'err_{k}'
+                if pk in f.files: bucket[dname][f'extra_{k}']['pehe'].append(float(f[pk]))
+                if ek in f.files: bucket[dname][f'extra_{k}']['relerr'].append(float(f[ek]))
+        print(f"Extra n_realizations: " + " ".join(f"{d}={n_per_extra[d]}" for d in DATASETS))
+
     # ── Print table ─────────────────────────────────────────────────────────
     lines = []
     lines.append(f"\n{'':<22}  " + "  ".join(f"{d:^32}" for d in DATASETS))
     lines.append(f"{'method':<22}  " + "  ".join(f"{'√PEHE ↓':^15} {'ε_ATE ↓':^15}" for _ in DATASETS))
     lines.append("─" * (24 + 34 * len(DATASETS)))
 
-    for label, key in METHODS:
+    for label, key in method_list:
         row = f"{label:<22}  "
         for d in DATASETS:
             pehe = bucket[d][key]['pehe']; relerr = bucket[d][key]['relerr']
             big_pehe = d in ('CPS', 'PSID', 'PSIDbal')   # PEHE in raw y units
-            if d in PEHE_DATASETS and label not in ('OURS OT-mode', 'OURS OT-mean'):
+            has_pehe = not (label.endswith('OT-mode') or label.endswith('OT-mean'))
+            if d in PEHE_DATASETS and has_pehe:
                 m, s = _mean_std(pehe); row += f"{_fmt(m, s, big=big_pehe):>15} "
             else:
                 row += f"{'—':>15} "
