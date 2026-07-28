@@ -65,7 +65,7 @@ def main():
     args = ap.parse_args()
 
     pehe_ours    = _pehe_per_dataset(args.results, args.variant)
-    pehe_uwyk    = _pehe_per_dataset(args.results, 'uwyk_ancestral')
+    pehe_uwyk    = _pehe_per_dataset(args.results, 'uwyk_noanc')
     pehe_dopfn   = _pehe_per_dataset(args.results, 'dopfn')
     pehe_ours10  = _pehe_per_dataset(args.extra,   args.variant)
 
@@ -90,7 +90,7 @@ def main():
     # ── Plot ──────────────────────────────────────────────────────────
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
     for ax, ratios, num_label, title in [
-        (axes[0], ratios_marg,  'UWYK Ancestral', 'Δ_marg (marginal-only regime)'),
+        (axes[0], ratios_marg,  'UWYK No-Ancestral', 'Δ_marg (marginal-only regime)'),
         (axes[1], ratios_dopfn, 'Do-PFN',         'Δ_dopfn (Do-PFN baseline)'),
     ]:
         xs = np.arange(len(DATASETS))
