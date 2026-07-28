@@ -60,7 +60,11 @@ else
 fi
 DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
 CHECKPOINT="${CHECKPOINT:-$REPO/checkpoints/step_50000_final.pt}"
-UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+if [ -d "$DEPLOY_ROOT/external/uwyk/experiments" ]; then
+    UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+else
+    UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+fi
 OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_sweep}"
 VENV="${VENV:-$DEPLOY_ROOT/.venv}"
 # Legacy Killarney venv path
