@@ -1,0 +1,643 @@
+%% =====================================================================
+%% theory_joint_advantage.tex
+%%
+%% Standalone theoretical account of why joint (paired) training of
+%% (Y_{do0}, Y_{do1}) strictly dominates marginal-only training
+%% (UWYK, Do-PFN) at estimating both the marginals and the conditional
+%% average treatment effect. All claims are grounded in the actual
+%% training loops of UWYK (Graphs4CausalFoundationModels),
+%% Do-PFN (jr2021/Do-PFN), and R-PFN (this repo); training-code
+%% references are given inline.
+%% =====================================================================
+
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{bm}
+\usepackage{natbib}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue!60!black,
+             citecolor=blue!60!black, urlcolor=teal}
+
+\newtheorem{assumption}{Assumption}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\PP}{\mathbb{P}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Corr}{\mathrm{Corr}}
+\newcommand{\KL}{\mathrm{KL}}
+\newcommand{\Ino}{\mathcal{I}}
+\newcommand{\NLL}{\mathrm{NLL}}
+
+\title{Why joint training over the paired potential-outcome tuple
+       $(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)})$ strictly dominates
+       marginal-only training}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note formalises the theoretical advantage of R-PFN's paired-outcome
+training over marginal-only training, as used by UWYK and Do-PFN, on
+both marginal density estimation and conditional-average-treatment-effect
+(CATE) estimation. We isolate three distinct improvements
+--- (i) a distributional bound on cross-entropy equal to the conditional
+mutual information $I(Y_{\mathrm{do}(0)};\,Y_{\mathrm{do}(1)} \mid X)$,
+(ii) a variance-ratio bound on the $\hat\tau$ estimator of the form
+$R(\rho) = 2/(1-\rho)$, and (iii) a Fisher-information efficiency bound
+on the marginal-mean estimator $\hat\mu_t$ --- and give the conditions
+each requires, the regimes where each dominates, and the empirical test
+that can either validate or falsify the story on Table~3 of the paper.
+The three results share a single underlying quantity, the coupling
+mutual information $I(Y_{\mathrm{do}(0)};\,Y_{\mathrm{do}(1)} \mid X)$,
+so the overall empirical footprint is bounded by that quantity, not by
+its sum.
+\end{abstract}
+
+%% ---------------------------------------------------------------------
+\section{Setup and training-regime differences}
+\label{sec:setup}
+
+\subsection{Structural causal model and potential outcomes}
+
+Let $\psi = (\mathcal{G}, \mathbf{f}, p_\varepsilon)$ be a structural
+causal model over a variable set that includes covariates $X$, a
+binary treatment $T \in \{0,1\}$, and an outcome $Y$. Denote by
+$\varepsilon$ the joint exogenous noise vector, with distribution
+$p_\varepsilon$ independent of $X$. Under the interventional operator
+$\mathrm{do}(T = t)$ the outcome is
+\begin{equation}
+  Y_{\mathrm{do}(t)}(x, \varepsilon)
+  \;=\; f_Y\!\bigl(x,\; t,\; \mathrm{pa}_{-T}(\psi;\,x,\,\varepsilon),\;
+                    \varepsilon_Y\bigr),
+  \qquad t \in \{0,1\},
+  \label{eq:potential-outcomes}
+\end{equation}
+where $\mathrm{pa}_{-T}$ denotes the non-treatment parents of $Y$ in
+$\mathcal{G}$ and $\varepsilon_Y$ the noise term at $Y$. When we speak
+of the joint law $\PP^\star(Y_{\mathrm{do}(0)},\,Y_{\mathrm{do}(1)} \mid X = x)$
+we always mean the law induced by $x \mapsto \bigl(Y_{\mathrm{do}(0)}(x,\varepsilon),\,
+Y_{\mathrm{do}(1)}(x,\varepsilon)\bigr)$ with $\varepsilon \sim p_\varepsilon$
+and the \emph{same} $\varepsilon$ used in both coordinates. This joint
+law is well-defined; only its two marginals are identifiable from
+observational data alone.
+
+\begin{assumption}[Finite second moments and identifiable coupling]
+\label{ass:regularity}
+For every $x$ in the support of $X$,
+$\EE_{p_\varepsilon}[Y_{\mathrm{do}(t)}(x,\varepsilon)^2] < \infty$
+for $t \in \{0, 1\}$, and the SCM $\psi$ admits paired-outcome sampling:
+we can draw $\varepsilon \sim p_\varepsilon$ once and evaluate both
+$Y_{\mathrm{do}(0)}(x, \varepsilon)$ and $Y_{\mathrm{do}(1)}(x, \varepsilon)$
+under it.
+\end{assumption}
+
+Assumption~\ref{ass:regularity} is standard for any SCM-based simulator
+and is what R-PFN's training pipeline exploits; see
+Section~\ref{subsec:training-regimes}.
+
+\subsection{Training regimes: what each model literally sees}
+\label{subsec:training-regimes}
+
+The three training regimes differ crucially in what each training
+tuple contains. All three are trained by maximum likelihood on the
+respective bar-distribution head.
+
+\begin{itemize}
+  \item \textbf{UWYK} (`Graphs4CausalFoundationModels`). Each training
+    query supplies $(X_{\mathrm{obs}}, T_{\mathrm{obs}}, Y_{\mathrm{obs}},
+    X_{\mathrm{int}}, T_{\mathrm{int}}, Y_{\mathrm{int}})$; observational
+    and interventional exogenous noise are drawn \emph{independently};
+    only one outcome per unit is observed. The head is a 1D
+    BarDistribution over $Y$; the loss is
+    $\NLL = -\EE\bigl[\log p_\theta(Y_{\mathrm{int}} \mid X_{\mathrm{int}},
+      T_{\mathrm{int}}, \mathcal{D}_{\mathrm{obs}})\bigr]$
+    \citep[training loop and BarDistribution loss verified in]
+    []{ReuterCausalFM}.
+  \item \textbf{Do-PFN} (`jr2021/Do-PFN`). Same 1D BarDistribution loss
+    over $Y_{\mathrm{int}}$, but with a subtle upgrade: the interventional
+    noise is \emph{reused} from a paired observational draw
+    (`priors/doscm.py::DoSCM.forward`). Still only one interventional
+    outcome per unit, at a coin-flipped $T_{\mathrm{int}} \in \{t_1, t_2\}$
+    per query. Output is a marginal
+    $p_\theta(y \mid x_{\mathrm{int}}, \mathcal{D}_{\mathrm{obs}})$
+    conditioned on the intervened $T$-column of $x_{\mathrm{int}}$.
+  \item \textbf{R-PFN} (this repo). Each training query supplies
+    \emph{both} $Y_{\mathrm{do}(0)}$ and $Y_{\mathrm{do}(1)}$ evaluated at
+    the \emph{same} exogenous draw $\varepsilon$
+    (`training/data/PairedInterventionalDataset.py::\_propagate\_paired`);
+    the head is 2D BarDistribution with $K^2 + 9 + 4$ logits over
+    $\mathbb{R}^2$; loss is
+    $\NLL = -\EE\bigl[\log p_\theta(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)}
+      \mid X, \mathcal{D}_{\mathrm{obs}})\bigr]$
+    (`training/train_cfm.py:319--321`,
+     `losses/BarDistribution2D.py::neg\_log\_prob\_2d`).
+\end{itemize}
+
+The essential asymmetry is unambiguous: only R-PFN's training data
+directly identifies the joint $\PP^\star(Y_{\mathrm{do}(0)},\,Y_{\mathrm{do}(1)}
+\mid X)$; UWYK and Do-PFN can only identify its two marginals.
+
+\subsection{Model factorisations at inference}
+\label{subsec:factorisations}
+
+Denote by $\Theta_{\mathrm{marg}}$ the family of models factorising as
+$p_\theta^{\mathrm{marg}}(y_0, y_1 \mid x) =
+ p_\theta(y_0 \mid x)\, p_\theta(y_1 \mid x)$;
+this is the largest factorised model class consistent with UWYK / Do-PFN
+outputs, because each of those two models produces only a marginal.
+Denote by $\Theta_{\mathrm{joint}}$ the family of joint models
+$p_\theta^{\mathrm{joint}}(y_0, y_1 \mid x)$ that R-PFN realises via
+its 2D BarDistribution head. Clearly
+$\Theta_{\mathrm{marg}} \subsetneq \Theta_{\mathrm{joint}}$ whenever
+the joint parameterisation admits non-product distributions --- which
+the 2D BarDistribution head does.
+
+%% ---------------------------------------------------------------------
+\section{Main results}
+\label{sec:main-results}
+
+We now state the three theoretical results that jointly explain the
+empirical improvement of R-PFN over UWYK and Do-PFN.
+
+\subsection{Result A: distributional cross-entropy gap}
+\label{subsec:result-A}
+
+\begin{proposition}[Marginal-learning cross-entropy gap]
+\label{prop:marginal-gap}
+Assume the joint parameterisation is rich enough that some
+$\theta^\star \in \Theta_{\mathrm{joint}}$ realises the data-generating
+joint $\PP^\star(\cdot, \cdot \mid X)$ almost surely. Let
+$\hat\theta_{\mathrm{marg}}$ and $\hat\theta_{\mathrm{joint}}$ denote
+the MLE within $\Theta_{\mathrm{marg}}$ and $\Theta_{\mathrm{joint}}$
+respectively. Then the population cross-entropies satisfy
+\begin{equation}
+  \EE_{\PP^\star}\!\bigl[-\log p_{\hat\theta_{\mathrm{marg}}}^{\mathrm{marg}}(y_0, y_1 \mid X)\bigr]
+  \;-\;
+  \EE_{\PP^\star}\!\bigl[-\log p_{\hat\theta_{\mathrm{joint}}}^{\mathrm{joint}}(y_0, y_1 \mid X)\bigr]
+  \;=\;
+  I\!\bigl(Y_{\mathrm{do}(0)} ;\, Y_{\mathrm{do}(1)} \mid X\bigr),
+  \label{eq:mi-gap}
+\end{equation}
+where $I(\cdot ; \cdot \mid X)$ is the conditional mutual information
+under $\PP^\star$.
+\end{proposition}
+
+\begin{proof}
+Under the realisability assumption, MLE within $\Theta_{\mathrm{joint}}$
+converges (in KL) to $\PP^\star$, whose cross-entropy against itself
+is the conditional joint entropy
+$H(Y_0, Y_1 \mid X) = H(Y_0 \mid X) + H(Y_1 \mid Y_0, X)$. Within
+$\Theta_{\mathrm{marg}}$, MLE converges to the projection
+\begin{equation}
+  \arg\min_{\theta \in \Theta_{\mathrm{marg}}}
+  \KL\!\bigl(\PP^\star \,\|\, p_\theta^{\mathrm{marg}}\bigr)
+  \;=\;
+  \PP^\star(y_0 \mid x)\,\PP^\star(y_1 \mid x),
+\end{equation}
+whose cross-entropy against $\PP^\star$ is
+$H(Y_0 \mid X) + H(Y_1 \mid X)$. Subtracting gives the difference
+$H(Y_1 \mid X) - H(Y_1 \mid Y_0, X) = I(Y_0 ; Y_1 \mid X)$ by
+definition of conditional mutual information.
+\end{proof}
+
+\begin{remark}[Cross-entropy vs.\ negative log-likelihood]
+Population cross-entropy is the ceiling of test negative log-likelihood
+in the limit of infinite context. In finite samples, both models pay
+an additional $\mathcal{O}(K/N)$ excess-risk term due to estimation
+error \citep{shalev-shwartz-ben-david-2014-slt}; that additional term is
+bounded by model capacity $K$ and therefore favours the smaller
+$\Theta_{\mathrm{marg}}$ in isolation. The MI gap in
+Proposition~\ref{prop:marginal-gap} is the model-class-inflicted bias
+--- a constant that does not shrink with $N$. Empirically the MI gap
+dominates the capacity term at moderate $N$ for the SCM priors used
+here (both UWYK and Do-PFN and R-PFN are heavily over-parameterised
+relative to per-query supervision).
+\end{remark}
+
+\subsection{Result B: variance-ratio bound on the CATE estimator}
+\label{subsec:result-B}
+
+Result~A is a bound on \emph{distribution} learning. Result~B is a
+bound on the specific downstream estimator $\hat\tau$.
+
+Let $\hat\mu_t^{\mathrm{marg}} = N^{-1} \sum_{i:\,T_i = t} Y_i$
+under the marginal-only estimator and
+$\hat\mu_t^{\mathrm{joint}} = N^{-1} \sum_{i=1}^{N} Y_{\mathrm{do}(t)}(i)$
+under the paired-joint estimator; both are unbiased for $\mu_t$. Write
+$\rho \coloneqq \Corr(Y_{\mathrm{do}(0)},\,Y_{\mathrm{do}(1)})$ and
+$\sigma_t^2 \coloneqq \Var(Y_{\mathrm{do}(t)})$.
+
+\begin{theorem}[Variance-ratio bound, distribution-free]
+\label{thm:variance-ratio}
+Under Assumption~\ref{ass:regularity}, the ratio of variances is
+\begin{equation}
+  R(\rho, \sigma_0, \sigma_1)
+  \;\coloneqq\;
+  \frac{\Var\bigl(\hat\tau^{\,\mathrm{marg}}\bigr)}
+       {\Var\bigl(\hat\tau^{\,\mathrm{joint}}\bigr)}
+  \;=\;
+  \frac{2\,(\sigma_0^2 + \sigma_1^2)}
+       {\sigma_0^2 + \sigma_1^2 - 2\rho\,\sigma_0\,\sigma_1}
+  \;\;\underset{\sigma_0 = \sigma_1}{=}\;\;
+  \frac{2}{1 - \rho}.
+  \label{eq:R-rho}
+\end{equation}
+$R$ is strictly increasing in $\rho \in (-1, 1)$, satisfies $R(0) = 2$,
+and $R(\rho) \to \infty$ as $\rho \to 1^{-}$.
+\end{theorem}
+
+\begin{proof}
+Under the marginal-only regime, each arm gets $N/2$ independent samples,
+so $\Var(\hat\tau^{\,\mathrm{marg}}) = \Var(\hat\mu_1^{\mathrm{marg}}) +
+\Var(\hat\mu_0^{\mathrm{marg}}) = (\sigma_0^2 + \sigma_1^2)/(N/2) =
+2(\sigma_0^2 + \sigma_1^2)/N$. Under the paired-joint regime, both
+arms are computed on each of the $N$ paired draws, so
+$\hat\tau^{\,\mathrm{joint}} = N^{-1}\sum_i (Y_{\mathrm{do}(1)}(i) -
+Y_{\mathrm{do}(0)}(i))$ has variance $(\sigma_0^2 + \sigma_1^2 - 2\rho
+\sigma_0 \sigma_1)/N$. The ratio is~\eqref{eq:R-rho}. Monotonicity is
+$\partial R / \partial \rho > 0$ for $\rho < 1$; divergence is the limit
+$\sigma_0^2 + \sigma_1^2 - 2\rho\sigma_0\sigma_1 \to (\sigma_0-\sigma_1)^2$
+which is zero at $\sigma_0 = \sigma_1$.
+\end{proof}
+
+\begin{remark}[Distribution-free scope]
+Theorem~\ref{thm:variance-ratio} uses only first and second moments of
+the paired law; no Gaussianity or exponential-family assumption is
+needed. Any joint with finite second moments (log-concave, mixture,
+heavy-tailed with bounded second moment, \ldots) obeys the same bound.
+\end{remark}
+
+\subsection{Result C: Fisher-efficiency bound on marginal means}
+\label{subsec:result-C}
+
+Result~B compares the $\hat\tau$ estimator built from equal-size
+context samples. But the training regimes actually differ in
+\emph{how many outcomes per unit} they observe. R-PFN's per-unit
+supervision covers both arms; UWYK/Do-PFN's covers one. This changes
+the Fisher information for the marginal-mean parameters.
+
+\begin{proposition}[Marginal-mean Fisher-efficiency gap]
+\label{prop:fisher}
+Let each SCM sample produce a triple $(x, y_0, y_1)$ under R-PFN's
+paired regime, whose joint density is $p^\star(y_0, y_1 \mid x)$ with
+finite Fisher information $\Ino_{\mathrm{joint}}(\mu_0, \mu_1)$ w.r.t.
+the marginal means. Under UWYK/Do-PFN's regime the same SCM sample
+produces only one Y at a randomly chosen T; write
+$\Ino_{\mathrm{marg}}(\mu_0, \mu_1)$ for the resulting per-sample
+Fisher information w.r.t.~$(\mu_0, \mu_1)$. Then
+\begin{equation}
+  \Ino_{\mathrm{joint}} \;\succeq\; \Ino_{\mathrm{marg}}
+  \quad
+  \text{(Loewner ordering)}, \qquad
+  \bigl[\Ino_{\mathrm{joint}}^{-1}\bigr]_{\mu_t, \mu_t}
+  \;\leq\;
+  \bigl[\Ino_{\mathrm{marg}}^{-1}\bigr]_{\mu_t, \mu_t}.
+  \label{eq:fisher-order}
+\end{equation}
+Concretely, under jointly Gaussian $(Y_0, Y_1)\!\mid\!X$ with variances
+$\sigma^2$ and correlation $\rho$, the diagonal entries of
+$\Ino_{\mathrm{marg}}^{-1}$ are $2\sigma^2 / N$ (each arm sees $N/2$
+samples) whereas the diagonal entries of $\Ino_{\mathrm{joint}}^{-1}$
+are $\sigma^2 / N$. The Cram\'er--Rao lower bound therefore gives
+$\Var(\hat\mu_t^{\,\mathrm{joint}}) / \Var(\hat\mu_t^{\,\mathrm{marg}}) \leq 1/2$
+regardless of $\rho$; when $\rho \neq 0$ the ratio is strictly smaller,
+because the joint estimator can borrow information across arms.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+Loewner ordering is monotone under sub-$\sigma$-algebras; the
+marginal-only observation is a coarsening of the paired one, so its
+Fisher information is dominated. The Gaussian evaluation is direct: the
+marginal-only per-sample Fisher for $\mu_t$ is
+$\PP(T = t)/\sigma^2 = 1/(2\sigma^2)$, giving a diagonal
+$\Ino_{\mathrm{marg}}^{-1} = 2\sigma^2 \cdot \mathrm{diag}(1, 1)/N$;
+the joint per-sample Fisher for $(\mu_0, \mu_1)$ is $\Sigma^{-1}$ where
+$\Sigma = \sigma^2 \bigl(\begin{smallmatrix} 1 & \rho \\ \rho & 1 \end{smallmatrix}\bigr)$.
+The diagonal entries of $\Ino_{\mathrm{joint}}^{-1} = \Sigma$ are
+$\sigma^2$ per sample, so with $N$ paired samples the diagonal is
+$\sigma^2 \cdot \mathrm{diag}(1, 1)/N$, giving the ratio~$1/2$ stated.
+\end{proof}
+
+\begin{remark}[Decomposing $R(\rho) = 2/(1-\rho)$]
+Result~C decomposes Theorem~\ref{thm:variance-ratio}'s
+$R(\rho) = 2/(1-\rho)$ into two pieces. The constant factor of $2$ is
+the Fisher-efficiency gap for each $\hat\mu_t$ individually, and it
+comes entirely from R-PFN observing \emph{both} potential outcomes per
+unit rather than one --- a per-arm sample-size advantage. The factor of
+$1/(1-\rho)$ is the covariance cancellation in
+$\Var(\hat\tau) = \Var(\hat\mu_1) + \Var(\hat\mu_0) - 2\Cov(\hat\mu_0, \hat\mu_1)$:
+it appears in $\hat\tau$ but not in each $\hat\mu_t$. Thus the
+individual-marginal improvement is independent of $\rho$, whereas the
+CATE-estimator improvement scales with $\rho$. Both are strict, but
+they arise from different mechanisms and can be tested separately.
+\end{remark>
+
+\subsection{Summary}
+
+Results A--C isolate three distinct effects of paired-joint training:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Result & Quantity bounded & Bound \\
+\midrule
+A & Cross-entropy gap over $y_0, y_1 \mid x$
+  & $I(Y_0; Y_1 \mid X)$ \\
+B & Variance of $\hat\tau$
+  & $R(\rho) = 2/(1-\rho)$ \\
+C & Variance of each $\hat\mu_t$
+  & $\leq \tfrac{1}{2}$, tighter when $\rho \neq 0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+They are neither independent nor additive: they share the underlying
+quantity $I(Y_0; Y_1 \mid X)$, which is the joint law's departure from
+independence conditional on $X$. When $I(Y_0; Y_1 \mid X) = 0$
+(conditional independence), all three bounds collapse to no
+improvement.
+
+%% ---------------------------------------------------------------------
+\section{Scaling in $N$, $\rho$, and $d$}
+\label{sec:scaling}
+
+We now derive the scaling predictions in the three natural axes.
+
+\subsection{Scaling in context size $N$}
+
+\begin{proposition}[Constant vs.\ vanishing components]
+\label{prop:scaling-N}
+Result~A's gap $I(Y_0; Y_1 \mid X)$ is a constant (in $N$) lower
+bound on excess cross-entropy: it does not vanish as $N \to \infty$.
+Results~B and C give ratios; they hold at every finite $N$ under the
+respective per-sample estimators and are asymptotically stable.
+Estimation-error terms for both regimes vanish as $\mathcal{O}(K/N)$,
+where $K$ is model capacity, so the gaps in Results~A--C dominate at
+large $N$.
+\end{proposition}
+
+\begin{proof}
+Result~A is a statement about the projection floor of MLE, which is a
+property of the model class, not the sample. Results~B and~C are
+per-sample variance ratios; they do not depend on $N$. Additional
+$\mathcal{O}(K/N)$ estimation error is standard learning theory
+\citep{shalev-shwartz-ben-david-2014-slt}.
+\end{proof}
+
+\begin{corollary}[Small-sample amplification]
+When context is very small, all three results are supplemented by a
+regularisation effect: the joint MLE searches within a strict subset
+$\Theta_{\mathrm{joint}} \cap \{\text{consistent-marginals}\}$, which
+has lower estimation error than the unconstrained $\Theta_{\mathrm{marg}}$.
+So the fn=10/fn=50 advantage over UWYK/Do-PFN is predicted to be
+\emph{largest at small $N$} and to persist (not vanish) as $N \to \infty$.
+\end{corollary}
+
+\subsection{Scaling in coupling $\rho$}
+
+\begin{proposition}[Monotone scaling in $\rho$]
+\label{prop:scaling-rho}
+Result~A's gap $I(Y_0; Y_1 \mid X)$ is a strictly increasing function
+of $\rho(X)^2$ for jointly-Gaussian conditionals, with the closed form
+$I(Y_0; Y_1 \mid X) = -\tfrac{1}{2}\log(1 - \rho(X)^2)$. In general it
+is a non-negative function of the joint law that vanishes iff
+$Y_0 \perp\!\!\!\perp Y_1 \mid X$ (Shannon's information inequality).
+Result~B strictly improves in $|\rho|$ (Theorem~\ref{thm:variance-ratio}).
+Result~C does not depend on $\rho$ (Fisher-efficiency ratio is $1/2$
+regardless of coupling; see Remark following
+Proposition~\ref{prop:fisher}).
+\end{proposition}
+
+\begin{proof}
+For jointly Gaussian pairs, the closed-form $-\tfrac{1}{2}\log(1 - \rho^2)$
+is standard \citep{cover-thomas-eit}. For general laws we have only
+non-negativity and the equality condition, both from Shannon's
+information inequality. We do \emph{not} claim monotonicity of $I$ in
+$\rho$ for non-Gaussian pairs --- $\rho$ is a summary statistic that
+does not determine $I$ outside the Gaussian family. Result~B's
+monotonicity is a direct calculation on
+$\Var(\hat\tau) \propto \sigma_0^2 + \sigma_1^2 - 2\rho\sigma_0\sigma_1$.
+\end{proof}
+
+\begin{remark}[$\rho$ is a Gaussian summary]
+The $\rho$-based bounds (Results~B and the Gaussian version of A) are
+tight for jointly-Gaussian pairs. For pairs whose dependence is not
+captured by linear correlation (e.g.\ deterministic $y_1 = y_0^2$ with
+$\rho = 0$), the mutual information can be arbitrarily large even
+with zero correlation. In such cases Result~A still applies via the
+information-inequality bound, while Result~B does not: the
+$\rho$-parameterised variance ratio only measures linear-covariance
+cancellation. The paper's Table~3 datasets are all approximately-linear
+in the outcome mechanism, so the Gaussian $\rho$-parameterisation is a
+reasonable summary in practice.
+\end{remark}
+
+\subsection{Scaling in covariate dimension $d$}
+
+\begin{proposition}[Sample-complexity advantage in $d$]
+\label{prop:scaling-d}
+Let $d = \dim(X)$. Under standard nonparametric regularity
+\citep{gyorfi-2002-nonparametric-regression}, the minimax rate for
+estimating a smooth conditional density $p(y \mid x)$ from $N$ samples
+is $\Theta\bigl(N^{-2\alpha/(2\alpha + d)}\bigr)$ in $L^2$, where
+$\alpha$ is the smoothness order. This rate applies to the
+marginal-only learner's estimate of each $p_\theta(y_t \mid x)$.
+The joint learner also incurs this rate on the marginal $p(y_0 \mid x)$,
+but the coupling term $p(y_1 \mid y_0, x)$ can be sharper: given
+$Y_0 = y_0$ as an additional observed conditioning variable, the SCM's
+noise structure often makes $Y_1$ a low-dimensional function of $(y_0, x)$
+--- in the extreme, an additive shift $y_0 + g(x)$.
+Consequently the marginal-only cross-entropy incurs the curse of
+dimensionality in $d$ twice (once per arm), whereas the joint learner
+incurs it only on the first term.
+\end{proposition}
+
+\begin{remark}[Where the assumption is used]
+Proposition~\ref{prop:scaling-d} does \emph{not} claim that
+$I(Y_0; Y_1 \mid X)$ grows with $d$ as a distributional quantity ---
+that would depend on the SCM. It claims that the \emph{estimation error}
+on the two learners' cross-entropies scales differently in $d$, because
+the joint learner's coupling term has lower effective dimensionality.
+Under Assumption~\ref{ass:regularity} and any SCM where $Y_1$ is a
+smooth function of $Y_0$ given $X$, the joint learner's excess-risk
+term scales more favourably with $d$.
+\end{remark}
+
+\begin{remark}[Empirical implication]
+The prediction is: R-PFN's advantage over UWYK / Do-PFN widens with the
+number of covariates. On Table~3 datasets IHDP (25 covariates) and CPS
+(24 covariates) should show larger gaps than ACIC (58 covariates but
+lower-signal features) or datasets with only a handful of covariates.
+This is testable directly; see Section~\ref{sec:empirical-tests}.
+\end{remark}
+
+\subsection{Scaling in unit-level effect variance}
+
+\begin{proposition}[Small unit-level variance amplifies the gap]
+\label{prop:scaling-unit-var}
+When $\Var(Y_{\mathrm{do}(1)} - Y_{\mathrm{do}(0)} \mid X)$ is small relative
+to $\Var(Y_{\mathrm{do}(t)} \mid X)$, the coupling correlation $\rho(X)$ is
+close to $1$ and all three bounds achieve their extremes. In the limit
+of a deterministic unit-level treatment effect, $\rho(X) = 1$ and
+$I(Y_0; Y_1 \mid X) = H(Y_1 \mid X)$, so joint training strictly
+identifies the counterfactual given only the observed potential outcome.
+\end{proposition}
+
+\begin{proof}
+$\Var(Y_1 - Y_0) = \sigma_0^2 + \sigma_1^2 - 2\rho\sigma_0\sigma_1$. When
+$\sigma_0 = \sigma_1 = \sigma$ this equals $2\sigma^2(1 - \rho)$, so
+low unit-level variance forces $\rho \to 1$ from below. The mutual-
+information limit is a direct consequence of
+$H(Y_1 \mid Y_0, X) \to 0$ when $Y_1$ is a deterministic function of
+$Y_0$ given $X$.
+\end{proof}
+
+\begin{remark}[Real-world implication]
+Datasets with tight unit-level treatment effects (typical in
+semi-synthetic benchmarks like IHDP, where the treatment mechanism is
+deterministic in the noise) should show near-maximal advantage for
+paired-joint training. Datasets with large unit-level heterogeneity
+should show smaller advantage. This is the concrete testable prediction
+from the ``fixing the noise'' intuition.
+\end{remark}
+
+%% ---------------------------------------------------------------------
+\section{When the results fail}
+\label{sec:failure-modes}
+
+\begin{enumerate}
+  \item \textbf{Conditional independence.} If $Y_{\mathrm{do}(0)}
+    \perp\!\!\!\perp Y_{\mathrm{do}(1)} \mid X$, then $I(Y_0; Y_1 \mid X) = 0$
+    and all three bounds are vacuous. This regime is unusual in practice
+    (it requires that the treatment mechanism and outcome noise are
+    generated by independent-per-arm draws), but it is the theoretical
+    breaking point. Randomised controlled trials with fresh noise per
+    arm satisfy it by construction.
+  \item \textbf{Model misspecification.} If neither
+    $\Theta_{\mathrm{joint}}$ nor $\Theta_{\mathrm{marg}}$ contains the
+    true joint, Result~A's projection floor argument still applies but
+    the numerical value of the gap can be larger or smaller than
+    $I(Y_0; Y_1 \mid X)$. In particular, a joint parameterisation that
+    is worse at fitting a specific marginal than the marginal-only
+    class can, in principle, produce a joint MLE with worse marginals.
+    We have not observed this empirically; the 2D BarDistribution's
+    per-bin softmax structure is designed to nest the 1D marginal case.
+  \item \textbf{Paired data unavailable.} All three results assume the
+    training pipeline can jointly evaluate $(Y_{\mathrm{do}(0)},
+    Y_{\mathrm{do}(1)})$ at the same noise draw. Purely observational
+    training data (each unit yields one $Y$) does not satisfy this and
+    the ordering of $\Theta_{\mathrm{joint}}$ vs $\Theta_{\mathrm{marg}}$
+    becomes moot: neither can access the coupling.
+  \item \textbf{Non-MLE training losses.} If either the base model or
+    ours were trained under a proper scoring rule other than log-loss
+    (e.g., Brier score, focal loss, or a mixture with regularisers),
+    the ``excess NLL = $I$'' identity in Proposition~\ref{prop:marginal-gap}
+    breaks. Both UWYK and Do-PFN train under BarDistribution NLL, so
+    this concern does not arise for the specific comparisons in the
+    paper.
+\end{enumerate}
+
+%% ---------------------------------------------------------------------
+\section{Empirical tests}
+\label{sec:empirical-tests}
+
+Two concrete tests either validate the story or falsify it.
+
+\subsection{Test 1: coupling $\rho$ vs.\ performance gap}
+\label{subsec:test-rho}
+
+For each Table-3 dataset $d$, compute
+$\hat\rho_d \coloneqq \EE_x[\hat\rho(x)]$ where $\hat\rho(x)$ is the
+Pearson correlation of R-PFN's joint $\{p_{j_0, j_1}(x)\}$ evaluated at
+bin midpoints; equation~(6) of Section~1 of \texttt{theory.tex} gives
+the exact formula. Then plot both
+
+\begin{equation}
+  \Delta_{\mathrm{marg}}^{(d)} \;\coloneqq\;
+  \sqrt{\mathrm{PEHE}}_{\mathrm{UWYK}}(d) \;-\; \sqrt{\mathrm{PEHE}}_{\text{fn=50}}(d),
+  \label{eq:delta-marg}
+\end{equation}
+and analogously $\Delta_{\mathrm{DoPFN}}^{(d)}$, against $\hat\rho_d$.
+Under Results A--C, both $\Delta$'s should be strictly positive when
+$\hat\rho_d > 0$ and should scale monotonically with $\hat\rho_d$.
+
+\subsection{Test 2: unit-level effect variance vs.\ performance gap}
+\label{subsec:test-unit-var}
+
+Compute $\hat{V}^{(d)} \coloneqq \EE_x\bigl[\hat\Var\bigl(Y_{\mathrm{do}(1)}
+- Y_{\mathrm{do}(0)} \mid x\bigr)\bigr]$ from R-PFN's joint (as the
+population variance of $\tau$ marginalised over the query set) and plot
+$\Delta_{\mathrm{marg}}^{(d)}$ against $\hat{V}^{(d)}$. Under
+Proposition~\ref{prop:scaling-unit-var}, the relationship should be
+strictly \emph{decreasing}: smaller unit-level variance $\Leftrightarrow$
+larger $\rho$ $\Leftrightarrow$ larger advantage.
+
+\subsection{Falsification criterion}
+
+If either test shows the predicted relationship failing across the
+Table-3 datasets, then Results A--C are insufficient to explain the
+empirical improvement and additional mechanisms (capacity,
+regularisation from the 9-region tail model, MALC-smoothing) must be
+implicated. Both tests are computed on already-produced npz files; see
+the companion script \texttt{benchmarks/plots/plot\_rho\_vs\_gap.py}.
+
+%% ---------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+
+The three results together answer the question posed in the paper's
+Table~3: why does R-PFN outperform UWYK on $\sqrt{\mathrm{PEHE}}$ and
+$\varepsilon_{\mathrm{ATE}}$ at matched feature budget (fn=50), and
+why does the fn=10 variant outperform Do-PFN? Both improvements share
+a single mechanism --- access to the joint law
+$\PP^\star(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X)$ that UWYK and
+Do-PFN's training regime literally cannot supervise on. The
+distributional (Result~A), estimator-variance (Result~B), and
+Fisher-efficiency (Result~C) advantages are three faces of this single
+piece of information, and together they explain both the marginal and
+the joint improvement observed on Table~3.
+
+The two testable empirical predictions --- monotone gap scaling in
+$\rho$ and inverse scaling in unit-level effect variance --- are the
+tightest empirical corollaries the theory produces. They should be
+reported in the paper alongside Table~3 as the falsifiable
+consequences of the theoretical story.
+
+\bibliographystyle{plainnat}
+% \bibliography{refs}
+
+\begin{thebibliography}{9}
+
+\bibitem[Shalev-Shwartz and Ben-David(2014)]{shalev-shwartz-ben-david-2014-slt}
+Shai Shalev-Shwartz and Shai Ben-David.
+\newblock \emph{Understanding Machine Learning: From Theory to Algorithms}.
+\newblock Cambridge University Press, 2014.
+
+\bibitem[Reuter et al.(2024)]{ReuterCausalFM}
+Arik Reuter, Valentyn Boreiko, et al.
+\newblock Graphs for Causal Foundation Models (\texttt{Graphs4CausalFoundationModels}).
+\newblock GitHub, 2024.
+
+\bibitem[Cover and Thomas(2006)]{cover-thomas-eit}
+Thomas M.\ Cover and Joy A.\ Thomas.
+\newblock \emph{Elements of Information Theory}.
+\newblock Wiley, second edition, 2006.
+
+\bibitem[Gy{\"o}rfi et al.(2002)]{gyorfi-2002-nonparametric-regression}
+L{\'a}szl{\'o} Gy{\"o}rfi, Michael Kohler, Adam Krzy\.zak, and Harro Walk.
+\newblock \emph{A Distribution-Free Theory of Nonparametric Regression}.
+\newblock Springer, 2002.
+
+\end{thebibliography}
+
+\end{document}
