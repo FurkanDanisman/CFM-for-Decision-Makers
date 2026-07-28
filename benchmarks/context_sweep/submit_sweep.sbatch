@@ -46,8 +46,18 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 if [ ! -d "$REPO/benchmarks" ]; then
     REPO="$DEPLOY_ROOT"
 fi
-UWYK_SRC="${UWYK_SRC:-$REPO/external/uwyk/src}"
-CAUSALPFN="${CAUSALPFN:-$REPO/external/causalpfn}"
+# Prefer $DEPLOY_ROOT/external/... (killarney layout) with a fallback to
+# $REPO/external/... (trillium layout where R-PFN IS the deploy root).
+if [ -d "$DEPLOY_ROOT/external/uwyk/src" ]; then
+    UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
+else
+    UWYK_SRC="${UWYK_SRC:-$REPO/external/uwyk/src}"
+fi
+if [ -d "$DEPLOY_ROOT/external/causalpfn" ]; then
+    CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
+else
+    CAUSALPFN="${CAUSALPFN:-$REPO/external/causalpfn}"
+fi
 DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
 CHECKPOINT="${CHECKPOINT:-$REPO/checkpoints/step_50000_final.pt}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$REPO/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
