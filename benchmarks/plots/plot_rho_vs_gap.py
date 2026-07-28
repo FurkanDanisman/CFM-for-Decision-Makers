@@ -70,30 +70,31 @@ def _rho_and_v_from_pmat(p_mat: np.ndarray, edges: np.ndarray) -> tuple[float, f
 def _extract_rho_v_per_dataset(results_dir: str) -> dict[str, tuple[float, float, int]]:
     """Walk the results directory and average ρ, V per dataset.
 
-    Requires each npz to carry an `edges` and a `p_mats` field, i.e. the
-    per-query joint marginals of Ours. Table-3's run_one.py records the
-    CATE predictions, not the p_mats — so on that corpus we fall back to
-    reading edges from any accompanying checkpoint and reconstructing
-    the per-query density from the `ours_mean` distribution's bin
-    representation. If neither is available, we skip the dataset with a
-    warning.
+    Expects each npz to carry `rho_ours` and `var_tau_ours` — the two
+    lightweight summary arrays populated by `backfill_rho_v.py`. Both
+    are `(n_test,)` per realisation, so averaging across ALL
+    realisations × ALL test queries per dataset gives the population
+    mean ρ̄, V̄ needed for the theory-vs-empirics scatter.
     """
     per_ds = {}
     for ds in DATASETS:
         files = sorted(glob.glob(os.path.join(results_dir, f'{ds}_r*.npz')))
         rhos, vs = [], []
+        n_realisations = 0
         for fn in files:
             f = np.load(fn, allow_pickle=True)
-            if 'edges' not in f.files or 'p_mats' not in f.files:
+            if 'rho_ours' not in f.files or 'var_tau_ours' not in f.files:
                 continue
-            edges = _to_np(f['edges'])
-            p_mats = _to_np(f['p_mats'])          # (n_test, J, J)
-            for pm in p_mats:
-                rho, v = _rho_and_v_from_pmat(pm, edges)
-                if np.isfinite(rho): rhos.append(rho)
-                if np.isfinite(v):   vs.append(v)
-        if rhos:
-            per_ds[ds] = (float(np.mean(rhos)), float(np.mean(vs)), len(rhos))
+            rhos.append(_to_np(f['rho_ours']))
+            vs.append(_to_np(f['var_tau_ours']))
+            n_realisations += 1
+        if not rhos:
+            continue
+        rho_all = np.concatenate(rhos); v_all = np.concatenate(vs)
+        rho_all = rho_all[np.isfinite(rho_all)]
+        v_all   = v_all  [np.isfinite(v_all)]
+        per_ds[ds] = (float(rho_all.mean()), float(v_all.mean()),
+                       int(n_realisations))
     return per_ds
 
 
