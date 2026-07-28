@@ -155,16 +155,17 @@ def main():
         if not args.dopfn:
             raise SystemExit('--dopfn is required when --source=poly')
         print(f"[{time.time()-t0:6.1f}s] loading Do-PFN", flush=True)
-        _dopfn_removed = False
-        if args.dopfn in sys.path:
-            sys.path.remove(args.dopfn); _dopfn_removed = True
         sys.path.insert(0, args.dopfn)
+        # DoPFNRegressor.__init__ opens artifacts/dopfn_config.pkl via a
+        # *relative* path — cd into $DOPFN and stay there while it runs.
+        # Every filesystem access below is absolute, so leaving cwd there
+        # is harmless.
+        _cwd_dopfn_prev = os.getcwd()
+        os.chdir(args.dopfn)
         from scripts.transformer_prediction_interface.base import DoPFNRegressor
-        if _dopfn_removed:
-            # restore original position (harmless if it was already at head)
-            pass
         print(f"[{time.time()-t0:6.1f}s] Do-PFN inference", flush=True)
         dopfn_cate = dopfn_pipeline(cd, DoPFNRegressor)
+        os.chdir(_cwd_dopfn_prev)
         del DoPFNRegressor
         gc.collect()
 

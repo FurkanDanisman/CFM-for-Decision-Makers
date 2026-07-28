@@ -186,9 +186,11 @@ def main():
         kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
     torch.load = _p_load
 
-    # Import Do-PFN's datasets (needs its cwd + sys.path for relative pkl paths).
+    # Import Do-PFN's datasets — they use relative paths for their pkls, and
+    # DoPFNRegressor also opens artifacts/dopfn_config.pkl relatively. Stay in
+    # $DOPFN throughout the run; every output path we write is absolute, so
+    # leaving cwd there is harmless.
     sys.path.insert(0, args.dopfn)
-    _cwd_prev = os.getcwd()
     os.chdir(args.dopfn)
     from datasets import load_dataset
 
@@ -197,7 +199,6 @@ def main():
     print(f"[{time.time()-t0:6.1f}s] load_dataset({args.dataset!r})  seed={args.seed}", flush=True)
     dataset = load_dataset(ds_name=args.dataset)
     train_ds, test_ds = dataset.generate_valid_split(n_splits=args.n_splits)
-    os.chdir(_cwd_prev)
 
     print(f"[{time.time()-t0:6.1f}s] building CATE_Dataset view", flush=True)
     cd = _build_cate_dataset(train_ds, test_ds)

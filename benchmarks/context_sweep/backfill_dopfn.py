@@ -139,12 +139,12 @@ def main():
         print(f"[scan] limited to first {args.limit}", flush=True)
 
     print(f"[load] Do-PFN…", flush=True)
-    # Do-PFN expects to be imported from its own root; the current working dir
-    # is often the caller's, which may not include Do-PFN's packages.
+    # Do-PFN expects to be imported AND instantiated from its own root — its
+    # __init__ opens artifacts/dopfn_config.pkl via a *relative* path. Stay in
+    # $DOPFN throughout the loop; every filesystem access below uses absolute
+    # paths so leaving cwd there is harmless.
     os.chdir(args.dopfn)
     DoPFNRegressor = _load_dopfn(args.dopfn)
-    # Now go back so relative paths in scm samplers still work
-    os.chdir(_HERE)
 
     t0 = time.time()
     n_ok = 0; n_fail = 0
