@@ -23,12 +23,19 @@ benchmarks/semi_real/
 
 **Pre-flight:** the two checkpoints and the Do-PFN repo must already be
 in place on the cluster (they are — the Table-3 pipeline used them
-already). Ensure `dowhy` and `dill` are in the venv:
+already). Two dependencies pin to older versions to unpickle Do-PFN's
+semi-real pkls:
+
 ```bash
-source venv/bin/activate && pip install --quiet 'dowhy>=0.11' dill
+source venv/bin/activate && pip install --quiet dill 'scikit-learn==1.2.2'
 ```
-`dill` is required because Do-PFN's semi-real pkls include closures that
-plain `pickle` can't read.
+
+`dill` is needed because Do-PFN's pkls include closures. `scikit-learn`
+must be pre-1.3 because the decision trees inside the pkls were saved
+before sklearn added the `missing_go_to_left` node field.
+
+Ground-truth CATE is read directly from `test_ds.cate` — no `dowhy`
+install is required.
 
 **Pass 1 — fn=50 checkpoint (baselines + Ours):**
 ```bash

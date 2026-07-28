@@ -10,8 +10,10 @@ Methods:
   - UWYK NoAncestral (zero DAG hint, same checkpoint)
   - OURS             (7 variants — see benchmarks/methods/ours.py)
 
-Ground-truth CATE is computed via DoWhy on the paper's agreed graph,
-mirroring `Do-PFN/reproduce.ipynb`. Output npz per job:
+Ground-truth CATE is read from `test_ds.cate`, which Do-PFN's dataset
+generator precomputes on the paper's agreed graph. (Their
+`reproduce.ipynb` recomputes it via DoWhy for demonstration purposes;
+we just use the cached tensor.) Output npz per job:
 
     <outdir>/<dataset>_seed<seed>.npz
 
@@ -116,41 +118,17 @@ def _build_cate_dataset(train_ds, test_ds):
     return cd
 
 
-def _compute_true_cate_via_dowhy(train_ds, test_ds):
-    """Mirrors reproduce.ipynb cell 3 (Do-PFN repo)."""
-    from copy import deepcopy
-    from dowhy import gcm
-    from dowhy.gcm.auto import AssignmentQuality
-    import pandas as pd
-
-    graph = train_ds.function_args['graph']
-    graph_nodes = deepcopy(graph.nodes)
-    for node in graph_nodes:
-        if node not in train_ds.attribute_names:
-            graph.remove_node(node)
-    causal_model = gcm.InvertibleStructuralCausalModel(graph)
-
-    train_df = pd.DataFrame(
-        torch.concat([train_ds.x, train_ds.y.unsqueeze(1)], axis=1).cpu().numpy(),
-        columns=train_ds.attribute_names,
-    )
-    test_df = pd.DataFrame(
-        torch.concat([test_ds.x_obs, test_ds.y_obs.unsqueeze(1)], axis=1).cpu().numpy(),
-        columns=test_ds.attribute_names,
-    )
-    gcm.auto.assign_causal_mechanisms(causal_model, train_df, AssignmentQuality.BETTER)
-    gcm.fit(causal_model, train_df)
-
-    samples_1 = gcm.counterfactual_samples(
-        interventions={test_ds.do_scm.scm.t_key: lambda x: test_ds.x_int[:, 0].cpu().numpy()},
-        causal_model=causal_model, observed_data=test_df,
-    )
-    samples_0 = gcm.counterfactual_samples(
-        interventions={test_ds.do_scm.scm.t_key: lambda x: test_ds.x_obs[:, 0].cpu().numpy()},
-        causal_model=causal_model, observed_data=test_df,
-    )
-    y_key = test_ds.do_scm.scm.y_key
-    return (samples_1[y_key].values - samples_0[y_key].values).astype(np.float32).reshape(-1)
+def _compute_true_cate(test_ds):
+    """Do-PFN's semi-real datasets ship with a precomputed ground-truth CATE
+    on the test split (`test_ds.cate`), obviating the DoWhy counterfactual
+    fitting from reproduce.ipynb cell 3. If `cate` is missing (defensive),
+    fall back to y_int - y_obs which encodes the interventional contrast on
+    the outcome directly."""
+    if hasattr(test_ds, 'cate') and test_ds.cate is not None:
+        return _to_np(test_ds.cate).astype(np.float32).reshape(-1)
+    y_int = _to_np(test_ds.y_int).astype(np.float32).reshape(-1)
+    y_obs = _to_np(test_ds.y_obs).astype(np.float32).reshape(-1)
+    return (y_int - y_obs).astype(np.float32)
 
 
 def main():
@@ -203,8 +181,8 @@ def main():
     print(f"[{time.time()-t0:6.1f}s] building CATE_Dataset view", flush=True)
     cd = _build_cate_dataset(train_ds, test_ds)
 
-    print(f"[{time.time()-t0:6.1f}s] computing true CATE via DoWhy", flush=True)
-    true_cate = _compute_true_cate_via_dowhy(train_ds, test_ds)
+    print(f"[{time.time()-t0:6.1f}s] reading precomputed true CATE from test_ds.cate", flush=True)
+    true_cate = _compute_true_cate(test_ds)
     cd.true_cate = torch.from_numpy(true_cate)
     true_ate = float(np.mean(true_cate))
     print(f"[{time.time()-t0:6.1f}s] n_train={cd.t_train.shape[0]}  "
