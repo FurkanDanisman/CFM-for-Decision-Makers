@@ -72,6 +72,8 @@ VENV="${VENV:-$DEPLOY_ROOT/.venv}"
 
 N_SCMS_TOTAL="${N_SCMS_TOTAL:-500}"
 N_SCMS_PER_TASK="${N_SCMS_PER_TASK:-50}"
+OURS_ONLY_FLAG=""
+[ "${OURS_ONLY:-0}" = "1" ] && OURS_ONLY_FLAG="--ours-only"
 N_BATCHES=$(( N_SCMS_TOTAL / N_SCMS_PER_TASK ))    # 500 / 50 = 10
 CONTEXTS=(50 250 500 1000 5000 10000)
 N_CONTEXTS=${#CONTEXTS[@]}                          # 6
@@ -126,7 +128,8 @@ for SEED in $(seq "$SEED_START" "$SEED_END"); do
         --causalpfn     "$CAUSALPFN" \
         --checkpoint    "$CHECKPOINT" \
         --dopfn         "$DOPFN" \
-        --workers       "$WORKERS" || echo "[warn] seed=$SEED failed, continuing"
+        --workers       "$WORKERS" \
+        $OURS_ONLY_FLAG || echo "[warn] seed=$SEED failed, continuing"
 done
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$TASK"
