@@ -174,9 +174,20 @@ def main():
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    print(f"[{time.time()-t0:6.1f}s] load_dataset({args.dataset!r})  seed={args.seed}", flush=True)
+    # generate_valid_split's split seed is (split_number // n_splits) + 1, so
+    # to actually vary the split across our seed iterations we index into the
+    # 5-fold CV by passing split_number = seed + 1 (their API uses 1-based
+    # indexing). With n_splits=5 and split_number in {1..5} we get the five
+    # disjoint folds of a 5-fold CV; anything above n_splits kicks the seed
+    # forward (splits_seed = split_number // n_splits + 1) and gives fresh
+    # random splits, so seed=5 → seed 2, seed=10 → seed 3, etc.
+    split_number = int(args.seed) + 1
+    print(f"[{time.time()-t0:6.1f}s] load_dataset({args.dataset!r})  seed={args.seed}  split_number={split_number}",
+          flush=True)
     dataset = load_dataset(ds_name=args.dataset)
-    train_ds, test_ds = dataset.generate_valid_split(n_splits=args.n_splits)
+    train_ds, test_ds = dataset.generate_valid_split(
+        n_splits=args.n_splits, split_number=split_number,
+    )
 
     print(f"[{time.time()-t0:6.1f}s] building CATE_Dataset view", flush=True)
     cd = _build_cate_dataset(train_ds, test_ds)
