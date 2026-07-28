@@ -21,10 +21,10 @@ REPO="$DEPLOY_ROOT/R-PFN"
 DOPFN="$DEPLOY_ROOT/external/dopfn"
 UWYK="$DEPLOY_ROOT/external/uwyk"
 CAUSALPFN="$DEPLOY_ROOT/external/causalpfn"
-CHECKPOINT="$REPO/checkpoints/step_50000_final.pt"
+CHECKPOINT="${CHECKPOINT:-$REPO/checkpoints/step_50000_final.pt}"
 UWYK_CKPT="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 UWYK_BASELINE_CKPT="${UWYK_BASELINE_CKPT:-$UWYK/experiments/checkpoints/no_graph_conditioning/unconditional}"
-OUTDIR="$DEPLOY_ROOT/results"
+OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results}"
 
 # Toggle: emit pehe_uwyk_baseline column if the checkpoint exists.
 # Override with EMIT_UWYK_BASELINE=0 to skip.
