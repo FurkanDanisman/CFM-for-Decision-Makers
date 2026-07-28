@@ -97,6 +97,10 @@ def main():
     ap.add_argument('--malc-max-K',   type=int, default=3)
     ap.add_argument('--n-eval',       type=int, default=200)
     ap.add_argument('--workers',      type=int, default=1)
+    ap.add_argument('--ours-only',    action='store_true',
+                    help='Skip UWYK-NoAnc + UWYK-Ancestral + Do-PFN. Use when '
+                         'baselines are already populated in a sibling corpus '
+                         '(they are checkpoint-independent).')
     args = ap.parse_args()
 
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -116,58 +120,58 @@ def main():
     true_cate = cd.true_cate.numpy().reshape(-1) if hasattr(cd.true_cate, 'numpy') \
                  else np.asarray(cd.true_cate).reshape(-1)
 
-    # ── Load UWYK model (Ancestral checkpoint, used with zero adjacency for No-Ancestral) ──
-    print(f"[{time.time()-t0:6.1f}s] loading UWYK", flush=True)
-    _saved = {}
-    for name in list(sys.modules):
-        if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
-            _saved[name] = sys.modules.pop(name)
-    sys.path.insert(0, args.uwyk_src)
-    UWYK_pre_mod = importlib.import_module('models.PreprocessingGraphConditionedPFN')
-    sys.path.remove(args.uwyk_src)
-    for name in list(sys.modules):
-        if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
-            del sys.modules[name]
-    sys.modules.update(_saved)
-    _orig_torch_load = torch.load
-    def _p_load(*a, **kw):
-        kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
-    torch.load = _p_load
-    uwyk_model = UWYK_pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
-        checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
-        device='cpu', verbose=False,
-    ).load()
-
-    print(f"[{time.time()-t0:6.1f}s] UWYK-NoAncestral inference", flush=True)
-    uwyk_noanc_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd)
-
-    print(f"[{time.time()-t0:6.1f}s] UWYK-Ancestral inference", flush=True)
-    uwyk_anc_cate = uwyk_ancestral_pipeline(uwyk_model, cd)
-
     import gc
-    del uwyk_model
-    gc.collect()
+    uwyk_noanc_cate = uwyk_anc_cate = dopfn_cate = None
 
-    # Do-PFN baseline — poly source only (PEHE reported).
-    dopfn_cate = None
-    if args.source == 'poly':
-        if not args.dopfn:
-            raise SystemExit('--dopfn is required when --source=poly')
-        print(f"[{time.time()-t0:6.1f}s] loading Do-PFN", flush=True)
-        sys.path.insert(0, args.dopfn)
-        # DoPFNRegressor.__init__ opens artifacts/dopfn_config.pkl via a
-        # *relative* path — cd into $DOPFN and stay there while it runs.
-        # Every filesystem access below is absolute, so leaving cwd there
-        # is harmless.
-        _cwd_dopfn_prev = os.getcwd()
-        os.chdir(args.dopfn)
-        from scripts.transformer_prediction_interface.base import DoPFNRegressor
-        print(f"[{time.time()-t0:6.1f}s] Do-PFN inference", flush=True)
-        dopfn_cate = dopfn_pipeline(cd, DoPFNRegressor)
-        os.chdir(_cwd_dopfn_prev)
-        del DoPFNRegressor
+    if args.ours_only:
+        print(f"[{time.time()-t0:6.1f}s] --ours-only: skipping UWYK + Do-PFN", flush=True)
+    else:
+        # ── Load UWYK model (Ancestral ckpt; zero adjacency = No-Ancestral) ──
+        print(f"[{time.time()-t0:6.1f}s] loading UWYK", flush=True)
+        _saved = {}
+        for name in list(sys.modules):
+            if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
+                _saved[name] = sys.modules.pop(name)
+        sys.path.insert(0, args.uwyk_src)
+        UWYK_pre_mod = importlib.import_module('models.PreprocessingGraphConditionedPFN')
+        sys.path.remove(args.uwyk_src)
+        for name in list(sys.modules):
+            if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
+                del sys.modules[name]
+        sys.modules.update(_saved)
+        _orig_torch_load = torch.load
+        def _p_load(*a, **kw):
+            kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
+        torch.load = _p_load
+        uwyk_model = UWYK_pre_mod.PreprocessingGraphConditionedPFN(
+            config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
+            checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
+            device='cpu', verbose=False,
+        ).load()
+
+        print(f"[{time.time()-t0:6.1f}s] UWYK-NoAncestral inference", flush=True)
+        uwyk_noanc_cate = uwyk_no_ancestral_pipeline(uwyk_model, cd)
+
+        print(f"[{time.time()-t0:6.1f}s] UWYK-Ancestral inference", flush=True)
+        uwyk_anc_cate = uwyk_ancestral_pipeline(uwyk_model, cd)
+
+        del uwyk_model
         gc.collect()
+
+        # Do-PFN baseline — poly source only (PEHE reported).
+        if args.source == 'poly':
+            if not args.dopfn:
+                raise SystemExit('--dopfn is required when --source=poly')
+            print(f"[{time.time()-t0:6.1f}s] loading Do-PFN", flush=True)
+            sys.path.insert(0, args.dopfn)
+            _cwd_dopfn_prev = os.getcwd()
+            os.chdir(args.dopfn)
+            from scripts.transformer_prediction_interface.base import DoPFNRegressor
+            print(f"[{time.time()-t0:6.1f}s] Do-PFN inference", flush=True)
+            dopfn_cate = dopfn_pipeline(cd, DoPFNRegressor)
+            os.chdir(_cwd_dopfn_prev)
+            del DoPFNRegressor
+            gc.collect()
 
     print(f"[{time.time()-t0:6.1f}s] loading OURS", flush=True)
     (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
@@ -186,9 +190,9 @@ def main():
         out[f'err_{name}']  = _ate_relerr(true_cate, cate_pred)
         out[f'ate_{name}']  = float(np.mean(cate_pred))
 
-    _record('uwyk_noanc',         uwyk_noanc_cate)
-    _record('uwyk_ancestral',     uwyk_anc_cate)
-    if dopfn_cate is not None:
+    if uwyk_noanc_cate is not None: _record('uwyk_noanc',     uwyk_noanc_cate)
+    if uwyk_anc_cate   is not None: _record('uwyk_ancestral', uwyk_anc_cate)
+    if dopfn_cate      is not None:
         # Only PEHE is written for Do-PFN in the sweep (paper convention).
         out['pehe_dopfn'] = _pehe(true_cate, dopfn_cate)
     _record('ours_mean',          ours['ours_mean'])
