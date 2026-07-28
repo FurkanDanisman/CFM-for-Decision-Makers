@@ -49,6 +49,18 @@ def _ate_relerr(true_cate, pred_cate):
     return abs(ta - pa) / abs(ta)
 
 
+def _nmse(true_cate, pred_cate):
+    """Do-PFN's normalized MSE (reproduce.ipynb cell 4):
+        n_mse = mean(((pred - true) / (true.max() - true.min())) ** 2).
+    Scale-invariant across datasets."""
+    t = np.asarray(true_cate, dtype=float).reshape(-1)
+    p = np.asarray(pred_cate, dtype=float).reshape(-1)
+    span = float(t.max() - t.min())
+    if span < 1e-12:
+        return float('nan')
+    return float(np.mean(((p - t) / span) ** 2))
+
+
 def _load_ours(args):
     sys.path.insert(0, args.repo); sys.path.insert(0, os.path.join(args.repo, 'MALC'))
     from models.InterventionalPFN import InterventionalPFN
@@ -205,6 +217,7 @@ def main():
 
     def _record(name, cate_pred):
         out[f'pehe_{name}'] = _pehe(true_cate, cate_pred)
+        out[f'nmse_{name}'] = _nmse(true_cate, cate_pred)
         out[f'err_{name}']  = _ate_relerr(true_cate, cate_pred)
         out[f'ate_{name}']  = float(np.mean(cate_pred))
 

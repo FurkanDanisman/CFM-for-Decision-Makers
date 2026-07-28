@@ -55,9 +55,11 @@ def _ingest(files, bucket_by_ds, methods, remap=None):
         if dname not in bucket_by_ds: continue
         n_per[dname] += 1
         for _, key in methods:
-            pk = f'pehe_{key}'; ek = f'err_{key}'
-            store = bucket_by_ds[dname].setdefault(remap(key), {'pehe': [], 'err': []})
+            pk = f'pehe_{key}'; ek = f'err_{key}'; nk = f'nmse_{key}'
+            store = bucket_by_ds[dname].setdefault(remap(key),
+                                                    {'pehe': [], 'nmse': [], 'err': []})
             if pk in f.files: store['pehe'].append(float(f[pk]))
+            if nk in f.files: store['nmse'].append(float(f[nk]))
             if ek in f.files: store['err'].append(float(f[ek]))
     return n_per
 
@@ -92,28 +94,41 @@ def main():
         n_per_extra = _ingest(extra_files, bucket_by_ds, OURS_VARIANTS,
                                 remap=lambda k: f'extra_{k}')
 
-    # ── Print table ─────────────────────────────────────────────────────────
+    # ── Print table: 3 metric columns per dataset (√PEHE, √nMSE, ε_ATE) ─────
+    METRICS_PER_DS = 3
+    COL_W = 15
+    ROW_W = 30 + (COL_W + 1) * METRICS_PER_DS * len(DATASETS) + 3 * len(DATASETS)
     lines = []
     lines.append("")
-    lines.append(f"{'':<28}  " + "  ".join(f"{d:^32}" for d in DATASETS))
+    lines.append(f"{'':<28}  " +
+                 "  ".join(f"{d:^{(COL_W + 1) * METRICS_PER_DS + 2}}" for d in DATASETS))
     lines.append(f"{'method':<28}  " +
-                 "  ".join(f"{'√PEHE ↓':^15} {'ε_ATE ↓':^15}" for _ in DATASETS))
-    lines.append("─" * (30 + 34 * len(DATASETS)))
+                 "  ".join(f"{'√PEHE ↓':^{COL_W}} {'√nMSE ↓':^{COL_W}} {'ε_ATE ↓':^{COL_W}}"
+                           for _ in DATASETS))
+    lines.append("─" * ROW_W)
 
     for label, key in method_list:
         row = f"{label:<28}  "
         for d in DATASETS:
-            store = bucket_by_ds[d].get(key, {'pehe': [], 'err': []})
+            store = bucket_by_ds[d].get(key, {'pehe': [], 'nmse': [], 'err': []})
             has_pehe = not (label.endswith('OT-mode') or label.endswith('OT-mean'))
+            # √PEHE
             if has_pehe:
-                m, s = _mean_std(store['pehe']); row += f"{_fmt(m, s):>15} "
+                m, s = _mean_std(store['pehe']); row += f"{_fmt(m, s):>{COL_W}} "
             else:
-                row += f"{'—':>15} "
-            m, s = _mean_std(store['err'])
-            row += f"{_fmt(m, s):>15} "
+                row += f"{'—':>{COL_W}} "
+            # √nMSE = sqrt of Do-PFN's n_mse; same "PEHE, but normalised by
+            # (max(true)-min(true))" scale — comparable across datasets.
+            if has_pehe:
+                nvals = np.sqrt(np.asarray(store['nmse'], dtype=float))
+                m, s = _mean_std(nvals); row += f"{_fmt(m, s):>{COL_W}} "
+            else:
+                row += f"{'—':>{COL_W}} "
+            # ε_ATE
+            m, s = _mean_std(store['err']); row += f"{_fmt(m, s):>{COL_W}} "
         lines.append(row)
 
-    lines.append("─" * (30 + 34 * len(DATASETS)))
+    lines.append("─" * ROW_W)
     lines.append(f"n_seeds per dataset (main): " +
                  " ".join(f"{d}={n_per[d]}" for d in DATASETS))
     if extra_dir is not None:
