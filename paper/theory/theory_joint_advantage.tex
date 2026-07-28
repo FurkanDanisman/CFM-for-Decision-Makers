@@ -540,6 +540,38 @@ argument fails to translate to density estimation error), or
 mechanism is present, and the theory in Section~\ref{sec:marginal-improvement}
 is incomplete).
 
+\subsection{Test 3 --- Direct anchor to Table 3}
+\label{subsec:test-table3}
+
+Since UWYK and Do-PFN's SCM training priors match R-PFN's up to the
+paired-vs-unpaired distinction, the theoretical predictions of
+Section~\ref{sec:cate-variance} apply to the paper's Table~3 numbers
+directly, with no controlled experiment needed. On each Table~3
+dataset (IHDP, ACIC, CPS, PSID, PSIDbal) the interventional-outcome
+simulator draws per-arm noise independently, so the DGP coupling is
+$\rho \approx 0$ and Theorem~\ref{thm:variance-ratio} predicts
+\begin{equation}
+  \frac{\sqrt{\mathrm{PEHE}}_{\text{UWYK}}}
+       {\sqrt{\mathrm{PEHE}}_{\text{R-PFN\;fn=50}}}
+  \;\approx\;
+  \frac{\sqrt{\mathrm{PEHE}}_{\text{Do-PFN}}}
+       {\sqrt{\mathrm{PEHE}}_{\text{R-PFN\;fn=10}}}
+  \;\approx\;
+  \sqrt{2} \;\approx\; 1.414
+  \label{eq:table3-prediction}
+\end{equation}
+across all five datasets. The companion script
+\texttt{benchmarks/plots/plot\_table3\_vs\_theory.py} evaluates the
+empirical ratios and overlays~\eqref{eq:table3-prediction}. Discrepancy
+between empirical ratios and the predicted $\sqrt{2}$ constant is
+informative: on datasets where R-PFN's ratio approaches
+$\sqrt{2}$ (typically IHDP under the best Ours variant), the
+sufficiency mechanism accounts for most of the observed improvement;
+on datasets where the ratio is closer to $1$, additional factors are
+in play (e.g. finite-context deviations from Cram\'er--Rao, or
+heavy-tailed outcomes that break the second-moment assumption in
+Theorem~\ref{thm:variance-ratio}).
+
 \subsection{Falsification criterion}
 
 The two tests probe orthogonal predictions. Test~1 falsifies
