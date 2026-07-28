@@ -186,7 +186,7 @@ def main():
         out[f'ate_{name}']  = float(np.mean(cate_pred))
 
     _record('uwyk_noanc',         uwyk_noanc_cate)
-    _record('uwyk_anc',           uwyk_anc_cate)
+    _record('uwyk_ancestral',     uwyk_anc_cate)
     if dopfn_cate is not None:
         # Only PEHE is written for Do-PFN in the sweep (paper convention).
         out['pehe_dopfn'] = _pehe(true_cate, dopfn_cate)

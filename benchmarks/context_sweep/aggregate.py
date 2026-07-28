@@ -31,7 +31,7 @@ OURS_VARIANTS = [
 
 BASELINES = [
     ('Do-PFN',                 'dopfn'),
-    ('UWYK Full Ancestral',    'uwyk_anc'),
+    ('UWYK Full Ancestral',    'uwyk_ancestral'),
     ('UWYK No-Ancestral',      'uwyk_noanc'),
     ('UWYK Baseline',          'uwyk_baseline'),
 ]
