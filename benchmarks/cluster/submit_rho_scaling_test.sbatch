@@ -1,20 +1,24 @@
 #!/bin/bash
 #SBATCH --job-name=rpfn-rho-test
-#SBATCH --output=logs_rho_test/task_%A.out
-#SBATCH --error=logs_rho_test/task_%A.err
-#SBATCH --time=08:00:00
+#SBATCH --output=logs_rho_test/task_%A_%a.out
+#SBATCH --error=logs_rho_test/task_%A_%a.err
+#SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
+#SBATCH --array=0-5%6
 # ────────────────────────────────────────────────────────────────────────
-# Controlled ρ-scaling empirical test. Runs the full ρ ∈ {0, 0.2, 0.4,
-# 0.6, 0.8, 0.95} × K SCM grid in a single task. Loads UWYK, Do-PFN,
-# Ours fn=50, Ours fn=10 once, applies to K × 6 SCMs, writes:
+# Test 1 as an array: one task per ρ ∈ {0.0, 0.2, 0.4, 0.6, 0.8, 0.95}.
+# Each task runs K SCMs at its assigned ρ with workers=8 MALC parallel,
+# writes rho_scaling_test.png.rho<idx>.npz. Resume-aware: if a shard
+# already contains N rows, only computes K−N remaining SCMs.
 #
-#   rho_scaling_test.png            (theory ↔ empirics figure)
-#   rho_scaling_test.png.npz        (raw per-SCM √PEHE numbers)
+# Wallclock estimate: 15 SCMs × ~5 min = 75 min per task, comfortable
+# inside the 2h wall.
 #
-# Adjust K via `K=` env override. K=50 fits in the 4h walltime; K=100
-# needs a longer wall or a smaller ρ grid.
+# After all six tasks finish, run once:
+#   python R-PFN/benchmarks/empirical_tests/rho_scaling_test.py \
+#       ... --plot --out $ROOT/rho_scaling_test.png
+# to aggregate the shards into the final theory-vs-empirics figure.
 # ────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 mkdir -p logs_rho_test
@@ -31,13 +35,10 @@ K="${K:-15}"
 N_CONTEXT="${N_CONTEXT:-200}"
 N_TEST="${N_TEST:-50}"
 OUT="${OUT:-$DEPLOY_ROOT/rho_scaling_test.png}"
+RHO_INDEX=${SLURM_ARRAY_TASK_ID:-0}
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] REPO=$REPO"
-echo "  CHECKPOINT50=$CHECKPOINT50"
-echo "  CHECKPOINT10=$CHECKPOINT10"
-echo "  UWYK_SRC=$UWYK_SRC   UWYK_CKPT_DIR=$UWYK_CKPT_DIR"
-echo "  DOPFN=$DOPFN"
-echo "  K=$K   N_CONTEXT=$N_CONTEXT   N_TEST=$N_TEST   OUT=$OUT"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] TASK=$RHO_INDEX  (ρ_index=$RHO_INDEX)"
+echo "  REPO=$REPO   OUT=$OUT   K=$K"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
@@ -55,6 +56,7 @@ python "$REPO/benchmarks/empirical_tests/rho_scaling_test.py" \
     --K              "$K" \
     --N-context      "$N_CONTEXT" \
     --N-test         "$N_TEST" \
-    --out            "$OUT"
+    --out            "$OUT" \
+    --rho-index      "$RHO_INDEX"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$RHO_INDEX"
