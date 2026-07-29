@@ -151,6 +151,62 @@ def load_uwyk(uwyk_src: str, uwyk_ckpt_dir: str, dopfn_path: str = ''):
     ).load()
 
 
+def _plot_aggregate(args):
+    """Load all 6 per-ρ shards, concatenate, and produce the final plot."""
+    import matplotlib.pyplot as plt
+    all_arr = None
+    for idx in range(len(RHO_GRID)):
+        shard = f'{args.out}.rho{idx}.npz'
+        if not os.path.exists(shard):
+            print(f'[warn] missing shard {shard} — skipping'); continue
+        with np.load(shard, allow_pickle=True) as f:
+            d = {k: f[k] for k in f.files}
+        if all_arr is None: all_arr = {k: [] for k in d}
+        for k, v in d.items(): all_arr[k].append(v)
+    if all_arr is None or not all_arr['seed']:
+        raise SystemExit('[error] no shards found; run per-ρ jobs first')
+    arr = {k: np.concatenate(v) for k, v in all_arr.items()}
+
+    # Save the aggregated npz for downstream use.
+    agg_path = args.out + '.npz'
+    np.savez(agg_path, **arr)
+    print(f'[save] {agg_path}  ({len(arr["seed"])} rows total)')
+
+    # Two panels: √PEHE ratio (UWYK/Ours50) and (DoPFN/Ours10) vs ρ.
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    rho_plot = np.linspace(0, 0.98, 200)
+    theory = np.sqrt(2 / (1 - rho_plot))
+    for ax, num_key, den_key, title in [
+        (axes[0], 'pehe_uwyk',  'pehe_ours50',
+         '√PEHE ratio (UWYK Ancestral / Ours fn=50) vs true ρ'),
+        (axes[1], 'pehe_dopfn', 'pehe_ours10',
+         '√PEHE ratio (Do-PFN / Ours fn=10) vs true ρ'),
+    ]:
+        ax.plot(rho_plot, theory, 'k--', lw=1.5,
+                 label=r'Theory: $\sqrt{2/(1-\rho)}$')
+        ratios = arr[num_key] / np.maximum(arr[den_key], 1e-9)
+        for rho in RHO_GRID:
+            mask = np.isclose(arr['rho'], rho)
+            if not mask.any(): continue
+            ax.scatter(arr['rho'][mask], ratios[mask], color='#2E4A6F',
+                        alpha=0.35, s=32, zorder=3)
+            m = float(ratios[mask].mean()); s = float(ratios[mask].std())
+            ax.errorbar(rho, m, yerr=s, fmt='o', color='#0F8A3C',
+                          markersize=8, capsize=4, zorder=4)
+        ax.axhline(1.0, color='r', ls=':', lw=1, alpha=0.6)
+        ax.set_xlabel('true DGP ρ')
+        ax.set_ylabel('√PEHE ratio (marg / joint)')
+        ax.set_title(title, fontsize=10)
+        ax.set_ylim(0, max(6, theory.max() * 1.05))
+        ax.grid(alpha=0.3)
+        ax.legend(loc='upper left', fontsize=9)
+    fig.suptitle('Test 1 (controlled) — √PEHE ratio vs true ρ',
+                  fontsize=11, y=1.03)
+    fig.tight_layout()
+    fig.savefig(args.out, dpi=140, bbox_inches='tight'); plt.close(fig)
+    print(f'[save] {args.out}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--repo',            required=True)
@@ -164,7 +220,18 @@ def main():
     ap.add_argument('--N-context',       type=int, default=200)
     ap.add_argument('--N-test',          type=int, default=50)
     ap.add_argument('--out',             default='rho_scaling_test.png')
+    ap.add_argument('--rho-index',       type=int, default=-1,
+                    help='If >=0, process only RHO_GRID[rho_index] and save '
+                         'to <out>.rho<idx>.npz (used by the sbatch array).')
+    ap.add_argument('--plot',            action='store_true',
+                    help='Skip the SCM loop; just aggregate all per-rho .npz '
+                         'shards from <out>.rho<idx>.npz for idx in 0..5 and '
+                         'produce the final plot.')
     args = ap.parse_args()
+
+    # Plot-only branch (used after the array finishes).
+    if args.plot:
+        _plot_aggregate(args); return
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks'))
     from methods.ours   import ours_pipeline
@@ -184,9 +251,36 @@ def main():
     from scripts.transformer_prediction_interface.base import DoPFNRegressor
     os.chdir(_cwd_prev)
 
+    if args.rho_index >= 0:
+        rho_subset = [RHO_GRID[args.rho_index]]
+        shard_path = f'{args.out}.rho{args.rho_index}.npz'
+    else:
+        rho_subset = list(RHO_GRID)
+        shard_path = args.out + '.npz'
+
+    # ── Resume from an existing shard if present ───────────────────────
     rows = []
-    for rho in RHO_GRID:
+    resumed_ks_by_rho: dict[float, set] = {rho: set() for rho in rho_subset}
+    if os.path.exists(shard_path):
+        with np.load(shard_path, allow_pickle=True) as f:
+            n = int(len(f['seed']))
+            for i in range(n):
+                r = dict(rho=float(f['rho'][i]), rho_hat=float(f['rho_hat'][i]),
+                         seed=int(f['seed'][i]),
+                         pehe_uwyk=float(f['pehe_uwyk'][i]),
+                         pehe_dopfn=float(f['pehe_dopfn'][i]),
+                         pehe_ours50=float(f['pehe_ours50'][i]),
+                         pehe_ours10=float(f['pehe_ours10'][i]))
+                rows.append(r)
+                # infer k from seed convention (seed = int(rho*10000) + k)
+                inferred_k = r['seed'] - int(r['rho'] * 10_000)
+                resumed_ks_by_rho.setdefault(r['rho'], set()).add(inferred_k)
+        print(f'[resume] loaded {n} existing rows from {shard_path}', flush=True)
+
+    for rho in rho_subset:
         for k in range(args.K):
+            if k in resumed_ks_by_rho.get(rho, set()):
+                continue  # already in shard — skip
             seed = int(rho * 10_000) + k
             cd = make_polynomial_scm(seed, args.N_context, args.N_test, rho)
             true_cate = cd.true_cate.numpy()
@@ -229,13 +323,22 @@ def main():
                   f'Ours50={pehe_ours50:.3f} Ours10={pehe_ours10:.3f}',
                   flush=True)
 
-    # ── Aggregate + save raw + plot ─────────────────────────────────────
-    import matplotlib.pyplot as plt
-    raw = args.out + '.npz'
+    # ── Save shard (per-ρ) or aggregate (all-ρ) ─────────────────────────
+    if not rows:
+        print(f'[skip] no new rows to add; shard {shard_path} unchanged')
+        return
     keys = list(rows[0].keys())
     arr = {k: np.array([r[k] for r in rows]) for k in keys}
-    np.savez(raw, **arr)
-    print(f'[save] {raw}')
+    np.savez(shard_path, **arr)
+    print(f'[save] {shard_path}  ({len(rows)} rows total)')
+
+    # If we're in per-rho mode, stop here. The --plot aggregator picks up
+    # all shards later.
+    if args.rho_index >= 0:
+        return
+
+    import matplotlib.pyplot as plt
+    raw = shard_path
 
     # Two panels: √PEHE ratio (UWYK/Ours50) and (DoPFN/Ours10) vs ρ.
     # Theory: ratio ≈ √(2/(1-ρ)) for well-specified estimators.
