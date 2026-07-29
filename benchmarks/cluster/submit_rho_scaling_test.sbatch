@@ -2,7 +2,7 @@
 #SBATCH --job-name=rpfn-rho-test
 #SBATCH --output=logs_rho_test/task_%A.out
 #SBATCH --error=logs_rho_test/task_%A.err
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 # ────────────────────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
 CHECKPOINT10="${CHECKPOINT10:-$REPO/checkpoints_dopfn/step_50000_final.pt}"
-K="${K:-50}"
+K="${K:-15}"
 N_CONTEXT="${N_CONTEXT:-200}"
 N_TEST="${N_TEST:-50}"
 OUT="${OUT:-$DEPLOY_ROOT/rho_scaling_test.png}"
