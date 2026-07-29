@@ -207,8 +207,8 @@ def main():
             m50, edges50, J50, bw50, ctr50, NF50, wb50 = o50
             ours50 = ours_pipeline(cd, m50, edges50, J50, bw50, NF50, ctr50,
                                      types.SimpleNamespace(repo=args.repo,
-                                                            malc_B=100, malc_max_K=3,
-                                                            n_eval=200, workers=1),
+                                                            malc_B=30, malc_max_K=3,
+                                                            n_eval=200, workers=8),
                                      wb50)
             pehe_ours50 = _pehe(true_cate, ours50['ours_mean'])
 
@@ -216,8 +216,8 @@ def main():
             m10, edges10, J10, bw10, ctr10, NF10, wb10 = o10
             ours10 = ours_pipeline(cd, m10, edges10, J10, bw10, NF10, ctr10,
                                      types.SimpleNamespace(repo=args.repo,
-                                                            malc_B=100, malc_max_K=3,
-                                                            n_eval=200, workers=1),
+                                                            malc_B=30, malc_max_K=3,
+                                                            n_eval=200, workers=8),
                                      wb10)
             pehe_ours10 = _pehe(true_cate, ours10['ours_mean'])
 
