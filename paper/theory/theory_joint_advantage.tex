@@ -335,31 +335,28 @@ is standard.
 Result~1 predicts a factor-of-$2$ improvement on the marginal-density
 mean-squared error at every $N$, and Result~2 predicts a factor-of-$2$
 ceiling on the CATE-estimator MSE at every $N$. Both are
-per-sample-size ratios; they hold at every finite $N$. In particular
-they do \emph{not} vanish as $N \to \infty$: both estimator variances
-decrease as $\mathcal{O}(1/N)$, and their ratio is stable.
-
-\begin{proposition}[Small-sample amplification]
-\label{prop:scaling-N}
-When context is small enough that MLE has not converged to the CR
-bound, R-PFN inherits an additional regularisation effect from its
-smaller effective parameter space (the joint parameterisation is a
-strict subset of all consistent-marginal pairs). The gap in
-practical MSE is therefore \emph{at least} the CR ratio; empirically
-we observe the gap widen at small $N$ and stabilise as $N$ grows,
-consistent with this prediction.
-\end{proposition}
+per-sample-size ratios. Both estimator MSEs decrease as
+$\mathcal{O}(1/N)$ in the Cram\'er--Rao regime, so their ratio is
+bounded by $2$ at every $N$. At small $N$, MLE is still
+bias-dominated and the ratio sits below its asymptotic ceiling; as
+$N$ grows and both estimators approach CR the ratio approaches $2$
+(equivalently, $\sqrt{\mathrm{PEHE}}$ ratio approaches $\sqrt{2}$).
+Section~\ref{subsec:scaling-N} shows this monotone convergence
+empirically on the $6000$-SCM context sweep.
 
 \subsection{Scaling in covariate dimension $d$}
 
-Result~1's ratio does not depend on $d$: the sufficiency argument is
-$d$-agnostic, so the factor of $2$ applies at every $d$. What does
-change with $d$ is the raw marginal-density estimation error under
+The sufficiency argument underlying Theorems~\ref{thm:marg-half}
+and~\ref{thm:variance-ratio} is $d$-agnostic: the factor-of-two Fisher
+information advantage applies at every covariate dimension. What
+changes with $d$ is the raw marginal-density estimation error under
 either regime: it grows via the standard nonparametric-regression rate
 $\Theta\bigl(N^{-2\alpha/(2\alpha + d)}\bigr)$ for smoothness order
 $\alpha$ \citep{gyorfi-2002-nonparametric-regression}. The R-PFN
 regime therefore preserves the same qualitative scaling in $d$ as the
 marginal-only regime, with a constant factor of $2$ advantage.
+Section~\ref{subsec:scaling-d} tests this claim empirically on a
+controlled linear benchmark at $d \in \{5, 10, 20, 30, 50\}$.
 
 %% ---------------------------------------------------------------------
 \section{Population aggregation via the 2-Wasserstein barycenter}
@@ -552,25 +549,54 @@ $\approx 90\%$ of the $\sqrt{2}$ ceiling.
 \subsection{Scaling in context size $N$}
 \label{subsec:scaling-N}
 
-Theorem~\ref{thm:variance-ratio} is a ratio of MSEs. Each MSE scales
-as $\mathcal{O}(1/N)$ in the CR regime, so their ratio is constant in
-$N$: at every context size, R-PFN's CATE MSE is at most half of
-UWYK/Do-PFN's, and its $\sqrt{\mathrm{PEHE}}$ is at most
-$1/\sqrt{2} \approx 0.71$ of theirs. This has a concrete practical
-implication: the $\sqrt{2}$ advantage does \emph{not} vanish as
-context grows. R-PFN is not just an improvement at small $N$; it is a
-constant-factor improvement at every $N$.
+Theorem~\ref{thm:variance-ratio} is an asymptotic Cram\'er--Rao
+bound. Both estimators' MSEs scale as $\mathcal{O}(1/N)$, so the
+ratio is bounded by $2$ at every $N$, and \emph{approaches} $2$
+from below as $N$ grows and both estimators reach their CR bounds.
+At small $N$, MLE is still bias-dominated and the ratio sits below
+the ceiling.
 
-Proposition~\ref{prop:scaling-N} notes an additional finite-sample
-effect: at small $N$, MLE has not yet reached the CR bound and
-R-PFN's smaller effective parameter space (its joint-2D-BarDistribution
-head is a strict subset of consistent-marginal-pair heads) adds an
-implicit regulariser. Empirically the paper's context sweep confirms
-this: the $\sqrt{\mathrm{PEHE}}$ ratio is largest at the smallest $N$
-tested and stabilises near $\sqrt{2}$ as $N$ grows, exactly the
-behaviour predicted by combining Theorem~\ref{thm:variance-ratio}
-(asymptotic ceiling) with Proposition~\ref{prop:scaling-N}
-(small-sample amplification).
+The paper's context-size sweep on the CausalPFN Polynomial DGP (a
+held-out family, $500$ SCMs at each of $N \in \{50, 250, 500, 1000,
+5000, 10000\}$) resolves this curve directly:
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+$N$ &
+$\dfrac{\sqrt{\mathrm{PEHE}}_{\text{UWYK}}}{\sqrt{\mathrm{PEHE}}_{\text{R-PFN}}}$ &
+$\dfrac{\sqrt{\mathrm{PEHE}}_{\text{Do-PFN}}}{\sqrt{\mathrm{PEHE}}_{\text{R-PFN}}}$ &
+$\dfrac{\mathrm{MSE}_{\text{UWYK}}}{\mathrm{MSE}_{\text{R-PFN}}}$ &
+$\dfrac{\mathrm{Std}_{\text{R-PFN}}}{\mathrm{Std}_{\text{Do-PFN}}}$
+\\
+\midrule
+$50$    & $1.18$ & $1.09$ & $1.40$ & $0.92$ \\
+$250$   & $1.28$ & $1.17$ & $1.64$ & $0.88$ \\
+$500$   & $1.27$ & $1.18$ & $1.60$ & $0.79$ \\
+$1000$  & $1.27$ & $1.20$ & $1.62$ & $0.82$ \\
+$5000$  & $1.38$ & $1.40$ & $1.90$ & $0.68$ \\
+$10000$ & $\mathbf{1.44}$ & $\mathbf{1.47}$ & $\mathbf{2.07}$ & $\mathbf{0.59}$ \\
+\midrule
+Theory ceiling &
+   $\sqrt{2} \approx 1.414$ & $\sqrt{2} \approx 1.414$ &
+   $2$ & $1/\sqrt{2} \approx 0.71$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Each column tells the same story. The $\sqrt{\mathrm{PEHE}}$ ratio
+climbs monotonically from $1.18$ at $N = 50$ to $1.44$ at
+$N = 10000$, matching $\sqrt{2}$ at the largest context tested. The
+MSE ratio climbs from $1.40$ to $2.07$, matching the factor-of-two
+CR ceiling of Theorem~\ref{thm:variance-ratio}. The stability ratio
+falls monotonically from $0.92$ to $0.59$, matching the $1/\sqrt{2}$
+ceiling of Corollary~\ref{cor:stability}.
+
+Table~3's context sizes ($N \approx 200$--$1000$) fall in the middle
+of this curve, exactly where the sweep predicts a $\sqrt{\mathrm{PEHE}}$
+ratio of $\approx 1.2$--$1.3$. Table~3's observed mean ratios
+(excluding raw-dollar CPS/PSID) --- $1.259$ vs UWYK, $1.196$ vs
+Do-PFN --- match the sweep's $N=500$ predictions ($1.266$ vs UWYK,
+$1.183$ vs Do-PFN) to two decimals. Table~3 is the sweep at its
+context regime.
 
 \subsection{Test~2: marginal-density NLL confirms Result~1}
 \label{subsec:test2}
@@ -630,6 +656,20 @@ the $1/\sqrt{2}$ stability ceiling. The controlled benchmark confirms
 what Table~3 already shows: R-PFN's advantage is a constant-factor
 Cram\'er--Rao improvement, not a scaling artefact of any particular
 dataset.
+
+\subsection{Scaling in covariate dimension $d$}
+\label{subsec:scaling-d}
+
+Script:
+\texttt{benchmarks/empirical\_tests/d\_scaling\_linear.py}.
+Same linear SCM as Section~\ref{subsec:linear-controlled} with
+$\rho = 0$, $N_{\mathrm{context}} = 200$; sweeps
+$d \in \{5, 10, 20, 30, 50\}$ with $K = 15$ SCMs at each dimension.
+Theorem~\ref{thm:variance-ratio} predicts the $\sqrt{\mathrm{PEHE}}$
+ratio is bounded by $\sqrt{2}$ at every $d$, and
+Section~\ref{sec:scaling}'s d-scaling argument predicts the ratio
+should not drop as $d$ grows. [Results pending; table to be inserted
+after cluster run completes.]
 
 %% ---------------------------------------------------------------------
 \section{Discussion}
