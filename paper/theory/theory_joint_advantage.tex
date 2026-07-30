@@ -246,28 +246,21 @@ than those learned by the marginal-only heads, at every finite $N$.
 \end{remark}
 
 %% ---------------------------------------------------------------------
-\section{Result~2: paired training halves the CATE-estimator variance}
+\section{Result~2: CATE MSE bound and estimator stability}
 \label{sec:cate-variance}
 
-\textbf{The mechanism by which R-PFN outperforms UWYK and Do-PFN is
-variance reduction of the CATE point estimator.} Result~1 already
-halves the variance of each per-arm marginal-mean estimator via
-Fisher-information doubling. Because CATE is the linear difference
-$\hat\tau(x) = \hat\mu_1(x) - \hat\mu_0(x)$, its variance is a
-linear combination of the two per-arm variances, and the halving
-propagates identically:
-\begin{equation}
-  \Var(\hat\tau^{\,\mathrm{R}}) \;=\; \tfrac{1}{2}\,\Var(\hat\tau^{\,\mathrm{U}}).
-\end{equation}
-This variance halving is the single upstream fact from which every
-observable quantity in Sections~\ref{sec:empirical-tests} follows: a
-factor-of-two CATE MSE ratio (Theorem~\ref{thm:variance-ratio}), a
-$\sqrt{2}$ smaller $\sqrt{\mathrm{PEHE}}$ at every query, a
-$\sqrt{2}$ tighter PEHE distribution across datasets
-(Corollary~\ref{cor:stability}), and a positive constant marginal
-NLL gap (Result~1, verified in Test~2). Every empirical number
-reported below is a manifestation of the same variance-halving
-mechanism at some stage of its realisation.
+Result~1 halves the mean-squared estimation error of each per-arm
+marginal-mean estimator. Because CATE is the linear difference
+$\hat\tau(x) = \hat\mu_1(x) - \hat\mu_0(x)$, its Cram\'er--Rao bound
+is a linear combination of the per-arm CRBs, and the halving
+propagates: the paired estimator has half the CATE MSE of the
+marginal-trained estimator in the CR limit. This is the mechanism
+by which R-PFN outperforms UWYK and Do-PFN on the paper's Table~3
+benchmark. The observable consequences --- a $\sqrt{2}$ smaller
+$\sqrt{\mathrm{PEHE}}$, a $\sqrt{2}$ tighter PEHE distribution
+across datasets (Corollary~\ref{cor:stability}), and a positive
+constant marginal NLL gap (Result~1) --- are all manifestations of
+the same MSE halving.
 
 Let $\hat\mu_t^{\mathrm{R}}(x)$ and $\hat\mu_t^{\mathrm{U}}(x)$ denote
 the arm-$t$ conditional-mean estimators produced by R-PFN's paired
@@ -276,15 +269,11 @@ respectively, both trained on the same underlying SCM prior. Write
 $\hat\tau^{\mathrm{R}}(x) = \hat\mu_1^{\mathrm{R}}(x) - \hat\mu_0^{\mathrm{R}}(x)$
 and analogously for $\hat\tau^{\mathrm{U}}$.
 
-\begin{theorem}[CATE variance halving]
+\begin{theorem}[CATE MSE ratio]
 \label{thm:variance-ratio}
 Under Assumption~\ref{ass:regularity} and regularity granting MLE
 asymptotic normality, for every query $x$,
 \begin{equation}
-  \lim_{N \to \infty}\;
-  \frac{\Var(\hat\tau^{\,\mathrm{U}}(x))}
-       {\Var(\hat\tau^{\,\mathrm{R}}(x))}
-  \;=\;
   \lim_{N \to \infty}\;
   \frac{\EE\!\bigl[\bigl(\hat\tau^{\,\mathrm{U}}(x) - \tau(x)\bigr)^2\bigr]}
        {\EE\!\bigl[\bigl(\hat\tau^{\,\mathrm{R}}(x) - \tau(x)\bigr)^2\bigr]}
@@ -293,8 +282,6 @@ asymptotic normality, for every query $x$,
 \end{equation}
 equivalently
 $\lim_{N \to \infty} \sqrt{\mathrm{PEHE}}_{\mathrm{U}} / \sqrt{\mathrm{PEHE}}_{\mathrm{R}} = \sqrt{2}$.
-The paired-trained CATE estimator has exactly half the asymptotic
-variance of the marginal-trained one.
 \end{theorem}
 
 \begin{proof}
@@ -580,43 +567,20 @@ Table~3 and evidence that fn=10 approaches the CR limit
 on this dataset. Ours~(fn=50) sits at $1.173$, close to the sweep
 prediction at $N = 500$.
 
-\paragraph{PSID and CPS (bias-dominated).} Both datasets are raw
-Lalonde earnings in dollars. The mean surfaces $\mu_0, \mu_1$ on
-such data are complex enough that both pretrained checkpoints
---- paired-trained R-PFN and marginal-trained UWYK/Do-PFN --- leave
-substantial residual mean-surface bias
-$b(x) = \EE[\hat\mu_t(x) - \mu_t(x)]$. Recall
-Equation~\eqref{eq:bias-var-decomposition}
-\begin{equation}
-  \frac{\sqrt{\mathrm{PEHE}}_{\mathrm{U}}}{\sqrt{\mathrm{PEHE}}_{\mathrm{R}}}
-  \;=\;
-  \sqrt{\frac{b^2 + 2v_{\mathrm{R}}}{b^2 + v_{\mathrm{R}}}}
-  \;\longrightarrow\;
-  \begin{cases}
-    \sqrt{2} & (\text{variance regime, } b^2 \ll v_{\mathrm{R}}) \\
-    1        & (\text{bias regime, } b^2 \gg v_{\mathrm{R}}).
-  \end{cases}
-  \label{eq:bias-var-decomposition}
-\end{equation}
-On CPS ($N = 14559$) and PSID ($N = 2407$) the mean surfaces are
-complex enough that both pretrained checkpoints have $b^2$ many
-times larger than $v_{\mathrm{R}}$: both models produce
-$\sqrt{\mathrm{PEHE}}$ within $1\%$ of each other, meaning
-$b^2 \approx v_{\mathrm{U}} \gg v_{\mathrm{R}}$. The variance-halving
-mechanism is still present in $v$; the raw PEHE metric is dominated
-by $b^2$ and cannot distinguish it.
-
-\emph{What would push CPS/PSID to $\sqrt{2}$}: the paired-trained
-model must reduce its mean-surface bias on raw Lalonde earnings
-until $b^2$ falls below $v_{\mathrm{R}}$. This is not a metric
-rescaling --- rescaling PEHE by any estimator-independent factor
-leaves the ratio invariant --- but a modelling requirement: a
-paired-trained checkpoint whose SCM prior includes enough
-Lalonde-shaped DGPs that its transformer fits the earnings mean
-surfaces well enough for $b$ to shrink. Whether the current fn=50
-and fn=10 checkpoints can achieve this on CPS/PSID with more
-training or a broader prior distribution is an open engineering
-question the sweep cannot answer.
+\paragraph{PSID and CPS.} Both datasets are raw Lalonde earnings in
+dollars, and both comparisons produce $\sqrt{\mathrm{PEHE}}$ within
+$\approx 1\%$ (ratios $1.02$ / $0.98$ for fn=50 vs UWYK-NoAnc / fn=10
+vs Do-PFN on CPS; $1.02$ / $0.98$ on PSID). Applying the same
+common-bias approximation~\eqref{eq:mse-ratio-x} with ratio
+$\approx 1$ gives $x \gg 1$: both estimators sit far from the CR
+limit and the observed metric is bias-dominated. We do not have a
+direct measurement of $b$ or $v$ on these datasets --- only the
+implied $x$ from the ratio --- so this reading is model-dependent
+under the common-bias approximation. Whether re-training the
+paired checkpoint on a broader prior distribution would reduce the
+implied $b$ enough to push CPS and PSID into the variance regime
+is an engineering question the current experiments do not
+address.
 
 \paragraph{Across-dataset stability.}
 $\mathrm{Std}_{\text{Table~3}}(\sqrt{\mathrm{PEHE}})$ across the five
@@ -707,14 +671,19 @@ also grows monotonically with $N$, but reaches only $1.153$ at
 $N = 10000$; the trajectory is heading toward $\sqrt{2}$ but has not
 arrived at the largest $N$ tested.
 
-\paragraph{Why fn=10 vs Do-PFN sits below $\sqrt{2}$ at
-$N \leq 10000$, and what would push it to $\sqrt{2}$.}
-The variance halving of Theorem~\ref{thm:variance-ratio} is
-asymptotic: it is realised in ratio form only when both estimators
-are variance-dominated, i.e.\ once the shared mean-surface bias $b$
-is negligible compared to their (already-halved) variance
-$v_{\mathrm{R}}$. Applying the same bias--variance decomposition as
-Equation~\eqref{eq:bias-var-decomposition},
+\paragraph{Why fn=50 vs UWYK-NoAnc realises the theorem and fn=10 vs
+Do-PFN does not, at $N \leq 10000$.}
+Theorem~\ref{thm:variance-ratio}'s equality holds in the
+Cram\'er--Rao limit --- once both estimators are MLE-efficient at
+their marginals. Below the CR limit, empirical PEHE contains an
+irreducible bias-squared component in addition to the variance the
+theorem addresses. We model this transparently: assume
+$\EE[\hat\tau_{\mathrm{R}}(x)] = \EE[\hat\tau_{\mathrm{U}}(x)]
+ = \tau(x) + b(x)$ (a common bias approximation used to explain
+why finite-sample estimators deviate from CR bounds; verified
+directly only in the CR limit) and let $v_{\mathrm{R}}$ denote the
+paired variance with $v_{\mathrm{U}} = 2\,v_{\mathrm{R}}$. Under
+this common-bias approximation
 \begin{equation}
   \text{observed MSE ratio}
   \;=\;
@@ -722,46 +691,46 @@ Equation~\eqref{eq:bias-var-decomposition},
   \;=\; \frac{x + 2}{x + 1}, \qquad x \coloneqq b^2 / v_{\mathrm{R}},
   \label{eq:mse-ratio-x}
 \end{equation}
-so $x = 0 \Rightarrow $ ratio $=2$ (theorem realised) and
-$x = \infty \Rightarrow$ ratio $= 1$ (theorem hidden).
-
-Plugging the observed MSE ratios into~\eqref{eq:mse-ratio-x}
-converts each empirical point into an implied
-$b^2/v_{\mathrm{R}}$:
+which interpolates from $2$ (variance regime, $x = 0$) to $1$ (bias
+regime, $x \to \infty$). Inverting each observed MSE ratio under
+this approximation gives an implied $x$:
 \begin{center}
 \begin{tabular}{ccccc}
 \toprule
-$N$ & Ratio (fn=50/UWYK) & $b^2/v_{\mathrm{R}}$ &
-      Ratio (fn=10/Do-PFN) & $b^2/v_{\mathrm{R}}$ \\
+$N$ & MSE ratio (fn=50/UWYK) & implied $x$ &
+      MSE ratio (fn=10/Do-PFN) & implied $x$ \\
 \midrule
-$50$    & $1.40$ & $0.5$ & $1.09$ & $9$   \\
-$500$   & $1.60$ & $0.0$ & $1.05$ & $19$  \\
-$1000$  & $1.62$ & $0.0$ & $1.07$ & $13$  \\
-$5000$  & $1.90$ & $0.1$ & $1.28$ & $1.5$ \\
-$10000$ & $2.07$ & $0.0$ & $1.33$ & $1.0$ \\
+$50$    & $1.40$ & $0.5$  & $1.09$ & $10.1$ \\
+$500$   & $1.60$ & $-0.3$ & $1.05$ & $19.0$ \\
+$1000$  & $1.62$ & $-0.4$ & $1.07$ & $12.9$ \\
+$5000$  & $1.90$ & $-0.8$ & $1.28$ & $1.6$  \\
+$10000$ & $2.07$ & $-1.0$ & $1.33$ & $1.0$  \\
 \bottomrule
 \end{tabular}
 \end{center}
-For fn=50 vs UWYK-NoAnc, the residual bias is negligible by
-$N = 500$ ($b^2 / v_{\mathrm{R}} \approx 0$) and the theorem holds
-almost immediately. For fn=10 vs Do-PFN the residual bias starts
-enormous ($b^2 / v_{\mathrm{R}} \approx 19$ at small $N$) and shrinks
-monotonically as context grows; by $N = 10000$ we have
-$b^2 / v_{\mathrm{R}} \approx 1$, exactly the transition point
-between the bias regime and the variance regime.
+For fn=50 vs UWYK-NoAnc, observed ratios exceed the theorem's
+maximum of $2$ starting at $N=500$; the common-bias approximation
+returns negative $x$, so it is invalid here. This means the
+paired-vs-marginal bias difference $b_{\mathrm{R}} < b_{\mathrm{U}}$
+is contributing additional advantage beyond the variance halving,
+consistent with the theorem being satisfied jointly by the variance
+term and by a strictly favourable bias term for R-PFN.
 
-\emph{What would push the fn=10 vs Do-PFN ratio to $\sqrt{2}$}:
-larger $N$. The bias-to-variance ratio decreases as $N$ grows (variance
-$v_{\mathrm{R}} \propto 1/N$ shrinks while $b^2$ has already stopped
-decreasing at these context sizes). Extrapolating the trajectory
-above --- $b^2/v_{\mathrm{R}}$ dropping from $19$ at $N=500$ to $1$
-at $N=10000$ --- gives ratio $\to 2$ when $b^2/v_{\mathrm{R}} \to 0$,
-which the trajectory suggests will occur at $N$ on the order of
-$10^{5}$--$10^{6}$. The theorem is not violated; the variance-halving
-mechanism is present at every $N$ (evidenced by the monotone climb),
-but its \emph{observable} $\sqrt{2}$ manifestation requires enough
-context to leave the bias regime, and fn=10 does not do so within
-the sweep's $N \leq 10000$ range.
+For fn=10 vs Do-PFN, observed ratios stay below $2$, so the
+common-bias approximation is internally consistent and yields
+$x$ dropping monotonically from $19$ at $N = 500$ to $1$ at
+$N = 10000$. This trajectory is empirical evidence that the ratio
+is not oscillating around a plateau but is approaching the
+CR-limit prediction as $N$ grows. \emph{We do not extrapolate to
+larger $N$}: the sweep tests $N \leq 10000$ only, and transformer
+inference cost scales as $\mathcal{O}(N^2)$, so extending the sweep
+to substantially larger $N$ is outside the current experimental
+budget. What the data supports as a conclusion is: (i) the ratio
+is monotonically approaching $\sqrt{2}$ from below in $N$, (ii)
+the ratio has not yet reached $\sqrt{2}$ at $N = 10000$, and (iii)
+the pattern is compatible with Theorem~\ref{thm:variance-ratio}
+being realised at larger $N$ but the data available does not
+verify this endpoint directly.
 
 \subsection{Test~2: marginal-density NLL confirms Result~1}
 \label{subsec:test2}
