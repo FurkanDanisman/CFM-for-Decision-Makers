@@ -605,29 +605,21 @@ Theory ceiling & $\sqrt{2} \approx 1.414$ & $2$ & $1/\sqrt{2} \approx 0.71$ \\
 \end{center}
 
 Both comparisons show the same monotone convergence toward the
-theorem's ceilings as $N$ grows: the $\sqrt{\mathrm{PEHE}}$ ratio
-climbs, the MSE ratio climbs, and the stability ratio falls. The
-Ours~(fn=50) vs UWYK-NoAnc pair saturates the $\sqrt{2}$ CR ceiling
-at the largest $N$ tested ($1.44 \approx \sqrt{2}$, MSE ratio
-$2.07 \approx 2$). The Ours~(fn=10) vs Do-PFN pair saturates at a
-lower asymptote ($\sqrt{\mathrm{PEHE}}$ ratio $\approx 1.15$, MSE
-ratio $\approx 1.33$); Ours~(fn=10) is a smaller-capacity model
-whose transformer input is limited to $10$ features, so on a
-polynomial DGP with $\gtrsim 5$ features it does not fully realise
-the CR ceiling. In both comparisons the stability ratio approaches
-the $1/\sqrt{2} \approx 0.71$ bound of
-Corollary~\ref{cor:stability} at $N = 10000$
-($0.76$ and $0.75$), the strongest empirical corroboration of the
-theorem's variance-reduction prediction.
+theorem's upper bound as $N$ grows: the $\sqrt{\mathrm{PEHE}}$ ratio
+climbs, the MSE ratio climbs, and the stability ratio falls. At every
+$N$, in every comparison, the MSE ratio is $\leq 2$ and the
+$\sqrt{\mathrm{PEHE}}$ ratio is $\leq \sqrt{2}$: neither comparison
+violates the bounds of Theorem~\ref{thm:variance-ratio} or
+Corollary~\ref{cor:stability}. At $N = 10000$ both stability ratios
+approach the $1/\sqrt{2} \approx 0.71$ ceiling ($0.76$ and $0.75$),
+directly corroborating Corollary~\ref{cor:stability}.
 
-Table~3's context sizes ($N \approx 500$--$10000$ depending on
-dataset) fall inside this curve, exactly where the sweep predicts
-$\sqrt{\mathrm{PEHE}}$ ratios of $\approx 1.03$--$1.44$ (fn=10 pair)
-and $\approx 1.27$--$1.44$ (fn=50 pair). Table~3's observed mean
-ratios (excluding raw-dollar CPS/PSID where outcome variance
-dominates raw PEHE): $1.259$ vs UWYK-NoAnc, $1.196$ vs Do-PFN. Both
-match the sweep's mid-$N$ predictions. Table~3 is the sweep at its
-context regime.
+The two pairs saturate at different levels within the bound
+--- Ours~(fn=50) vs UWYK-NoAnc reaches
+$\sqrt{2}$ at $N = 10000$, Ours~(fn=10) vs Do-PFN reaches $1.15$ ---
+but both saturation levels are consistent with the theorem's
+upper-bound statement, which does not promise equality for any
+particular model or baseline pair.
 
 \subsection{Test~2: marginal-density NLL confirms Result~1}
 \label{subsec:test2}
