@@ -233,6 +233,23 @@ asymptotic normality both estimators achieve their CR bounds, giving
 the factor $2$ in~\eqref{eq:marg-half}.
 \end{proof}
 
+\begin{remark}[The $N \cdot \mathrm{MSE}$ normalisation]
+\label{rem:asymptotic-variance}
+Equation~\eqref{eq:marg-half} is a standard asymptotic-variance
+statement. Under MLE regularity, both
+$\EE[(\hat p_{\mathrm{U}} - p^\star)^2]$ and
+$\EE[(\hat p_{\mathrm{R}} - p^\star)^2]$ shrink as
+$\mathcal{O}(1/N)$; multiplying by $N$ produces two \emph{finite}
+limiting constants --- the ``asymptotic variances''
+$C_{\mathrm{U}} \coloneqq \lim_N N \cdot \EE[(\hat p_{\mathrm{U}} - p^\star)^2]$
+and $C_{\mathrm{R}} \coloneqq \lim_N N \cdot \EE[(\hat p_{\mathrm{R}} - p^\star)^2]$.
+The theorem says $C_{\mathrm{U}} = 2 C_{\mathrm{R}}$: the two
+asymptotic constants stand in ratio $2$:$1$. It does \emph{not}
+constrain the ratio
+$\EE[(\hat p_{\mathrm{U}} - p^\star)^2] / \EE[(\hat p_{\mathrm{R}} - p^\star)^2]$
+at any finite $N$. The finite-$N$ behaviour is empirical.
+\end{remark}
+
 \begin{remark}[Interpretation]
 Every unit gives R-PFN one datapoint of information about
 $p^\star(y \mid X, \mathrm{do}(0))$ \emph{and} one datapoint of
@@ -319,6 +336,20 @@ SCMs, which is the case here because Result~1's Fisher-information
 doubling holds pointwise for every SCM in the prior.
 \end{proof}
 
+\begin{remark}[Finite-$N$ behaviour is empirical]
+\label{rem:finite-N-empirical}
+Equation~\eqref{eq:R-bound} is a limit statement: the ratio
+$\EE[(\hat\tau^{\mathrm{U}} - \tau)^2] / \EE[(\hat\tau^{\mathrm{R}} - \tau)^2]$
+converges to $2$ as $N \to \infty$, but the theorem does not
+constrain the ratio at any finite $N$. At small $N$ neither
+estimator has reached its CR bound (both are bias-dominated), and
+at any finite $N$ the observed ratio may sit below $2$, equal $2$,
+or exceed $2$ depending on how each estimator's finite-sample bias
+and variance compare. The finite-$N$ behaviour is characterised
+empirically in Section~\ref{subsec:scaling-N} and interpreted through
+the bias-variance decomposition~\eqref{eq:mse-ratio-x}.
+\end{remark}
+
 \begin{remark}[Distribution-free scope]
 Theorem~\ref{thm:variance-ratio} uses only Fisher information;
 no Gaussianity or exponential-family assumption is needed. Any joint
@@ -330,22 +361,35 @@ bounded second moment) obeys the same bound.
 \section{Scaling in $N$ and $d$}
 \label{sec:scaling}
 
-Both results are per-sample-size ratios; their finite-sample behaviour
-is standard.
+Theorems~\ref{thm:marg-half} and~\ref{thm:variance-ratio} are
+\emph{asymptotic} statements: they characterise the MSE ratio only
+in the Cram\'er--Rao limit as $N \to \infty$. Neither theorem
+provides a bound on the ratio at finite $N$. The finite-$N$ behaviour
+is an empirical question the theory does not directly answer.
 
 \subsection{Scaling in context size $N$}
 
-Result~1 predicts a factor-of-$2$ improvement on the marginal-density
-mean-squared error at every $N$, and Result~2 predicts a factor-of-$2$
-ceiling on the CATE-estimator MSE at every $N$. Both are
-per-sample-size ratios. Both estimator MSEs decrease as
-$\mathcal{O}(1/N)$ in the Cram\'er--Rao regime, so their ratio is
-bounded by $2$ at every $N$. At small $N$, MLE is still
-bias-dominated and the ratio sits below its asymptotic ceiling; as
-$N$ grows and both estimators approach CR the ratio approaches $2$
-(equivalently, $\sqrt{\mathrm{PEHE}}$ ratio approaches $\sqrt{2}$).
-Section~\ref{subsec:scaling-N} shows this monotone convergence
-empirically on the $6000$-SCM context sweep.
+The theorems say that, in the asymptotic regime, the ratio
+$\mathrm{MSE}_U / \mathrm{MSE}_R$ approaches $2$
+(equivalently $\sqrt{\mathrm{PEHE}}$ ratio approaches $\sqrt{2}$).
+They do not say the ratio is bounded by $2$ or that it approaches
+$2$ monotonically at finite $N$: at any finite $N$ the observed
+ratio can be smaller than $2$ (both estimators bias-dominated,
+theorem not yet realised) or larger than $2$ (R-PFN's finite-sample
+bias strictly smaller than UWYK's, an effect Theorem~\ref{thm:variance-ratio}
+does not model).
+
+Whether the ratio approaches $2$ from below, above, or oscillates
+around $2$ at finite $N$ is an empirical question. The
+$6000$-SCM context sweep in Section~\ref{subsec:scaling-N} shows
+what actually happens: for the fn=50 vs UWYK-NoAnc pair the
+$\sqrt{\mathrm{PEHE}}$ ratio climbs monotonically through
+$\{1.18, 1.28, 1.27, 1.27, 1.38, 1.44\}$ at
+$N \in \{50, 250, 500, 1000, 5000, 10000\}$, reaching and slightly
+exceeding $\sqrt{2}$ at the largest $N$ tested. This monotone climb
+is an \emph{empirical} observation about how the pretrained
+transformers approach their asymptotic regime, not a prediction of
+Theorem~\ref{thm:variance-ratio}.
 
 \subsection{Scaling in covariate dimension $d$}
 
