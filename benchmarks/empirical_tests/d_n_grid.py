@@ -19,7 +19,14 @@ from rho_scaling_linear import make_linear_scm, load_ours, load_uwyk
 
 DEVICE = torch.device('cpu')
 D_GRID = (2, 3, 5, 8)
-N_GRID = (100, 500, 1000, 5000, 10000)
+# Per-d N grids, targeted at each d's expected knee (√PEHE ratio → √2).
+# d=5 known to cross √2 by N=10000 from earlier bigN d-sweep, so no d ≤ 5 tested there.
+D_N_MAP = {
+    2: (50,  100, 200, 500,  1000),
+    3: (100, 500, 1000, 2000, 5000),
+    5: (200, 500, 1000, 2000, 5000),
+    8: (500, 1000, 2000, 5000, 10000),
+}
 
 
 def _pehe(true_cate, pred_cate):
@@ -50,7 +57,7 @@ def _plot_aggregate(args):
           f'{"√PEHE ratio":>12} {"MSE ratio":>10}')
     print('-' * 66)
     for d in D_GRID:
-        for N in N_GRID:
+        for N in D_N_MAP[d]:
             m = (arr['d'] == d) & (arr['N'] == N)
             if not m.any(): continue
             pu, po = arr['pehe_uwyk'][m], arr['pehe_ours50'][m]
@@ -66,7 +73,7 @@ def _plot_aggregate(args):
     colors = ['#0F8A3C', '#B84A2A', '#2E4A6F', '#8A4FBE']
     for c, d in zip(colors, D_GRID):
         Ns, rats = [], []
-        for N in N_GRID:
+        for N in D_N_MAP[d]:
             m = (arr['d'] == d) & (arr['N'] == N)
             if not m.any(): continue
             pu, po = arr['pehe_uwyk'][m], arr['pehe_ours50'][m]
@@ -128,7 +135,7 @@ def main():
         print(f'[resume] {len(rows)} rows from {shard_path}', flush=True)
 
     for d in d_targets:
-        for N in N_GRID:
+        for N in D_N_MAP[d]:
             for k in range(args.K):
                 if k in done.get((d, N), set()): continue
                 seed = d * 10_000 + N + k
