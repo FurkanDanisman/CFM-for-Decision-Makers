@@ -18,14 +18,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rho_scaling_linear import make_linear_scm, load_ours, load_uwyk
 
 DEVICE = torch.device('cpu')
-D_GRID = (2, 3, 5, 8)
-# Per-d N grids, targeted at each d's expected knee (√PEHE ratio → √2).
-# d=5 known to cross √2 by N=10000 from earlier bigN d-sweep, so no d ≤ 5 tested there.
+D_GRID = (2, 3, 4, 5, 8)
+# Per-d N grids, targeted at each d's expected √2-crossing knee.
+# One-shot exploration grid: few cells per d, run with K=1.
 D_N_MAP = {
-    2: (50,  100, 200, 500,  1000),
-    3: (100, 500, 1000, 2000, 5000),
-    5: (200, 500, 1000, 2000, 5000),
-    8: (500, 1000, 2000, 5000, 10000),
+    2: (2000, 5000),
+    3: (3000, 5000),
+    4: (5000, 8000),
+    5: (8000,),
+    8: (12000,),
 }
 
 
