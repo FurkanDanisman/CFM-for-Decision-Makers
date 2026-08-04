@@ -5,7 +5,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --array=0-4%5
+#SBATCH --array=0-10%11
 
 set -euo pipefail
 mkdir -p logs_dn_grid

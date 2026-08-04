@@ -18,16 +18,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rho_scaling_linear import make_linear_scm, load_ours, load_uwyk
 
 DEVICE = torch.device('cpu')
-D_GRID = (2, 3, 4, 5, 8)
-# Per-d N grids, targeted at each d's expected √2-crossing knee.
-# One-shot exploration grid: few cells per d, run with K=1.
-D_N_MAP = {
-    2: (2000, 5000),
-    3: (3000, 5000),
-    4: (5000, 8000),
-    5: (8000,),
-    8: (12000,),
-}
+D_GRID = tuple(range(2, 13))       # d = 2, 3, ..., 12
+# Test the linear scaling hypothesis N*(d) ≈ 1250·d.
+# One cell per d at the predicted knee; if the fit is correct, every
+# cell's √PEHE ratio should sit near √2 = 1.414.
+D_N_MAP = {d: (1250 * d,) for d in D_GRID}
 
 
 def _pehe(true_cate, pred_cate):
