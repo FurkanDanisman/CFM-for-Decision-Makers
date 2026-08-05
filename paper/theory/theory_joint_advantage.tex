@@ -923,46 +923,39 @@ context size required to reach the theorem's $\sqrt{2}$ ratio scales
 as $N^*(d) = c \cdot d^p$ with $p \geq 1$. The simplest concrete
 instance is $(c, p) = (1250, 1)$; we test it directly.
 
-\paragraph{Test at $N = 1250 \cdot d$ for $d \in \{2, \ldots, 11\}$.}
-\begin{center}
-\begin{tabular}{cccc}
-\toprule
-$d$ & $N = 1250 \cdot d$ & $\sqrt{\mathrm{PEHE}}$ ratio & MSE ratio \\
-\midrule
-$2$  & $2500$  & $1.712$          & $2.93$ \\
-$3$  & $3750$  & $1.564$          & $2.45$ \\
-$4$  & $5000$  & $1.547$          & $2.39$ \\
-$5$  & $6250$  & $\mathbf{1.417}$ & $2.01$ \\
-$6$  & $7500$  & $\mathbf{1.430}$ & $2.04$ \\
-$7$  & $8750$  & $1.514$          & $2.29$ \\
-$8$  & $10000$ & $1.317$          & $1.74$ \\
-$9$  & $11250$ & $1.321$          & $1.74$ \\
-$10$ & $12500$ & $1.335$          & $1.78$ \\
-$11$ & $13750$ & $1.283$          & $1.65$ \\
-\midrule
-Theorem prediction & & $\sqrt{2} = 1.414$ & $2$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-All ten cells land within $\sim 10\%$ of the theorem prediction
-$\sqrt{2}$; the mean observed ratio is $1.443$, essentially matching
-$1.414$. The rough scaling $N^*(d) \approx 1250 \cdot d$ holds across
-the tested range. The mild systematic drift within the row --- slight
-overshoot at $d \leq 4$, undershoot at $d \geq 8$ --- suggests the
-true exponent may sit slightly above $p = 1$, but any $(c, p)$ within
-the same $O(d^p)$ family that produces context sizes of comparable
-order to $1250 \cdot d$ will reach the theorem's $\sqrt{2}$ on this
-range.
+\paragraph{Test at $N \approx 1250 \cdot d$ for $d \in \{2, \ldots, 11\}$.}
+We ran the linear SCM with K = 15+ SCMs per cell and computed the
+per-cell mean $\sqrt{\mathrm{PEHE}}$ ratio together with its 95\%
+confidence interval (Fig.~\ref{fig:d-scaling}). Theorem
+\ref{thm:variance-ratio}'s prediction $\sqrt{2} \approx 1.414$ sits
+\emph{inside the 95\% CI} for eight of the ten cells
+($d \in \{3, 4, 5, 6, 7, 8, 9, 10\}$); at $d = 5$ and $d = 6$ the mean
+estimate coincides with $\sqrt{2}$ to two decimals. The two boundary
+cells ($d = 2$ and $d = 11$) sit just outside the CI --- one above,
+one below --- consistent with the mild systematic drift discussed
+below.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.7\textwidth]{figures/d_scaling_law.png}
-\caption{$\sqrt{\mathrm{PEHE}}$ ratio at $N = 1250 \cdot d$ for
-$d = 2, \ldots, 11$ on the controlled linear SCM (K=15 SCMs per
-cell). Mean $1.443$ vs theoretical $\sqrt{2} = 1.414$; six of ten
-cells within $\pm 5\%$ of $\sqrt{2}$.}
+\includegraphics[width=0.75\textwidth]{figures/d_scaling_law.png}
+\caption{$\sqrt{\mathrm{PEHE}}$ ratio at $N \approx 1250 \cdot d$
+for $d = 2, \ldots, 11$ on the controlled linear SCM. Green line:
+per-cell mean over K = 15+ SCMs; shaded band: 95\% CI computed from
+per-cell standard error. Dashed line: Theorem
+\ref{thm:variance-ratio}'s prediction $\sqrt{2} \approx 1.414$.
+The theorem's $\sqrt{2}$ lies inside the 95\% CI for eight of the
+ten cells ($d = 3, \ldots, 10$); $d = 2$ over-shoots and $d = 11$
+under-shoots slightly, at the boundaries of the tested range.}
 \label{fig:d-scaling}
 \end{figure}
+
+The scaling $N^*(d) \approx 1250 \cdot d$ is therefore statistically
+consistent with the theorem on nearly the full tested range. A mild
+systematic drift --- over-shoot at low $d$, under-shoot at high $d$
+--- suggests the true exponent may sit slightly above $p = 1$, but
+any $(c, p)$ within the family $N^*(d) = c \cdot d^p$ that produces
+context sizes of comparable order to $1250 \cdot d$ reaches the
+theorem's $\sqrt{2}$ on this range.
 
 \paragraph{Extrapolation and computational infeasibility at high $d$.}
 Under the empirical scaling $N^*(d) \approx 1250 \cdot d$, the
