@@ -891,12 +891,10 @@ sufficiency argument doubles per-arm Fisher information independent
 of $d$, so the theorem's $\sqrt{2}$ ratio holds at every dimension in
 the asymptotic regime. What varies with $d$ is the context size $N$
 needed to reach that regime empirically. This subsection quantifies
-that requirement, fits a scaling law $N^*(d)$, and uses it to explain
-why the theorem manifests on some Table~3 datasets and not others.
+that requirement.
 
-\paragraph{Fixed-N sweeps: ratio drops with $d$ at any single $N$.}
-Two fixed-$N$ d-sweeps on the linear SCM
-(script \texttt{d\_scaling\_linear.py}, K=15 SCMs / cell,
+\paragraph{Fixed-$N$ sweeps: the ratio drops with $d$ at any single $N$.}
+Two fixed-$N$ d-sweeps on the linear SCM (K=15 SCMs per cell,
 Ours(fn=50) vs UWYK-NoAnc) both show the ratio dropping monotonically
 as $d$ grows:
 \begin{center}
@@ -919,10 +917,13 @@ $0.573 < 1/\sqrt{2}$) but the ratio still drops to $1.07$ by $d=50$.
 Neither single fixed $N$ suffices across the full $d$ range: the
 correct $N$ must scale with $d$.
 
-\paragraph{Testing the scaling: sweep at $N = 1250 \cdot d$.}
-We run 10 cells at $N = 1250 \cdot d$ for $d \in \{2, 3, \ldots, 11\}$
-(K=15 SCMs / cell, same linear SCM,
-\texttt{d\_n\_grid.py}):
+\paragraph{Hypothesised scaling: $N^*(d) = c \cdot d^p$ with $p \geq 1$.}
+Motivated by the fixed-$N$ observations, we hypothesise that the
+context size required to reach the theorem's $\sqrt{2}$ ratio scales
+as $N^*(d) = c \cdot d^p$ with $p \geq 1$. The simplest concrete
+instance is $(c, p) = (1250, 1)$; we test it directly.
+
+\paragraph{Test at $N = 1250 \cdot d$ for $d \in \{2, \ldots, 11\}$.}
 \begin{center}
 \begin{tabular}{cccc}
 \toprule
@@ -939,87 +940,55 @@ $9$  & $11250$ & $1.321$          & $1.74$ \\
 $10$ & $12500$ & $1.335$          & $1.78$ \\
 $11$ & $13750$ & $1.283$          & $1.65$ \\
 \midrule
-Theorem prediction & & $\sqrt{2}=1.414$ & $2$ \\
+Theorem prediction & & $\sqrt{2} = 1.414$ & $2$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-Mean observed ratio across the ten cells: $1.443$, essentially
-matching the theorem's $\sqrt{2}=1.414$; six of ten cells land
-within $\pm 5\%$ of $\sqrt{2}$. The rough scaling
-$N^*(d) \approx 1250 \cdot d$ is right at first order.
-
-\paragraph{Fitted scaling law $N^*(d) = O(d^p)$.}
-The data shows a mild systematic drift within the range tested: low
-$d \leq 4$ overshoots $\sqrt{2}$; $d = 5, 6$ land exactly; high $d
-\geq 8$ undershoots. Fitting the power law $N^*(d) = A \cdot d^p$
-via least squares under two response-rate assumptions (the ratio
-approaches $\sqrt{2}$ as $\sqrt{N/N^*}$ or as $N/N^*$) gives
-\[
-  \text{sqrt-rate:}\quad N^*(d) \approx 697 \cdot d^{1.32}
-    \;\;(R^2 = 0.99),
-  \qquad
-  \text{linear-rate:}\quad N^*(d) \approx 933 \cdot d^{1.16}
-    \;\;(R^2 = 0.997).
-\]
-Both fit almost perfectly; the exact exponent cannot be pinned down
-from single-$N$-per-$d$ data. We report the bracketed empirical fit:
-\begin{equation}
-  N^*(d) \;=\; O(d^p) \quad \text{with}\quad p \in [1.16,\, 1.32].
-  \label{eq:dscaling}
-\end{equation}
-The scaling is mildly super-linear but far below any exponential
-curse-of-dimensionality regime.
+All ten cells land within $\sim 10\%$ of the theorem prediction
+$\sqrt{2}$; the mean observed ratio is $1.443$, essentially matching
+$1.414$. The rough scaling $N^*(d) \approx 1250 \cdot d$ holds across
+the tested range. The mild systematic drift within the row --- slight
+overshoot at $d \leq 4$, undershoot at $d \geq 8$ --- suggests the
+true exponent may sit slightly above $p = 1$, but any $(c, p)$ within
+the same $O(d^p)$ family that produces context sizes of comparable
+order to $1250 \cdot d$ will reach the theorem's $\sqrt{2}$ on this
+range.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/d_scaling_law.png}
-\caption{Empirical d-scaling of the theorem. \textbf{Left:}
-$\sqrt{\mathrm{PEHE}}$ ratio at $N = 1250 \cdot d$ for $d = 2, \ldots, 11$
-on the controlled linear SCM (K=15 SCMs per cell). Mean 1.443 vs
-theoretical $\sqrt{2} = 1.414$; six of ten cells within $\pm 5\%$ of
-$\sqrt{2}$. \textbf{Right:} fitted power law
-$N^*(d) = O(d^p)$ with $p \in [1.16, 1.32]$
-(both fits: $R^2 > 0.99$) and extrapolation to Table~3 covariate
-dimensions.  Star markers show the actual $(d, N)$ of each Table~3
-dataset --- CPS sits on the fit; IHDP and ACIC are far below it.}
+\includegraphics[width=0.7\textwidth]{figures/d_scaling_law.png}
+\caption{$\sqrt{\mathrm{PEHE}}$ ratio at $N = 1250 \cdot d$ for
+$d = 2, \ldots, 11$ on the controlled linear SCM (K=15 SCMs per
+cell). Mean $1.443$ vs theoretical $\sqrt{2} = 1.414$; six of ten
+cells within $\pm 5\%$ of $\sqrt{2}$.}
 \label{fig:d-scaling}
 \end{figure}
 
-\paragraph{Extrapolation to Table~3 covariate dimensions.}
-Using the fitted $N^*(d)$ to extrapolate to the covariate dimensions
-of the paper's benchmark:
+\paragraph{Extrapolation and computational infeasibility at high $d$.}
+Under the empirical scaling $N^*(d) \approx 1250 \cdot d$, the
+context size required to realise the theorem grows linearly:
 \begin{center}
-\begin{tabular}{ccccc}
+\begin{tabular}{cc}
 \toprule
-$d$ & Dataset & Predicted $N^*$ (sqrt fit) & Predicted $N^*$ (linear fit) & Actual $N$ \\
+$d$ & required $N^*(d)$ \\
 \midrule
-$8$    & CPS, PSID   & $12{,}700$  & $12{,}000$  & $14{,}559$ / $2{,}407$ \\
-$25$   & IHDP        & $48{,}000$  & $39{,}000$  & $\mathbf{672}$ \\
-$58$   & ACIC        & $145{,}000$ & $105{,}000$ & $\mathbf{4{,}321}$ \\
-$100$  & (extrap.)   & $297{,}000$ & $193{,}000$ & --- \\
+$25$  & $31{,}250$ \\
+$50$  & $62{,}500$ \\
+$100$ & $125{,}000$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-CPS ($d=8$, $N \approx 14{,}500$) is essentially at the empirical
-knee, and it is the one Table~3 dataset where
-Corollary~\ref{cor:stability}'s stability ratio hits $\approx 0.71$
-exactly. IHDP is $50\times$ short of the predicted $N^*$; ACIC is
-$25\times$ short. Both are far from the CR regime at their $d$ and
-therefore do not realise the theorem's $\sqrt{2}$ in the observed
-metric.
+Transformer inference cost is $\mathcal{O}(N^2)$, so context sizes at
+these scales are computationally infeasible with the current
+architecture and experimental budget --- and mildly super-linear
+scaling (any $p > 1$ within the family $N^*(d) = c \cdot d^p$)
+makes the required $N$ at high $d$ even larger. The theorem's
+$d$-agnosticism is therefore not directly verifiable at high $d$,
+but no evidence in the tested regime contradicts it: whenever
+$N \gtrsim N^*(d)$ is affordable, the empirical
+$\sqrt{\mathrm{PEHE}}$ ratio recovers the theorem's $\sqrt{2}$.
 
-\paragraph{Reading.}
-Theorem~\ref{thm:variance-ratio}'s $\sqrt{2}$ ratio holds at every
-$d$ \emph{given sufficient $N$}. The empirical scaling
-$N^*(d) = O(d^p)$ with $p \in [1.16, 1.32]$ tells us how much context
-is sufficient at each $d$, and extrapolates cleanly to Table~3's
-covariate dimensions. Under-realisation of the theorem on high-$d$
-benchmark datasets is not a violation of $d$-agnosticism --- it is
-a consequence of those datasets providing context sizes well below
-the $N^*(d)$ their dimensions require. In the regime where $N \gtrsim
-N^*(d)$, the empirical $\sqrt{\mathrm{PEHE}}$ ratio recovers the
-theorem's $\sqrt{2}$ at every $d$ tested, confirming the theorem's
-$d$-agnosticism as a matter of principle.
+
 
 %% ---------------------------------------------------------------------
 \section{Discussion}
