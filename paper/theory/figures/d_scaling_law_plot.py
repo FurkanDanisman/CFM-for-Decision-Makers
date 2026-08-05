@@ -23,11 +23,9 @@ d_lo, d_hi = 1.5, 11.5
 
 fig, ax = plt.subplots(figsize=(8.5, 5.0))
 
-# ── Tolerance bands ──
-ax.axhspan(sqrt2 * 0.90, sqrt2 * 1.10, color='#0F8A3C', alpha=0.10,
-            label=r'$\pm 10\%$ of $\sqrt{2}$', zorder=1)
-ax.axhspan(sqrt2 * 0.95, sqrt2 * 1.05, color='#0F8A3C', alpha=0.18,
-            label=r'$\pm 5\%$ of $\sqrt{2}$', zorder=2)
+# ── Tolerance band: ±10% of √2 (relative deviation) ──
+ax.axhspan(sqrt2 * 0.90, sqrt2 * 1.10, color='#0F8A3C', alpha=0.18,
+            label=r'$\pm 10\%$ of $\sqrt{2}$', zorder=2)
 
 # ── Reference lines ──
 ax.axhline(sqrt2, color='k', ls='--', lw=1.6,
