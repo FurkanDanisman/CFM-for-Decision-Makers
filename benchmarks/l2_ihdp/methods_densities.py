@@ -285,45 +285,46 @@ def dopfn_densities(cd,
     t_train_ctx = t_train[:N]
     y_train_ctx = y_train[:N]
 
-    # DoPFN convention (mirrors methods/dopfn.py::dopfn_pipeline)
+    # DoPFN convention (mirrors methods/dopfn.py::dopfn_pipeline). Both
+    # __init__ and fit() open files with relative paths (artifacts/*.pkl,
+    # artifacts/*.cpkt), so CWD must stay at dopfn_root through both calls
+    # and through predict_full below (safest to keep it for the whole block).
     x_tr = np.concatenate([t_train_ctx[:, None], X_train_ctx], axis=1)
+    x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
+    n_test = X_test.shape[0]
+
     _cwd = os.getcwd()
     try:
         os.chdir(dopfn_root)
         reg = DoPFNRegressor()
+        reg.fit(torch.tensor(x_tr), torch.tensor(y_train_ctx))
+
+        def _arm_density(arm: int) -> np.ndarray:
+            x = x_te.copy()
+            x[:, 0] = float(arm)
+            full = reg.predict_full(torch.tensor(x))
+            logits = np.asarray(full['logits'])                     # (n_test, num_bars)
+            borders = np.asarray(full['criterion'].borders.cpu())    # (num_bars + 1,) in raw Y units
+            bar_widths = np.diff(borders)                            # (num_bars,)
+            # Softmax + convert to density on the (raw-Y) bar centres
+            z = logits - logits.max(axis=1, keepdims=True)
+            probs = np.exp(z); probs /= probs.sum(axis=1, keepdims=True)
+            density_raw = probs / bar_widths[None, :]                # (n_test, num_bars)
+            bar_centres_raw = 0.5 * (borders[:-1] + borders[1:])
+            # Rescale border centres to [-1, 1] Y frame
+            bar_centres_scaled = (bar_centres_raw - y_min) / y_rng * 2.0 - 1.0
+            # Density transforms as (dy_raw / dy_scaled) = y_rng / 2
+            density_scaled = density_raw * (y_rng / 2.0)
+            out = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+            for q in range(n_test):
+                out[q] = resample_onto(bar_centres_scaled, density_scaled[q], Y_CENTERS)
+            return out
+
+        p_y0 = _arm_density(0)
+        p_y1 = _arm_density(1)
     finally:
         os.chdir(_cwd)
-    reg.fit(torch.tensor(x_tr), torch.tensor(y_train_ctx))
 
-    x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
-    n_test = X_test.shape[0]
-
-    def _arm_density(arm: int) -> np.ndarray:
-        # Match DoPFNRegressor.predict_cid: overwrite the first column, then
-        # call predict_full to get the full BarDistribution density.
-        x = x_te.copy()
-        x[:, 0] = float(arm)
-        full = reg.predict_full(torch.tensor(x))
-        logits = np.asarray(full['logits'])                     # (n_test, num_bars)
-        borders = np.asarray(full['criterion'].borders.cpu())    # (num_bars + 1,) in raw Y units
-        bar_widths = np.diff(borders)                            # (num_bars,)
-        # Softmax + convert to density on the (raw-Y) bar centres
-        z = logits - logits.max(axis=1, keepdims=True)
-        probs = np.exp(z); probs /= probs.sum(axis=1, keepdims=True)
-        density_raw = probs / bar_widths[None, :]                # (n_test, num_bars)
-        bar_centres_raw = 0.5 * (borders[:-1] + borders[1:])
-        # Rescale border centres to [-1, 1] Y frame
-        bar_centres_scaled = (bar_centres_raw - y_min) / y_rng * 2.0 - 1.0
-        # Density transforms as (dy_raw / dy_scaled) = y_rng / 2
-        density_scaled = density_raw * (y_rng / 2.0)
-        # Resample onto Y_CENTERS
-        out = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
-        for q in range(n_test):
-            out[q] = resample_onto(bar_centres_scaled, density_scaled[q], Y_CENTERS)
-        return out
-
-    p_y0 = _arm_density(0)
-    p_y1 = _arm_density(1)
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
     for q in range(n_test):
         p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
