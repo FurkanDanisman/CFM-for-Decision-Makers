@@ -150,14 +150,25 @@ def ours_densities(cd,
         p_y0[q] = resample_onto(xs, m_y0_fine, Y_CENTERS)
         p_y1[q] = resample_onto(ys, m_y1_fine, Y_CENTERS)
 
-        # CATE via diagonal integration (same as plot_ihdp_n10.py)
+        # CATE via diagonal integration.
+        # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
+        # (the fine grid); we look up the density_2d value at that y0
+        # column, and bilinearly interpolate in y1 = y0 + tau across rows.
+        #
+        # NOTE: earlier revisions (and the sibling plot_ihdp_n10.py) used
+        #     col = np.clip(np.searchsorted(xs, xs[valid]) - 1, 0, len(xs)-1)
+        # which is off-by-one for exact matches: searchsorted(side='left')
+        # returns k for xs[valid][i] == xs[k], so -1 gives k-1 (wrong).
+        # For smooth densities this shifts sampling by dxs ~ 1.5%; for
+        # spiky joint outputs (fn=10 on hard queries) it can miss the peak
+        # column entirely. Corrected form: use searchsorted output directly.
         p_tau_native = np.zeros(len(TAU_CENTERS))
         for k, t in enumerate(TAU_CENTERS):
             y1_target = xs + t
             valid = (y1_target >= ys[0]) & (y1_target <= ys[-1])
             if not np.any(valid):
                 continue
-            col = np.clip(np.searchsorted(xs, xs[valid]) - 1, 0, len(xs) - 1)
+            col = np.clip(np.searchsorted(xs, xs[valid]), 0, len(xs) - 1)
             row_f = (y1_target[valid] - ys[0]) / dys
             row_lo = np.clip(np.floor(row_f).astype(int), 0, len(ys) - 2)
             row_hi = row_lo + 1
