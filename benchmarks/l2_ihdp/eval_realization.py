@@ -61,6 +61,14 @@ def main() -> int:
                      default=int(os.environ.get('UWYK_N_SAMPLES', 1024)))
     ap.add_argument('--methods', default=os.environ.get(
         'METHODS', 'ours_fn50,ours_fn10,uwyk_noanc,dopfn'))
+    ap.add_argument('--restrict-features', type=int,
+                     default=int(os.environ.get('RESTRICT_FEATURES', 0)),
+                     help='If > 0, truncate IHDP covariates to the first N '
+                          'columns for ALL methods, and compute truth on the '
+                          'same restricted feature set (k-NN mixture).')
+    ap.add_argument('--knn-K', type=int,
+                     default=int(os.environ.get('KNN_K', 20)),
+                     help='k-NN size for the restricted truth mixture')
     ap.add_argument('--repo', default=os.environ.get('REPO', ''))
     ap.add_argument('--causalpfn', default=os.environ.get('CAUSALPFN', ''))
     ap.add_argument('--dopfn', default=os.environ.get('DOPFN', ''))
@@ -73,6 +81,14 @@ def main() -> int:
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
     assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn'}
                 for m in methods), f'bad methods: {methods}'
+    if args.restrict_features > 0:
+        allowed = {'dopfn', 'ours_fn10'}
+        dropped = [m for m in methods if m not in allowed]
+        methods = [m for m in methods if m in allowed]
+        if dropped:
+            print(f'[restrict] --restrict-features > 0: dropped methods '
+                  f'{dropped} (only {sorted(allowed)} tested in restricted mode)',
+                  flush=True)
 
     if not args.repo:
         args.repo = _guess_repo()
@@ -93,6 +109,11 @@ def main() -> int:
         TAU_CENTERS, Y_CENTERS, load_ihdp_truth,
         true_ate_barycenter, true_cate_per_query, true_marginals_per_query,
     )
+    from true_ihdp_restricted import (
+        load_ihdp_restricted_truth,
+        restricted_marginals_per_query, restricted_cate_per_query,
+        restricted_ate_barycenter, induced_correlation,
+    )
     from ot_barycenter import wasserstein_barycenter_1d
     from methods_densities import (
         dopfn_densities, ours_densities, uwyk_noanc_densities,
@@ -108,14 +129,40 @@ def main() -> int:
     y_train_full = _np(cd.y_train)
     n_ctx = args.n_context if args.n_context > 0 else y_train_full.shape[0]
 
+    # Optional feature restriction — truncate IHDP to the first N covariates
+    # for ALL methods, and build truth on the same restricted feature set.
+    if args.restrict_features > 0:
+        X_train_arr = _np(cd.X_train).astype(np.float32)
+        X_test_arr  = _np(cd.X_test).astype(np.float32)
+        d_r = min(args.restrict_features, X_train_arr.shape[1])
+        cd = _truncate_covariates(cd, d_r)
+        print(f'[restrict] using first {d_r} of {X_train_arr.shape[1]} '
+              f'covariates for all methods and truth', flush=True)
+
     # ── Truth ───────────────────────────────────────────────────────────
-    truth = load_ihdp_truth(args.realization, args.causalpfn, y_train_full)
-    n_queries = truth.mu0_test_scaled.shape[0]
-    print(f'[truth] r={args.realization}  n_queries={n_queries}  '
-          f'sigma_scaled={truth.sigma_scaled:.4f}', flush=True)
-    p_y0_true, p_y1_true = true_marginals_per_query(truth)
-    p_tau_true = true_cate_per_query(truth)
-    p_ate_true = true_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
+    if args.restrict_features > 0:
+        truth = load_ihdp_restricted_truth(
+            args.realization, args.causalpfn,
+            X_train_arr, X_test_arr, y_train_full,
+            d_restrict=args.restrict_features, K=args.knn_K,
+        )
+        n_queries = truth.mu0_neighbours_scaled.shape[0]
+        induced = induced_correlation(truth)
+        print(f'[truth] restricted r={args.realization}  n_queries={n_queries}  '
+              f'sigma_scaled={truth.sigma_scaled:.4f}  d_r={truth.d_restrict}  '
+              f'K={truth.K}  induced_rho: mean={induced.mean():+.3f} '
+              f'median={np.median(induced):+.3f}', flush=True)
+        p_y0_true, p_y1_true = restricted_marginals_per_query(truth)
+        p_tau_true = restricted_cate_per_query(truth)
+        p_ate_true = restricted_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
+    else:
+        truth = load_ihdp_truth(args.realization, args.causalpfn, y_train_full)
+        n_queries = truth.mu0_test_scaled.shape[0]
+        print(f'[truth] r={args.realization}  n_queries={n_queries}  '
+              f'sigma_scaled={truth.sigma_scaled:.4f}', flush=True)
+        p_y0_true, p_y1_true = true_marginals_per_query(truth)
+        p_tau_true = true_cate_per_query(truth)
+        p_ate_true = true_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
 
     # ── Method densities ────────────────────────────────────────────────
     # Order matters: UWYK's constructor loads its own `utils` and `models`
@@ -275,6 +322,32 @@ def _run_dopfn(cd, truth, args, n_ctx):
 
 
 # ── Path plumbing ───────────────────────────────────────────────────────
+def _truncate_covariates(cd, d_r: int):
+    """Return a shim CATE_Dataset with X_train, X_test truncated to first d_r cols."""
+    import torch
+
+    def _trim(A):
+        if isinstance(A, torch.Tensor):
+            return A[:, :d_r].contiguous()
+        return np.asarray(A)[:, :d_r]
+
+    class _Shim:
+        pass
+    shim = _Shim()
+    for attr in dir(cd):
+        if attr.startswith('_'):
+            continue
+        try:
+            val = getattr(cd, attr)
+        except Exception:
+            continue
+        if attr in ('X_train', 'X_test'):
+            setattr(shim, attr, _trim(val))
+        else:
+            setattr(shim, attr, val)
+    return shim
+
+
 def _install_dopfn_datasets_shim(dopfn_dir: str) -> None:
     """CausalPFN's IHDPDataset imports a bare `datasets` module — shim it in."""
     if 'datasets' in sys.modules:
