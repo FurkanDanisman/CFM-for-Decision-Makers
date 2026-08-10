@@ -231,11 +231,16 @@ def main():
             for k in batch:
                 batch[k] = batch[k].to(DEVICE, non_blocking=True)
 
-            # Paired-Y context: stack (Y_do0, Y_do1) along the last axis.
-            Y_context_pair = torch.stack([batch['Y_do0'], batch['Y_do1']], dim=-1)
-            # For the marginal-Y observations the trainer's PairedDoPFNDataset
-            # emits both potential outcomes for every context example — matches
-            # the paired-outcome training regime.
+            # Paired-Y context: concatenate (Y_do0, Y_do1) along the last axis.
+            # Each of Y_do0 / Y_do1 comes in shape (B, N, 1) from PairedDoPFNDataset,
+            # so `cat(dim=-1)` gives (B, N, 2). Use torch.cat NOT torch.stack —
+            # stacking would add a new trailing axis and produce (B, N, 1, 2).
+            y_do0 = batch['Y_do0']
+            y_do1 = batch['Y_do1']
+            if y_do0.dim() == 2:                                   # (B, N) -> (B, N, 1)
+                y_do0 = y_do0.unsqueeze(-1)
+                y_do1 = y_do1.unsqueeze(-1)
+            Y_context_pair = torch.cat([y_do0, y_do1], dim=-1)     # (B, N, 2)
 
             with autocast_ctx():
                 logits = model(
