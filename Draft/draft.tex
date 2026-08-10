@@ -1,0 +1,771 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{graphicx}
+\graphicspath{{Figures/}{../paper/theory/figures/}{../benchmarks/plots/TE_demonstration/}{../benchmarks/plots/TE_demonstration/panels/}}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{natbib}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{assumption}{Assumption}
+
+\newcommand{\PP}{\mathbb{P}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Ino}{\mathcal{I}}
+\newcommand{\NLL}{\mathrm{NLL}}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black
+}
+
+\setlist{itemsep=2pt, parsep=2pt, topsep=4pt}
+
+\title{Causal Foundation Models (Title will change)}
+\begin{document}
+\maketitle
+
+%======================================================================
+\section{Introduction}
+
+%======================================================================
+\section{Joint Head Instead of Marginal}
+\label{sec:joint-head}
+
+Current causal foundation models \citep{REF} train a single-outcome head on $(T_i, Y_i)$ pairs, using only the outcome under the treatment assigned to each unit. This convention discards half of the information relevant to estimation and limits the effective capacity of the model. We replace the single-outcome head with one that outputs the joint density over the paired potential outcomes; two consequences follow. Section~\ref{sec:performance} establishes that the joint objective halves the asymptotic mean-squared error of every marginal density and, by linearity, of the CATE and ATE estimators themselves. Section~\ref{sec:info-gain} shows that the joint density recovers dependence structure between $Y_{\mathrm{do}(0)}$ and $Y_{\mathrm{do}(1)}$ that no pair of marginals can express, enabling distributional inference over CATE and ATE that a marginal head can produce only conservatively. 
+
+To isolate the effect of the head change from any confounding factor, we hold the training data and training algorithm of the major publicly available CFMs fixed and modify only the head and its inference procedure. We let the models achieve their full capacity without increasing the training time or the computational complexity relative to the
+single-outcome baseline.
+
+
+%----------------------------------------------------------------------
+\subsection{Statistical efficiency of the joint objective}
+\label{sec:performance}
+
+For each query covariate $X$ with observational context
+$\mathcal{D}_{\mathrm{obs}} = \{(X_i, T_i, Y_i)\}_{i=1}^{N}$, the joint head predicts a density $f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})$ on $\mathbb{R}^2$. The training loss is the negative log-density against paired labels drawn from the SCM prior,
+\begin{equation}
+  \mathcal{L}(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;=\;
+  -\log f(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}}),
+  \label{eq:nll}
+\end{equation}
+averaged over queries in a batch. Positivity of $f$ on all of $\mathbb{R}^2$ is required for the loss to remain finite. We enforce it by combining a bounded interior $K \times K$ grid on $\mathcal{I} = [-1,1]^2$ with Gaussian tails along the four extended-axis and four diagonal directions, producing a nine-region mixture. This construction requires $K^2 + 9 + 4$ trainable parameters per query, and at the values of $K$ used by marginal-only head models the quadratic dependence would explode the computational cost. Hence, we overcome this by selecting a sufficiently small $K$ and applying MALC~\cite{} at inference. MALC is a mixture-of-log-concave density estimator applied to uniformly binned data. It shows that accurate density recovery does not require fine binning; a coarse grid suffices as long as its per-bin probabilities are estimated with sufficient accuracy. Because the head is trained to that objective, a small $K$ suffices, and the joint head can be sized so that its $K^2 + 9 + 4$ parameters match the count of the current marginal head models, preserving the computational cost. Appendices~\ref{app:head-spec} and~\ref{app:malc} detail the
+construction of the joint head and the MALC procedure (base
+class, mixture order-selection criterion, per-query inference cost),
+respectively.
+
+With computational cost matched, we examine the statistical
+efficiency of the joint objective. Lemma~\ref{lem:sufficiency} establishes that the joint head is strictly more efficient than the marginal one: the objective in~\eqref{eq:nll} retains at least all
+the information available to the marginal objective. \\
+
+% Having established that the joint head can be designed to be no more expensive than a marginal one, we show in
+% Lemma~\ref{lem:sufficiency} that it is also statistically strictly more efficient. The objective in~\eqref{eq:nll} contains at a minimum all the information available to the marginal objective; equivalently, the marginal's information is a subset of the joint's. \\
+
+\begin{lemma}
+\label{lem:sufficiency}
+Let $Z_i^{\mathrm{R}} \coloneqq (X_i, Y_{\mathrm{do}(0)}(x_i, \varepsilon_i),
+Y_{\mathrm{do}(1)}(x_i, \varepsilon_i))$ denote the per-unit observation
+under the joint objective and
+$Z_i^{\mathrm{U}} \coloneqq (X_i, T_i, Y_{T_i}(x_i, \varepsilon_i))$
+the per-unit observation under the marginal objective, with $T_i$
+drawn from any distribution on $\{0, 1\}$ independent of
+$\varepsilon_i$. Then $Z^{\mathrm{U}}$ is a randomised function of
+$Z^{\mathrm{R}}$: sampling $T$ from the same distribution and setting
+$Z^{\mathrm{U}} = (X, T, Y_T)$ recovers the law of the single-outcome
+observation from that of the paired one. Consequently any parameter
+of the joint law
+$\PP^\star(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X)$ estimable
+from $Z^{\mathrm{U}}$ is estimable from $Z^{\mathrm{R}}$ at least as
+well.
+\end{lemma}
+
+Because the treatment, $T_i$, is randomly assigned, the marginal observation contains information about $Y_{\mathrm{do}(t)}$ only for the $t$ selected by $T_i$; the joint observation, by contrast, contains information about both potential outcomes at every unit. The Fisher information the marginal objective discards therefore depends on the distribution of $T_i$.  Theorem~\ref{thm:efficiency} shows that this loss propagates, via the Cram\'er--Rao bound, to the mean-squared error of every marginal density and, by linearity, to the CATE estimator itself. \\
+
+
+\begin{theorem}
+\label{thm:efficiency}
+Let $T_i \sim \mathrm{Bernoulli}(\pi)$ with $\pi \in (0, 1)$, write
+$\pi_1 = \pi$ and $\pi_0 = 1 - \pi$, and assume standard MLE
+regularity. For every query $x$:
+\begin{enumerate}[label=(\roman*), leftmargin=1.8em]
+  \item for each $t \in \{0, 1\}$, the marginal density estimators
+    satisfy
+    \begin{equation}
+      \lim_{N \to \infty} N \cdot
+        \EE\!\bigl[(\hat p_{\mathrm{U}}(y \mid x, t) - p^\star(y \mid x, t))^2\bigr]
+      \;=\;
+      \frac{1}{\pi_t} \cdot
+      \lim_{N \to \infty} N \cdot
+        \EE\!\bigl[(\hat p_{\mathrm{R}}(y \mid x, t) - p^\star(y \mid x, t))^2\bigr];
+      \label{eq:marg-ratio}
+    \end{equation}
+  \item the CATE estimator
+    $\hat\tau(x) = \hat\mu_1(x) - \hat\mu_0(x)$ satisfies
+    \begin{equation}
+      \lim_{N \to \infty}
+        \frac{\EE[(\hat\tau^{\,\mathrm{U}}(x) - \tau(x))^2]}
+             {\EE[(\hat\tau^{\,\mathrm{R}}(x) - \tau(x))^2]}
+      \;=\;
+      \frac{1}{2\pi(1-\pi)}.
+      \label{eq:R-bound}
+    \end{equation}
+\end{enumerate}
+\end{theorem} 
+
+\textcolor{red}{[Something about corollary 3]} \\
+
+\begin{corollary}
+\label{cor:stability}
+Under the same conditions,
+\[
+  \lim_{N \to \infty}
+    \frac{\mathrm{Std}_{\mathrm{SCMs}}(\sqrt{\mathrm{PEHE}}^{\,\mathrm{R}})}
+         {\mathrm{Std}_{\mathrm{SCMs}}(\sqrt{\mathrm{PEHE}}^{\,\mathrm{U}})}
+  \;=\; \sqrt{2\pi(1-\pi)}.
+\]
+\end{corollary}
+
+% Under Do-PFN's \cite{dopfn} and UWYK's \cite{UWYK} training protocols, $\pi$ is set to $1/2$. The improvement ratios of Theorem~\ref{thm:efficiency} and
+% Corollary~\ref{cor:stability} therefore $2$ for both the marginal-density and the CATE mean-squared errors (equivalently $\sqrt{2}$ in $\sqrt{\mathrm{PEHE}}$) and $1/2$ for the variance ratio. 
+
+Proofs of Lemma~\ref{lem:sufficiency}, Theorem~\ref{thm:efficiency}, Corrolary~\ref{cor:stability} are presented in Appendix~\ref{app:proofs}. The results are asymptotic in $N$ and do not depend on the covariate dimension $d$. However, for the results to hold at any given $d$, a sufficiently large $N$ is required \textcolor{red}{[mention the $\rho$ and mention at which conditions joint property fails]}. We conduct simulation studies to provide empirical evidence for the arguments, their asymptotic convergence, and their robustness and report them in Section~\ref{sec:results}
+\textcolor{red}{[Comeback to last sentence]}. 
+
+%----------------------------------------------------------------------
+\subsection{Distributional inference for CATE and ATE}
+\label{sec:info-gain}
+
+The primary purpose of any model, including tabular foundation models, is to provide information to the user for a better-informed decision. For users interested merely in prediction, models such as TabPFN~\cite{TABPFN} deliver sufficient information about the response by reporting both its density and a scalar point estimate. Existing CFMs, however, fall short of this standard and reports only
+a limited view: some provide a scalar CATE estimate together with a distribution over responses under each treatment~\cite{...}, while others provide a scalar CATE with a distribution over the treatment effect but no response information~\cite{...}. To our knowledge, no
+existing method delivers the response and CATE distributions
+simultaneously, and no existing method delivers an ATE distribution at all. A decision maker using a CFM, however, generally requires all three: the response densities support outcome decisions (e.g., whether a treated unit's outcome exceeds a clinical or economic threshold), while the CATE and ATE densities support the treatment decision itself (e.g., whether to intervene at all). One might argue that a point-wise CATE estimate combined with the marginal densities already provides sufficient information for this decision; however, same point estimate and confidence interval can arise from different shapes of uncertainty that call for different actions. For example, a near-uniform effect density and a bimodal density with two contrasting (negative and positive) modes can yield identical point estimates and confidence intervals: the uniform density
+indicates that no action can be preferred over another, whereas the bimodal density indicates that with domain knowledge one may favour one mode over the other.
+
+To recover the missing distributional information, one might attempt to reconstruct a CATE distribution from the marginals, but this is possible only under an independence assumption between $Y_{\mathrm{do}(0)}$ and $Y_{\mathrm{do}(1)}$, which is generally false, and discarding the coupling yields spurious treatment-effect values. The joint head resolves this gap and simultaneously refines the marginal response distribution that current models
+already provide; it therefore both improves what existing models report and delivers the additional information decision makers require.
+
+Sections~\ref{sec:cate-malc} and~\ref{sec:ate-barycenter} describe how the per-unit CATE density and the population-level ATE density are recovered from the joint head's output.
+
+\subsubsection{Per-unit CATE distribution via MALC}
+\label{sec:cate-malc}
+
+The joint head produces a discrete distribution on a $K \times K$
+grid with mass $p_{ij}$ at bin centre $(y_0^i,\, y_1^j)$. MALC fits
+a continuous joint density $\hat p(y_0, y_1)$ to these bin masses
+as a mixture of log-concave components. The per-unit CATE density
+then follows by the change of variables
+$(Y_0, Y_1) \mapsto (Y_0, \tau)$ with
+$\tau := Y_{\mathrm{do}(1)} - Y_{\mathrm{do}(0)}$, marginalising
+out $Y_0$:
+\begin{equation}
+    f_\tau(t) \;=\; \int \hat p(y_0,\, y_0 + t)\, \mathrm{d}y_0.
+    \label{eq:cate-density}
+\end{equation}
+\citet{danisman2026malc} establishes that any 1D mean derived from a MALC fit differs from the true mean by at most the grid width $\delta$ in the limit $N \to \infty$. Since CATE is the difference of the two marginal means, the triangle inequality yields the corresponding CATE-mean bound
+\[
+    |\hat\mu_\tau - \mu_\tau| \;\leq\; 2\delta
+    \qquad \text{as } N \to \infty,
+\]
+where $\hat\mu_\tau := \int t\, f_\tau(t)\, \mathrm{d}t$ and
+$\mu_\tau$ denotes the true CATE mean. At the resolution $K$ used
+in our experiments, $\delta \approx 0.02$, so
+$|\hat\mu_\tau - \mu_\tau| \leq 0.04$. This confirms that the
+small $K$ choice in Section~\ref{sec:performance} does not diminish the CATE-mean accuracy. The full MALC fitting procedure
+is given in Appendix~\ref{app:malc}.
+
+\subsubsection{ATE distribution via 2-Wasserstein barycenter}
+\label{sec:ate-barycenter}
+
+Given per-query CATE densities $\{f_\tau^{(n)}\}_{n=1}^{N}$ across
+a covariate sample $\{X^{(n)}\}_{n=1}^{N}$, the ATE density
+$f_{\mathrm{ATE}}$ is defined as their $2$-Wasserstein barycenter
+with uniform weights. For univariate densities on a common support
+this barycenter admits the closed-form quantile average
+\begin{equation}
+    Q_{\mathrm{ATE}}(u)
+    \;=\; \frac{1}{N} \sum_{n=1}^{N} Q_\tau^{(n)}(u),
+    \qquad u \in (0, 1),
+    \label{eq:ate-quantile}
+\end{equation}
+where $Q_\tau^{(n)} = (F_\tau^{(n)})^{-1}$ is the quantile function
+of the $n$-th per-query CATE density obtained via MALC. Derivation and the grid-level algorithm are given in Appendix~\ref{app:ot}.
+
+% Let us provide a minimal example use case that shows the importance of capturing the dependence.  
+
+% Let $\psi_a, \psi_b$ be two SCMs consistent with the observational
+% context, and suppose the model's implicit posterior assigns
+% probability one-half to each. Consider a query $x$ at which the two
+% SCMs disagree on the paired potential outcomes,
+% \[
+%   (Y_{\mathrm{do}(1)}, Y_{\mathrm{do}(0)})_{\psi_a} = (10, 5),
+%   \qquad
+%   (Y_{\mathrm{do}(1)}, Y_{\mathrm{do}(0)})_{\psi_b} = (2, 1),
+% \]
+% so that the individual treatment effects are $\tau_a = 5$ and
+% $\tau_b = 1$. The two marginal predictives place mass at
+% $\{10, 2\}$ on $Y_{\mathrm{do}(1)}$ and at $\{5, 1\}$ on
+% $Y_{\mathrm{do}(0)}$, and any aggregator that reads only these
+% marginals reports either the mean-of-means $\hat\tau(x) = 3$ or, if it
+% convolves them as if the two arms were independent, a four-mode CATE
+% distribution at $\{-3, 1, 5, 9\}$. The extreme values $-3$ and $9$
+% pair the treated outcome of $\psi_a$ with the control outcome of
+% $\psi_b$ and vice versa, and correspond to no causal mechanism the
+% model considers plausible. The joint density prevents this failure by
+% placing mass only on the two paired outcomes the model actually
+% entertains; the induced CATE distribution concentrates at $\{1, 5\}$
+% with equal masses, which is the correct decision-relevant object.
+
+% The distinction is not merely quantitative. Suppose a retailer uses
+% $\hat\tau(x)$ to decide whether to send a coupon at per-user marginal
+% cost $c$; the coupon should be sent if and only if the expected profit
+% lift exceeds $c$. Under a unimodal posterior concentrated at $\tau =
+% 3$, the answer depends only on the sign of $3 - c$. Under the two-mode
+% posterior above, the answer depends additionally on which of the two
+% SCMs was realised: the coupon is economical under $\psi_a$ for any
+% $c < 5$ but under $\psi_b$ only for $c < 1$. Averaging over the
+% ambiguity collapses the joint decision problem to a single scalar; the
+% two marginals do so incorrectly, evaluating expected profits at the
+% phantom values $\tau \in \{-3, 9\}$ that no SCM in the posterior
+% supports.
+
+
+% Given per-query joint predictions, we aggregate the induced CATE
+% distributions across queries by the $2$-Wasserstein barycenter of the
+% per-query marginal of $\tau = Y_{\mathrm{do}(1)} - Y_{\mathrm{do}(0)}$;
+% the barycenter mode (``OT-mode'') provides a point summary that is
+% robust to multimodality, whereas the barycenter mean (``OT-mean'')
+% coincides with the mean-of-means aggregator when the population
+% distribution is unimodal. The construction, including a closed-form
+% quantile identity that reduces the barycenter to a one-dimensional
+% average, is given in Appendix~\ref{app:ot}.
+
+%======================================================================
+\section{Results}
+
+Explain that we denote it by UWYK-2DMALC, Do-PFN-2DMALC etc. Explain what we are comparing against, how we do this, then the realcause results, then the marginal plot differences, then examples of CATE + ATE plots, N simulation results, mention of d simulation and rho simulation. 
+
+\begin{itemize}
+    \item RealCause
+    \item Marginal Plot difference
+    \item CATE + ATE Plots
+    \item N simulation
+    \item d simulation - Appendix
+    \item rho simulation - Appendix
+\end{itemize}
+
+
+\section{Discussion}
+
+
+%======================================================================
+%%                            TABLES
+%======================================================================
+
+\newpage
+
+\begin{table*}[t]
+\centering
+\caption{RealCause benchmark, following UWYK's Table 3 protocol (target-encoded T,
+100 realizations; ACIC has 10). ``UWYK Ancestral'' uses the graph-conditioned
+checkpoint with the full-graph adjacency (upper-bound baseline: sees the DAG).
+``UWYK Baseline'' is the paper's own separately-trained unconditional checkpoint
+(no graph info) --- apples-to-apples with Ours. Metrics: $\sqrt{\mathrm{PEHE}}$
+and $\varepsilon_{\mathrm{ATE}}=|\hat\tau-\tau|/|\tau|$, mean $\pm$ std across
+realizations. Bold = best in column.}
+\label{tab:table3}
+\small
+\setlength{\tabcolsep}{3pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l cc cc cc cc cc}
+\toprule
+& \multicolumn{2}{c}{\textbf{IHDP}}
+& \multicolumn{2}{c}{\textbf{ACIC}}
+& \multicolumn{2}{c}{\textbf{CPS}}
+& \multicolumn{2}{c}{\textbf{PSID}}
+& \multicolumn{2}{c}{\textbf{PSID (balanced)}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}
+\textbf{Method}
+& $\sqrt{\text{PEHE}}\downarrow$ & $\varepsilon_{\text{ATE}}\downarrow$
+& $\sqrt{\text{PEHE}}\downarrow$ & $\varepsilon_{\text{ATE}}\downarrow$
+& $\sqrt{\text{PEHE}}\downarrow$ & $\varepsilon_{\text{ATE}}\downarrow$
+& $\sqrt{\text{PEHE}}\downarrow$ & $\varepsilon_{\text{ATE}}\downarrow$
+& $\sqrt{\text{PEHE}}\downarrow$ & $\varepsilon_{\text{ATE}}\downarrow$ \\
+\midrule
+Do-PFN
+& 6.07 {\scriptsize$\pm$8.94} & 0.93 {\scriptsize$\pm$3.98}
+& 4.11 {\scriptsize$\pm$1.64} & 0.66 {\scriptsize$\pm$0.12}
+& \textbf{12015} {\scriptsize$\pm$319} & 0.88 {\scriptsize$\pm$0.06}
+& \textbf{20907} {\scriptsize$\pm$1375} & 0.93 {\scriptsize$\pm$0.07}
+& 22773 {\scriptsize$\pm$1731} & 1.08 {\scriptsize$\pm$0.13} \\
+UWYK Full Ancestral
+& 5.49 {\scriptsize$\pm$7.74} & 0.49 {\scriptsize$\pm$0.79}
+& 2.84 {\scriptsize$\pm$1.22} & 0.16 {\scriptsize$\pm$0.11}
+& 12963 {\scriptsize$\pm$221} & 1.07 {\scriptsize$\pm$0.03}
+& 22240 {\scriptsize$\pm$1560} & 0.92 {\scriptsize$\pm$0.07}
+& 19722 {\scriptsize$\pm$2323} & 0.66 {\scriptsize$\pm$0.17} \\
+UWYK No-Ancestral
+& 6.28 {\scriptsize$\pm$7.88} & 0.67 {\scriptsize$\pm$0.48}
+& 3.27 {\scriptsize$\pm$1.30} & 0.35 {\scriptsize$\pm$0.17}
+& 13100 {\scriptsize$\pm$256} & 1.08 {\scriptsize$\pm$0.04}
+& 22412 {\scriptsize$\pm$1321} & 0.96 {\scriptsize$\pm$0.01}
+& 21659$^{\dagger}$ {\scriptsize$\pm$1223} & 0.93 {\scriptsize$\pm$0.04} \\
+UWYK Baseline
+& 7.96 {\scriptsize$\pm$8.12} & 1.00 {\scriptsize$\pm$0.01}
+& 4.99 {\scriptsize$\pm$1.53} & 1.00 {\scriptsize$\pm$0.00}
+& 13029 {\scriptsize$\pm$202} & 1.00 {\scriptsize$\pm$0.01}
+& 22721 {\scriptsize$\pm$1283} & 1.00 {\scriptsize$\pm$0.01}
+& 22532$^{\dagger}$ {\scriptsize$\pm$1235} & 1.00 {\scriptsize$\pm$0.00} \\
+CausalFM
+& 5.86 {\scriptsize$\pm$7.25} & 0.70 {\scriptsize$\pm$1.23}
+& 3.30 {\scriptsize$\pm$1.59} & 0.33 {\scriptsize$\pm$0.11}
+& 12400 {\scriptsize$\pm$157} & 0.94 {\scriptsize$\pm$0.00}
+& 22436 {\scriptsize$\pm$1296} & 0.95 {\scriptsize$\pm$0.01}
+& 21071 {\scriptsize$\pm$1339} & 0.86 {\scriptsize$\pm$0.05} \\
+CausalPFN
+& \textbf{0.58} {\scriptsize$\pm$0.07} & \textbf{0.03} {\scriptsize$\pm$0.00}
+& \textbf{0.92} {\scriptsize$\pm$0.11} & \textbf{0.06} {\scriptsize$\pm$0.01}
+& \textbf{8956} {\scriptsize$\pm$21} & \textbf{0.14} {\scriptsize$\pm$0.01}
+& \textbf{14402} {\scriptsize$\pm$198} & \textbf{0.22} {\scriptsize$\pm$0.02}
+& \textbf{14833} {\scriptsize$\pm$240} & \textbf{0.26} {\scriptsize$\pm$0.02} \\
+\midrule
+Ours (mean)
+& 4.32 {\scriptsize$\pm$5.71} & 0.44 {\scriptsize$\pm$0.69}
+& \textbf{2.84} {\scriptsize$\pm$1.42} & \textbf{0.15} {\scriptsize$\pm$0.13}
+& 12826 {\scriptsize$\pm$177} & 1.02 {\scriptsize$\pm$0.02}
+& 21964 {\scriptsize$\pm$1308} & 0.91 {\scriptsize$\pm$0.04}
+& 18464 {\scriptsize$\pm$1567} & 0.49 {\scriptsize$\pm$0.13} \\
+Ours (MALC-mean)
+& 4.77 {\scriptsize$\pm$6.02} & 0.47 {\scriptsize$\pm$0.16}
+& 3.10 {\scriptsize$\pm$1.41} & 0.25 {\scriptsize$\pm$0.13}
+& 12761 {\scriptsize$\pm$182} & 1.02 {\scriptsize$\pm$0.03}
+& 21768 {\scriptsize$\pm$1311} & 0.87 {\scriptsize$\pm$0.06}
+& 18521 {\scriptsize$\pm$1557} & 0.41 {\scriptsize$\pm$0.14} \\
+Ours (OT-mode)
+& --- & 0.28 {\scriptsize$\pm$0.31}
+& --- & 0.20 {\scriptsize$\pm$0.20}
+& --- & 1.10 {\scriptsize$\pm$0.16}
+& --- & \textbf{0.63} {\scriptsize$\pm$0.12}
+& --- & 0.18 {\scriptsize$\pm$0.12} \\
+Ours (OT-mean)
+& --- & 0.40 {\scriptsize$\pm$0.21}
+& --- & \textbf{0.14} {\scriptsize$\pm$0.09}
+& --- & 1.02 {\scriptsize$\pm$0.04}
+& --- & 0.80 {\scriptsize$\pm$0.07}
+& --- & 0.26 {\scriptsize$\pm$0.12} \\
+\midrule
+\textsc{Ours}\,(fn=10) mean         & $5.67 \pm 8.58$ & $0.30 \pm 0.32$ & $3.32 \pm 1.73$ & $0.24 \pm 0.21$ & $12507 \pm 225$  & $0.88 \pm 0.03$ & $21365 \pm 1428$ & $0.81 \pm 0.08$ & $17790 \pm 2052$ & $0.42 \pm 0.23$ \\
+\textsc{Ours}\,(fn=10) MALC-mean     & $5.70 \pm 8.60$ & $0.34 \pm 0.41$ & $3.35 \pm 1.76$ & $0.26 \pm 0.23$ & $12423 \pm 292$  & $0.84 \pm 0.04$ & $21146 \pm 1426$ & $0.76 \pm 0.08$ & $17789 \pm 1976$ & $0.39 \pm 0.23$ \\
+\textsc{Ours}\,(fn=10) OT-mode       & ---              & $0.31 \pm 0.48$ & ---              & $0.25 \pm 0.16$ & ---               & $0.67 \pm 0.29$ & ---               & $0.65 \pm 0.07$ & ---               & $0.33 \pm 0.20$ \\
+\textsc{Ours}\,(fn=10) OT-mean       & ---              & $0.24 \pm 0.40$ & ---              & $0.27 \pm 0.23$ & ---               & $0.80 \pm 0.05$ & ---               & $0.58 \pm 0.07$ & ---               & $0.25 \pm 0.18$ \\
+\bottomrule
+\end{tabular}%
+}
+\vspace{2pt}\\
+\raggedright\footnotesize
+$^{\dagger}$ UWYK Baseline PSID(balanced) cell aggregated over the 11 realizations that
+had completed at the time of writing (all other UWYK Baseline cells use 100 realizations;
+ACIC uses 10). The remaining 89 PSID(balanced) baselines are backfilling.
+\end{table*}
+
+
+\begin{table*}[t]
+\centering
+\caption{Context-size sweep on the CausalPFN polynomial prior, held out from
+our training corpus. 500 SCMs per context size $N$. UWYK Baseline is the
+paper's separately-trained unconditional checkpoint. Metric: $\sqrt{\mathrm{PEHE}}$
+(mean $\pm$ std across SCMs). Bold = best in column.}
+\label{tab:sweep-pehe-poly}
+\small
+\setlength{\tabcolsep}{5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l cccccc}
+\toprule
+\textbf{Method} & $N=50$ & $N=250$ & $N=500$ & $N=1000$ & $N=5000$ & $N=10000$ \\
+\midrule
+UWYK Full Ancestral       & $1.21 \pm 0.26$ & $0.94 \pm 0.28$ & $0.87 \pm 0.28$ & $0.80 \pm 0.27$ & $0.69 \pm 0.21$ & $0.65 \pm 0.21$ \\
+UWYK No-Ancestral
+& 1.48 {\scriptsize$\pm$0.25} & 1.42 {\scriptsize$\pm$0.23}
+& 1.38 {\scriptsize$\pm$0.26} & 1.35 {\scriptsize$\pm$0.24}
+& 1.27 {\scriptsize$\pm$0.24} & 1.25 {\scriptsize$\pm$0.25} \\
+UWYK Baseline
+& 1.50 {\scriptsize$\pm$0.26} & 1.49 {\scriptsize$\pm$0.25}
+& 1.49 {\scriptsize$\pm$0.27} & 1.48 {\scriptsize$\pm$0.25}
+& 1.51 {\scriptsize$\pm$0.27} & 1.54 {\scriptsize$\pm$0.28} \\
+\midrule
+\textbf{Ours (mean)}
+& \textbf{1.25} {\scriptsize$\pm$0.24} & \textbf{1.11} {\scriptsize$\pm$0.22}
+& \textbf{1.09} {\scriptsize$\pm$0.23} & \textbf{1.06} {\scriptsize$\pm$0.22}
+& \textbf{0.92} {\scriptsize$\pm$0.19} & \textbf{0.87} {\scriptsize$\pm$0.19} \\
+Ours (MALC-mean)
+& 1.26 {\scriptsize$\pm$0.24} & 1.12 {\scriptsize$\pm$0.22}
+& 1.10 {\scriptsize$\pm$0.23} & 1.08 {\scriptsize$\pm$0.21}
+& 0.93 {\scriptsize$\pm$0.18} & 0.89 {\scriptsize$\pm$0.19} \\
+\midrule
+Do-PFN                    & $1.36 \pm 0.26$ & $1.30 \pm 0.25$ & $1.29 \pm 0.29$ & $1.27 \pm 0.27$ & $1.29 \pm 0.28$ & $1.28 \pm 0.32$ \\
+\textsc{Ours}\,(fn=10) mean            & $1.30 \pm 0.25$ & $1.26 \pm 0.24$ & $1.26 \pm 0.26$ & $1.23 \pm 0.24$ & $1.14 \pm 0.23$ & $1.11 \pm 0.24$ \\
+\textsc{Ours}\,(fn=10) MALC-mean        & $1.30 \pm 0.25$ & $1.26 \pm 0.24$ & $1.26 \pm 0.26$ & $1.24 \pm 0.24$ & $1.14 \pm 0.23$ & $1.11 \pm 0.24$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+
+%======================================================================
+\clearpage
+\appendix
+
+\section{Joint head architecture: nine-region density and link functions}
+\label{app:head-spec}
+
+We give the exact per-region density formulas, link functions, and
+inherited-correlation formula summarised in
+Section~\ref{sec:nll}.
+
+\paragraph{Interior bin structure.}
+$\mathcal{I} = [-1, 1]^2$ is partitioned into a uniform $K \times K$
+grid of square bins of width $\delta \coloneqq 2/K$. Bins are indexed
+by $(j_0, j_1) \in \{0, 1, \ldots, K-1\}^2$; bin $B_{j_0, j_1}$ is the
+$\delta \times \delta$ square with lower-left corner
+$(-1 + j_0 \delta,\; -1 + j_1 \delta)$. A rescaled coordinate
+$y \in [-1, 1]$ belongs to bin index
+\begin{equation}
+  j_\ell(y) \;\coloneqq\; \lfloor (y + 1)/\delta \rfloor.
+  \label{eq:bin-index}
+\end{equation}
+
+\paragraph{Per-query output and link functions.}
+For each query the transformer emits $K^2 + 9 + 4$ real numbers,
+grouped into three sets:
+
+\begin{itemize}
+  \item \emph{Interior logits} $\ell \in \mathbb{R}^{K^2}$, one per
+    bin, softmaxed:
+    \begin{equation}
+      p_{j_0, j_1}(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\;
+      \frac{\exp(\ell_{j_0, j_1})}
+           {\sum_{i_0, i_1} \exp(\ell_{i_0, i_1})}.
+      \label{eq:pmat-softmax}
+    \end{equation}
+  \item \emph{Region logits} $u \in \mathbb{R}^9$, one per region,
+    softmaxed:
+    \begin{equation}
+      w_r(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\; \frac{\exp(u_r)}{\sum_{s=1}^{9} \exp(u_s)}.
+      \label{eq:region-weights}
+    \end{equation}
+  \item \emph{Raw tail parameters}
+    $(\sigma_{L}^{(0)\text{raw}}, \sigma_{R}^{(0)\text{raw}},
+      \sigma_{L}^{(1)\text{raw}}, \sigma_{R}^{(1)\text{raw}})$
+    passed through softplus with a small floor $\varepsilon > 0$:
+    \begin{equation}
+      \sigma_{d}^{(\ell)}(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\; \delta \cdot
+      \bigl(\mathrm{softplus}\bigl(\sigma_{d}^{(\ell)\text{raw}}\bigr)
+            + \varepsilon\bigr).
+      \label{eq:tail-scales}
+    \end{equation}
+\end{itemize}
+
+\paragraph{Case 1 --- interior ($y_0, y_1 \in [-1, 1]$).}
+\begin{equation}
+  f_{\mathrm{inner}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;=\;
+  \frac{p_{j_0(y_0),\, j_1(y_1)}}{\delta^{2}}.
+  \label{eq:inner-density}
+\end{equation}
+
+\paragraph{Case 2 --- edge (one coordinate outside).}
+Representative subcase $y_0 \in [-1, 1]$, $y_1 < -1$ (other three
+edges symmetric):
+\begin{equation}
+  f_{\mathrm{mix}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;=\;
+  p_{L}^{(1)}(y_1)\, \cdot\, g(y_0 \mid y_1 = -1),
+  \label{eq:mix-density}
+\end{equation}
+with half-Gaussian tail
+$p_{L}^{(1)}(y_1) = \tfrac{2}{\sigma_{L}^{(1)}}
+   \phi(\tfrac{y_1 + 1}{\sigma_{L}^{(1)}})$ ($\phi$ standard normal)
+and boundary conditional
+\begin{equation}
+  g(y_0 \mid y_1 = -1)
+  \;=\;
+  \frac{p_{j_0(y_0),\, 0}}
+       {\bigl(\sum_{i_0} p_{i_0,\, 0}\bigr) \cdot \delta}.
+  \label{eq:boundary-conditional}
+\end{equation}
+The approximation $p(y_0 \mid y_1 < -1) \approx p(y_0 \mid y_1 = -1)$ is
+discussed at the end of this appendix.
+
+\paragraph{Case 3 --- corner (both coordinates outside).}
+Signs $(s_0, s_1) \in \{L, R\}^{2}$ select the quadrant with corner
+$(c_0, c_1) \in \{-1, +1\}^{2}$:
+\begin{equation}
+  f_{\mathrm{tail}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;=\;
+  \frac{1}{Z(s_0, s_1, \rho)}\,
+  \phi_{2}\!\left(\tilde{y}_0, \tilde{y}_1;\, \rho\right),
+  \qquad
+  \tilde{y}_\ell = \frac{y_\ell - c_\ell}{\sigma_{s_\ell}^{(\ell)}},
+  \label{eq:tail-density}
+\end{equation}
+with quadrant probability from Sheppard's identity:
+\begin{equation}
+  Z(s_0, s_1, \rho)
+  \;=\;
+  \begin{cases}
+    \tfrac{1}{4} + \tfrac{\arcsin\rho}{2\pi}
+      & \text{if } s_0 = s_1, \\[4pt]
+    \tfrac{1}{4} - \tfrac{\arcsin\rho}{2\pi}
+      & \text{if } s_0 \ne s_1.
+  \end{cases}
+  \label{eq:sheppard}
+\end{equation}
+
+% \begin{figure}[t]  % FIGURE PLACEHOLDER: needs Figures/quadrant_masses_rho_*.png
+%   \centering
+%   \begin{subfigure}[t]{0.31\textwidth}
+%     \includegraphics[width=\linewidth]{quadrant_masses_rho_zero.png}
+%     \caption{$\rho = 0$} \label{fig:quadrant-rho-000}
+%   \end{subfigure}\hfill
+%   \begin{subfigure}[t]{0.31\textwidth}
+%     \includegraphics[width=\linewidth]{quadrant_masses_rho_quarter.png}
+%     \caption{$\rho = 0.25$} \label{fig:quadrant-rho-025}
+%   \end{subfigure}\hfill
+%   \begin{subfigure}[t]{0.31\textwidth}
+%     \includegraphics[width=\linewidth]{quadrant_masses_rho_three_quarters.png}
+%     \caption{$\rho = 0.75$} \label{fig:quadrant-rho-075}
+%   \end{subfigure}
+%   \caption{Quadrant masses of the bivariate normal centred at the corner
+%     $(1,1)$: correlation shifts mass onto the diagonal, so the
+%     truncation constant $Z$ is $1/4$ only at $\rho = 0$.}
+%   \label{fig:quadrant-mass}
+% \end{figure}
+
+\paragraph{Correlation inherited from the interior grid.}
+The correlation $\rho$ used in
+\eqref{eq:tail-density}--\eqref{eq:sheppard} is not a separate learned
+parameter; it is the Pearson correlation of the discrete distribution
+$\{p_{j_0, j_1}\}$ evaluated at bin midpoints
+$m_\ell(j_\ell) \coloneqq -1 + \delta(j_\ell + \tfrac{1}{2})$:
+\begin{equation}
+\begin{aligned}
+\bar{y}_\ell \;&=\; \sum_{j_0, j_1} p_{j_0, j_1}\, m_\ell(j_\ell), \\
+v_\ell \;&=\; \sum_{j_0, j_1} p_{j_0, j_1}
+             \bigl(m_\ell(j_\ell) - \bar{y}_\ell\bigr)^{2}, \\
+c \;&=\; \sum_{j_0, j_1} p_{j_0, j_1}
+        \bigl(m_0(j_0) - \bar{y}_0\bigr)
+        \bigl(m_1(j_1) - \bar{y}_1\bigr), \\
+\rho \;&=\; \frac{c}{\sqrt{v_0\, v_1} + \varepsilon}.
+\end{aligned}
+\label{eq:rho-derived}
+\end{equation}
+Deriving $\rho$ from $p$ removes one degree of freedom and keeps the
+tail correlation consistent with the interior grid's coupling.
+
+\paragraph{Full mixture and training loss.}
+\begin{equation}
+  f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;=\;
+  w_{1}\, f_{\mathrm{inner}}
+  \;+\!\sum_{r = 2}^{5}\! w_{r}\, f^{(r)}_{\mathrm{mix}}
+  \;+\!\sum_{r = 6}^{9}\! w_{r}\, f^{(r)}_{\mathrm{tail}}.
+  \label{eq:full-density}
+\end{equation}
+Because the nine regions partition $\mathbb{R}^2$, at any query point
+exactly one region is active and only its component contributes. In
+the interior case, $\log f$ carries an explicit $-\log \delta^2$
+correction relative to plain cross-entropy over the discrete grid; this
+Jacobian is required for the loss to be a proper log-density on the
+continuous domain.
+
+\paragraph{Notes on the edge-case approximation.}
+The edge density factors as $p(y_1)\, p(y_0 \mid y_1)$ and supplies the
+second factor by the boundary conditional $p(y_0 \mid y_1 = -1)$,
+holding it fixed for all $y_1 < -1$. The approximation is exact when
+$Y_0 \perp Y_1$, since the conditional is then constant in $y_1$; under
+dependence it displaces the conditional by an amount that grows with
+both the strength of dependence and the distance past the boundary.
+For a bivariate normal with correlation $\rho$ and tail scale $\sigma$,
+the resulting excess negative log-likelihood per edge observation is
+approximately $\rho^{2}\sigma^{2} / \pi(1 - \rho^{2})$. The
+half-Gaussian factor assigns exponentially decreasing mass to
+$y_1$ far from the boundary, so the approximation contributes most
+weight where it is most accurate.
+
+%----------------------------------------------------------------------
+\section{Proofs and remarks}
+\label{app:proofs}
+
+\subsection{Proof of Lemma~\ref{lem:sufficiency}}
+By construction the randomised map $Z^{\mathrm{R}} \mapsto Z^{\mathrm{U}}$
+described in the lemma is measurable, and marginalising over $T$
+recovers the law of $Z^{\mathrm{U}}$ from that of $Z^{\mathrm{R}}$.
+Hence $Z^{\mathrm{R}}$ is a sufficient statistic for the parameters of
+the joint law $\PP^\star$, and any parameter of $\PP^\star$ estimable
+from $Z^{\mathrm{U}}$ is estimable from $Z^{\mathrm{R}}$ at least as
+well. \hfill$\square$
+
+\subsection{Proof of Theorem~\ref{thm:marg-half}}
+Under Lemma~\ref{lem:sufficiency}, R-PFN's per-unit Fisher information
+for the marginal parameters of $Y_{\mathrm{do}(t)}$ equals the Fisher
+information of $(X, Y_{\mathrm{do}(t)})$, evaluated on all $N$ units.
+UWYK's per-unit Fisher information for the same parameters equals the
+Fisher information of $(X, T, Y_T)$, which is a mixture: with
+probability $1/2$ we observe $(X, Y_{\mathrm{do}(t)})$ and with
+probability $1/2$ we observe $(X, Y_{\mathrm{do}(1-t)})$, contributing
+zero information about the arm-$t$ marginal. Consequently
+$\Ino_{\mathrm{U}}(\phi_t) = \tfrac{1}{2}\,\Ino_{\mathrm{R}}(\phi_t)$
+per unit, and after $N$ units
+$\Ino_{\mathrm{U}}^{(N)} = \tfrac{N}{2}\Ino_{\mathrm{R,per-unit}} =
+\tfrac{1}{2}\Ino_{\mathrm{R}}^{(N)}$.
+The CR bound is the inverse of Fisher information, so
+$\mathrm{CRB}_{\mathrm{U}} = 2\mathrm{CRB}_{\mathrm{R}}$. Under MLE
+asymptotic normality both estimators achieve their CR bounds, giving
+the factor $2$ in~\eqref{eq:marg-half}.\hfill$\square$
+
+\begin{remark}[The $N \cdot \mathrm{MSE}$ normalisation]
+\label{rem:asymptotic-variance}
+Equation~\eqref{eq:marg-half} is a standard asymptotic-variance
+statement. Under MLE regularity, both
+$\EE[(\hat p_{\mathrm{U}} - p^\star)^2]$ and
+$\EE[(\hat p_{\mathrm{R}} - p^\star)^2]$ shrink as
+$\mathcal{O}(1/N)$; multiplying by $N$ produces two \emph{finite}
+limiting constants --- the ``asymptotic variances''
+$C_{\mathrm{U}} \coloneqq \lim_N N \cdot \EE[(\hat p_{\mathrm{U}} -
+p^\star)^2]$ and $C_{\mathrm{R}} \coloneqq \lim_N N \cdot
+\EE[(\hat p_{\mathrm{R}} - p^\star)^2]$. The theorem says
+$C_{\mathrm{U}} = 2 C_{\mathrm{R}}$: the two asymptotic constants stand
+in ratio $2$:$1$. It does not constrain the ratio at any finite $N$.
+\end{remark}
+
+% \begin{remark}[Interpretation]
+% Every unit gives R-PFN one datapoint of information about
+% $p^\star(y \mid X, \mathrm{do}(0))$ \emph{and} one datapoint of
+% information about $p^\star(y \mid X, \mathrm{do}(1))$. Every unit gives
+% UWYK/Do-PFN one datapoint of information about the arm-$t$ marginal
+% with probability $1/2$ and zero with probability $1/2$. Averaging over
+% units yields half the per-arm information, and MLE translates it into
+% twice the marginal density estimation error.
+% \end{remark}
+
+\subsection{Proof of Theorem~\ref{thm:variance-ratio}}
+By Lemma~\ref{lem:sufficiency} and the Fisher-information argument in
+the proof of Theorem~\ref{thm:marg-half}, R-PFN's per-arm Fisher
+information for the marginal parameters of $Y_{\mathrm{do}(t)}$ is
+twice UWYK's for every $t \in \{0, 1\}$. The CATE estimator
+$\hat\tau = \hat\mu_1 - \hat\mu_0$ is a linear functional of the
+marginal-mean estimators; its Cram\'er--Rao bound is the corresponding
+linear combination of per-arm CRBs. Both marginal CRBs halve under
+R-PFN's regime, so does the CRB on $\hat\tau^{\mathrm{R}}$. Under MLE
+asymptotic normality both estimators converge to their CR bounds,
+giving the equality in~\eqref{eq:R-bound}.\hfill$\square$
+
+\subsection{Proof of Corollary~\ref{cor:stability}}
+$\sqrt{\mathrm{PEHE}}$ is a monotone function of the CR bound on the
+CATE-estimator MSE. The stability bound is $\sqrt{R^{-1}} = 1/\sqrt{2}$
+whenever the estimator-level MSE ratio $R \leq 2$ is uniform across
+SCMs, which is the case here because Theorem~\ref{thm:marg-half}'s
+Fisher-information doubling holds pointwise for every SCM in the
+prior.\hfill$\square$
+
+\begin{remark}[Distribution-free scope]
+Theorem~\ref{thm:variance-ratio} uses only Fisher information; no
+Gaussianity or exponential-family assumption is needed. Any joint with
+finite second moments obeys the same bound.
+\end{remark}
+
+%----------------------------------------------------------------------
+\section{Empirical scaling of the required context size in $d$}
+\label{app:scaling-Nd}
+
+Theorem~\ref{thm:variance-ratio} is $d$-agnostic in the CR limit;
+its finite-$N$ realisation depends on the context size relative to the
+covariate dimension. On a controlled linear SCM, we quantify the
+required context size $N^*(d)$ under the hypothesis
+$N^*(d) = c \cdot d^p$ with $p \geq 1$. Fixed-$N$ sweeps
+already indicate that a single context size does not suffice across a
+range of $d$: at $N = 200$ the empirical $\sqrt{\mathrm{PEHE}}$ ratio
+collapses to unity by $d = 10$, and at $N = 10{,}000$ it exceeds
+$\sqrt{2}$ at $d = 5$ but still drops to $1.07$ by $d = 50$. Testing
+the concrete instance $(c, p) = (1250, 1)$ on
+$d \in \{2, \ldots, 11\}$ with $K \geq 15$ SCMs per cell yields the
+results in Figure~\ref{fig:d-scaling}: the theorem's value
+$\sqrt{2} \approx 1.414$ lies inside the 95\% confidence interval for
+eight of the ten cells ($d = 3, \ldots, 10$); the two boundary cells
+$d = 2, 11$ sit just outside on opposite sides. Extrapolating the
+linear scaling to $d = 25, 50, 100$ yields required context sizes
+$N^*(d) \approx 31\text{k}, 63\text{k}, 125\text{k}$, respectively.
+Transformer inference cost is $\mathcal{O}(N^2)$, so context sizes at
+these scales are computationally infeasible in our experimental
+budget, and mildly super-linear scaling ($p > 1$) would push the
+required $N$ higher still; the theorem's $d$-agnosticism is therefore
+not directly verifiable at high $d$, but no evidence in the tested
+regime contradicts it.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.72\textwidth]{d_scaling_law.png}
+\caption{$\sqrt{\mathrm{PEHE}}$ ratio at $N \approx 1250 \cdot d$ for
+$d = 2, \ldots, 11$ on the controlled linear SCM. Green line: per-cell
+mean over $K \geq 15$ SCMs. Shaded band: 95\% CI. Dashed line: Theorem
+\ref{thm:variance-ratio}'s prediction $\sqrt{2} \approx 1.414$.}
+\label{fig:d-scaling}
+\end{figure}
+
+%----------------------------------------------------------------------
+\section{Mixture density post-processing}
+\label{app:malc}
+
+We give the detailed EM algorithm and BIC criterion referenced in
+Section~\ref{sec:malc-K}. [To be filled in from
+\texttt{paper/theory/theory.tex} Section 5.]
+
+%----------------------------------------------------------------------
+\section{Two-Wasserstein barycenter aggregation}
+\label{app:ot}
+
+We give the closed-form quantile identity and the OT-mode /
+OT-mean point summaries referenced in Section~\ref{sec:info-gain}.
+[To be filled in from \texttt{paper/theory/theory.tex} Section 6.]
+
+%======================================================================
+\bibliographystyle{plainnat}
+\begin{thebibliography}{9}
+
+\bibitem[van~der~Vaart(1998)]{van-der-vaart-1998-asymptotic-statistics}
+A.~W.\ van~der~Vaart.
+\newblock \emph{Asymptotic Statistics}.
+\newblock Cambridge University Press, 1998.
+
+\bibitem[Sheppard(1899)]{sheppard1899application}
+W.~F.\ Sheppard.
+\newblock On the application of the theory of error to cases of normal distribution and normal correlation.
+\newblock \emph{Philosophical Transactions of the Royal Society A}, 192:101--167, 1899.
+
+\bibitem[Danisman(2026)]{danisman2026malc}
+F.~Danisman.
+\newblock Mean-adjusted log-concave density estimation, 2026. Working paper.
+
+\end{thebibliography}
+
+\end{document}

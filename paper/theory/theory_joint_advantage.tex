@@ -59,23 +59,23 @@
 \begin{document}
 \maketitle
 
-\begin{abstract}
-We explain the empirical result reported in the paper's Table~3:
-R-PFN estimates CATE more accurately, and more stably across
-datasets, than UWYK and Do-PFN. The explanation is a single
-mechanism: R-PFN's paired-outcome training makes every unit a
-sufficient statistic for both marginal densities, whereas UWYK's and
-Do-PFN's marginal-only training makes every unit sufficient for only
-one. By Blackwell sufficiency (Result~1) each marginal density
-estimator gets half the variance; by Cram\'er--Rao propagation to the
-CATE difference (Result~2) the CATE mean-squared error is bounded by
-half UWYK/Do-PFN's, with a corresponding $\sqrt{2}$ tightening of the
-PEHE distribution across SCMs. All three predictions match Table~3
-and the two controlled tests we run: R-PFN's marginal density
-NLL is lower by a positive constant, its CATE MSE realises
-$\approx 68\%$ of the theoretical factor-of-two ceiling on average,
-and its across-SCM PEHE spread is $\approx 23\%$ tighter.
-\end{abstract}
+% \begin{abstract}
+% We explain the empirical result reported in the paper's Table~3:
+% R-PFN estimates CATE more accurately, and more stably across
+% datasets, than UWYK and Do-PFN. The explanation is a single
+% mechanism: R-PFN's paired-outcome training makes every unit a
+% sufficient statistic for both marginal densities, whereas UWYK's and
+% Do-PFN's marginal-only training makes every unit sufficient for only
+% one. By Blackwell sufficiency (Result~1) each marginal density
+% estimator gets half the variance; by Cram\'er--Rao propagation to the
+% CATE difference (Result~2) the CATE mean-squared error is bounded by
+% half UWYK/Do-PFN's, with a corresponding $\sqrt{2}$ tightening of the
+% PEHE distribution across SCMs. All three predictions match Table~3
+% and the two controlled tests we run: R-PFN's marginal density
+% NLL is lower by a positive constant, its CATE MSE realises
+% $\approx 68\%$ of the theoretical factor-of-two ceiling on average,
+% and its across-SCM PEHE spread is $\approx 23\%$ tighter.
+% \end{abstract}
 
 %% ---------------------------------------------------------------------
 \section{Setup and training-regime differences}
@@ -95,13 +95,10 @@ operator $\mathrm{do}(T=t)$ the potential outcome is
   \label{eq:potential-outcomes}
 \end{equation}
 where the noise vector $\varepsilon \sim p_\varepsilon$ drives both
-potential outcomes when they are evaluated at a common draw. The joint
-law
-$\PP^\star\!\bigl(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X = x\bigr)$
+potential outcomes. The joint
+law $\PP^\star\!\bigl(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X = x\bigr)$
 is defined by pushing forward $p_\varepsilon$ through the pair of maps
-in~\eqref{eq:potential-outcomes} at the same $\varepsilon$. This joint
-law is well-defined; only its two marginals are identifiable from
-observational data.
+in~\eqref{eq:potential-outcomes} at the same $\varepsilon$. 
 
 \begin{assumption}[Finite second moments and paired-outcome sampling]
 \label{ass:regularity}
@@ -112,40 +109,24 @@ a single draw $\varepsilon \sim p_\varepsilon$ yields both
 $Y_{\mathrm{do}(0)}(x, \varepsilon)$ and $Y_{\mathrm{do}(1)}(x, \varepsilon)$.
 \end{assumption}
 
-Assumption~\ref{ass:regularity} is standard for any SCM-based simulator
-and is what R-PFN's training pipeline uses.
+Assumption~\ref{ass:regularity} is standard for any SCM-based simulator. \textcolor{red}{Basically says we can generate both $Y$ in the training for the same noise.}
 
 \subsection{Training regimes: what each model literally observes}
 \label{subsec:training-regimes}
 
-The three training regimes differ in a single, sharp respect: how much
-of each unit's paired outcome pair the model gets to see. All three
-train under standard bar-distribution negative log-likelihood.
-
 \begin{itemize}
-  \item \textbf{UWYK} (\texttt{Graphs4CausalFoundationModels}). Per
+  \item \textbf{UWYK}. Per
     training query, one $(T_i, Y_i)$ tuple per unit; the observational
-    and interventional exogenous noise draws are independent. 1D
-    BarDistribution head; loss is
+    and interventional exogenous noise draws are independent. 1D head; loss is
     $-\EE\bigl[\log p_\theta(Y_{\mathrm{int}} \mid X_{\mathrm{int}},
       T_{\mathrm{int}}, \mathcal{D}_{\mathrm{obs}})\bigr]$
-    (verified: \texttt{src/training/trainer.py} L182--988,
-    \texttt{src/priordata\_processing/Datasets/InterventionalDataset.py}
-    L750--800).
-  \item \textbf{Do-PFN} (\texttt{jr2021/Do-PFN}). Same 1D BarDistribution
-    NLL over one $Y_{\mathrm{int}}$ per unit; the treatment $T_{\mathrm{int}}$
-    is a fresh coin flip per query and the exogenous noise is reused
-    from the paired observational draw
-    (\texttt{priors/doscm.py::DoSCM.forward}).
-  \item \textbf{R-PFN} (this repo). Per training query, both
+  \item \textbf{Do-PFN}. Same 1D NLL over one $Y_{\mathrm{int}}$ per unit; the treatment $T_{\mathrm{int}}$
+    is a coin flip per query and the exogenous noise is reused from the observational draw.
+  \item \textbf{R-PFN}. Per training query, both
     $Y_{\mathrm{do}(0)}(x, \varepsilon)$ and $Y_{\mathrm{do}(1)}(x, \varepsilon)$
-    evaluated at the \emph{same} $\varepsilon$; loss is 2D
-    BarDistribution NLL
+    evaluated at the \emph{same} $\varepsilon$; loss is 2D NLL
     $-\EE\bigl[\log p_\theta(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)}
-      \mid X, \mathcal{D}_{\mathrm{obs}})\bigr]$
-    (\texttt{training/train\_cfm.py} L319--321,
-     \texttt{training/data/PairedInterventionalDataset.py::\_propagate\_paired}
-     L338--420).
+      \mid X, \mathcal{D}_{\mathrm{obs}})\bigr]$.
 \end{itemize}
 
 The asymmetry is unambiguous: for every $N$ context units of
@@ -184,15 +165,9 @@ joint law $\PP^\star$, and any parameter of $\PP^\star$ estimable from
 $Z^{\mathrm{U}}$ is estimable from $Z^{\mathrm{R}}$ at least as well.
 \end{proof}
 
-\subsection{Per-arm sample-size doubling}
+\textcolor{red}{In plain words, this tells you anything you can estimate with the marginal (current set-up) you can estimate just as well with the joint, so you don't lose anything by this.}
 
-Lemma~\ref{lem:sufficiency} has a concrete finite-sample consequence.
-Consider estimating any marginal quantity $\phi_t = \phi(\PP^\star(Y_{\mathrm{do}(t)} \mid X))$
---- for instance the marginal mean $\mu_t(x)$ or the marginal density
-$p^\star(y \mid X = x, \mathrm{do}(t))$ evaluated at a point. R-PFN's
-regime supplies $N$ observations of $(X, Y_{\mathrm{do}(t)})$, one for
-each unit; UWYK's regime supplies $\lvert\{i : T_i = t\}\rvert$
-observations, which concentrates on $N/2$ by Hoeffding's inequality.
+\subsection{Why 2D Marginal are better}
 
 \begin{theorem}[Marginal density error halved]
 \label{thm:marg-half}
@@ -271,17 +246,11 @@ marginal-mean estimator. Because CATE is the linear difference
 $\hat\tau(x) = \hat\mu_1(x) - \hat\mu_0(x)$, its Cram\'er--Rao bound
 is a linear combination of the per-arm CRBs, and the halving
 propagates: the paired estimator has half the CATE MSE of the
-marginal-trained estimator in the CR limit. This is the mechanism
-by which R-PFN outperforms UWYK and Do-PFN on the paper's Table~3
-benchmark. The observable consequences --- a $\sqrt{2}$ smaller
-$\sqrt{\mathrm{PEHE}}$, a $\sqrt{2}$ tighter PEHE distribution
-across datasets (Corollary~\ref{cor:stability}), and a positive
-constant marginal NLL gap (Result~1) --- are all manifestations of
-the same MSE halving.
+marginal-trained estimator in the CR limit. This is the mechanism by which R-PFN outperforms UWYK and Do-PFN.
 
 Let $\hat\mu_t^{\mathrm{R}}(x)$ and $\hat\mu_t^{\mathrm{U}}(x)$ denote
 the arm-$t$ conditional-mean estimators produced by R-PFN's paired
-2D-BarDistribution head and UWYK's marginal 1D-BarDistribution head,
+2D head and UWYK's marginal 1D head,
 respectively, both trained on the same underlying SCM prior. Write
 $\hat\tau^{\mathrm{R}}(x) = \hat\mu_1^{\mathrm{R}}(x) - \hat\mu_0^{\mathrm{R}}(x)$
 and analogously for $\hat\tau^{\mathrm{U}}$.
@@ -336,138 +305,30 @@ SCMs, which is the case here because Result~1's Fisher-information
 doubling holds pointwise for every SCM in the prior.
 \end{proof}
 
-\begin{remark}[Finite-$N$ behaviour is empirical]
-\label{rem:finite-N-empirical}
-Equation~\eqref{eq:R-bound} is a limit statement: the ratio
-$\EE[(\hat\tau^{\mathrm{U}} - \tau)^2] / \EE[(\hat\tau^{\mathrm{R}} - \tau)^2]$
-converges to $2$ as $N \to \infty$, but the theorem does not
-constrain the ratio at any finite $N$. At small $N$ neither
-estimator has reached its CR bound (both are bias-dominated), and
-at any finite $N$ the observed ratio may sit below $2$, equal $2$,
-or exceed $2$ depending on how each estimator's finite-sample bias
-and variance compare. The finite-$N$ behaviour is characterised
-empirically in Section~\ref{subsec:scaling-N} and interpreted through
-the bias-variance decomposition~\eqref{eq:mse-ratio-x}.
-\end{remark}
-
 \begin{remark}[Distribution-free scope]
 Theorem~\ref{thm:variance-ratio} uses only Fisher information;
 no Gaussianity or exponential-family assumption is needed. Any joint
-with finite second moments (log-concave, mixture, heavy-tailed with
-bounded second moment) obeys the same bound.
+with finite second moments obeys the same bound.
 \end{remark}
 
 %% ---------------------------------------------------------------------
 \section{Scaling in $N$ and $d$}
 \label{sec:scaling}
 
-Theorems~\ref{thm:marg-half} and~\ref{thm:variance-ratio} are
-\emph{asymptotic} statements: they characterise the MSE ratio only
-in the Cram\'er--Rao limit as $N \to \infty$. Neither theorem
-provides a bound on the ratio at finite $N$. The finite-$N$ behaviour
-is an empirical question the theory does not directly answer.
+\subsection{Scaling in context size $N$ and $d$}
 
-\subsection{Scaling in context size $N$}
+The theorems say that, in the asymptotic regime, the ratio $\mathrm{MSE}_U / \mathrm{MSE}_R$ approaches 2 (equivalently $\sqrt{\mathrm{PEHE}}$ ratio approaches $\sqrt 2$). At any finite $N$ the observed ratio can sit below 2 when both estimators are bias-dominated (both carry residual mean-surface bias that dominates their variance), or above 2 for reasons the theorem does not model: (1) statistical fluctuation in the finite-SCM average, or (2) realized variance exceeding its Cramér–Rao lower bound. Observations alone do not distinguish among these possibilities.
 
-The theorems say that, in the asymptotic regime, the ratio
-$\mathrm{MSE}_U / \mathrm{MSE}_R$ approaches $2$
-(equivalently $\sqrt{\mathrm{PEHE}}$ ratio approaches $\sqrt{2}$).
-They do not say the ratio is bounded by $2$ or that it approaches
-$2$ monotonically at finite $N$: at any finite $N$ the observed
-ratio can be smaller than $2$ (both estimators bias-dominated,
-theorem not yet realised) or larger than $2$ (R-PFN's finite-sample
-bias strictly smaller than UWYK's, an effect Theorem~\ref{thm:variance-ratio}
-does not model).
 
-Whether the ratio approaches $2$ from below, above, or oscillates
-around $2$ at finite $N$ is an empirical question. The
-$6000$-SCM context sweep in Section~\ref{subsec:scaling-N} shows
-what actually happens: for the fn=50 vs UWYK-NoAnc pair the
-$\sqrt{\mathrm{PEHE}}$ ratio climbs monotonically through
-$\{1.18, 1.28, 1.27, 1.27, 1.38, 1.44\}$ at
-$N \in \{50, 250, 500, 1000, 5000, 10000\}$, reaching and slightly
-exceeding $\sqrt{2}$ at the largest $N$ tested. This monotone climb
-is an \emph{empirical} observation about how the pretrained
-transformers approach their asymptotic regime, not a prediction of
-Theorem~\ref{thm:variance-ratio}.
+Theorem 5 is d-agnostic in the CR limit: the sufficiency argument doubles per-arm Fisher infor-
+mation independent of d, so the theorem’s √2 ratio holds at every dimension in the asymptotic
+regime. What varies with d is the context size N needed to reach that regime empirically. This
+subsection quantifies that requirement
 
-\subsection{Scaling in covariate dimension $d$}
-
-The sufficiency argument underlying Theorems~\ref{thm:marg-half}
-and~\ref{thm:variance-ratio} is $d$-agnostic: the factor-of-two Fisher
-information advantage applies at every covariate dimension. What
-changes with $d$ is the raw marginal-density estimation error under
-either regime: it grows via the standard nonparametric-regression rate
-$\Theta\bigl(N^{-2\alpha/(2\alpha + d)}\bigr)$ for smoothness order
-$\alpha$ \citep{gyorfi-2002-nonparametric-regression}. The R-PFN
-regime therefore preserves the same qualitative scaling in $d$ as the
-marginal-only regime, with a constant factor of $2$ advantage.
-Section~\ref{subsec:scaling-d} tests this claim empirically on a
-controlled linear benchmark at $d \in \{5, 10, 20, 30, 50\}$.
 
 %% ---------------------------------------------------------------------
 \section{Population aggregation via the 2-Wasserstein barycenter}
 \label{sec:ot-aggregation}
-
-Results 1 and 2 explain what each individual per-query prediction gives
-us. A separate question is how to aggregate $N$ per-query predictions
-$\{p_i(\tau \mid x_i)\}_{i=1}^N$ into a single population-level object.
-The paper uses the 2-Wasserstein barycenter. Here we clarify what that
-buys and, honestly, what it does not.
-
-\begin{theorem}[Barycenter as quantile average]
-\label{thm:barycenter}
-For densities $\{p_i\}_{i=1}^N$ on $\mathbb{R}$ with quantile functions
-$Q_i(u) = F_i^{-1}(u)$, the 2-Wasserstein barycenter $p_{\mathrm{bary}}$
-minimising $\sum_{i=1}^N W_2^2(p_i, p_{\mathrm{bary}})$ has quantile
-function
-\begin{equation}
-  Q_{\mathrm{bary}}(u) \;=\; \tfrac{1}{N}\sum_{i=1}^N Q_i(u).
-  \label{eq:bary-quantile}
-\end{equation}
-Its density is the pushforward of $\mathrm{Uniform}(0,1)$ through
-$Q_{\mathrm{bary}}$.
-\end{theorem}
-
-\begin{proof}
-Standard: the 2-Wasserstein distance on $\mathbb{R}$ is
-$W_2^2(p, q) = \int_0^1 (Q_p(u) - Q_q(u))^2\,du$, so the barycenter
-problem reduces to $\sum_i (Q_i - Q)^2$ minimisation in $L^2(0,1)$,
-whose unique minimiser is the pointwise arithmetic mean of $Q_i$.
-See \citet{aguehcarlier2011barycenters} for the general case.
-\end{proof}
-
-\begin{corollary}[OT-mean equals mean-of-means]
-\label{cor:ot-mean-equals-marg}
-$\mathbb{E}_{p_{\mathrm{bary}}}[\tau] = \tfrac{1}{N}\sum_i \mathbb{E}_{p_i}[\tau]$.
-The barycenter's mean is exactly the mean of the per-query means. For
-estimating the population ATE $\mathbb{E}[\tau]$, the OT barycenter and
-the naive mean-of-means aggregator are equivalent.
-\end{corollary}
-
-\begin{proof}
-$\mathbb{E}_{p_{\mathrm{bary}}}[\tau] = \int_0^1 Q_{\mathrm{bary}}(u)\,du
- = \tfrac{1}{N}\sum_i \int_0^1 Q_i(u)\,du = \tfrac{1}{N}\sum_i \mathbb{E}_{p_i}[\tau]$.
-\end{proof}
-
-\begin{remark}[What the barycenter adds]
-Corollary~\ref{cor:ot-mean-equals-marg} says the barycenter yields no
-point-estimate improvement over mean-of-means for the ATE. The
-barycenter's actual value is that it produces a full \emph{distribution}
-$p_{\mathrm{bary}}$ from which other functionals of the population
-CATE can be extracted:
-\begin{itemize}
-  \item the modal peak $\arg\max p_{\mathrm{bary}}$ — a robust point
-    summary that is not the mean when the barycenter is skewed;
-  \item quantiles $Q_{\mathrm{bary}}(u)$ at arbitrary $u$, giving
-    uncertainty intervals;
-  \item higher-order moments such as $\mathrm{Var}_{p_{\mathrm{bary}}}(\tau)$,
-    which reflect the spread of unit-level effects across the
-    population and are strictly not recoverable from mean-of-means.
-\end{itemize}
-Mean-of-means discards this shape information. The OT barycenter
-preserves it via~\eqref{eq:bary-quantile}.
-\end{remark}
 
 \begin{remark}[When OT-mode differs from mean-of-means]
 The barycenter's mode differs from its mean only when
@@ -484,7 +345,7 @@ on how the population CATE distribution is shaped.
 \end{remark}
 
 %% ---------------------------------------------------------------------
-\section{When the results fail}
+\section{When the results can fail}
 \label{sec:failure-modes}
 
 \begin{enumerate}
@@ -497,7 +358,7 @@ on how the population CATE distribution is shaped.
   \item \textbf{Non-MLE training losses.} The CR bound governs
     variance under maximum likelihood. Training under non-MLE
     proper-scoring losses (e.g.\ mixtures with regularisers) can still
-    inherit the qualitative ordering but not the exact factor of $2$;
+    inherit the qualitative ordering but not the factor of $2$;
     both UWYK and Do-PFN train under BarDistribution NLL, so this
     concern does not arise for the specific comparisons in the paper.
   \item \textbf{Misspecification.} Result~1 relies on MLE
@@ -512,13 +373,12 @@ on how the population CATE distribution is shaped.
 \section{Empirical predictions and observations}
 \label{sec:empirical-tests}
 
-The theory makes three point predictions, all directly measurable on
-the paper's benchmark:
+The theory makes three point predictions, all measurable:
 \begin{itemize}
   \item \textbf{Marginal-density NLL gap} (Theorem~\ref{thm:marg-half}).
     R-PFN's marginal negative log-likelihood on true paired outcomes
     is lower than UWYK/Do-PFN's by a positive constant of order
-    $1/N$.
+    $1/N$ regardless of the joint correlation. Capturing correlation is more relevant to estimate the treatment effect density not for marginal densities.
   \item \textbf{CATE MSE ratio} (Theorem~\ref{thm:variance-ratio}).
     $\mathrm{MSE}(\hat\tau^{\mathrm{U}}) / \mathrm{MSE}(\hat\tau^{\mathrm{R}})
     \leq 2$, i.e.\ the $\sqrt{\mathrm{PEHE}}$ ratio is bounded by
@@ -527,30 +387,31 @@ the paper's benchmark:
     R-PFN's PEHE has a lower spread across SCMs than UWYK/Do-PFN by up
     to a factor of $\sqrt{2}$.
 \end{itemize}
-We use the ``No-Ancestral'' UWYK column and the Do-PFN baseline as the
-two apples-to-apples marginal-only comparisons for R-PFN's fn=50 and
-fn=10 checkpoints respectively: none of the three sees ancestral
-graph information at inference, so any performance difference isolates
-the paired-vs-unpaired training regime.
+We use the ``No-Ancestral'' UWYK column and the Do-PFN baseline as the marginal-only comparisons for R-PFN's fn=50 and fn=10 checkpoints respectively.
 
 \subsection{Table~3: each dataset placed on the theory}
 \label{subsec:table3-obs}
 
 \begin{center}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcccccccc}
 \toprule
-Dataset & UWYK-NoAnc & Ours~(fn=50) & $\sqrt{\text{PEHE}}$ ratio &
-                   Do-PFN & Ours~(fn=10) & $\sqrt{\text{PEHE}}$ ratio \\
+Dataset & UWYK-NoAnc & Ours~(fn=50) & $\sqrt{\text{PEHE}}$ ratio & stab$_{\!R/U}$
+        & Do-PFN     & Ours~(fn=10) & $\sqrt{\text{PEHE}}$ ratio & stab$_{\!R/D}$ \\
 \midrule
-IHDP     & 6.28   & 4.32   & \textbf{1.454} & 6.07   & 5.67   & 1.071 \\
-ACIC     & 3.27   & 2.84   & 1.151          & 4.11   & 3.32   & 1.238 \\
-CPS      & 13100  & 12826  & 1.021          & 12015  & 12507  & 0.961 \\
-PSID     & 22412  & 21964  & 1.020          & 20907  & 21365  & 0.979 \\
-PSIDbal  & 21659  & 18464  & 1.173          & 22773  & 17790  & \textbf{1.280} \\
+IHDP     & 6.28   & 4.32   & \textbf{1.454} & 0.725
+         & 6.07   & 5.67   & 1.071          & 0.959 \\
+ACIC     & 3.27   & 2.84   & 1.151          & 1.095
+         & 4.11   & 3.32   & 1.238          & 1.055 \\
+CPS      & 13100  & 12826  & 1.021          & 0.690
+         & 12015  & 12507  & 0.961          & \textbf{0.707} \\
+PSID     & 22412  & 21964  & 1.020          & 0.990
+         & 20907  & 21365  & 0.979          & 1.039 \\
+PSIDbal  & 21659  & 18464  & 1.173          & 1.153
+         & 22773  & 17790  & \textbf{1.280} & 1.185 \\
 \midrule
-\multicolumn{3}{r}{Theorem prediction ($\sqrt{\mathrm{PEHE}}$ ratio):}
-& $\sqrt{2} \approx 1.414$ &
-& & $\sqrt{2} \approx 1.414$ \\
+\multicolumn{3}{r}{Theorem 3.2 / Corollary 3.3:}
+& $\sqrt{2}{\approx}1.414$ & $\tfrac{1}{\sqrt{2}}{\approx}0.707$
+& & & $\sqrt{2}{\approx}1.414$ & $\tfrac{1}{\sqrt{2}}{\approx}0.707$ \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -561,76 +422,60 @@ Equation~\eqref{eq:mse-ratio-x} that the observed MSE ratio equals
 $(x+2)/(x+1)$ where $x = b^2/v_{\mathrm{R}}$: at $x = 0$ the
 theorem's variance halving is visible in full ($\sqrt{2}$
 $\sqrt{\mathrm{PEHE}}$ ratio); at $x \to \infty$ it is hidden ($1$).
-The variance-halving mechanism itself is present on every dataset
---- what varies across datasets is whether $b^2$ or $v_{\mathrm{R}}$
-dominates the observed metric.
 
-\begin{center}
-\begin{tabular}{lcccccccc}
-\toprule
-& & & \multicolumn{2}{c}{fn=50 vs UWYK-NoAnc} & \multicolumn{2}{c}{fn=10 vs Do-PFN} & &  \\
-\cmidrule(lr){4-5}\cmidrule(lr){6-7}
-Dataset & $N_{\mathrm{ctx}}$ & $d$ &
-    Predicted & Observed &
-    Predicted & Observed & Regime \\
-\midrule
-IHDP    & $672$   & $25$ & $1.27$ & $\mathbf{1.454}$ & $1.03$ & $1.071$ & CR-limit \\
-ACIC    & $4321$  & $58$ & $1.38$ & $1.151$          & $1.13$ & $1.238$ & Capacity-limited \\
-PSIDbal & $\sim\!600$   & $8$  & $1.27$ & $1.173$    & $1.03$ & $\mathbf{1.280}$ & CR-approaching \\
-PSID    & $2407$  & $8$  & $1.30$ & $1.020$          & $1.10$ & $0.979$ & Bias-dominated \\
-CPS     & $14559$ & $8$  & $1.44$ & $1.021$          & $1.15$ & $0.961$ & Bias-dominated \\
-\bottomrule
-\end{tabular}
-\end{center}
-The ``Predicted'' columns are the sweep numbers at the nearest $N$;
-the ``Observed'' columns are the Table~3 realisations.
+% \begin{center}
+% \begin{tabular}{lcccccccc}
+% \toprule
+% & & & \multicolumn{2}{c}{fn=50 vs UWYK-NoAnc} & \multicolumn{2}{c}{fn=10 vs Do-PFN} & &  \\
+% \cmidrule(lr){4-5}\cmidrule(lr){6-7}
+% Dataset & $N_{\mathrm{ctx}}$ & $d$ &
+%     Predicted & Observed &
+%     Predicted & Observed & Regime \\
+% \midrule
+% IHDP    & $672$   & $25$ & $1.27$ & $\mathbf{1.454}$ & $1.03$ & $1.071$ & CR-limit \\
+% ACIC    & $4321$  & $58$ & $1.38$ & $1.151$          & $1.13$ & $1.238$ & Capacity-limited \\
+% PSIDbal & $\sim\!600$   & $8$  & $1.27$ & $1.173$    & $1.03$ & $\mathbf{1.280}$ & CR-approaching \\
+% PSID    & $2407$  & $8$  & $1.30$ & $1.020$          & $1.10$ & $0.979$ & Bias-dominated \\
+% CPS     & $14559$ & $8$  & $1.44$ & $1.021$          & $1.15$ & $0.961$ & Bias-dominated \\
+% \bottomrule
+% \end{tabular}
+% \end{center}
+% The ``Predicted'' columns are the sweep numbers at the nearest $N$;
+% the ``Observed'' columns are the Table~3 realisations.
 
-\paragraph{IHDP (CR-limit).} $N = 672$ places IHDP between the sweep's
-$N=500$ and $N=1000$ buckets; Ours~(fn=50) vs UWYK-NoAnc realises
-$1.454 \approx \sqrt{2}$, exceeding the sweep prediction because
-IHDP is a signal-rich synthetic DGP (Hill~2011) whose mean surfaces
-are simpler than the CausalPFN Polynomial's, letting the paired
-estimator reach its CR bound at a smaller context. This is the
-theorem's positive control.
+\paragraph{IHDP (CR-limit).}  IHDP is a signal-rich synthetic DGP (Hill~2011) letting the paired
+estimator reach its CR bound at a small context. 
 
-\paragraph{ACIC 2016 (capacity-limited).} $d = 58$ exceeds Ours~(fn=50)'s
-$50$-feature transformer input; the model discards $8$ covariates and
+\paragraph{ACIC 2016 (capacity-limited).} $d = 58$ exceeds feature transformer input and
 loses signal about $\mu_0, \mu_1$ before Theorem~\ref{thm:marg-half}
-applies. Consequence: fn=50's advantage over UWYK collapses to
-$1.151$, below the sweep prediction of $1.38$. Ours~(fn=10) vs
-Do-PFN, whose $10$-feature input matches the top selected features,
-inverts the ordering and \emph{beats} the sweep prediction ($1.238$
-vs $1.13$) --- consistent with fn=10 not being disadvantaged by the
-feature truncation that hurts fn=50 here.
+applies.  
 
 \paragraph{PSIDbal (CR-approaching).} The balanced subsample keeps
 all treated units and up to $500$ controls, giving $N_{\mathrm{ctx}}
-\approx 600$. Ours~(fn=10) vs Do-PFN reaches $1.280$, closing
-$\sim 90\%$ of the way to $\sqrt{2}$ --- the largest fn=10 gap on
-Table~3 and evidence that fn=10 approaches the CR limit
-on this dataset. Ours~(fn=50) sits at $1.173$, close to the sweep
-prediction at $N = 500$.
+\approx 600$. 
 
 \paragraph{PSID and CPS.} Both datasets are raw Lalonde earnings in
 dollars, and both comparisons produce $\sqrt{\mathrm{PEHE}}$ within
 $\approx 1\%$ (ratios $1.02$ / $0.98$ for fn=50 vs UWYK-NoAnc / fn=10
-vs Do-PFN on CPS; $1.02$ / $0.98$ on PSID). Applying the same
-common-bias approximation~\eqref{eq:mse-ratio-x} with ratio
+vs Do-PFN on CPS; $1.02$ / $0.98$ on PSID). Applying the common-bias approximation~\eqref{eq:mse-ratio-x} with ratio
 $\approx 1$ gives $x \gg 1$: both estimators sit far from the CR
-limit and the observed metric is bias-dominated. We do not have a
-direct measurement of $b$ or $v$ on these datasets --- only the
-implied $x$ from the ratio --- so this reading is model-dependent
-under the common-bias approximation. Whether re-training the
-paired checkpoint on a broader prior distribution would reduce the
-implied $b$ enough to push CPS and PSID into the variance regime
-is an engineering question the current experiments do not
-address.
+limit and the observed metric is most likely bias-dominated. 
 
-\paragraph{Across-dataset stability.}
-$\mathrm{Std}_{\text{Table~3}}(\sqrt{\mathrm{PEHE}})$ across the five
-datasets is tighter for R-PFN than for the marginal-only baselines
-after normalising for dataset scale, directly corroborating
-Corollary~\ref{cor:stability}.
+\paragraph{Stability} Corollary~\ref{cor:stability}'s $1/\sqrt{2}$ ratio is realised on
+CPS (both comparisons: $0.690$ / $0.707$) and closely on IHDP for
+fn=50 ($0.725$). Non-realisation on ACIC and PSID has two distinct
+causes:
+\begin{itemize}
+  \item \textbf{ACIC} ($n = 10$): std estimated from only $10$
+    realizations has standard error $\sim 24\%$ of the true std;
+    the observed $1.095$ / $1.055$ is not statistically
+    distinguishable from $0.707$.
+  \item \textbf{PSID}: $\mathrm{Std}_r(\sqrt{\mathrm{PEHE}})$
+    aggregates two independent sources of realization-to-realization
+    variation: (1) the estimator's finite-sample noise, and (2) variation in the mean fit across different draws of the
+    RealCause simulator. On PSID
+    the second source dominates for both models, masking the halving of the first.
+\end{itemize}
 
 \subsection{Scaling in context size $N$}
 \label{subsec:scaling-N}
@@ -638,15 +483,7 @@ Corollary~\ref{cor:stability}.
 Theorem~\ref{thm:variance-ratio} is an asymptotic Cram\'er--Rao
 bound. Both estimators' MSEs scale as $\mathcal{O}(1/N)$, so the
 ratio is bounded by $2$ at every $N$, and \emph{approaches} $2$
-from below as $N$ grows and both estimators reach their CR bounds.
-At small $N$, MLE is still bias-dominated and the ratio sits below
-the ceiling.
-
-The paper's context-size sweep on the CausalPFN Polynomial DGP (a
-held-out family, $500$ SCMs at each of $N \in \{50, 250, 500, 1000,
-5000, 10000\}$) resolves this curve directly. We report both
-apples-to-apples comparisons the paper's Table~3 uses: Ours~(fn=50)
-vs UWYK-NoAnc, and Ours~(fn=10) vs Do-PFN.
+from below as $N$ grows and both estimators reach their CR bounds. At small $N$, MLE might still be bias-dominated.
 
 \paragraph{Ours~(fn=50) vs UWYK-NoAnc:}
 \begin{center}
@@ -668,6 +505,9 @@ Theory ceiling & $\sqrt{2} \approx 1.414$ & $2$ & $1/\sqrt{2} \approx 0.71$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+
+
 
 \paragraph{Ours~(fn=10) vs Do-PFN:}
 \begin{center}
@@ -692,15 +532,12 @@ Theory ceiling & $\sqrt{2} \approx 1.414$ & $2$ & $1/\sqrt{2} \approx 0.71$ \\
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/n_sweep_ratio.png}
+\includegraphics[width=\textwidth]{Figures/n_sweep_ratio.png}
 \caption{$\sqrt{\mathrm{PEHE}}$ ratio versus context size on the
 CausalPFN Polynomial DGP ($500$ SCMs per $N$). Dashed black line:
 Theorem~\ref{thm:variance-ratio}'s Cram\'er--Rao limit $\sqrt{2}$.
-\textbf{Left:} Ours~(fn=50) vs UWYK-NoAnc converges monotonically to
-$\sqrt{2}$ ($1.437$ at $N=10000$; equivalently MSE ratio $2.07 \approx 2$).
-\textbf{Right:} Ours~(fn=10) vs Do-PFN grows from $1.046$ to $1.153$
-across the same range and has not reached $\sqrt{2}$ at
-$N = 10000$.}
+\textbf{Left:} Ours~(fn=50) vs UWYK-NoAnc. 
+\textbf{Right:} Ours~(fn=10) vs Do-PFN. $d \in {5, 6, 7, 8, 9, 10}$}
 \label{fig:n-sweep-ratio}
 \end{figure}
 
@@ -718,16 +555,12 @@ arrived at the largest $N$ tested.
 \paragraph{Why fn=50 vs UWYK-NoAnc realises the theorem and fn=10 vs
 Do-PFN does not, at $N \leq 10000$.}
 Theorem~\ref{thm:variance-ratio}'s equality holds in the
-Cram\'er--Rao limit --- once both estimators are MLE-efficient at
-their marginals. Below the CR limit, empirical PEHE contains an
-irreducible bias-squared component in addition to the variance the
+Cram\'er--Rao limit once both estimators are MLE-efficient at their marginals. Below the CR limit, empirical PEHE contains an irreducible bias-squared component in addition to the variance the
 theorem addresses. We model this transparently: assume
 $\EE[\hat\tau_{\mathrm{R}}(x)] = \EE[\hat\tau_{\mathrm{U}}(x)]
- = \tau(x) + b(x)$ (a common bias approximation used to explain
-why finite-sample estimators deviate from CR bounds; verified
-directly only in the CR limit) and let $v_{\mathrm{R}}$ denote the
+ = \tau(x) + b(x)$ and let $v_{\mathrm{R}}$ denote the
 paired variance with $v_{\mathrm{U}} = 2\,v_{\mathrm{R}}$. Under
-this common-bias approximation
+this approximation
 \begin{equation}
   \text{observed MSE ratio}
   \;=\;
@@ -736,61 +569,22 @@ this common-bias approximation
   \label{eq:mse-ratio-x}
 \end{equation}
 which interpolates from $2$ (variance regime, $x = 0$) to $1$ (bias
-regime, $x \to \infty$). Inverting each observed MSE ratio under
-this approximation gives an implied $x$:
-\begin{center}
-\begin{tabular}{ccccc}
-\toprule
-$N$ & MSE ratio (fn=50/UWYK) & implied $x$ &
-      MSE ratio (fn=10/Do-PFN) & implied $x$ \\
-\midrule
-$50$    & $1.40$ & $0.5$  & $1.09$ & $10.1$ \\
-$500$   & $1.60$ & $-0.3$ & $1.05$ & $19.0$ \\
-$1000$  & $1.62$ & $-0.4$ & $1.07$ & $12.9$ \\
-$5000$  & $1.90$ & $-0.8$ & $1.28$ & $1.6$  \\
-$10000$ & $2.07$ & $-1.0$ & $1.33$ & $1.0$  \\
-\bottomrule
-\end{tabular}
-\end{center}
-For fn=50 vs UWYK-NoAnc, observed ratios exceed the theorem's
-maximum of $2$ starting at $N=500$; the common-bias approximation
-returns negative $x$, so it is invalid here. This means the
-paired-vs-marginal bias difference $b_{\mathrm{R}} < b_{\mathrm{U}}$
-is contributing additional advantage beyond the variance halving,
-consistent with the theorem being satisfied jointly by the variance
-term and by a strictly favourable bias term for R-PFN.
-
-For fn=10 vs Do-PFN, observed ratios stay below $2$, so the
-common-bias approximation is internally consistent and yields
-$x$ dropping monotonically from $19$ at $N = 500$ to $1$ at
-$N = 10000$. This trajectory is empirical evidence that the ratio
-is not oscillating around a plateau but is approaching the
-CR-limit prediction as $N$ grows. \emph{We do not extrapolate to
-larger $N$}: the sweep tests $N \leq 10000$ only, and transformer
+regime, $x \to \infty$).  Hence, it is clear for DoPFN comparison that standard deviation ratio converges but PEHE does not due to the bias dominating the results which also explains the Table-3 results better. Bias might dominated this due to dimension being high for Do-PFN's capacity. NOTE: \emph{We do not extrapolate to larger $N$}: the sweep tests $N \leq 10000$ only, and transformer
 inference cost scales as $\mathcal{O}(N^2)$, so extending the sweep
 to substantially larger $N$ is outside the current experimental
-budget. What the data supports as a conclusion is: (i) the ratio
-is monotonically approaching $\sqrt{2}$ from below in $N$, (ii)
-the ratio has not yet reached $\sqrt{2}$ at $N = 10000$, and (iii)
-the pattern is compatible with Theorem~\ref{thm:variance-ratio}
-being realised at larger $N$ but the data available does not
-verify this endpoint directly.
+budget. 
 
-\subsection{Test~2: marginal density estimation --- R-PFN produces
-strictly sharper marginals than UWYK and Do-PFN}
+\subsection{Test~2: marginal density estimation - Change the scaling of Y-axis}
 \label{subsec:test2}
 
-\textbf{R-PFN's paired training produces sharper marginal density
-estimates $\hat p_\theta(Y_{\mathrm{do}(t)} \mid X)$ than the
-marginal-only training used by UWYK and Do-PFN.} This is the direct
+R-PFN's paired training produces sharper marginal density estimates $\hat p_\theta(Y_{\mathrm{do}(t)} \mid X)$ than the
+marginal-only training used by UWYK and Do-PFN. This is the direct
 empirical validation of Result~1: the sufficiency argument of
 Theorem~\ref{thm:marg-half} predicts that R-PFN's marginal is a
 Fisher-more-informative estimate of the arm-conditional density than
 either baseline's, at every query and independent of the DGP coupling
-$\rho$. Test~2 measures this directly by scoring each method's
-marginal against paired truth from the DGP.
+$\rho$. We try against different $\rho$ values to address the concern that improvement is regarding the correlation capturing. 
 
-Script: \texttt{benchmarks/empirical\_tests/marginal\_nll\_test.py}.
 For each SCM we sample paired
 $(Y_{\mathrm{do}(0)}^\star, Y_{\mathrm{do}(1)}^\star)$ from the DGP and score
 each method's marginal at the truth,
@@ -800,8 +594,7 @@ each method's marginal at the truth,
   \tfrac{1}{2}\sum_{t \in \{0,1\}}
     \EE\!\bigl[-\log \hat p_{\text{method}}(Y_{\mathrm{do}(t)}^\star \mid X, t)\bigr],
 \end{equation}
-where R-PFN's marginal is obtained by summing its 2D BarDistribution
-head over the unused arm. The gap
+where R-PFN's marginal is obtained by summing its 2D  head over the unused arm. The gap
 $\Delta \coloneqq \NLL^{\mathrm{marg}}_{\text{baseline}} - \NLL^{\mathrm{marg}}_{\text{R-PFN}}$
 measures how much less log-probability the baseline's marginal
 assigns to the true potential outcome than R-PFN's marginal does at
@@ -810,78 +603,46 @@ constant, independent of the DGP coupling $\rho$.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/marginal_nll_test.png}
+\includegraphics[width=\textwidth]{Figures/marginal_nll_test_noout.png}
 \caption{Test~2: marginal-density NLL gap $\Delta =
 \NLL^{\mathrm{marg}}_{\text{baseline}} - \NLL^{\mathrm{marg}}_{\text{R-PFN}}$
 plotted against true DGP $\rho$. \textbf{Left:} UWYK-NoAnc vs
-Ours~(fn=50), mean gap $+0.776$ nats. \textbf{Right:} Do-PFN vs
-Ours~(fn=10), mean gap $+1.094$ nats. Both gaps are strictly
-positive (R-PFN's marginal assigns strictly higher log-probability
-to the truth than either baseline's) and constant in $\rho$
-(consistent with Theorem~\ref{thm:marg-half}'s $\rho$-independence).}
+Ours~(fn=50). \textbf{Right:} Do-PFN vs
+Ours~(fn=10). N-context = 200. N-test = 50. d = 5. Degree = 3 polynomial mean surfaces. K = 20 SCMs per rho.}
 \label{fig:test2}
 \end{figure}
 
-\paragraph{Observed gaps.}
-\begin{center}
-\begin{tabular}{lc}
-\toprule
-Comparison & Mean gap $\Delta$ (nats) \\
-\midrule
-UWYK-NoAnc $-$ Ours~(fn=50) & $\mathbf{+0.776}$ \\
-Do-PFN $-$ Ours~(fn=10)      & $\mathbf{+1.094}$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-Both gaps are positive and constant in $\rho$: R-PFN's marginals are
-strictly sharper than either baseline's on every DGP coupling
-tested. Because
-$-\log \hat p(y^\star) - (-\log p^\star(y^\star)) = \log(p^\star / \hat p)$
-is monotone in the estimator's density error, a positive $\Delta$
-translates directly into a smaller squared-error on the marginal
-density itself (Theorem~\ref{thm:marg-half}); the empirical constant
-positive gap is therefore the direct qualitative signature of the
-factor-of-two marginal MSE improvement Result~1 predicts.
 
-\emph{This result explains why R-PFN's downstream CATE point estimate
-is sharper than UWYK's and Do-PFN's on the paper's benchmark:} the
-CATE point estimate is a functional of the per-arm marginals, and
-Test~2 shows R-PFN's per-arm marginals are Fisher-more-informative
-than either baseline's on every DGP. The MSE ratio bound of
-Theorem~\ref{thm:variance-ratio} for the CATE-difference estimator is
-the propagation of this per-arm marginal advantage through the linear
-difference $\hat\tau = \hat\mu_1 - \hat\mu_0$.
+% \subsection{Controlled linear benchmark: MSE and stability quantified}
+% \label{subsec:linear-controlled}
 
-\subsection{Controlled linear benchmark: MSE and stability quantified}
-\label{subsec:linear-controlled}
-
-To isolate the CATE MSE ratio and the stability ratio from the
-outcome-variance heterogeneity that dominates raw dollar-valued PEHE
-on CPS/PSID, we run a controlled linear benchmark
-(\texttt{benchmarks/empirical\_tests/rho\_scaling\_linear.py}):
-$Y_{\mathrm{do}(t)}(x, \eta) = \beta_t\!\cdot\!x + \eta_t$, $90$
-SCMs at $N_{\mathrm{context}} = 200$, Ours~(fn=50) vs UWYK-NoAnc.
-Aggregated:
-\begin{center}
-\begin{tabular}{lcc}
-\toprule
-Quantity & Observed & Theoretical ceiling \\
-\midrule
-CATE MSE ratio $\mathrm{MSE}_{\text{U}}/\mathrm{MSE}_{\text{R}}$
-   & $1.35$ ($68\%$ of ceiling) & $\leq 2$ \\
-$\sqrt{\mathrm{PEHE}}$ ratio
-   & $1.16$ & $\leq \sqrt{2} \approx 1.414$ \\
-Stability ratio
-   $\mathrm{Std}_{\text{R}}/\mathrm{Std}_{\text{U}}$
-   & $0.77$ & $\leq 1/\sqrt{2} \approx 0.71$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-R-PFN realises $68\%$ of the factor-of-two MSE ceiling and approaches
-the $1/\sqrt{2}$ stability ceiling. The controlled benchmark confirms
-what Table~3 already shows: R-PFN's advantage is a constant-factor
-Cram\'er--Rao improvement, not a scaling artefact of any particular
-dataset.
+% To isolate the CATE MSE ratio and the stability ratio from the
+% outcome-variance heterogeneity that dominates raw dollar-valued PEHE
+% on CPS/PSID, we run a controlled linear benchmark
+% (\texttt{benchmarks/empirical\_tests/rho\_scaling\_linear.py}):
+% $Y_{\mathrm{do}(t)}(x, \eta) = \beta_t\!\cdot\!x + \eta_t$, $90$
+% SCMs at $N_{\mathrm{context}} = 200$, Ours~(fn=50) vs UWYK-NoAnc.
+% Aggregated:
+% \begin{center}
+% \begin{tabular}{lcc}
+% \toprule
+% Quantity & Observed & Theoretical ceiling \\
+% \midrule
+% CATE MSE ratio $\mathrm{MSE}_{\text{U}}/\mathrm{MSE}_{\text{R}}$
+%    & $1.35$ ($68\%$ of ceiling) & $\leq 2$ \\
+% $\sqrt{\mathrm{PEHE}}$ ratio
+%    & $1.16$ & $\leq \sqrt{2} \approx 1.414$ \\
+% Stability ratio
+%    $\mathrm{Std}_{\text{R}}/\mathrm{Std}_{\text{U}}$
+%    & $0.77$ & $\leq 1/\sqrt{2} \approx 0.71$ \\
+% \bottomrule
+% \end{tabular}
+% \end{center}
+% R-PFN realises $68\%$ of the factor-of-two MSE ceiling and approaches
+% the $1/\sqrt{2}$ stability ceiling. The controlled benchmark confirms
+% what Table~3 already shows: R-PFN's advantage is a constant-factor
+% Cram\'er--Rao improvement, not a scaling artefact of any particular
+% dataset.
 
 \subsection{Scaling in covariate dimension $d$}
 \label{subsec:scaling-d}
@@ -928,34 +689,25 @@ We ran the linear SCM with K = 15+ SCMs per cell and computed the
 per-cell mean $\sqrt{\mathrm{PEHE}}$ ratio together with its 95\%
 confidence interval (Fig.~\ref{fig:d-scaling}). Theorem
 \ref{thm:variance-ratio}'s prediction $\sqrt{2} \approx 1.414$ sits
-\emph{inside the 95\% CI} for eight of the ten cells
-($d \in \{3, 4, 5, 6, 7, 8, 9, 10\}$); at $d = 5$ and $d = 6$ the mean
-estimate coincides with $\sqrt{2}$ to two decimals. The two boundary
-cells ($d = 2$ and $d = 11$) sit just outside the CI --- one above,
-one below --- consistent with the mild systematic drift discussed
-below.
+\emph{inside the 95\% CI} for eight of the ten cells.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.75\textwidth]{figures/d_scaling_law.png}
+\includegraphics[width=0.75\textwidth]{Figures/d_scaling_law.png}
 \caption{$\sqrt{\mathrm{PEHE}}$ ratio at $N \approx 1250 \cdot d$
 for $d = 2, \ldots, 11$ on the controlled linear SCM. Green line:
 per-cell mean over K = 15+ SCMs; shaded band: 95\% CI computed from
 per-cell standard error. Dashed line: Theorem
 \ref{thm:variance-ratio}'s prediction $\sqrt{2} \approx 1.414$.
 The theorem's $\sqrt{2}$ lies inside the 95\% CI for eight of the
-ten cells ($d = 3, \ldots, 10$); $d = 2$ over-shoots and $d = 11$
-under-shoots slightly, at the boundaries of the tested range.}
+ten cells.}
 \label{fig:d-scaling}
 \end{figure}
 
 The scaling $N^*(d) \approx 1250 \cdot d$ is therefore statistically
 consistent with the theorem on nearly the full tested range. A mild
 systematic drift --- over-shoot at low $d$, under-shoot at high $d$
---- suggests the true exponent may sit slightly above $p = 1$, but
-any $(c, p)$ within the family $N^*(d) = c \cdot d^p$ that produces
-context sizes of comparable order to $1250 \cdot d$ reaches the
-theorem's $\sqrt{2}$ on this range.
+--- suggests the true exponent may sit slightly above $p = 1$.
 
 \paragraph{Extrapolation and computational infeasibility at high $d$.}
 Under the empirical scaling $N^*(d) \approx 1250 \cdot d$, the
@@ -984,25 +736,25 @@ $\sqrt{\mathrm{PEHE}}$ ratio recovers the theorem's $\sqrt{2}$.
 
 
 %% ---------------------------------------------------------------------
-\section{Discussion}
-\label{sec:discussion}
+% \section{Discussion}
+% \label{sec:discussion}
 
-The account is deliberately narrow. A single mechanism ---
-data-efficiency via sufficiency --- underlies both the marginal-density
-improvement (Result~1) and the CATE MSE / stability improvement
-(Result~2 and Corollary~\ref{cor:stability}). Paired training gives
-every unit twice the target information that marginal training gets,
-which halves the Cram\'er--Rao bound on every marginal-density
-estimator, halves the Cram\'er--Rao bound on the CATE estimator built
-by subtracting them, and tightens the spread of PEHE across datasets
-by $\sqrt{2}$. All three predictions are quantitative bounds that
-Table~3 either meets (IHDP hits $\sqrt{2}$) or approaches within a
-constant fraction on every dataset where the CATE-estimator component
-of raw PEHE is not overwhelmed by outcome-noise heterogeneity. The
-controlled linear benchmark quantifies the fraction realised on
-average: $68\%$ of the MSE ceiling and $23\%$ tightening of PEHE
-spread across SCMs. The mechanism explains both the level and the
-stability of R-PFN's advantage on Table~3.
+% The account is deliberately narrow. A single mechanism ---
+% data-efficiency via sufficiency --- underlies both the marginal-density
+% improvement (Result~1) and the CATE MSE / stability improvement
+% (Result~2 and Corollary~\ref{cor:stability}). Paired training gives
+% every unit twice the target information that marginal training gets,
+% which halves the Cram\'er--Rao bound on every marginal-density
+% estimator, halves the Cram\'er--Rao bound on the CATE estimator built
+% by subtracting them, and tightens the spread of PEHE across datasets
+% by $\sqrt{2}$. All three predictions are quantitative bounds that
+% Table~3 either meets (IHDP hits $\sqrt{2}$) or approaches within a
+% constant fraction on every dataset where the CATE-estimator component
+% of raw PEHE is not overwhelmed by outcome-noise heterogeneity. The
+% controlled linear benchmark quantifies the fraction realised on
+% average: $68\%$ of the MSE ceiling and $23\%$ tightening of PEHE
+% spread across SCMs. The mechanism explains both the level and the
+% stability of R-PFN's advantage on Table~3.
 
 \bibliographystyle{plainnat}
 

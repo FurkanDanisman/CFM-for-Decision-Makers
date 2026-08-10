@@ -68,82 +68,220 @@
 \subsection{Two-dimensional \texttt{BarDistribution} head}
 \label{sec:2d-bardistribution}
 
-Our model outputs a density over the paired potential outcomes
-$(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)})$ using a two-dimensional
-extension of UWYK's \texttt{BarDistribution} head. All quantities below
-are conditional on the query covariate $X$ and the observational
-context; we suppress that conditioning for readability.
+Training is asking how plausible each location is at every query. Then looking up how tall the predicted surface is there, and penalising when it's short.
 
-\paragraph{Domain and bin structure.}
-Observed outcomes are min--max scaled to $[-1, 1]$ using the context
-range. The interior domain $\mathcal{I} \coloneqq [-1,1]^{2}$ is
-partitioned into a uniform $K \times K$ grid of bins with bin width
-$h \coloneqq 2/K$ per axis. We write $B_{j_0, j_1}$ for the bin whose
-lower-left corner is $\bigl(-1 + j_0 h,\, -1 + j_1 h\bigr)$, so
-$B_{j_0, j_1}$ has area $h^{2}$ and
-$\bigcup_{j_0, j_1} B_{j_0, j_1} = \mathcal{I}$.
+\paragraph{What the head predicts.}
+For every query covariate $X$, given the observational context
+$\mathcal{D}_{\mathrm{obs}} = \{(X_i, T_i, Y_i)\}_{i=1}^{N}$, the head
+outputs a full probability density over the pair of potential outcomes
+under both treatment values:
+\begin{equation}
+  f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
+  \;:\; \mathbb{R}^2 \to [0, \infty),
+  \qquad
+  \iint_{\mathbb{R}^2}
+    f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})\, dy_0\, dy_1 = 1.
+\end{equation}
+Every point in $\mathbb{R}^2$ has a defined density value; nothing is
+excluded. This is an extension of the one-dimensional head, which outputs
+$f(y \mid X, \mathcal{D}_{\mathrm{obs}})$ over a single outcome
+$y \in \mathbb{R}$.
+
+\paragraph{Why the joint, not two marginals.}
+A pair of marginal densities
+$\hat p_0(y_0 \mid X, \mathcal{D}_{\mathrm{obs}})$ and
+$\hat p_1(y_1 \mid X, \mathcal{D}_{\mathrm{obs}})$
+recovers the true joint only if $Y_{\mathrm{do}(0)} \perp Y_{\mathrm{do}(1)} \mid X$
+--- an assumption that fails on essentially every real DGP, where the
+potential outcomes share exogenous noise.
+
+\paragraph{Preprocessing: rescaling outcomes to $[-1, 1]$.}
+Before the head is applied, every $Y_i$ in the context is min--max
+rescaled by the context $Y$-range so it lies in $[-1, 1]$:
+\begin{equation}
+  \tilde{Y}_i \;=\; 2 \cdot \frac{Y_i - Y_{\min}}{Y_{\max} - Y_{\min}} - 1,
+  \qquad
+  Y_{\min} = \min_i Y_i,\; Y_{\max} = \max_i Y_i.
+  \label{eq:minmax}
+\end{equation}
+This is standard input normalisation so a single interior grid of fixed width is meaningful across queries, and so the tail scales
+$\sigma_d^{(\ell)}$ below are comparable across queries. The choice of
+$[-1, 1]$ (as opposed to, say, $[0, 1]$) is a convention. The scale is inverted at test time to report outcomes in the
+original units.
+
+For the rest of this subsection $y_0, y_1$ refer to the rescaled scale,
+so context observations lie in $[-1, 1]$.
+
+\paragraph{Why $f$ must cover all of $\mathbb{R}^2$, not just $[-1, 1]^2$.}
+At training time we cannot guarantee that a labelled paired outcome
+$(y_0^\star, y_1^\star)$ from the DGP will fall inside the rescaling
+box $[-1, 1]^2$ --- rescaling in \eqref{eq:minmax} is done on the
+\emph{context} $Y$-values, and the target held-out outcome can easily
+land outside the observed context range. If $f$ assigns zero density
+to any labelled target, the training loss
+$-\log f(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}})$
+diverges to $+\infty$ and the model becomes untrainable. So $f$ must
+place strictly positive density everywhere in $\mathbb{R}^2$. This is
+the constraint that forces the piecewise construction below. However, we would still expect most of the training prediction to fall under the $[-1, 1]^2$ range.
+
+\paragraph{Three-part construction.}
+A plain discrete grid over $[-1,1]^2$, with one probability per bin, is
+flexible enough to capture the complexity of our datasets, but it cannot be
+extended to all of $\mathbb{R}^2$ without requiring infinitely many
+parameters. Restricting the grid to a bounded region keeps the parameter
+count finite, but it also forces the predicted density to vanish outside the
+box. What we need, then, is a component that assigns non-zero density over
+the whole of $\mathbb{R}^2$ while still being described by finitely many
+parameters --- a Gaussian being the natural candidate. On its own, however, a
+Gaussian is too rigid to fit multi-modal or skewed joints. We therefore combine the two, which partitions $\mathbb{R}^2$ into three
+kinds of region. Each tail is a half-normal anchored at the boundary: a normal density centred at $+1$ or $-1$, restricted to the side lying outside $\mathcal{I}$ and renormalised. Anchoring at the boundary removes
+the location parameter $(\mu)$, leaving the scale $\sigma$ as the only free quantity, and $\sigma$ admits a direct reading --- it tells you how far your model should predict fall past the boundary. If true values leave $[-1,1]$ so only marginally, as with $1.02$ or $-1.05$, the
+likelihood favours a small $\sigma$; if they routinely land far outside,
+a larger $\sigma$ is favoured. Learning $\sigma$ is therefore  the act of learning how far the true distribution extends beyond the modelled
+region, and it assigns a corresponding amount of probability mass there. We prefer to use a Gaussian tail for three reasons: (1) it is normalisable on the half-line with a closed-form constant, (2) it has a closed-form CDF; (3) its log-density is quadratic, so gradients with respect to both the observation and $\sigma$ are smooth throughout the domain. Heavier-tailed alternatives such as a truncated Student-$t$ are equally tractable but introduce a further shape parameter that is weakly identified when few observations fall outside $\mathcal{I}$; the Gaussian tail proved sufficient on our
+datasets. 
+
+The following provides the three parts:
+ 
+\begin{enumerate}
+  \item \emph{Interior} $\mathcal{I} \coloneqq [-1, 1]^2$: a
+    $K \times K$ grid of bins, with one learned probability per bin.
+    Gives a piecewise-constant density that can approximate any joint
+    shape in the bulk.
+  \item \emph{Edge} (one coordinate outside $\mathcal{I}$, one inside):
+    a half-Gaussian tail along the outside coordinate, multiplied by
+    the grid's boundary conditional along the inside coordinate. Four
+    edges (one per axis-direction pair) continuously extend the grid
+    past $\mathcal{I}$ in each single direction.
+  \item \emph{Corner} (both coordinates outside $\mathcal{I}$): a
+    bivariate normal truncated to the appropriate quadrant, with the
+    correlation inherited from the interior grid. Four corners extend
+    the density into the four diagonal directions.
+\end{enumerate}
+These nine regions (one interior, four edge, four corner) partition
+$\mathbb{R}^2$. The head's density is a weighted mixture over the nine,
+which is strictly positive everywhere by construction.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{Figures/nine_region_partition_of_R2.png}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure}
+
+\paragraph{What the head learns.}
+For each query the transformer emits a fixed-size vector of
+$K^2 + 9 + 4$ real numbers: $K^2$ interior-bin logits, $9$ region-weight
+logits, and $4$ raw tail scales (one per axis-direction pair). Standard
+link functions (softmax on the first two groups, softplus on the third,
+detailed below) turn these into the interior probabilities
+$p_{j_0, j_1}$, the region weights $w_r$, and the tail scales
+$\sigma_d^{(\ell)}$ that together determine the density $f$. Training
+is a single objective: for each labelled paired outcome
+$(y_0^\star, y_1^\star)$, minimise the negative log-density
+$-\log f(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}})$.
+Gradient descent flows through the softmax and softplus link functions
+back into the transformer's parameters, which learn to push more
+density toward observed outcomes at each step. No auxiliary losses.
+
+The rest of this subsection formalises each piece: the interior bin
+structure, the per-query output that parameterises everything, the
+density expression in each of the three region types, how the tail
+correlation is read from the interior grid rather than trained
+separately, and finally the unified mixture density and loss.
+
+\paragraph{Interior bin structure.}
+$\mathcal{I} = [-1, 1]^2$ is partitioned into a uniform $K \times K$
+grid of square bins of width $\delta \coloneqq 2/K$. Bins are indexed
+by $(j_0, j_1) \in \{0, 1, \ldots, K-1\}^2$; bin $B_{j_0, j_1}$ is the
+$\delta \times \delta$ square with lower-left corner
+$(-1 + j_0 \delta,\; -1 + j_1 \delta)$. Under this convention a
+rescaled coordinate $y \in [-1, 1]$ belongs to bin index
+\begin{equation}
+  j_\ell(y) \;\coloneqq\; \lfloor (y + 1)/\delta \rfloor,
+  \label{eq:bin-index}
+\end{equation}
+which appears throughout the density expressions below.
 
 \paragraph{Per-query output.}
-For each query the model emits $K^{2} + 9 + 4$ logits:
+For each query $X$, the transformer emits $K^2 + 9 + 4$ real numbers,
+grouped into three sets. Each set is transformed into a valid density
+parameter with a standard link function that guarantees positivity:
+
 \begin{itemize}
-  \item \emph{Inner logits} $\ell \in \mathbb{R}^{K^{2}}$ pass through a
-    softmax to give the discrete joint
+  \item \emph{Interior logits} $\ell \in \mathbb{R}^{K^2}$, one per
+    bin, softmaxed into a discrete joint on $\mathcal{I}$:
     \begin{equation}
-      p_{j_0, j_1} \;=\;
+      p_{j_0, j_1}(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\;
       \frac{\exp(\ell_{j_0, j_1})}
            {\sum_{i_0, i_1} \exp(\ell_{i_0, i_1})},
       \qquad
       \sum_{j_0, j_1} p_{j_0, j_1} = 1.
       \label{eq:pmat-softmax}
     \end{equation}
-  \item \emph{Region logits} $u \in \mathbb{R}^{9}$ pass through a
-    softmax to give the mixture weights $w \in \Delta^{8}$ over the nine
-    regions defined below:
+    The softmax gives every bin strictly positive probability, so no
+    bin can zero out the density on any target.
+  \item \emph{Region logits} $u \in \mathbb{R}^{9}$, one per region,
+    softmaxed into the nine mixture weights:
     \begin{equation}
-      w_r \;=\; \frac{\exp(u_r)}{\sum_{s=1}^{9} \exp(u_s)},
-      \qquad r \in \{1, \dots, 9\}.
+      w_r(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\; \frac{\exp(u_r)}{\sum_{s=1}^{9} \exp(u_s)},
+      \qquad r \in \{1, \dots, 9\},\ \sum_r w_r = 1.
       \label{eq:region-weights}
     \end{equation}
+    These control how much mass the model allocates to the interior
+    vs.\ the four edges vs.\ the four corners.
   \item \emph{Raw tail parameters}
     $(\sigma_{L}^{(0)\text{raw}}, \sigma_{R}^{(0)\text{raw}},
-      \sigma_{L}^{(1)\text{raw}}, \sigma_{R}^{(1)\text{raw}})$
-    are transformed to positive scales via softplus with a small floor
-    $\varepsilon > 0$:
+      \sigma_{L}^{(1)\text{raw}}, \sigma_{R}^{(1)\text{raw}})$,
+    one per axis $\ell \in \{0, 1\}$ and direction $d \in \{L, R\}$,
+    passed through softplus with a small floor $\varepsilon > 0$:
     \begin{equation}
-      \sigma_{d}^{(\ell)} \;=\; h \cdot
+      \sigma_{d}^{(\ell)}(X, \mathcal{D}_{\mathrm{obs}})
+      \;=\; \delta \cdot
       \bigl(\mathrm{softplus}\bigl(\sigma_{d}^{(\ell)\text{raw}}\bigr)
-            + \varepsilon\bigr),
-      \qquad d \in \{L, R\},\; \ell \in \{0, 1\}.
+            + \varepsilon\bigr).
       \label{eq:tail-scales}
     \end{equation}
+    Softplus guarantees $\sigma > 0$ so the tail Gaussians below are
+    well-defined; the $\delta$ multiplier makes tail widths and
+    interior bin widths comparable so the interior--tail seam is
+    smooth in scale.
 \end{itemize}
 
-\paragraph{Three-region density.}
-The full density $f(y_0, y_1)$ is defined piecewise according to where
-$(y_0, y_1)$ falls relative to $\mathcal{I}$. Let
-$\mathrm{IN}(y) \coloneqq \mathbf{1}\{y \in [-1, 1]\}$.
-The nine mutually exclusive regions are grouped into three cases.
+\paragraph{The full density, one region at a time.}
+The density $f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})$ is defined
+piecewise depending on where $(y_0, y_1)$ falls relative to the box
+$\mathcal{I}$. Below we describe each of the three cases; the full
+mixture is stated in
+\eqref{eq:full-density}.
 
-\subparagraph{Case 1 --- inner$\times$inner.}
-If $\mathrm{IN}(y_0) = \mathrm{IN}(y_1) = 1$, the discrete grid
-\eqref{eq:pmat-softmax} defines a piecewise-constant density on
-$\mathcal{I}$:
+\subparagraph{Case 1 --- interior ($y_0, y_1 \in [-1, 1]$).}
+The discrete grid \eqref{eq:pmat-softmax} defines a piecewise-constant
+density on $\mathcal{I}$: mass $p_{j_0, j_1}$ is spread uniformly over
+the area $\delta^2$ of bin $B_{j_0, j_1}$, giving density
+$p_{j_0, j_1}/\delta^2$ inside that bin:
 \begin{equation}
-  f_{\mathrm{inner}}(y_0, y_1)
+  f_{\mathrm{inner}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
   \;=\;
-  \frac{p_{j_0(y_0),\, j_1(y_1)}}{h^{2}},
-  \qquad
-  j_\ell(y) \coloneqq \bigl\lfloor (y + 1)/h \bigr\rfloor.
+  \frac{p_{j_0(y_0),\, j_1(y_1)}}{\delta^{2}}.
   \label{eq:inner-density}
 \end{equation}
-Both the assignment $j_\ell(\cdot)$ and the softmax weights
-\eqref{eq:pmat-softmax} are differentiable in $\ell$.
+Both the bin assignment $j_\ell(\cdot)$ in \eqref{eq:bin-index} and the
+softmax weights in \eqref{eq:pmat-softmax} are differentiable in the
+logits $\ell$, so gradients flow back through this density to the
+transformer.
 
-\subparagraph{Case 2 --- mixed (one inside, one outside).}
-Assume $y_0 \in [-1, 1]$ and $y_1 < -1$ (the other three mixed
-subcases are symmetric). We factor
+\subparagraph{Case 2 --- edge (one coordinate outside).}
+When exactly one of $y_0, y_1$ falls outside $[-1, 1]$, we need a
+density that (i) smoothly extends off the boundary in the outside
+coordinate, and (ii) still reflects where along the boundary the point
+sits in the inside coordinate. Take the representative subcase
+$y_0 \in [-1, 1]$ and $y_1 < -1$ (the other three edges are
+symmetric). We factor
 \begin{equation}
-  f_{\mathrm{mix}}(y_0, y_1)
+  f_{\mathrm{mix}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
   \;=\;
   p_{L}^{(1)}(y_1)\, \cdot\, g(y_0 \mid y_1 = -1),
   \label{eq:mix-density}
@@ -155,39 +293,47 @@ where the tail contribution
   \frac{2}{\sigma_{L}^{(1)}}\,
   \phi\!\left(\tfrac{y_1 - (-1)}{\sigma_{L}^{(1)}}\right)
 \end{equation}
-is a scaled half-Gaussian on $(-\infty, -1]$ ($\phi$ is the standard
-normal density) and
+is a half-Gaussian on $(-\infty, -1]$ centred at the boundary $-1$
+with scale $\sigma_L^{(1)}$ ($\phi$ is the standard normal density,
+the factor $2$ makes the half-normal integrate to one on the half-line),
+and
 \begin{equation}
   g(y_0 \mid y_1 = -1)
   \;=\;
   \frac{p_{j_0(y_0),\, 0}}
-       {\bigl(\sum_{i_0} p_{i_0,\, 0}\bigr) \cdot h}
+       {\bigl(\sum_{i_0} p_{i_0,\, 0}\bigr) \cdot \delta}
   \label{eq:boundary-conditional}
 \end{equation}
 is the discrete boundary conditional obtained by evaluating $p$ on the
-$y_1$-most row and renormalising over the in-range axis. The
-approximation
+bottom row (bins with $j_1 = 0$, i.e., adjacent to $y_1 = -1$) and
+renormalising over the in-range axis so the density integrates to one
+along $y_0$. The approximation
 $p(y_0 \mid y_1 < -1) \approx p(y_0 \mid y_1 = -1)$
-is a modelling choice justified in
-\S\ref{sec:2d-bardistribution:notes} below.
+is discussed in \S\ref{sec:2d-bardistribution:notes} below. All four
+edge subcases apply the same construction with the boundary and axis
+adjusted accordingly.
 
-\subparagraph{Case 3 --- both outside.}
-If both coordinates are outside $[-1, 1]$, we use a bivariate
-half-Gaussian truncated to the appropriate quadrant. Fixing signs
-$(s_0, s_1) \in \{L, R\}^{2}$ that select the quadrant, the density is
+\subparagraph{Case 3 --- corner (both coordinates outside).}
+When both $y_0$ and $y_1$ fall outside $[-1, 1]$, the point lies in
+one of four diagonal quadrants determined by signs
+$(s_0, s_1) \in \{L, R\}^{2}$. We use a truncated bivariate normal on
+that quadrant, centred at the corresponding corner
+$(c_0, c_1) \in \{-1, +1\}^{2}$, scaled by the tail widths
+$(\sigma_{s_0}^{(0)}, \sigma_{s_1}^{(1)})$ from \eqref{eq:tail-scales}:
 \begin{equation}
-  f_{\mathrm{tail}}(y_0, y_1)
+  f_{\mathrm{tail}}(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
   \;=\;
-  \frac{1}{Z(s_0, s_1,\rho)}\,
+  \frac{1}{Z(s_0, s_1, \rho)}\,
   \phi_{2}\!\left(\tilde{y}_0, \tilde{y}_1;\, \rho\right),
   \qquad
   \tilde{y}_\ell = \frac{y_\ell - c_\ell}{\sigma_{s_\ell}^{(\ell)}},
   \label{eq:tail-density}
 \end{equation}
-where $c_\ell \in \{-1, +1\}$ is the corresponding boundary,
-$\phi_{2}(\cdot,\cdot;\rho)$ is the standard bivariate normal density
-with correlation $\rho$, and $Z(s_0, s_1, \rho)$ is the quadrant
-probability given by Sheppard's identity
+where $\phi_{2}(\cdot, \cdot; \rho)$ is the standard bivariate normal
+density with correlation $\rho$, and the denominator $Z$ is the total
+probability mass the bivariate normal assigns to that quadrant --- the
+correct normaliser to make $f_{\mathrm{tail}}$ integrate to one on the
+quadrant. This mass is given in closed form by Sheppard's identity
 \citep{sheppard1899application}:
 \begin{equation}
   Z(s_0, s_1, \rho)
@@ -201,12 +347,49 @@ probability given by Sheppard's identity
   \label{eq:sheppard}
 \end{equation}
 
-\paragraph{Correlation derived from the histogram.}
-The correlation $\rho$ used in
-\eqref{eq:tail-density}--\eqref{eq:sheppard} is not a separate learned
-parameter. It is the Pearson correlation of the discrete distribution
-$\{p_{j_0, j_1}\}$ evaluated at bin midpoints
-$m_\ell(j_\ell) \coloneqq -1 + h\bigl(j_\ell + \tfrac{1}{2}\bigr)$:
+To demonstrate this normalization step by $Z$, consider the top-right corner, that is the region
+where $y_0 > 1$ and $y_1 > 1$, on which a bivariate normal centred at $(1,1)$ is placed. A bivariate normal is supported on the entire plane, so centring it at $(1,1)$ also assigns density to points such as $(0.9, 1.2)$, $(1.3, 0.8)$ and $(0.5, 0.4)$, none of which lie in the corner region: they belong to the top edge, the right edge and the
+interior respectively, each of which is already modelled by its own component. Left uncorrected, the corner component would therefore claim mass that has already been accounted for elsewhere, and the nine
+regional densities would not combine into a single normalised density on
+$\mathbb{R}^2$. 
+
+The correlation $\rho$ used here is not a separate learned parameter;
+it is derived directly from the interior grid, as described next.
+
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Figures/quadrant_masses_rho_zero.png}
+    \caption{$\rho = 0$}
+    \label{fig:quadrant-rho-000}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Figures/quadrant_masses_rho_quarter.png}
+    \caption{$\rho = 0.25$}
+    \label{fig:quadrant-rho-025}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{Figures/quadrant_masses_rho_three_quarters.png}
+    \caption{$\rho = 0.75$}
+    \label{fig:quadrant-rho-075}
+  \end{subfigure}
+  \caption{Quadrant masses of the bivariate normal centred at the corner
+    $(1,1)$. Correlation shifts mass onto the diagonal, so the truncation
+    constant $Z$ is $1/4$ only at $\rho = 0$.}
+  \label{fig:quadrant-mass}
+\end{figure}
+
+
+\paragraph{Correlation of the tails inherited from the interior grid.}
+The correlation $\rho$ in
+\eqref{eq:tail-density}--\eqref{eq:sheppard} is defined as the Pearson
+correlation of the discrete distribution $\{p_{j_0, j_1}\}$ evaluated at
+bin midpoints $m_\ell(j_\ell) \coloneqq -1 + \delta(j_\ell + \tfrac{1}{2})$:
 \begin{equation}
 \begin{aligned}
 \bar{y}_\ell \;&=\; \sum_{j_0, j_1} p_{j_0, j_1}\, m_\ell(j_\ell), \\
@@ -219,50 +402,70 @@ c \;&=\; \sum_{j_0, j_1} p_{j_0, j_1}
 \end{aligned}
 \label{eq:rho-derived}
 \end{equation}
-Deriving $\rho$ from $p$ removes one degree of freedom and ensures the
-correlation that governs the tail Gaussians is the same one implicit in
-the inner histogram.
+Two reasons for deriving $\rho$ this way rather than training a
+separate scalar. First, it removes one degree of freedom, so the model
+cannot learn a $\rho$ for the tails that disagrees with what the
+interior grid already implies. Second, whatever coupling
+$(Y_0, Y_1)$ shows in the interior bulk is exactly what governs the
+tails, so the density is coherent across the seam between $\mathcal{I}$
+and its complement.
 
-\paragraph{Unified density and loss.}
-The joint density at any $(y_0, y_1) \in \mathbb{R}^{2}$ is the mixture
+\paragraph{Full mixture and training loss.}
+The joint density at any point in $\mathbb{R}^2$ is the mixture of the
+nine region components weighted by
+\eqref{eq:region-weights}:
 \begin{equation}
-  f(y_0, y_1)
+  f(y_0, y_1 \mid X, \mathcal{D}_{\mathrm{obs}})
   \;=\;
-  w_{1}\, f_{\mathrm{inner}}(y_0, y_1)
-  \;+\!\sum_{r = 2}^{5}\! w_{r}\, f^{(r)}_{\mathrm{mix}}(y_0, y_1)
-  \;+\!\sum_{r = 6}^{9}\! w_{r}\, f^{(r)}_{\mathrm{tail}}(y_0, y_1),
+  w_{1}\, f_{\mathrm{inner}}
+  \;+\!\sum_{r = 2}^{5}\! w_{r}\, f^{(r)}_{\mathrm{mix}}
+  \;+\!\sum_{r = 6}^{9}\! w_{r}\, f^{(r)}_{\mathrm{tail}},
   \label{eq:full-density}
 \end{equation}
-where the four mixed and four tail components correspond to the four
-directional orientations described above. Because the nine regions
-partition $\mathbb{R}^{2}$, at any query point exactly one region
-component is nonzero. The training loss on a labelled point
-$(y_0^\star, y_1^\star)$ is the negative log-density
+where the four $f^{(r)}_{\mathrm{mix}}$ correspond to the four edge
+orientations and the four $f^{(r)}_{\mathrm{tail}}$ to the four
+corners. Because the nine regions partition $\mathbb{R}^2$, at any
+query point exactly one region is active and only its component
+contributes to $f$.
+
+Given a labelled paired outcome $(y_0^\star, y_1^\star)$, the training
+loss is the negative log-density
 \begin{equation}
-  \mathcal{L}(y_0^\star, y_1^\star)
+  \mathcal{L}(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}})
   \;=\;
-  -\log\, f(y_0^\star, y_1^\star),
+  -\log\, f(y_0^\star, y_1^\star \mid X, \mathcal{D}_{\mathrm{obs}}),
   \label{eq:nll}
 \end{equation}
-averaged over queries in a batch. In the inner-inner case
-\eqref{eq:inner-density}, $\log f$ carries an explicit $-\log h^{2}$
-correction relative to plain cross-entropy over the discrete grid; this
-correction is required for the loss to be a proper log-density on the
-continuous domain.
+averaged over queries in a batch. Standard backpropagation flows
+gradients through the softmax and softplus link functions back into
+the transformer weights, which learn to push more density towards the
+observed $(y_0^\star, y_1^\star)$ at each step. There is no auxiliary
+loss.
 
-\paragraph{Notes on the mixed-case approximation.}
+\paragraph{Notes on the edge-case approximation.}
 \label{sec:2d-bardistribution:notes}
-The mixed density \eqref{eq:mix-density} approximates
-$p(y_0 \mid y_1 < -1)$ by the boundary conditional
-$p(y_0 \mid y_1 = -1)$. This is exact only when
-$Y_0 \perp\!\!\!\perp Y_1$; more generally it introduces error whose
-magnitude is controlled by the local variation of $p(y_0 \mid y_1)$
-across the tail. The half-Gaussian factor assigns exponentially
-decreasing mass to values of $y_1$ far from the boundary, so the
-approximation contributes most weight where it is most accurate. We do
-not claim asymptotic exactness; the choice is a bias--variance trade-off
-motivated by keeping the loss differentiable and $\mathcal{O}(1)$
-per-query.
+The edge density \eqref{eq:mix-density} factors as
+$p(y_1)\,p(y_0 \mid y_1)$ and supplies the second factor by the boundary
+conditional $p(y_0 \mid y_1 = -1)$, holding it fixed for all
+$y_1 < -1$. The approximation is exact when $Y_0 \perp Y_1$, since the
+conditional is then constant in $y_1$. Under dependence it displaces the
+conditional by an amount that grows with both the strength of dependence
+and the distance past the boundary: for a bivariate normal with
+correlation $\rho$ and tail scale $\sigma$, the resulting excess
+negative log-likelihood per edge observation is approximately
+$\rho^{2}\sigma^{2} / \pi(1 - \rho^{2})$.
+
+This displacement is not something the edges could avoid by inheriting
+$\rho$ in the way the corner components do. In a corner both
+coordinates are Gaussian, so dependence is carried by a single scalar
+and the conditional mean shifts automatically with distance from the
+corner. An edge instead couples a Gaussian tail to a histogram, for
+which no such scalar exists: letting the boundary conditional drift
+would require an explicit model of how the bin probabilities deform
+with $y_1$, whose parameters would have to be estimated from the few
+observations falling outside $\mathcal{I}$. We therefore accept a
+bounded bias in place of that variance, and retain a density that is
+differentiable and evaluable in $\mathcal{O}(1)$ per query.
 
 
 %% -----------------------------------------------------------------------------
@@ -278,44 +481,30 @@ nonparametric density estimate from grouped (binned) probabilities
 without bandwidth selection. Because a single log-concave density is
 unimodal by construction, we extend MALC to a $K$-component mixture in
 order to represent the multimodal joints that arise in causal
-inference under posterior uncertainty over compatible SCMs.
-
-\paragraph{Base class: 2D log-concave densities.}
-A density $f: \mathbb{R}^{2} \to \mathbb{R}_{\ge 0}$ is
-\emph{log-concave} if $\log f$ is concave (with the convention
-$\log 0 = -\infty$). This is a nonparametric shape-constrained class
-that contains all Gaussians, exponentials, uniform distributions on
-convex sets, and any density with concave log; every log-concave
-density is unimodal.
-For any set of samples $y_1, \dots, y_M \in \mathbb{R}^{2}$ in general
-position, the (nonparametric) log-concave MLE
-\begin{equation}
-  \hat{f}_{\mathrm{LC}}
-  \;=\;
-  \arg\!\max_{f \in \mathcal{F}_{\mathrm{LC}}}
-  \;\;\frac{1}{M}\sum_{m=1}^{M} \log f(y_m)
-  \label{eq:lc-mle}
-\end{equation}
-exists uniquely and is piecewise log-linear on a triangulation of the
-sample support \citep{cule2010maximum,samworth2018recent}.
-
-\paragraph{Single-component MALC from grouped data.}
-Direct application of \eqref{eq:lc-mle} would require raw samples,
-which the head does not produce; the head emits only the bin
-probabilities $\{p_{j_0, j_1}\}$. MALC handles exactly this case by
-first correcting for within-bin mass misalignment before applying the
-log-concave MLE \citep{danisman2026malc}. Concretely, MALC executes
-the four steps recorded in the code and its accompanying
-\texttt{SUMMARY.md}:
-(i) a truncated-normal fixed-point iteration recovers a latent mean per
-axis from the binned marginals; (ii) a Beta jitter distribution is
-calibrated so its per-axis mean matches (i); (iii) $B$ synthetic
-sample points are drawn by sampling bins from $p$ with jitter within
-each sampled bin; (iv) the 2D log-concave MLE \eqref{eq:lc-mle} is fit
-on the $B$ synthetic points. We refer to \citet{danisman2026malc} for
+inference under posterior uncertainty over compatible SCMs.  We refer to \citet{danisman2026malc} for
 the theoretical properties of the estimator and its behaviour under
 grid refinement. We denote a single MALC component
 $\hat{f} \in \mathcal{F}_{\mathrm{LC}}$.
+
+% \paragraph{Base class: 2D log-concave densities.}
+% A density $f: \mathbb{R}^{2} \to \mathbb{R}_{\ge 0}$ is
+% \emph{log-concave} if $\log f$ is concave (with the convention
+% $\log 0 = -\infty$). This is a nonparametric shape-constrained class
+% that contains all Gaussians, exponentials, uniform distributions on
+% convex sets, and any density with concave log; every log-concave
+% density is unimodal.
+% For any set of samples $y_1, \dots, y_M \in \mathbb{R}^{2}$ in general
+% position, the (nonparametric) log-concave MLE
+% \begin{equation}
+%   \hat{f}_{\mathrm{LC}}
+%   \;=\;
+%   \arg\!\max_{f \in \mathcal{F}_{\mathrm{LC}}}
+%   \;\;\frac{1}{M}\sum_{m=1}^{M} \log f(y_m)
+%   \label{eq:lc-mle}
+% \end{equation}
+% exists uniquely and is piecewise log-linear on a triangulation of the
+% sample support \citep{cule2010maximum,samworth2018recent}.
+
 
 \paragraph{Mixture MALC ($K$ components).}
 Because $\mathcal{F}_{\mathrm{LC}}$ is unimodal, a single MALC fit
@@ -371,24 +560,157 @@ log-likelihoods.
 \paragraph{Algorithmic summary.}
 Algorithm~\ref{alg:malc-mixture} collects the mixture EM iterations
 described above and the BIC-based order selection described below into
-a single pipeline. Only the outer BIC loop and the inner refit at
-$K^\star$ vary between the "scan" and "final" stages; both stages
-reuse the same component-fit and E-/M-step primitives.
+a single pipeline. 
+
+
+% \paragraph{Order selection by BIC.}
+% The number of components is chosen by BIC. Let
+% \begin{equation}
+%   n_{\mathrm{eff}}
+%   \;\coloneqq\;
+%   \Bigl(\sum_{j_0, j_1} p_{j_0, j_1}^{\, 2}\Bigr)^{-1}
+%   \label{eq:neff}
+% \end{equation}
+% be an effective sample size derived from the grid probabilities.
+% For each candidate $K \in \{1, \dots, K_{\max}\}$ we fit
+% $\hat{f}^{(K)} \in \mathcal{F}_{\mathrm{MALC}}^{(K)}$ via
+% \eqref{eq:malc-estep}--\eqref{eq:malc-mstep} and score
+% \begin{equation}
+%   \mathrm{BIC}(K)
+%   \;=\;
+%   -2\, n_{\mathrm{eff}}\!
+%   \sum_{j_0, j_1} p_{j_0, j_1}\, \log \hat{f}^{(K)}(j_0, j_1)
+%   \;+\;
+%   (3K - 1)\, \log n_{\mathrm{eff}},
+%   \label{eq:bic}
+% \end{equation}
+% selecting $K^{\star} = \arg\min_{K} \mathrm{BIC}(K)$. The parameter
+% count $3K - 1$ tallies the $K - 1$ mixture weights plus a two-mean
+% translation per component; the log-concave shape itself does not
+% contribute a finite parameter count. The implementation uses
+% $K_{\max} = 5$ and $B = 500$ synthetic points per component fit.
+
+\paragraph{Output.}
+Once $K^{\star}$ is chosen, the final estimator is
+\begin{equation}
+  \hat{p}_{\mathrm{MALC}}(y_0, y_1)
+  \;=\;
+  \sum_{k=1}^{K^{\star}} \hat{\pi}_k^{\star}\, \hat{f}_k^{\star}(y_0, y_1),
+  \label{eq:malc-output}
+\end{equation}
+a smooth density on the convex hull of the synthetic points, evaluated
+at any query point $(y_0, y_1) \in \mathbb{R}^{2}$. Point estimates
+follow directly:
+$\hat{\mu}_{\mathrm{mean}} = \int (y_1 - y_0) \,d\hat{p}_{\mathrm{MALC}}$
+and the 1D projection onto the diagonal $\tau = y_1 - y_0$ produces
+the treatment-effect distribution used for OT aggregation in
+Section~\ref{sec:ot-barycenter}. As $n \to \infty$, the absolute difference between
+$\hat{\mu}_{\mathrm{mean}}$ and the true mean is bounded by $\delta$.
+Since we set $K = 100$, this difference is below $0.02$ as n increases to infinity.
+
+Theoretical guarantees for the
+single-component MALC estimator (from which each $\hat{f}_k^\star$ is
+drawn) are established in \citet{danisman2026malc}; here we treat the
+mixture as a modelling device and do not claim additional properties for $\hat{p}_{\mathrm{MALC}}$ beyond those inherited componentwise.
+
+
+%% -----------------------------------------------------------------------------
+\subsection{Population aggregation via the 2-Wasserstein barycenter}
+\label{sec:ot-barycenter}
+To turn per-query treatment-effect distributions into a single
+population-level estimate we use the 2-Wasserstein barycenter.
+Let $\hat{p}_i(\tau)$ denote the MALC-smoothed per-query
+treatment-effect density (Section~\ref{sec:malc-multimodal}) for
+query $X_i$ with cumulative distribution function $F_i$ and quantile
+function $Q_i \coloneqq F_i^{-1}$. Given nonnegative weights
+$\alpha_1, \dots, \alpha_N$ summing to $1$, the (weighted)
+2-Wasserstein barycenter is
+\begin{equation}
+  p^{\star}
+  \;=\;
+  \arg\!\min_{q}
+  \sum_{i=1}^{N} \alpha_i\, W_2^{2}(\hat{p}_i, q),
+  \qquad
+  W_2^{2}(f, g)
+  \;=\;
+  \int_{0}^{1}\!\!\bigl(F_f^{-1}(t) - F_g^{-1}(t)\bigr)^{2}\,dt,
+  \label{eq:barycenter-def}
+\end{equation}
+where $W_2$ is the 1D 2-Wasserstein distance in its quantile form.
+In one dimension this problem admits a closed-form solution: for
+measures on $\mathbb{R}$ with finite second moments, the barycenter
+\eqref{eq:barycenter-def} exists uniquely and its quantile function is
+the weighted average of the input quantile functions
+\citep{aguehcarlier2011barycenters},
+\begin{equation}
+  Q^{\star}(t)
+  \;=\;
+  \sum_{i=1}^{N} \alpha_i\, Q_i(t),
+  \qquad
+  t \in (0, 1).
+  \label{eq:agueh-carlier}
+\end{equation}
+\paragraph{Implementation.}
+Because $Q^{\star}$ is defined explicitly by \eqref{eq:agueh-carlier},
+no iterative optimisation is needed. Given the per-query densities on a
+common grid, Algorithm~\ref{alg:ot-barycenter} computes the barycenter
+in three quantile passes and one density-recovery pass. All steps are
+$\mathcal{O}(N \!\cdot\! M)$ vector arithmetic; the barycenter is thus
+much cheaper than the per-query MALC fits it aggregates.
+
+
+\paragraph{Illustration on IHDP.}
+Figure~\ref{fig:ihdp-ot} shows the aggregation on IHDP realisation $r{=}0$
+with $N{=}200$ context observations and $N{=}10$ test queries. The ten
+faded per-query densities peak around the individual $\tau$ values that
+the model has inferred for each unit; the barycenter (solid green)
+inherits their shape while collapsing to a single population summary.
+The barycenter mode $\widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mode}} = 0.58$
+is meaningfully closer to the true population ATE $0.63$ than either the
+naive mean-of-means $0.47$. Mean-based
+estimator underestimates because the per-query densities are right-skewed with heavier right shoulders than left, whereas the barycenter mode is invariant to this skew. 
+
+\begin{figure}[t]
+\centering
+\includegraphics[scale=0.4]{Figures/ihdp_n10_ot.png}
+\caption{OT aggregation on IHDP realisation $r{=}0$ with $N{=}200$
+context units. Faded curves: per-query $p(\tau \mid X_i)$ from the
+MALC-smoothed joint. Solid green: 2-Wasserstein barycenter. Vertical
+lines: true population ATE, OT-mode, OT-mean, and the naive mean of
+per-query means.}
+\label{fig:ihdp-ot}
+\end{figure}
+
+\paragraph{OT-mode and OT-mean point estimates.}
+From $p^{\star}$ we extract two point estimates of the population
+average treatment effect $\mathrm{ATE} = \mathbb{E}_{X}[\tau(X)]$:
+\begin{equation}
+  \widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mode}}
+  \;=\; \arg\!\max_{\tau} p^{\star}(\tau),
+  \qquad
+  \widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mean}}
+  \;=\; \int \tau\, p^{\star}(\tau)\, d\tau.
+  \label{eq:ot-point-estimates}
+\end{equation}
+Both are functionals of $p^{\star}$ and hence deterministic given the
+per-query densities. Here purpose is more to estimate the density rather than improving the point-wise estimation, but due to nature of skewness in the benchmark datasets, it also improves the results.
+
+
 
 \begin{algorithm}[t]
 \caption{Mixture MALC from binned probabilities $\{p_{j_0, j_1}\}$.}
 \label{alg:malc-mixture}
 \begin{algorithmic}[1]
 \Require Binned joint $\{p_{j_0, j_1}\}$ on a $K_g \times K_g$ grid;
-maximum order $K_{\max}$; synthetic-sample size $B$; patience $\Pi$.
+maximum order $K_{\max}$; synthetic-sample size $B$; tolerance $\Pi$.
 \Ensure Multimodal density estimate
 $\hat{p}_{\mathrm{MALC}} = \sum_{k} \hat\pi_k^\star \hat f_k^\star$.
 \Function{FitComponent}{$w_{j_0, j_1}$}\Comment{single MALC on a weighted grid}
-    \State $\hat\mu_\ell \gets$ truncated-normal fixed-point mean per axis
-    \State $\alpha, \beta \gets$ Beta-jitter parameters calibrated so
-        $\mathbb{E}[\text{Beta}] = \hat\mu_\ell$
-    \State draw $B$ bin indices $\{(j_0^b, j_1^b)\}_{b=1}^{B}$ from $w$
-    \State $y_b \gets \text{bin midpoint of }(j_0^b, j_1^b) + \text{jitter}(\alpha, \beta)$
+    % \State $\hat\mu_\ell \gets$ truncated-normal fixed-point mean per axis
+    % \State $\alpha, \beta \gets$ Beta-jitter parameters calibrated so
+    %     $\mathbb{E}[\text{Beta}] = \hat\mu_\ell$
+    % \State draw $B$ bin indices $\{(j_0^b, j_1^b)\}_{b=1}^{B}$ from $w$
+    % \State $y_b \gets \text{bin midpoint of }(j_0^b, j_1^b) + \text{jitter}(\alpha, \beta)$
     \State \Return log-concave MLE \eqref{eq:lc-mle} on $\{y_b\}$
 \EndFunction
 \For{$K \in \{1, \dots, K_{\max}\}$}
@@ -424,105 +746,6 @@ $\hat{p}_{\mathrm{MALC}} = \sum_{k} \hat\pi_k^\star \hat f_k^\star$.
 \end{algorithmic}
 \end{algorithm}
 
-\paragraph{Order selection by BIC.}
-The number of components is chosen by BIC. Let
-\begin{equation}
-  n_{\mathrm{eff}}
-  \;\coloneqq\;
-  \Bigl(\sum_{j_0, j_1} p_{j_0, j_1}^{\, 2}\Bigr)^{-1}
-  \label{eq:neff}
-\end{equation}
-be an effective sample size derived from the grid probabilities.
-For each candidate $K \in \{1, \dots, K_{\max}\}$ we fit
-$\hat{f}^{(K)} \in \mathcal{F}_{\mathrm{MALC}}^{(K)}$ via
-\eqref{eq:malc-estep}--\eqref{eq:malc-mstep} and score
-\begin{equation}
-  \mathrm{BIC}(K)
-  \;=\;
-  -2\, n_{\mathrm{eff}}\!
-  \sum_{j_0, j_1} p_{j_0, j_1}\, \log \hat{f}^{(K)}(j_0, j_1)
-  \;+\;
-  (3K - 1)\, \log n_{\mathrm{eff}},
-  \label{eq:bic}
-\end{equation}
-selecting $K^{\star} = \arg\min_{K} \mathrm{BIC}(K)$. The parameter
-count $3K - 1$ tallies the $K - 1$ mixture weights plus a two-mean
-translation per component; the log-concave shape itself does not
-contribute a finite parameter count. The implementation uses
-$K_{\max} = 5$ and $B = 500$ synthetic points per component fit.
-
-\paragraph{Output.}
-Once $K^{\star}$ is chosen, the final estimator is
-\begin{equation}
-  \hat{p}_{\mathrm{MALC}}(y_0, y_1)
-  \;=\;
-  \sum_{k=1}^{K^{\star}} \hat{\pi}_k^{\star}\, \hat{f}_k^{\star}(y_0, y_1),
-  \label{eq:malc-output}
-\end{equation}
-a smooth density on the convex hull of the synthetic points, evaluated
-at any query point $(y_0, y_1) \in \mathbb{R}^{2}$. Point estimates
-follow directly:
-$\hat{\mu}_{\mathrm{mean}} = \int (y_1 - y_0) \,d\hat{p}_{\mathrm{MALC}}$,
-$\hat{\mu}_{\mathrm{mode}} = \arg\!\max\hat{p}_{\mathrm{MALC}}$,
-and the 1D projection onto the diagonal $\tau = y_1 - y_0$ produces
-the treatment-effect distribution used for OT aggregation in
-Section~\ref{sec:ot-barycenter}. Theoretical guarantees for the
-single-component MALC estimator (from which each $\hat{f}_k^\star$ is
-drawn) are established in \citet{danisman2026malc}; here we treat the
-mixture as a modelling device and do not claim additional properties
-for $\hat{p}_{\mathrm{MALC}}$ beyond those inherited componentwise.
-
-
-%% -----------------------------------------------------------------------------
-\subsection{Population aggregation via the 2-Wasserstein barycenter}
-\label{sec:ot-barycenter}
-
-To turn per-query treatment-effect distributions into a single
-population-level estimate we use the 2-Wasserstein barycenter.
-Let $\hat{p}_i(\tau)$ denote the MALC-smoothed per-query
-treatment-effect density (Section~\ref{sec:malc-multimodal}) for
-query $X_i$ with cumulative distribution function $F_i$ and quantile
-function $Q_i \coloneqq F_i^{-1}$. Given nonnegative weights
-$\alpha_1, \dots, \alpha_N$ summing to $1$, the (weighted)
-2-Wasserstein barycenter is
-\begin{equation}
-  p^{\star}
-  \;=\;
-  \arg\!\min_{q}
-  \sum_{i=1}^{N} \alpha_i\, W_2^{2}(\hat{p}_i, q),
-  \qquad
-  W_2^{2}(f, g)
-  \;=\;
-  \int_{0}^{1}\!\!\bigl(F_f^{-1}(t) - F_g^{-1}(t)\bigr)^{2}\,dt,
-  \label{eq:barycenter-def}
-\end{equation}
-where $W_2$ is the 1D 2-Wasserstein distance in its quantile form.
-
-\begin{proposition}[Closed-form 1D barycenter; Agueh--Carlier
-\protect\citeyear{aguehcarlier2011barycenters}]
-\label{prop:agueh-carlier}
-For $N$ probability measures on $\mathbb{R}$ with finite second moments
-and quantile functions $Q_i$, the weighted 2-Wasserstein barycenter
-$p^{\star}$ defined in \eqref{eq:barycenter-def} exists uniquely and its
-quantile function equals the weighted average of the input quantile
-functions:
-\begin{equation}
-  Q^{\star}(t)
-  \;=\;
-  \sum_{i=1}^{N} \alpha_i\, Q_i(t),
-  \qquad
-  t \in (0, 1).
-  \label{eq:agueh-carlier}
-\end{equation}
-\end{proposition}
-
-\paragraph{Implementation.}
-Because $Q^{\star}$ is defined explicitly by \eqref{eq:agueh-carlier},
-no iterative optimisation is needed. Given the per-query densities on a
-common grid, Algorithm~\ref{alg:ot-barycenter} computes the barycenter
-in three quantile passes and one density-recovery pass. All steps are
-$\mathcal{O}(N \!\cdot\! M)$ vector arithmetic; the barycenter is thus
-much cheaper than the per-query MALC fits it aggregates.
 
 \begin{algorithm}[t]
 \caption{Weighted 2-Wasserstein barycenter of $N$ densities on a common
@@ -555,183 +778,6 @@ $M_\tau$ (default $4001$).
 \end{algorithmic}
 \end{algorithm}
 
-\paragraph{Illustration on IHDP.}
-Figure~\ref{fig:ihdp-ot} shows the aggregation on IHDP realisation $r{=}0$
-with $N{=}200$ context observations and $N{=}10$ test queries. The ten
-faded per-query densities peak around the individual $\tau$ values that
-the model has inferred for each unit; the barycenter (solid green)
-inherits their shape while collapsing to a single population summary.
-The barycenter mode $\widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mode}} = 0.58$
-is meaningfully closer to the true population ATE $0.63$ than either the
-naive mean-of-means $0.47$ or the barycenter mean
-$\widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mean}} = 0.47$; both mean-based
-estimators underestimate because the per-query densities are
-right-skewed with heavier right shoulders than left, whereas the
-barycenter mode is invariant to this skew.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{../../benchmarks/plots/ihdp_n10/ihdp_n10_ot.png}
-\caption{OT aggregation on IHDP realisation $r{=}0$ with $N{=}200$
-context units. Faded curves: per-query $p(\tau \mid X_i)$ from the
-MALC-smoothed joint. Solid green: 2-Wasserstein barycenter. Vertical
-lines: true population ATE, OT-mode, OT-mean, and the naive mean of
-per-query means. OT-mode ($+0.58$) is closer to the true population ATE
-($+0.63$) than either mean-based estimator ($+0.47$).}
-\label{fig:ihdp-ot}
-\end{figure}
-
-\paragraph{OT-mode and OT-mean point estimates.}
-From $p^{\star}$ we extract two point estimates of the population
-average treatment effect $\mathrm{ATE} = \mathbb{E}_{X}[\tau(X)]$:
-\begin{equation}
-  \widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mode}}
-  \;=\; \arg\!\max_{\tau} p^{\star}(\tau),
-  \qquad
-  \widehat{\mathrm{ATE}}_{\mathrm{OT\text{-}mean}}
-  \;=\; \int \tau\, p^{\star}(\tau)\, d\tau.
-  \label{eq:ot-point-estimates}
-\end{equation}
-Both are functionals of $p^{\star}$ and hence deterministic given the
-per-query densities. Their empirical behaviour is reported in the main
-tables.
-
-
-%% -----------------------------------------------------------------------------
-\subsection{Variance reduction of the joint estimator}
-\label{sec:variance-reduction}
-
-We formalise why modelling the joint distribution
-$p(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)} \mid X)$ can strictly reduce
-the variance of the treatment-effect estimate compared to modelling the
-two marginals independently.
-Nothing below requires a parametric assumption on the potential-outcome
-distribution beyond \emph{finite second moments}. Bivariate normality
-is used only to describe the Monte-Carlo simulation in
-Figure~\ref{fig:variance-reduction}.
-
-\paragraph{Setup.}
-Let $(Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)})$ be a random pair on
-$\mathbb{R}^{2}$ with
-$\mathbb{E}\bigl[Y_{\mathrm{do}(\ell)}\bigr] = \mu_\ell$,
-$\mathrm{Var}\bigl[Y_{\mathrm{do}(\ell)}\bigr] = \sigma_\ell^{2} < \infty$
-for $\ell \in \{0, 1\}$, and
-$\mathrm{Corr}\bigl[Y_{\mathrm{do}(0)}, Y_{\mathrm{do}(1)}\bigr] = \rho \in [-1, 1]$.
-Define the true treatment effect $\tau \coloneqq \mu_1 - \mu_0$.
-Assume $N$ context units are drawn i.i.d.\ from this joint, split
-equally between the two treatment arms.
-
-\paragraph{Marginal-only estimator.}
-A marginal-only estimator constructs two independent arm-specific
-sample means:
-\begin{equation}
-  \hat{\tau}^{\,\mathrm{marg}}
-  \;=\;
-  \underbrace{\tfrac{1}{N/2}\!\!\sum_{i:\,T_i=1}\!Y_i}_{\hat{\mu}_1}
-  \;-\;
-  \underbrace{\tfrac{1}{N/2}\!\!\sum_{i:\,T_i=0}\!Y_i}_{\hat{\mu}_0}.
-\end{equation}
-The two summands are independent (samples in different arms are
-disjoint), so
-\begin{equation}
-  \mathrm{Var}\bigl(\hat{\tau}^{\,\mathrm{marg}}\bigr)
-  \;=\;
-  \frac{\sigma_0^{2}}{N/2} + \frac{\sigma_1^{2}}{N/2}
-  \;=\;
-  \frac{2\,(\sigma_0^{2} + \sigma_1^{2})}{N}.
-  \label{eq:var-marg}
-\end{equation}
-The correlation $\rho$ does not appear.
-
-\paragraph{Joint estimator.}
-A joint estimator that pairs both potential outcomes per unit gives
-\begin{equation}
-  \hat{\tau}^{\,\mathrm{joint}}
-  \;=\;
-  \frac{1}{N}\sum_{i=1}^{N}
-  \bigl(Y_{\mathrm{do}(1)}(i) - Y_{\mathrm{do}(0)}(i)\bigr).
-\end{equation}
-By the variance of a sum,
-$\mathrm{Var}(Y_{\mathrm{do}(1)} - Y_{\mathrm{do}(0)})
-  = \sigma_0^{2} + \sigma_1^{2} - 2\rho\,\sigma_0\sigma_1$, whence
-\begin{equation}
-  \mathrm{Var}\bigl(\hat{\tau}^{\,\mathrm{joint}}\bigr)
-  \;=\;
-  \frac{\sigma_0^{2} + \sigma_1^{2} - 2\rho\,\sigma_0\sigma_1}{N}.
-  \label{eq:var-joint}
-\end{equation}
-
-\begin{theorem}[Variance-ratio guarantee, distribution-free]
-\label{thm:variance-ratio}
-Under the finite-second-moment assumption above, the marginal-to-joint
-variance ratio is
-\begin{equation}
-  R(\rho)
-  \;\coloneqq\;
-  \frac{\mathrm{Var}\bigl(\hat{\tau}^{\,\mathrm{marg}}\bigr)}
-       {\mathrm{Var}\bigl(\hat{\tau}^{\,\mathrm{joint}}\bigr)}
-  \;=\;
-  \frac{2\,(\sigma_0^{2} + \sigma_1^{2})}
-       {\sigma_0^{2} + \sigma_1^{2} - 2\rho\,\sigma_0\sigma_1}
-  \;\;\;\underset{\sigma_0 = \sigma_1}{=}\;\;\;
-  \frac{2}{1 - \rho}.
-  \label{eq:ratio}
-\end{equation}
-The ratio $R$ is strictly increasing in $\rho$ on $[0, 1)$, satisfies
-$R(0) = 2$, and diverges as $\rho \to 1^{-}$. Consequently
-$\hat{\tau}^{\,\mathrm{joint}}$ strictly dominates
-$\hat{\tau}^{\,\mathrm{marg}}$ in variance for every $\rho > 0$; for
-$\rho < 0$ the ordering reverses.
-\end{theorem}
-
-\begin{proof}
-Substitute \eqref{eq:var-marg} and \eqref{eq:var-joint} into the
-definition of $R$. Monotonicity in $\rho$ follows from the sign of
-$\partial R / \partial \rho > 0$ when $\rho < 1$; the limit
-$R \to \infty$ as $\rho \to 1^{-}$ is the limit
-$\sigma_0^{2} + \sigma_1^{2} - 2\rho\sigma_0\sigma_1 \to
-(\sigma_0 - \sigma_1)^{2}$ evaluated at $\sigma_0 = \sigma_1$.
-\end{proof}
-
-\begin{corollary}[Consistency and asymptotic normality]
-\label{cor:consistency-clt}
-Both $\hat{\tau}^{\,\mathrm{marg}}$ and $\hat{\tau}^{\,\mathrm{joint}}$
-are unbiased for $\tau$. Under the finite-second-moment assumption,
-both are strongly consistent for $\tau$ as $N \to \infty$ by the law
-of large numbers, with rates $\mathcal{O}_{P}(N^{-1/2})$ from the
-central limit theorem. When $\sigma_0 = \sigma_1$ and $\rho > 0$,
-the joint estimator has strictly smaller asymptotic variance:
-$\sqrt{N}\,(\hat{\tau} - \tau) \Rightarrow \mathcal{N}(0, v(\rho))$
-with $v(\rho) = 2(\sigma^{2}+\sigma^{2})$ (marginal) or
-$v(\rho) = 2\sigma^{2}(1-\rho)$ (joint).
-\end{corollary}
-
-\paragraph{Extension to log-concave, exponential-family, and mixture pairs.}
-Since Theorem~\ref{thm:variance-ratio} uses only the mean and covariance
-matrix of the pair, it applies unchanged whenever second moments exist.
-This includes: any exponential-family joint with finite variance
-(Gaussian, gamma-with-correlated-parameter constructions, etc.); any
-2D log-concave joint (all log-concave densities have finite moments);
-and any mixture $\sum_k \pi_k q_k$ of pairs from the previous classes,
-via the standard mixture identities
-$\mathrm{Var}(Y) = \sum_k \pi_k(\mathrm{Var}_k + \mu_k^{2}) - \mu^{2}$
-and $\mathrm{Cov}(Y_0, Y_1) = \sum_k \pi_k \mathrm{Cov}_k(Y_0, Y_1)
-+ \sum_k \pi_k (\mu_{0,k} - \mu_0)(\mu_{1,k} - \mu_1)$.
-In the mixture case the effective $\rho$ used in \eqref{eq:ratio}
-includes both the within-component covariances and the between-component
-mean shifts; a positive between-component covariation adds a
-between-cluster contribution that further widens the joint's advantage
-over the marginal estimator.
-
-\paragraph{Empirical corroboration (Figure~\ref{fig:variance-reduction}).}
-The Monte-Carlo simulation uses a bivariate normal with
-$\sigma_0 = \sigma_1 = 1$ and $N = 50$; Theorem~\ref{thm:variance-ratio}
-then predicts $R(0) = 2$, $R(0.5) = 4$, and $R(0.9) = 20$. The
-empirical ratios over $10{,}000$ trials are $2.0\times$, $4.1\times$,
-and $19.9\times$, matching to within Monte-Carlo error.
-Bivariate normality is convenient for the simulation but is not required
-by Theorem~\ref{thm:variance-ratio}: replacing the simulator with any
-finite-variance joint would produce the same theoretical ratio.
 
 %% =============================================================================
 %% Bibliography stub — swap in your project's .bib file when integrating.
