@@ -127,19 +127,34 @@ class DoPFNBackboneWith2DHead(nn.Module):
         Returns
         -------
         {'predictions': (B, M, K^2 + 9 + 4)}
+
+        DoPFN convention (see benchmarks/methods/dopfn.py::dopfn_pipeline):
+          - Treatment is passed as COLUMN 0 of X, not through y_encoder.
+          - y_encoder Linear(2, 192) takes (Y_value, NaN-mask) — NanHandling
+            step doubles the scalar Y into 2 channels; not (T, Y).
+        We prepend T to X for the context; for the query we use a T=0
+        placeholder (the joint head predicts both arms, so the query-side T
+        is irrelevant to the output).
         """
         B, N, d = X_context.shape
         M = X_query.shape[1]
 
-        # Sequence-first: DoPFN expects [seq, batch, ...].
-        train_x = X_context.transpose(0, 1)                                  # (N, B, d)
-        test_x  = X_query.transpose(0, 1)                                    # (M, B, d)
+        # Prepend T as column 0 of X (DoPFN's convention).
+        X_ctx_aug = torch.cat([T_context, X_context], dim=-1)                # (B, N, d+1)
+        # Query rows: use T=0 placeholder (any constant would do; the
+        # joint 2D head reads embeddings, not this per-query T).
+        T_query_placeholder = torch.zeros(
+            B, M, 1, dtype=T_context.dtype, device=T_context.device)
+        X_qry_aug = torch.cat([T_query_placeholder, X_query], dim=-1)        # (B, M, d+1)
 
-        # y_src = (T, Y_factual). Only context rows — DoPFN's _forward NaN-pads
-        # query rows automatically when y.shape[1] == single_eval_pos
-        # (model/transformer.py lines 832-844).
-        y_train = torch.cat([T_context, Y_context], dim=-1)                  # (B, N, 2)
-        y_src = y_train.transpose(0, 1)                                      # (N, B, 2)
+        # Sequence-first: DoPFN expects [seq, batch, ...].
+        train_x = X_ctx_aug.transpose(0, 1)                                  # (N, B, d+1)
+        test_x  = X_qry_aug.transpose(0, 1)                                  # (M, B, d+1)
+
+        # y_src is the scalar Y_context. NanHandlingEncoderStep will
+        # concatenate a mask channel internally, feeding Linear(2, 192).
+        # Only context rows are provided; _forward NaN-pads query rows.
+        y_src = Y_context.transpose(0, 1)                                    # (N, B, 1)
 
         out_seq_first = self.backbone(
             train_x, y_src, test_x,
