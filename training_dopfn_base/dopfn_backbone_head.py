@@ -40,19 +40,51 @@ import torch.nn as nn
 
 
 # ── Loader ─────────────────────────────────────────────────────────────────
-def _load_dopfn_model(dopfn_root: str):
-    """Load Do-PFN's PerFeatureTransformer via its own load_model helper."""
+def _load_dopfn_architecture(dopfn_root: str):
+    """Load Do-PFN's PerFeatureTransformer ARCHITECTURE ONLY — no trained weights.
+
+    We're training from scratch: same architecture + same prior as DoPFN, only
+    the head differs. So we unpickle the empty PerFeatureTransformer instance
+    (dopfn_model.pkl) but skip loading Do-PFN's trained state_dict; then reset
+    all parameters and apply DoPFN's zero-init pattern so training starts from
+    a proper initialization identical to what DoPFN itself would have started
+    from before pre-training.
+    """
     _cwd = os.getcwd()
     if dopfn_root not in sys.path:
         sys.path.insert(0, dopfn_root)
     try:
         os.chdir(dopfn_root)
-        from scripts.transformer_prediction_interface.model_builder import (
-            load_model,
-        )
-        model, config = load_model(path='.', device='cpu', verbose=False)
+        import pickle as pkl
+        # dopfn_model.pkl stores the PerFeatureTransformer INSTANCE (architecture
+        # + Python object). We do NOT call `model.load_state_dict(checkpoint.state_dict)`.
+        with open('artifacts/dopfn_model.pkl', 'rb') as f:
+            model = pkl.load(f)
+        # Also grab the config for reference.
+        from scripts.transformer_prediction_interface.model_builder import Checkpoint
+        ck = Checkpoint.load('artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt')
+        config = ck.config
     finally:
         os.chdir(_cwd)
+
+    # Reset every parameter that has a reset_parameters() method — this
+    # reinitialises all weights to their default init (Kaiming/Xavier/etc.
+    # depending on layer type), guaranteeing we do NOT inherit any weights
+    # that may have been saved in the pickle.
+    for m in model.modules():
+        if hasattr(m, 'reset_parameters') and callable(m.reset_parameters):
+            try:
+                m.reset_parameters()
+            except Exception:
+                pass                              # some modules have vestigial no-op reset_parameters
+
+    # Apply Do-PFN's own zero-init pattern (see model/transformer.py::init_weights):
+    # zeros the linear2/linear4 output projections and the attention out_proj
+    # projections, so residual streams start neutral. This is what Do-PFN
+    # itself does at initialisation.
+    if hasattr(model, 'init_weights'):
+        model.init_weights(zero_init=True)
+
     return model, config
 
 
@@ -71,23 +103,27 @@ def _make_2d_decoder(d_model: int, K: int) -> nn.Module:
 
 # ── Main wrapper ───────────────────────────────────────────────────────────
 class DoPFNBackboneWith2DHead(nn.Module):
-    """Do-PFN PerFeatureTransformer + 2D joint head.
+    """Do-PFN PerFeatureTransformer + 2D joint head, trained FROM SCRATCH.
 
-    Same forward interface as models.InterventionalPFN:
+    Same architecture as Do-PFN (PerFeatureTransformer with the exact same
+    config: 12 layers, ninp=192, per-feature attention, etc.) and same
+    training prior (Do-PFN's SCM prior via PairedDoPFNDataset). Only the
+    output head differs: 2D joint density decoder instead of 1D BarDist.
+    This isolates the head-change as the sole difference between our model
+    and Do-PFN for a controlled comparison.
+
+    Interface matches InterventionalPFN:
         forward(X_context, T_context, Y_context, X_query) -> {'predictions'}
 
-    Context = (X_obs, T_obs, Y_obs) where Y_obs is the factual outcome
-    (Y observed under T_obs). Model predicts the joint (Y_do0, Y_do1) density
-    at each query. Loss (2D NLL) is applied against the paired targets in the
-    training loop.
+    NO checkpoint weights are loaded — training starts from a fresh
+    initialisation matching Do-PFN's default init.
     """
 
-    def __init__(self, dopfn_root: str, K: int, head_only: bool = True):
+    def __init__(self, dopfn_root: str, K: int):
         super().__init__()
         self.K = K
-        self.head_only = head_only
 
-        backbone, config = _load_dopfn_model(dopfn_root)
+        backbone, config = _load_dopfn_architecture(dopfn_root)
         self.backbone = backbone
         self.config = config
 
@@ -100,20 +136,6 @@ class DoPFNBackboneWith2DHead(nn.Module):
                 'DoPFN backbone has no decoder_dict — cannot install a 2D head')
         self.head_2d = _make_2d_decoder(d_model, K)
         backbone.decoder_dict['standard'] = self.head_2d
-
-        # y_encoder is UNCHANGED: DoPFN's Linear(2, 192) already takes
-        # (T, Y_factual) — exactly what we feed as context.
-
-        if self.head_only:
-            self._freeze_all_but_head()
-
-    def _freeze_all_but_head(self):
-        """Freeze everything except the new 2D head."""
-        for name, p in self.backbone.named_parameters():
-            if name.startswith('decoder_dict.standard.'):
-                p.requires_grad = True
-            else:
-                p.requires_grad = False
 
     def forward(self, X_context, T_context, Y_context, X_query):
         """

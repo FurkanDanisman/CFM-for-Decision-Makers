@@ -9,8 +9,7 @@ DoPFNBackboneWith2DHead which loads Do-PFN's TabPFN backbone and swaps in a
 
 Config vars unchanged from the sibling trainer; two new ones:
     DOPFN_ROOT   path to the Do-PFN repo (must contain artifacts/dopfn_model.pkl)
-    HEAD_ONLY    '1' (default) freezes the transformer backbone and trains only
-                   the new 2D head + Y-adapter; '0' unfreezes everything.
+    (from-scratch training — all parameters trainable; no HEAD_ONLY option)
 
 Usage (smoke test):
     DOPFN_ROOT=/path/to/Do-PFN DOPFN_SRC=/path/to/Do-PFN \\
@@ -50,10 +49,10 @@ J             = int(os.environ.get('J', 100))
 OUTPUT_DIM    = total_params(J)
 NUM_FEATURES  = int(os.environ.get('NUM_FEATURES', 10))
 
-# New env vars for the DoPFN backbone
+# New env var for the DoPFN backbone (used only to load its architecture; no
+# pretrained weights are loaded — we train FROM SCRATCH).
 DOPFN_ROOT    = os.environ.get('DOPFN_ROOT',
                                os.environ.get('DOPFN_SRC', '/tmp/dopfn'))
-HEAD_ONLY     = os.environ.get('HEAD_ONLY', '1') == '1'
 
 # Optimizer / training — same defaults as train_cfm_dopfn.py
 LR            = float(os.environ.get('LR', 1e-4))
@@ -121,8 +120,8 @@ def save_checkpoint(path, step, model, optimizer, scheduler, edges):
         'edges': edges.cpu(),
         'config': {
             'J': J, 'num_features': NUM_FEATURES,
-            'head_only': HEAD_ONLY, 'dopfn_root': DOPFN_ROOT,
-            'backbone': 'DoPFN-TabPFN',
+            'dopfn_root': DOPFN_ROOT,
+            'backbone': 'DoPFN-PerFeatureTransformer (from scratch)',
         },
     }, path)
 
@@ -165,9 +164,9 @@ def main():
     signal.signal(signal.SIGTERM, _sigterm_handler)
 
     print("─" * 72)
-    print(f"BACKBONE:      Do-PFN TabPFN (loaded from {DOPFN_ROOT})")
+    print(f"BACKBONE:      Do-PFN PerFeatureTransformer (architecture only, no weights)")
     print(f"HEAD:          new 2D BarDistribution decoder ({OUTPUT_DIM} outputs)")
-    print(f"Training mode: {'HEAD-ONLY (backbone frozen)' if HEAD_ONLY else 'FULL fine-tune'}")
+    print(f"Training mode: FROM SCRATCH — all parameters trainable")
     print(f"J:             {J}   NUM_FEATURES: {NUM_FEATURES}")
     print(f"Device:        {DEVICE}")
     print("─" * 72)
@@ -191,11 +190,10 @@ def main():
             warmup_samples.append({k: v[i] for k, v in b.items()})
     edges = fit_edges_2d(warmup_samples, J).to(DEVICE)
 
-    # NEW: build the DoPFN-backbone model with our 2D head
+    # Build the DoPFN-architecture model with our 2D head, from scratch.
     model = DoPFNBackboneWith2DHead(
         dopfn_root=DOPFN_ROOT,
         K=J,
-        head_only=HEAD_ONLY,
     ).to(DEVICE)
     n_params = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
