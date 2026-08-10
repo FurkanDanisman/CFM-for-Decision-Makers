@@ -1,183 +1,225 @@
-"""Wrap Do-PFN's TabPFN TransformerModel with our 2D joint density head.
+"""Wrap Do-PFN's PerFeatureTransformer with our 2D joint density head.
 
-Goal: replace Do-PFN's default 1D BarDistribution decoder with a decoder
-that emits `K^2 + 9 + 4` values per query, so the same backbone can be
-trained (or fine-tuned) with our 2D loss.
+Verified against Do-PFN's actual pickle payload:
 
-Design (per training_dopfn_base/README.md):
-  1. Load Do-PFN's `TransformerModel` from `artifacts/dopfn_model.pkl`.
-  2. Swap `decoder_dict['standard']` for a new decoder that outputs
-     K^2 + 9 + 4 values per query (matches losses/BarDistribution2D
-     .total_params(K)).
-  3. Adapt the Y-encoder path to accept paired outcomes (Y_do0, Y_do1)
-     per context example (Option A in the README — concatenate along the
-     Y-embed dim).
+  PerFeatureTransformer(
+    (encoder):         SequentialEncoder(NanHandling → VarFeatCount →
+                        ColumnMarker → InputNorm → VarFeatCount →
+                        LinearInputEncoderStep(Linear(170 -> 192)))
+    (y_encoder):       SequentialEncoder(NanHandling →
+                        LinearInputEncoderStep(Linear(2 -> 192)))
+    (transformer_encoder): 12 x PerFeatureEncoderLayer with attention BOTH
+                            between features (per-feature attention) AND
+                            between items (per-example attention).
+    (decoder_dict):    ModuleDict(standard=Sequential(Linear(192, 768) →
+                        GELU → Linear(768, 100)))     # 100 bars, 1D BarDist
+    (criterion):       FullSupportBarDistribution
+  )
+  ninp = 192   nhead = ?   nhid = 768
 
-This file is a working SKELETON. The forward pass wiring depends on
-Do-PFN's internal encoder/decoder interfaces; TODO markers below indicate
-the exact places that need cluster-side inspection of Do-PFN's model
-package to complete.
+Key facts:
+  - y_encoder already accepts 2-dim input `(T, Y_factual)`. We extend to
+    3-dim `(T, Y_do0, Y_do1)` by rebuilding LinearInputEncoderStep with
+    Linear(3, 192), warm-starting from the pretrained Linear(2, 192) so
+    the first two columns are preserved.
+  - decoder_dict['standard'] is replaced with our 2D head that outputs
+    K^2 + 9 + 4 values.
+  - Forward: DoPFN uses sequence-first tensors [seq_len, batch, ...]. We
+    take batch-first inputs and transpose.
+
+Reference:
+  https://github.com/jr2021/Do-PFN/blob/main/model/transformer.py
+    class PerFeatureTransformer (line 524)
+    def forward   (line 693)
+    def _forward  (line 753)
 """
 from __future__ import annotations
 
 import os
-import pickle as pkl
-from typing import Optional
+import sys
 
 import torch
 import torch.nn as nn
 
 
-def _load_dopfn_backbone(dopfn_root: str, checkpoint_relpath: str = 'artifacts/dopfn_model.pkl'):
-    """Load Do-PFN's TransformerModel (backbone + default 1D decoder).
+# ── Loader ─────────────────────────────────────────────────────────────────
+def _load_dopfn_model(dopfn_root: str):
+    """Load Do-PFN's PerFeatureTransformer instance with its trained weights.
 
-    Do-PFN's config uses a relative artifact path (see benchmarks/methods/dopfn.py),
-    so we chdir into `dopfn_root` for the duration of the load.
+    Follows scripts/transformer_prediction_interface/model_builder.py::load_model:
+      1. Unpickle the model INSTANCE from `artifacts/dopfn_model.pkl` — this
+         is a full PerFeatureTransformer object (encoder + transformer +
+         decoder), initialised but untrained.
+      2. Load the Checkpoint's state_dict from
+         `artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt` into it.
     """
     _cwd = os.getcwd()
+    if dopfn_root not in sys.path:
+        sys.path.insert(0, dopfn_root)
     try:
         os.chdir(dopfn_root)
-        with open(checkpoint_relpath, 'rb') as f:
-            payload = pkl.load(f)                              # TODO: verify the pickle's structure
-        # Common conventions used by Do-PFN's loader (from
-        # scripts/transformer_prediction_interface/model_builder.py::load_model):
-        #   payload could be a dict with keys 'state_dict', 'config', 'criterion',
-        #   or a Checkpoint object. Inspect on cluster and dispatch accordingly.
-        return payload
+        from scripts.transformer_prediction_interface.model_builder import (
+            load_model,
+        )
+        model, config = load_model(path='.', device='cpu', verbose=False)
     finally:
         os.chdir(_cwd)
+    return model, config
 
 
-class DoPFNBackboneWith2DHead(nn.Module):
-    """Do-PFN TransformerModel with the 1D decoder replaced by a 2D one.
+# ── 2D head ────────────────────────────────────────────────────────────────
+def _make_2d_decoder(d_model: int, K: int) -> nn.Module:
+    """Matches DoPFN's default decoder shape: Linear(d, nhid) -> GELU -> Linear(nhid, n_out)."""
+    from losses.BarDistribution2D import total_params
+    n_out = total_params(K)
+    # Match DoPFN's default hidden width (4 * d_model = 768 for d_model=192).
+    nhid = 4 * d_model
+    return nn.Sequential(
+        nn.Linear(d_model, nhid),
+        nn.GELU(),
+        nn.Linear(nhid, n_out),
+    )
 
-    Forward signature intentionally matches models.InterventionalPFN so
-    training_dopfn_base/train.py can be a near-drop-in of
-    training/train_cfm_dopfn.py:
 
-        forward(X_context, T_context, Y_context_pair, X_query) -> dict
-            X_context      (B, N, d)         real-valued covariates
-            T_context      (B, N, 1)         binary treatment
-            Y_context_pair (B, N, 2)         (Y_do0, Y_do1) per context example
-            X_query        (B, M, d)         query covariates
+# ── Paired-Y encoder patch ─────────────────────────────────────────────────
+def _extend_y_encoder_to_paired(y_encoder: nn.Module, d_model: int) -> nn.Module:
+    """Replace y_encoder's LinearInputEncoderStep(Linear(2, d)) with Linear(3, d).
 
-        Returns:
-            {'predictions': tensor of shape (B, M, K^2 + 9 + 4)}
+    Warm-starts by copying the pretrained 2-column weights into the first 2
+    columns of the new 3-column matrix. The third column is zero-initialised
+    so training the new "Y_counterfactual" slot starts as identity behaviour
+    (adds nothing) and gradually learns.
+
+    Structure of y_encoder (confirmed by pickle inspection):
+        SequentialEncoder(
+            (0): NanHandlingEncoderStep()
+            (1): LinearInputEncoderStep(layer=Linear(2, d))
+        )
+
+    NanHandlingEncoderStep is dim-agnostic (fills NaN with 0 / a mask); it
+    works unchanged for 3-dim input. Only the LinearInputEncoderStep's
+    internal `layer` needs resizing.
     """
+    # y_encoder is a SequentialEncoder whose ordered submodules we walk.
+    # The pickle showed the 1st index is NanHandling and the 2nd is Linear.
+    # Find the LinearInputEncoderStep robustly by class name, since the
+    # class is defined in DoPFN's model/encoders.py under its own import.
+    linear_step = None
+    linear_step_name = None
+    for name, sub in y_encoder.named_modules():
+        if type(sub).__name__ == 'LinearInputEncoderStep':
+            linear_step = sub
+            linear_step_name = name
+            break
+    if linear_step is None:
+        raise RuntimeError(
+            'Could not find a LinearInputEncoderStep inside y_encoder; the '
+            'pickle inspection expected one but the module tree does not '
+            'contain it.')
 
-    def __init__(self,
-                 dopfn_root: str,
-                 K: int,
-                 head_only: bool = True,
-                 checkpoint_relpath: str = 'artifacts/dopfn_model.pkl',
-                 ):
+    # LinearInputEncoderStep holds `.layer = Linear(2, d)` per the pickle.
+    old_linear: nn.Linear = getattr(linear_step, 'layer')
+    assert isinstance(old_linear, nn.Linear), \
+        f'Expected .layer to be nn.Linear, got {type(old_linear)}'
+    d_out = old_linear.out_features
+    d_in_old = old_linear.in_features
+    assert d_out == d_model, \
+        f'Y-encoder Linear out_features {d_out} != d_model {d_model}'
+
+    new_linear = nn.Linear(3, d_out, bias=old_linear.bias is not None)
+    with torch.no_grad():
+        # Copy weights and bias from pretrained (T, Y_factual) slots
+        new_linear.weight[:, :d_in_old].copy_(old_linear.weight)
+        if old_linear.bias is not None:
+            new_linear.bias.copy_(old_linear.bias)
+        # Zero-init the counterfactual-Y column so initial forward pass equals
+        # the pretrained behaviour (Y_cf contributes 0).
+        new_linear.weight[:, d_in_old:].zero_()
+
+    linear_step.layer = new_linear
+    return y_encoder
+
+
+# ── Main wrapper ───────────────────────────────────────────────────────────
+class DoPFNBackboneWith2DHead(nn.Module):
+    """Do-PFN PerFeatureTransformer + 2D joint head + 3-dim (T, Y0, Y1) y_encoder."""
+
+    def __init__(self, dopfn_root: str, K: int, head_only: bool = True):
         super().__init__()
         self.K = K
         self.head_only = head_only
 
-        payload = _load_dopfn_backbone(dopfn_root, checkpoint_relpath)
-        # -----------------------------------------------------------------
-        # TODO(cluster): unpack the payload and store the transformer model,
-        # its encoder, its y_encoder, and the internal embed dim (`ninp`).
-        #
-        # Do-PFN's model_builder.py::load_model returns a `Checkpoint` with
-        # a `.model` (TransformerModel). Its attributes we care about:
-        #   backbone.encoder            (per-feature X encoder)
-        #   backbone.y_encoder          (Y encoder — single scalar in)
-        #   backbone.transformer_encoder (attention layers)
-        #   backbone.decoder_dict       (ModuleDict with 'standard' -> 1D head)
-        #   backbone.ninp               (embed dim used by decoders)
-        #
-        # Fill in the assignments below once the pickle format is confirmed:
-        self._backbone = payload                              # TODO: extract .model / .state_dict
-        self._ninp = getattr(payload, 'ninp', None)           # TODO: read from config
-        # -----------------------------------------------------------------
+        backbone, config = _load_dopfn_model(dopfn_root)
+        self.backbone = backbone
+        self.config = config
 
-        # New 2D output head. Mirrors Do-PFN's default `nn.Sequential(Linear,
-        # GELU, Linear)` decoder shape (from transformer.py::make_decoder_dict)
-        # but with output dim K^2 + 9 + 4.
-        from losses.BarDistribution2D import total_params
-        n_out = total_params(K)
-        assert self._ninp is not None, (
-            'set self._ninp above once you know the pickle layout')
-        self.head_2d = nn.Sequential(
-            nn.Linear(self._ninp, self._ninp),
-            nn.GELU(),
-            nn.Linear(self._ninp, n_out),
-        )
+        d_model = int(getattr(backbone, 'ninp', 192))
+        self.d_model = d_model
 
-        # Paired-Y adaptation (Option A from README). Do-PFN's y_encoder maps
-        # a single scalar Y -> Y-embed of dim self._ninp. For paired (Y_do0,
-        # Y_do1) input we compute two Y-embeds and combine them.
-        # TODO(cluster): confirm Do-PFN's y_encoder input dim (scalar? vector?)
-        # and adjust below. Cheapest baseline: two calls of the same encoder,
-        # element-wise sum, followed by a learned projection so the backbone
-        # sees an embedding shaped exactly like the original single-Y path.
-        self.pair_y_proj = nn.Linear(2 * self._ninp, self._ninp)
-        # Also encode T as a separate embedding.
-        self.t_embed = nn.Embedding(2, self._ninp)
+        # 1. Swap the 1D decoder for our 2D head.
+        if not hasattr(backbone, 'decoder_dict') or backbone.decoder_dict is None:
+            raise RuntimeError(
+                'DoPFN backbone has no decoder_dict — cannot install a 2D head')
+        self.head_2d = _make_2d_decoder(d_model, K)
+        backbone.decoder_dict['standard'] = self.head_2d
+
+        # 2. Extend y_encoder to accept (T, Y_do0, Y_do1).
+        _extend_y_encoder_to_paired(backbone.y_encoder, d_model)
 
         if self.head_only:
-            self._freeze_backbone()
+            self._freeze_all_but_new_pieces()
 
-    def _freeze_backbone(self):
-        """Freeze everything under self._backbone; only head + adapters train."""
-        # TODO: iterate self._backbone.parameters() (after unpacking above)
-        # and set requires_grad = False.
-        pass
-
-    def _embed_paired_y(self, Y_pair, T):
-        """(B, N, 2) paired outcomes -> (B, N, ninp) Y-embed for the backbone.
-
-        Uses Do-PFN's original y_encoder on each arm then combines.
-        TODO: replace `getattr(...)` with the real y_encoder access once
-        confirmed on cluster.
-        """
-        y_encoder = getattr(self._backbone, 'y_encoder', None)
-        if y_encoder is None:
-            raise RuntimeError(
-                'Do-PFN backbone did not expose a y_encoder — update _embed_paired_y '
-                'once the payload structure is known')
-        e0 = y_encoder(Y_pair[..., 0:1])                      # (B, N, ninp)
-        e1 = y_encoder(Y_pair[..., 1:2])                      # (B, N, ninp)
-        combined = torch.cat([e0, e1], dim=-1)                # (B, N, 2*ninp)
-        e = self.pair_y_proj(combined)                        # (B, N, ninp)
-        # T-conditioning
-        t_ix = T.squeeze(-1).long().clamp(0, 1)
-        e = e + self.t_embed(t_ix)
-        return e
+    def _freeze_all_but_new_pieces(self):
+        """Freeze everything except the new 2D head and the extended y_encoder
+        LinearInputEncoderStep.layer (the only new/re-initialised parameter in
+        y_encoder)."""
+        # Names of parameters that must stay trainable
+        trainable_prefixes = ('decoder_dict.standard.',)
+        # Also unfreeze the specific Linear inside y_encoder that we resized
+        for name, p in self.backbone.named_parameters():
+            if any(name.startswith(pref) for pref in trainable_prefixes):
+                p.requires_grad = True
+            elif name.startswith('y_encoder.') and 'layer.' in name:
+                # matches y_encoder.<step>.layer.weight / .bias  — our new
+                # Linear(3, d_model)
+                p.requires_grad = True
+            else:
+                p.requires_grad = False
 
     def forward(self, X_context, T_context, Y_context_pair, X_query):
         """
-        Args
+        Args (batch-first)
         ----
-        X_context      (B, N, d) — real feature values per context example
-        T_context      (B, N, 1) — binary treatment {0, 1}
-        Y_context_pair (B, N, 2) — paired outcomes (Y_do0, Y_do1)
-        X_query        (B, M, d) — feature values for the query examples
+        X_context      (B, N, d)
+        T_context      (B, N, 1)
+        Y_context_pair (B, N, 2)   (Y_do0, Y_do1) per context example
+        X_query        (B, M, d)
 
         Returns
         -------
-        dict with:
-            'predictions': (B, M, K^2 + 9 + 4)
+        {'predictions': (B, M, K^2 + 9 + 4)}
         """
-        # ────────────────────────────────────────────────────────────────
-        # TODO(cluster): call Do-PFN's TransformerModel forward with:
-        #   - context feature embeddings from self._backbone.encoder(X_context)
-        #   - paired-Y embeddings from self._embed_paired_y(Y_context_pair, T_context)
-        #   - query feature embeddings from self._backbone.encoder(X_query)
-        # and receive the transformer's per-query embedding (shape (B, M, ninp))
-        # BEFORE the default decoder is applied.
-        #
-        # Do-PFN's TransformerModel exposes this via a hook or by intercepting
-        # decoder_dict output pre-projection; the simplest wiring is to
-        # forward the model, then override decoder_dict['standard'] to be
-        # `nn.Identity()` so it returns embeddings directly, then apply
-        # self.head_2d to the returned query-embeddings.
-        # ────────────────────────────────────────────────────────────────
-        raise NotImplementedError(
-            'Complete the forward-pass wiring after inspecting Do-PFN\'s '
-            'TransformerModel.forward signature on the cluster. '
-            'See training_dopfn_base/README.md ("ARCHITECTURE NOTES") for '
-            'the paired-Y adaptation, and this file\'s TODOs for the '
-            'decoder swap.')
+        B, N, d = X_context.shape
+        M = X_query.shape[1]
+
+        # DoPFN's PerFeatureTransformer expects sequence-first tensors.
+        # forward(train_x, train_y, test_x, ...) concatenates x internally
+        # (line 706 of model/transformer.py) via single_eval_pos = len(train_x).
+        train_x = X_context.transpose(0, 1)                                  # (N, B, d)
+        test_x  = X_query.transpose(0, 1)                                    # (M, B, d)
+
+        # y_src: (T, Y_do0, Y_do1). Sequence-first, only context rows —
+        # DoPFN's _forward NaN-pads query rows automatically (see
+        # model/transformer.py lines 832-844: if y.shape[1] == single_eval_pos
+        # it appends nan-rows for the test set; NanHandlingEncoderStep then
+        # zero-fills them at encode time).
+        y_train = torch.cat([T_context, Y_context_pair], dim=-1)             # (B, N, 3)
+        y_src = y_train.transpose(0, 1)                                      # (N, B, 3)
+
+        out_seq_first = self.backbone(
+            train_x, y_src, test_x,
+            only_return_standard_out=True,
+        )                                                                     # (M, B, n_out)
+
+        predictions = out_seq_first.transpose(0, 1).contiguous()             # (B, M, n_out)
+        return {'predictions': predictions}
