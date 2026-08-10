@@ -30,18 +30,19 @@
 # HEAD_ONLY=0 to unfreeze for full fine-tune (~2-3x wall clock).
 
 set -e
-PROJ_DIR="${PROJ_DIR:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}"
-cd "$PROJ_DIR"
+# Match the working submit_ihdp_l2.sbatch layout: DEPLOY_ROOT is the parent of
+# R-PFN/ (contains venv/, external/, R-PFN/, checkpoints/...).
+DEPLOY_ROOT="${DEPLOY_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
+[ ! -d "$REPO/training_dopfn_base" ] && REPO="$DEPLOY_ROOT"
+cd "$DEPLOY_ROOT"
 mkdir -p logs
 
 # ── Environment ─────────────────────────────────────────────────────────
-module load python/3.11
-
-VENV_DIR="${VENV_DIR:-$PROJ_DIR/venv}"
+VENV_DIR="${VENV_DIR:-$DEPLOY_ROOT/venv}"
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
-    # Fallback to hidden-venv convention if the plain one is missing
-    if [ -f "$PROJ_DIR/.venv/bin/activate" ]; then
-        VENV_DIR="$PROJ_DIR/.venv"
+    if [ -f "$DEPLOY_ROOT/.venv/bin/activate" ]; then
+        VENV_DIR="$DEPLOY_ROOT/.venv"
     else
         echo "ERROR: venv not found at $VENV_DIR (override with VENV_DIR=…)"
         exit 1
@@ -51,7 +52,7 @@ source "$VENV_DIR/bin/activate"
 
 # Do-PFN source — must contain artifacts/dopfn_model.pkl AND
 # priors/playground_scm/ (the SCM prior used by the streaming dataset).
-export DOPFN_ROOT="${DOPFN_ROOT:-$PROJ_DIR/Do-PFN}"
+export DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
 export DOPFN_SRC="${DOPFN_SRC:-$DOPFN_ROOT}"
 if [ ! -f "$DOPFN_ROOT/artifacts/dopfn_model.pkl" ]; then
     echo "ERROR: DOPFN_ROOT=$DOPFN_ROOT does not contain artifacts/dopfn_model.pkl"
@@ -106,11 +107,11 @@ export STREAM_SEED="${STREAM_SEED:-42}"
 export STREAM_WARMUP="${STREAM_WARMUP:-4}"
 
 # ── Checkpoints ─────────────────────────────────────────────
-export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$PROJ_DIR/checkpoints_dopfn_backbone}"
+export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$DEPLOY_ROOT/checkpoints_dopfn_backbone}"
 export CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-5000}"
 export RESUME="${RESUME:-1}"
 
 # ── Logging ─────────────────────────────────────────────────
 export LOG_EVERY="${LOG_EVERY:-100}"
 
-time python -u training_dopfn_base/train.py
+time python -u "$REPO/training_dopfn_base/train.py"
