@@ -10,24 +10,21 @@
 #SBATCH --output=logs/train_dopfn_backbone_%j.out
 #SBATCH --error=logs/train_dopfn_backbone_%j.err
 
-# Full-scale training run for the DoPFN-backbone R-PFN.
+# From-scratch training run for R-PFN with Do-PFN's architecture.
 #
-# Differs from submit_train_dopfn.sh (the InterventionalPFN-with-DoPFN-prior
-# trainer) in ONE thing: the model backbone. Instead of UWYK's
-# InterventionalPFN with a hardcoded num_features cap, this loads Do-PFN's
-# TabPFN transformer (per-feature attention, no cap) and replaces its 1D
-# BarDistribution decoder with our 2D joint head.
+# Uses Do-PFN's PerFeatureTransformer architecture (per-feature attention,
+# unlimited feature count) + Do-PFN's SCM prior + our 2D joint head. NO
+# pre-trained weights are loaded — training starts from a fresh init. This
+# isolates the head-change as the sole architectural/training difference
+# vs. Do-PFN, matching the paper's "only change is the head" narrative.
 #
-# Same 20-hour SLURM chunking + RESUME=1 pattern:
+# 20-hour SLURM chunk pattern with RESUME=1:
 #
 #   FIRST=$(sbatch --parsable training_dopfn_base/cluster/submit_train.sh)
 #   for i in 2 3; do
 #       FIRST=$(sbatch --parsable --dependency=afterany:$FIRST \
 #               training_dopfn_base/cluster/submit_train.sh)
 #   done
-#
-# By default this trains HEAD-ONLY (freezes the DoPFN transformer). Set
-# HEAD_ONLY=0 to unfreeze for full fine-tune (~2-3x wall clock).
 
 set -e
 # Match the working submit_ihdp_l2.sbatch layout: DEPLOY_ROOT is the parent of
@@ -69,16 +66,13 @@ date
 nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
 echo "================="
 echo "DOPFN_ROOT=$DOPFN_ROOT"
-echo "HEAD_ONLY=${HEAD_ONLY:-1}"
+echo "Training FROM SCRATCH (no pre-trained weights)"
 
 # ── Head / grid ─────────────────────────────────────────────
 export J=100
 # NUM_FEATURES here is what the STREAMING PRIOR emits; the DoPFN backbone
 # itself accepts any number of features (per-feature attention).
 export NUM_FEATURES="${NUM_FEATURES:-10}"
-
-# ── Training mode ───────────────────────────────────────────
-export HEAD_ONLY="${HEAD_ONLY:-1}"    # 1 = freeze backbone; 0 = full fine-tune
 
 # ── Optimizer ───────────────────────────────────────────────
 export LR="${LR:-1e-4}"
