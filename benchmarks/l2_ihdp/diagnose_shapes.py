@@ -79,11 +79,18 @@ def main() -> int:
 
     with np.load(args.shard) as f:
         p_tau_true = np.asarray(f['p_tau_true'])
-        data = {m: np.asarray(f[f'{m}__p_tau']) for m in METHODS}
+        data = {m: np.asarray(f[f'{m}__p_tau'])
+                for m in METHODS if f'{m}__p_tau' in f.files}
+
+    missing = [m for m in METHODS if m not in data]
+    if missing:
+        print(f'[note] shard lacks methods: {missing} (skipping them)')
 
     n_q = p_tau_true.shape[0]
-    # pick queries: the 3 with lowest ours_fn10 L2 to true, and 3 with highest
-    diffs = np.array([float(((data['ours_fn10'][q] - p_tau_true[q]) ** 2).sum() * TAU_BIN)
+    # pick queries: half with lowest, half with highest L2² to true, using
+    # ours_fn10 if present else the first available method
+    pivot = 'ours_fn10' if 'ours_fn10' in data else next(iter(data))
+    diffs = np.array([float(((data[pivot][q] - p_tau_true[q]) ** 2).sum() * TAU_BIN)
                       for q in range(n_q)])
     order = np.argsort(diffs)
     picks = list(order[:args.n_queries // 2]) + list(order[-(args.n_queries - args.n_queries // 2):])
@@ -98,7 +105,8 @@ def main() -> int:
         print(f'\nquery {q}   true: mean={m_true:+.3f}  std={sig_true:.3f}  '
               f'peak_tau={tau_true_bin:+.3f}')
         for m in METHODS:
-            _report_row(LABELS[m], data[m][q], m_true, sig_true, tau_true_bin)
+            if m in data:
+                _report_row(LABELS[m], data[m][q], m_true, sig_true, tau_true_bin)
 
     # Plot
     import matplotlib
@@ -117,6 +125,8 @@ def main() -> int:
                         alpha=0.20, label='true')
         ax.plot(TAU_CENTERS, p_tau_true[q], color='red', lw=2.0)
         for m in METHODS:
+            if m not in data:
+                continue
             ax.plot(TAU_CENTERS, data[m][q], color=COLORS[m], lw=1.6,
                     alpha=0.95, label=LABELS[m])
         ax.set_xlim(-1.5, 1.5)
