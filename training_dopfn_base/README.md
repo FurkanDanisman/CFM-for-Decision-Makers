@@ -113,25 +113,60 @@ head-only checkpoint's density-L2 numbers.
 
 ## What's implemented in this scaffold
 
-- `dopfn_backbone_head.py` — model wrapper skeleton with TODOs pointing
-  to exactly which internal Do-PFN methods need to be intercepted.
-- `train.py` — a copy of `training/train_cfm_dopfn.py` with the model
-  construction swapped to use the new wrapper; the training loop, edge
-  fitting, checkpointing, and cosine schedule are unchanged.
-- `cluster/submit_train.sbatch` — SLURM script mirroring existing training
-  submissions.
+- `dopfn_backbone_head.py` — **fully implemented** model wrapper:
+  - Loads Do-PFN's TransformerModel via its own `load_model` helper
+    (mirrors `scripts/transformer_prediction_interface/model_builder.py`).
+  - Swaps `decoder_dict['standard']` with a 2D decoder head that emits
+    `K² + 9 + 4` values (matches `losses/BarDistribution2D.total_params(K)`).
+  - Swaps `y_encoder` with a `PairedYEncoder` that consumes `(T, Y_do0,
+    Y_do1)` per context row and warm-starts the Y_factual slot from
+    DoPFN's original pretrained encoder.
+  - Adapter forward that shapes our batch-first
+    `(X_context, T_context, Y_context_pair, X_query)` into DoPFN's
+    sequence-first `(train_x, y_src, test_x)` and returns
+    `{'predictions': (B, M, K² + 9 + 4)}`.
+  - Head-only training freezes everything under `backbone.*` except the
+    new head (`decoder_dict.standard.*`) and the paired-Y encoder
+    (`y_encoder.*`).
+- `train.py` — training loop mirrors `training/train_cfm_dopfn.py`; only
+  the model construction changes (uses `DoPFNBackboneWith2DHead` and
+  packs `Y_context_pair = stack([Y_do0, Y_do1])` before the forward call).
+- `cluster/submit_train.sh` — SLURM script mirroring the existing DoPFN
+  submitter with a new `HEAD_ONLY` toggle (default 1).
 
-## What's NOT implemented (deliberately marked TODO)
+## What still needs cluster-side verification
 
-- The Y-input adaptation (Option A). Requires looking at Do-PFN's
-  `y_encoder` to know its input shape and reproducing its interface with a
-  paired-outcome wrapper.
-- The forward-pass integration for query rows. Do-PFN's TransformerModel
-  distinguishes context vs. query rows internally; we need to make sure
-  our decoder is applied to the query positions only.
-- End-to-end smoke test on a tiny dataset. Should confirm the model
-  produces a well-shaped `K² + 9 + 4` output per query before running any
-  full training.
+The scaffold *should* run end-to-end but has NOT been executed yet. A
+short smoke test is essential before launching a long run:
+
+```bash
+cd /scratch/furkanbd/rpfn_bench_kit
+DOPFN_ROOT=/scratch/furkanbd/rpfn_bench_kit/external/dopfn \
+DOPFN_SRC=/scratch/furkanbd/rpfn_bench_kit/external/dopfn \
+N_STEPS=20 MICROBATCH=2 GRAD_ACCUM=1 \
+NUM_FEATURES=5 N_TRAIN=200 N_TEST=100 STREAM_WORKERS=2 \
+CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_backbone_smoke \
+/scratch/furkanbd/rpfn_bench_kit/venv/bin/python \
+  /scratch/furkanbd/rpfn_bench_kit/R-PFN/training_dopfn_base/train.py
+```
+
+Expected: 20 training steps with a decreasing NLL, ending in a saved
+checkpoint. If it errors, the most likely culprits are:
+
+- **Encoder input shape**: DoPFN's `encoder` may not accept `test_x`
+  passed as a separate argument in newer versions. If so, the fix is a
+  one-liner: concat `train_x` and `test_x` before the call, following the
+  pattern in `TransformerModel.forward()` (lines 253-259 of DoPFN's
+  `model/transformer.py`).
+- **`d_model` mismatch**: the pretrained Y-encoder's output dim might
+  differ from `backbone.ninp`. If so, wrap it in an extra projection.
+- **`y_encoder` being called with `single_eval_pos` kwarg**: `PairedYEncoder`
+  ignores it (query rows are zero-padded anyway). If DoPFN's `_forward`
+  calls it in a way that broadcasts oddly, replace the `y_src` construction
+  in `DoPFNBackboneWith2DHead.forward` to only emit context rows.
+
+After the smoke test passes, launch full training (~6-12h for head-only,
+~50-100h for full fine-tune).
 
 ## Execution plan
 
