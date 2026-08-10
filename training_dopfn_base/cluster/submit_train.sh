@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-rgrosse
+#SBATCH --account=aip-rgrosse
 #SBATCH --job-name=cfm-train-dopfn-backbone
 #SBATCH --time=20:00:00
 #SBATCH --nodes=1
