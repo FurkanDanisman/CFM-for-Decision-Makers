@@ -231,22 +231,12 @@ def main():
             for k in batch:
                 batch[k] = batch[k].to(DEVICE, non_blocking=True)
 
-            # Paired-Y context: concatenate (Y_do0, Y_do1) along the last axis.
-            # Each of Y_do0 / Y_do1 comes in shape (B, N, 1) from PairedDoPFNDataset,
-            # so `cat(dim=-1)` gives (B, N, 2). Use torch.cat NOT torch.stack —
-            # stacking would add a new trailing axis and produce (B, N, 1, 2).
-            y_do0 = batch['Y_do0']
-            y_do1 = batch['Y_do1']
-            if y_do0.dim() == 2:                                   # (B, N) -> (B, N, 1)
-                y_do0 = y_do0.unsqueeze(-1)
-                y_do1 = y_do1.unsqueeze(-1)
-            Y_context_pair = torch.cat([y_do0, y_do1], dim=-1)     # (B, N, 2)
-
+            # Context = (X_obs, T_obs, Y_obs). Y_obs is the factual outcome
+            # only (Y under T_obs); Y_do0/Y_do1 are TARGETS for the joint
+            # loss over query units, NOT inputs to the model.
             with autocast_ctx():
                 logits = model(
-                    batch['X_obs'], batch['T_obs'],
-                    Y_context_pair,
-                    batch['X_intv'],
+                    batch['X_obs'], batch['T_obs'], batch['Y_obs'], batch['X_intv'],
                 )['predictions']
                 loss = neg_log_prob_2d(
                     logits.float(), batch['Y_do0'], batch['Y_do1'], J, edges,
