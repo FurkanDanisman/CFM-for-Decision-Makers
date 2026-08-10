@@ -48,30 +48,50 @@ DENSITIES = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--shards-glob', required=True,
-                    help='glob for per-realization NPZ shards')
+                    help='glob for per-realization NPZ shards (default source)')
+    ap.add_argument('--override-glob', action='append', default=[],
+                    metavar='METHOD=GLOB',
+                    help='for a specific method, pull its per-realization L2s '
+                         'from a different glob. Can be given multiple times. '
+                         'Example: --override-glob ours_fn10=out_maxK1.r*.npz')
     ap.add_argument('--out-fig', required=True, help='output figure path')
     ap.add_argument('--out-csv', default='', help='optional CSV of summary stats')
     args = ap.parse_args()
 
-    shards = sorted(glob.glob(args.shards_glob))
-    if not shards:
+    # Resolve per-method shard globs: default from --shards-glob, overrides
+    # from --override-glob key=value entries.
+    overrides: dict[str, str] = {}
+    for entry in args.override_glob:
+        if '=' not in entry:
+            print(f'[fatal] bad --override-glob {entry!r}, expected METHOD=GLOB'); return 2
+        m, g = entry.split('=', 1)
+        overrides[m.strip()] = g.strip()
+
+    per_method_shards: dict[str, list[str]] = {}
+    for m in METHOD_ORDER:
+        pat = overrides.get(m, args.shards_glob)
+        per_method_shards[m] = sorted(glob.glob(pat))
+
+    default_n = len(sorted(glob.glob(args.shards_glob)))
+    if default_n == 0 and not overrides:
         print(f'[fatal] no shards match {args.shards_glob}'); return 2
-    print(f'[load] {len(shards)} shards')
+    print(f'[load] default {default_n} shards from {args.shards_glob}')
+    for m, g in overrides.items():
+        print(f'[load]   override for {m}: {len(per_method_shards[m])} shards from {g}')
 
     # method -> density_key -> list of arrays (per shard)
     collect: dict[str, dict[str, list[np.ndarray]]] = {
         m: {k: [] for k, _, _ in DENSITIES} for m in METHOD_ORDER}
-    n_realizations = 0
-    for path in shards:
-        with np.load(path, allow_pickle=False) as f:
-            for m in METHOD_ORDER:
+    n_realizations = default_n
+    for m in METHOD_ORDER:
+        for path in per_method_shards[m]:
+            with np.load(path, allow_pickle=False) as f:
                 for dk, _, _ in DENSITIES:
                     key = f'{m}__l2_{dk[2:]}' if dk != 'p_ate' else f'{m}__l2_ate'
                     if key not in f:
                         continue
                     arr = np.atleast_1d(np.asarray(f[key]))
                     collect[m][dk].append(arr)
-        n_realizations += 1
 
     # Flatten per (method, density) into one 1D array
     flat: dict[str, dict[str, np.ndarray]] = {
