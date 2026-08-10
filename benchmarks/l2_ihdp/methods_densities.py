@@ -256,6 +256,7 @@ def dopfn_densities(cd,
                      DoPFNRegressor,
                      y_min: float,
                      y_rng: float,
+                     dopfn_root: str,
                      n_context: int | None = None,
                      ) -> dict[str, np.ndarray]:
     """DoPFN per-arm density via predict_full()['logits'] over criterion.borders.
@@ -269,6 +270,10 @@ def dopfn_densities(cd,
     predict_full returns a dict with 'logits' (n_test, num_bars),
     'criterion' (a FullSupportBarDistribution with .borders), plus
     mean/median/mode/quantiles.
+
+    DoPFNRegressor.__init__ opens 'artifacts/dopfn_config.pkl' by relative
+    path, so we chdir to dopfn_root for the duration of the instantiation
+    (matches the existing benchmark pipeline; see submit.sbatch:54).
     """
     X_train = _np(cd.X_train).astype(np.float32)
     t_train = _np(cd.t_train).astype(np.float32).reshape(-1)
@@ -282,7 +287,12 @@ def dopfn_densities(cd,
 
     # DoPFN convention (mirrors methods/dopfn.py::dopfn_pipeline)
     x_tr = np.concatenate([t_train_ctx[:, None], X_train_ctx], axis=1)
-    reg = DoPFNRegressor()
+    _cwd = os.getcwd()
+    try:
+        os.chdir(dopfn_root)
+        reg = DoPFNRegressor()
+    finally:
+        os.chdir(_cwd)
     reg.fit(torch.tensor(x_tr), torch.tensor(y_train_ctx))
 
     x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
