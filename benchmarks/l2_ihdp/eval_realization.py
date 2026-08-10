@@ -79,18 +79,22 @@ def main() -> int:
 
     _require_paths(args, methods)
 
+    # Path plumbing — mirror the sibling plot_ihdp_n10*.py convention.
+    # Our own package name (`benchmarks`) collides with CausalPFN's `benchmarks`,
+    # so we insert `l2_ihdp/` directly and import our modules unqualified.
+    _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, args.repo)
     sys.path.insert(0, os.path.join(args.repo, 'MALC'))
     sys.path.insert(0, os.path.join(args.repo, 'MALC', 'Optimal_Transport'))
-    sys.path.insert(0, os.path.join(args.repo, 'benchmarks'))
+    sys.path.insert(0, _here)
 
-    from benchmarks.l2_ihdp.l2 import l2_distance
-    from benchmarks.l2_ihdp.true_ihdp import (
+    from l2 import l2_distance
+    from true_ihdp import (
         TAU_CENTERS, Y_CENTERS, load_ihdp_truth,
         true_ate_barycenter, true_cate_per_query, true_marginals_per_query,
     )
     from ot_barycenter import wasserstein_barycenter_1d
-    from benchmarks.l2_ihdp.methods_densities import (
+    from methods_densities import (
         dopfn_densities, ours_densities, uwyk_noanc_densities,
     )
 
@@ -173,7 +177,7 @@ def _run_ours(cd, ckpt_path, truth, args, n_ctx):
     from models.InterventionalPFN import InterventionalPFN
     from losses.BarDistribution2D import fit_malc_inner
     from malc_2d import dmalc_2d
-    from benchmarks.l2_ihdp.methods_densities import ours_densities
+    from methods_densities import ours_densities
 
     print(f'[ours] loading {ckpt_path}', flush=True)
     ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
@@ -203,7 +207,7 @@ def _run_ours(cd, ckpt_path, truth, args, n_ctx):
 
 
 def _run_uwyk_noanc(cd, truth, args, n_ctx):
-    from benchmarks.l2_ihdp.methods_densities import uwyk_noanc_densities
+    from methods_densities import uwyk_noanc_densities
 
     # UWYK's imports collide with local models/utils — isolate as
     # plot_ihdp_n10_uwyk_noanc.py does.
@@ -245,9 +249,15 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
 
 
 def _run_dopfn(cd, truth, args, n_ctx):
+    # dopfn.py installs an sklearn check_array shim on import — pull it in
+    # under a temporary sys.path since we can't `from benchmarks.methods...`
+    # (the `benchmarks` package name is taken by CausalPFN).
+    _bench_methods = os.path.join(args.repo, 'benchmarks', 'methods')
+    if _bench_methods not in sys.path:
+        sys.path.insert(0, _bench_methods)
+    import dopfn as _dopfn_shim  # noqa: F401  — imports install the shim
     from scripts.transformer_prediction_interface.base import DoPFNRegressor
-    from benchmarks.methods.dopfn import _install_check_array_shim  # noqa: F401
-    from benchmarks.l2_ihdp.methods_densities import dopfn_densities
+    from methods_densities import dopfn_densities
 
     t0 = time.time()
     d = dopfn_densities(
