@@ -118,20 +118,24 @@ def main() -> int:
     p_ate_true = true_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
 
     # ── Method densities ────────────────────────────────────────────────
+    # Order matters: UWYK's constructor loads its own `utils` and `models`
+    # modules and pollutes sys.path/modules in ways that break subsequent
+    # imports of Do-PFN (which has its own `utils` package with different
+    # symbols). Run UWYK last so downstream imports never encounter its
+    # cruft.
+    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'dopfn', 'uwyk_noanc']
     method_out: dict[str, dict[str, np.ndarray]] = {}
-
-    if 'ours_fn50' in methods:
-        method_out['ours_fn50'] = _run_ours(
-            cd, args.checkpoint50, truth, args, n_ctx)
-    if 'ours_fn10' in methods:
-        method_out['ours_fn10'] = _run_ours(
-            cd, args.checkpoint10, truth, args, n_ctx)
-    if 'uwyk_noanc' in methods:
-        method_out['uwyk_noanc'] = _run_uwyk_noanc(
-            cd, truth, args, n_ctx)
-    if 'dopfn' in methods:
-        method_out['dopfn'] = _run_dopfn(
-            cd, truth, args, n_ctx)
+    for m in RUN_ORDER:
+        if m not in methods:
+            continue
+        if m == 'ours_fn50':
+            method_out[m] = _run_ours(cd, args.checkpoint50, truth, args, n_ctx)
+        elif m == 'ours_fn10':
+            method_out[m] = _run_ours(cd, args.checkpoint10, truth, args, n_ctx)
+        elif m == 'dopfn':
+            method_out[m] = _run_dopfn(cd, truth, args, n_ctx)
+        elif m == 'uwyk_noanc':
+            method_out[m] = _run_uwyk_noanc(cd, truth, args, n_ctx)
 
     # ── L2 distances ────────────────────────────────────────────────────
     out: dict[str, np.ndarray] = dict(
