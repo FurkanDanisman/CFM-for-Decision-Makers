@@ -1,0 +1,67 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Setup and training-regime differences}{1}{section.1}\protected@file@percent }
+\newlabel{sec:setup}{{1}{1}{Setup and training-regime differences}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Structural causal model and potential outcomes}{1}{subsection.1.1}\protected@file@percent }
+\newlabel{eq:potential-outcomes}{{1}{1}{Structural causal model and potential outcomes}{equation.1}{}}
+\newlabel{ass:regularity}{{1}{1}{Finite second moments and paired-outcome sampling}{assumption.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Training regimes: what each model literally observes}{1}{subsection.1.2}\protected@file@percent }
+\newlabel{subsec:training-regimes}{{1.2}{1}{Training regimes: what each model literally observes}{subsection.1.2}{}}
+\citation{van-der-vaart-1998-asymptotic-statistics}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Result~1: Sharper marginals via sufficiency}{2}{section.2}\protected@file@percent }
+\newlabel{sec:marginal-improvement}{{2}{2}{Result~1: Sharper marginals via sufficiency}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}The observation that R-PFN's data is sufficient}{2}{subsection.2.1}\protected@file@percent }
+\newlabel{lem:sufficiency}{{1}{2}{Sufficiency of paired outputs}{theorem.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Why 2D Marginal are better}{2}{subsection.2.2}\protected@file@percent }
+\newlabel{thm:marg-half}{{2}{2}{Marginal density error halved}{theorem.2}{}}
+\newlabel{eq:marg-half}{{2}{2}{Marginal density error halved}{equation.2}{}}
+\newlabel{rem:asymptotic-variance}{{3}{2}{The $N \cdot \mathrm {MSE}$ normalisation}{theorem.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Result~2: CATE MSE bound and estimator stability}{3}{section.3}\protected@file@percent }
+\newlabel{sec:cate-variance}{{3}{3}{Result~2: CATE MSE bound and estimator stability}{section.3}{}}
+\newlabel{thm:variance-ratio}{{5}{3}{CATE MSE ratio}{theorem.5}{}}
+\newlabel{eq:R-bound}{{3}{3}{CATE MSE ratio}{equation.3}{}}
+\newlabel{cor:stability}{{6}{3}{Estimator stability}{theorem.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Scaling in $N$ and $d$}{3}{section.4}\protected@file@percent }
+\newlabel{sec:scaling}{{4}{3}{Scaling in $N$ and $d$}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Scaling in context size $N$ and $d$}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Population aggregation via the 2-Wasserstein barycenter}{4}{section.5}\protected@file@percent }
+\newlabel{sec:ot-aggregation}{{5}{4}{Population aggregation via the 2-Wasserstein barycenter}{section.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}When the results can fail}{4}{section.6}\protected@file@percent }
+\newlabel{sec:failure-modes}{{6}{4}{When the results can fail}{section.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Empirical predictions and observations}{4}{section.7}\protected@file@percent }
+\newlabel{sec:empirical-tests}{{7}{4}{Empirical predictions and observations}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Table~3: each dataset placed on the theory}{5}{subsection.7.1}\protected@file@percent }
+\newlabel{subsec:table3-obs}{{7.1}{5}{Table~3: each dataset placed on the theory}{subsection.7.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{IHDP (CR-limit).}{5}{section*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{ACIC 2016 (capacity-limited).}{5}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{PSIDbal (CR-approaching).}{5}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{PSID and CPS.}{5}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Stability}{5}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Scaling in context size $N$}{6}{subsection.7.2}\protected@file@percent }
+\newlabel{subsec:scaling-N}{{7.2}{6}{Scaling in context size $N$}{subsection.7.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Ours~(fn=50) vs UWYK-NoAnc:}{6}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Ours~(fn=10) vs Do-PFN:}{6}{section*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Reading the two comparisons.}{6}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Why fn=50 vs UWYK-NoAnc realises the theorem and fn=10 vs Do-PFN does not, at $N \leq 10000$.}{6}{section*.9}\protected@file@percent }
+\newlabel{eq:mse-ratio-x}{{5}{6}{Why fn=50 vs UWYK-NoAnc realises the theorem and fn=10 vs Do-PFN does not, at $N \leq 10000$}{equation.5}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces $\sqrt  {\mathrm  {PEHE}}$ ratio versus context size on the CausalPFN Polynomial DGP ($500$ SCMs per $N$). Dashed black line: Theorem~\ref {thm:variance-ratio}'s Cram\'er--Rao limit $\sqrt  {2}$. \textbf  {Left:} Ours~(fn=50) vs UWYK-NoAnc. \textbf  {Right:} Ours~(fn=10) vs Do-PFN. $d \in {5, 6, 7, 8, 9, 10}$}}{7}{figure.1}\protected@file@percent }
+\newlabel{fig:n-sweep-ratio}{{1}{7}{$\sqrt {\mathrm {PEHE}}$ ratio versus context size on the CausalPFN Polynomial DGP ($500$ SCMs per $N$). Dashed black line: Theorem~\ref {thm:variance-ratio}'s Cram\'er--Rao limit $\sqrt {2}$. \textbf {Left:} Ours~(fn=50) vs UWYK-NoAnc. \textbf {Right:} Ours~(fn=10) vs Do-PFN. $d \in {5, 6, 7, 8, 9, 10}$}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Test~2: marginal density estimation - Change the scaling of Y-axis}{7}{subsection.7.3}\protected@file@percent }
+\newlabel{subsec:test2}{{7.3}{7}{Test~2: marginal density estimation - Change the scaling of Y-axis}{subsection.7.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Scaling in covariate dimension $d$}{7}{subsection.7.4}\protected@file@percent }
+\newlabel{subsec:scaling-d}{{7.4}{7}{Scaling in covariate dimension $d$}{subsection.7.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Test~2: marginal-density NLL gap $\Delta = \mathrm  {NLL}^{\mathrm  {marg}}_{\text  {baseline}} - \mathrm  {NLL}^{\mathrm  {marg}}_{\text  {R-PFN}}$ plotted against true DGP $\rho $. \textbf  {Left:} UWYK-NoAnc vs Ours~(fn=50). \textbf  {Right:} Do-PFN vs Ours~(fn=10). N-context = 200. N-test = 50. d = 5. Degree = 3 polynomial mean surfaces. K = 20 SCMs per rho.}}{8}{figure.2}\protected@file@percent }
+\newlabel{fig:test2}{{2}{8}{Test~2: marginal-density NLL gap $\Delta = \NLL ^{\mathrm {marg}}_{\text {baseline}} - \NLL ^{\mathrm {marg}}_{\text {R-PFN}}$ plotted against true DGP $\rho $. \textbf {Left:} UWYK-NoAnc vs Ours~(fn=50). \textbf {Right:} Do-PFN vs Ours~(fn=10). N-context = 200. N-test = 50. d = 5. Degree = 3 polynomial mean surfaces. K = 20 SCMs per rho}{figure.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{Fixed-$N$ sweeps: the ratio drops with $d$ at any single $N$.}{8}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Hypothesised scaling: $N^*(d) = c \cdot d^p$ with $p \geq 1$.}{8}{section*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Test at $N \approx 1250 \cdot d$ for $d \in \{2, \ldots  , 11\}$.}{8}{section*.12}\protected@file@percent }
+\bibstyle{plainnat}
+\bibcite{van-der-vaart-1998-asymptotic-statistics}{{1}{1998}{{van~der~Vaart}}{{}}}
+\bibcite{gyorfi-2002-nonparametric-regression}{{2}{2002}{{Gy{\"o}rfi et al.}}{{}}}
+\bibcite{aguehcarlier2011barycenters}{{3}{2011}{{Agueh and Carlier}}{{}}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces $\sqrt  {\mathrm  {PEHE}}$ ratio at $N \approx 1250 \cdot d$ for $d = 2, \ldots  , 11$ on the controlled linear SCM. Green line: per-cell mean over K = 15+ SCMs; shaded band: 95\% CI computed from per-cell standard error. Dashed line: Theorem \ref {thm:variance-ratio}'s prediction $\sqrt  {2} \approx 1.414$. The theorem's $\sqrt  {2}$ lies inside the 95\% CI for eight of the ten cells.}}{9}{figure.3}\protected@file@percent }
+\newlabel{fig:d-scaling}{{3}{9}{$\sqrt {\mathrm {PEHE}}$ ratio at $N \approx 1250 \cdot d$ for $d = 2, \ldots , 11$ on the controlled linear SCM. Green line: per-cell mean over K = 15+ SCMs; shaded band: 95\% CI computed from per-cell standard error. Dashed line: Theorem \ref {thm:variance-ratio}'s prediction $\sqrt {2} \approx 1.414$. The theorem's $\sqrt {2}$ lies inside the 95\% CI for eight of the ten cells}{figure.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{Extrapolation and computational infeasibility at high $d$.}{9}{section*.13}\protected@file@percent }
+\gdef \@abspage@last{9}

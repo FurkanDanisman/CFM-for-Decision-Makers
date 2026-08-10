@@ -289,7 +289,8 @@ def main():
 
             # UWYK-Ancestral
             os.chdir(args.dopfn)  # no-op if already there
-            uwyk_pred = uwyk_ancestral_pipeline(uwyk, cd)
+            # Fair marginal-only comparison — no DAG at inference.
+            uwyk_pred = uwyk_no_ancestral_pipeline(uwyk, cd)
             pehe_uwyk = _pehe(true_cate, uwyk_pred)
 
             # Do-PFN
