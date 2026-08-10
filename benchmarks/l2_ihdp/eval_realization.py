@@ -267,6 +267,7 @@ def _run_dopfn(cd, truth, args, n_ctx):
     d = dopfn_densities(
         cd, DoPFNRegressor,
         y_min=truth.y_min, y_rng=truth.y_rng,
+        dopfn_root=args.dopfn,
         n_context=n_ctx,
     )
     print(f'[dopfn] done in {time.time() - t0:.1f}s', flush=True)
