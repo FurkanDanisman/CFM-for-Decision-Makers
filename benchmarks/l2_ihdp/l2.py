@@ -13,6 +13,14 @@ from __future__ import annotations
 import numpy as np
 
 
+# np.trapezoid (numpy>=2.0) vs np.trapz (numpy<2.0) — cluster and local
+# machines can be on either side of this rename. Pick whichever exists.
+if hasattr(np, 'trapezoid'):
+    _trapz = np.trapezoid
+else:
+    _trapz = np.trapz  # type: ignore[attr-defined]
+
+
 def l2_distance(f: np.ndarray, g: np.ndarray, grid: np.ndarray) -> float:
     """Trapezoid L2 distance between two densities on the same 1D grid."""
     f = np.asarray(f, dtype=np.float64).reshape(-1)
@@ -22,7 +30,7 @@ def l2_distance(f: np.ndarray, g: np.ndarray, grid: np.ndarray) -> float:
         raise ValueError(
             f'shape mismatch: f={f.shape}, g={g.shape}, grid={grid.shape}')
     diff2 = (f - g) ** 2
-    return float(np.sqrt(np.trapezoid(diff2, grid)))
+    return float(np.sqrt(_trapz(diff2, grid)))
 
 
 def resample_onto(src_grid: np.ndarray, src_density: np.ndarray,
