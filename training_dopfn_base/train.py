@@ -155,13 +155,14 @@ def subsample_task(batch, n_ctx, n_q):
 # ── main ───────────────────────────────────────────────────────────────────
 
 def main():
-    # SIGTERM handling for SLURM graceful shutdown
+    # SIGTERM handling for SLURM graceful shutdown. Leave SIGINT alone so
+    # Ctrl+C in an interactive session exits immediately instead of waiting
+    # for the next step boundary.
     interrupted = {'flag': False}
     def _sigterm_handler(signum, frame):
         print(f"\n[signal] {signum} — will save checkpoint at next step boundary")
         interrupted['flag'] = True
     signal.signal(signal.SIGTERM, _sigterm_handler)
-    signal.signal(signal.SIGINT, _sigterm_handler)
 
     print("─" * 72)
     print(f"BACKBONE:      Do-PFN TabPFN (loaded from {DOPFN_ROOT})")
