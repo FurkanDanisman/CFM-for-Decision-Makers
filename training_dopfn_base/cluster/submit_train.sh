@@ -37,10 +37,15 @@ mkdir -p logs
 # ── Environment ─────────────────────────────────────────────────────────
 module load python/3.11
 
-VENV_DIR="${VENV_DIR:-$PROJ_DIR/.venv}"
+VENV_DIR="${VENV_DIR:-$PROJ_DIR/venv}"
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
-    echo "ERROR: venv not found at $VENV_DIR (override with VENV_DIR=…)"
-    exit 1
+    # Fallback to hidden-venv convention if the plain one is missing
+    if [ -f "$PROJ_DIR/.venv/bin/activate" ]; then
+        VENV_DIR="$PROJ_DIR/.venv"
+    else
+        echo "ERROR: venv not found at $VENV_DIR (override with VENV_DIR=…)"
+        exit 1
+    fi
 fi
 source "$VENV_DIR/bin/activate"
 
