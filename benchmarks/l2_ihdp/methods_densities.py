@@ -30,8 +30,8 @@ from typing import Any, Callable
 import numpy as np
 import torch
 
-from .l2 import resample_onto
-from .true_ihdp import TAU_BIN, TAU_CENTERS, Y_BIN, Y_CENTERS
+from l2 import resample_onto
+from true_ihdp import TAU_BIN, TAU_CENTERS, Y_BIN, Y_CENTERS
 
 
 # ── Independence-convolution helper (shared by UWYK-NoAnc and DoPFN) ─────

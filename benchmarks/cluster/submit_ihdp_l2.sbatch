@@ -45,7 +45,7 @@ export PYTHONUNBUFFERED=1
 
 mkdir -p "$(dirname "$OUT")"
 
-python -m benchmarks.l2_ihdp.eval_realization \
+python "$REPO/benchmarks/l2_ihdp/eval_realization.py" \
     --realization    "$REALIZATION" \
     --out            "$OUT" \
     --repo           "$REPO" \
