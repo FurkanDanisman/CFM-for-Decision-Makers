@@ -211,18 +211,33 @@ def main() -> int:
         s = p_ate.sum() * float(TAU_CENTERS[1] - TAU_CENTERS[0])
         if s > 0: p_ate = p_ate / s
 
-        # Per-query CATE mean in SCALED units, then convert to raw
+        # ── Point estimates — TWO variants for CATE / PEHE ────────────
+        # (a) MALC-mean: E[τ] under MALC-smoothed p(τ)
+        # (b) raw-mean:  E[Y1] - E[Y0] from raw p_mat marginals (Ours-only)
+        # The eps_ATE numbers reported below are the OT-mean version (which,
+        # by the barycenter-mean identity, equals mean-of-per-query-MALC-means).
         tau_bin = float(TAU_CENTERS[1] - TAU_CENTERS[0])
         cate_hat_scaled = (TAU_CENTERS[None, :] * d['p_tau']).sum(axis=1) * tau_bin
-        cate_hat_raw = cate_hat_scaled * y_rng_over_2                  # (n_queries,)
-        # ATE point estimate: mean of the aggregated ATE density
+        cate_hat_raw = cate_hat_scaled * y_rng_over_2                    # MALC-mean
+        # ATE via OT barycenter's mean (== mean-of-per-query-MALC-means)
         ate_hat_scaled = float((TAU_CENTERS * p_ate).sum() * tau_bin)
         ate_hat_raw = ate_hat_scaled * y_rng_over_2
 
-        # Table-3 metrics
+        # Table-3 metrics — MALC-mean flavour (existing)
         pehe = float(np.sqrt(np.mean((cate_hat_raw - true_cate_raw) ** 2)))
         eps_ate = float(abs(ate_hat_raw - true_ate_raw)
                         / max(abs(true_ate_raw), 1e-9))
+
+        # Raw-mean flavour (Ours-methods only — dopfn/uwyk_noanc don't use MALC
+        # so their raw and MALC means coincide with `cate_hat_raw` above).
+        pehe_raw = None
+        eps_ate_raw = None
+        if 'cate_raw_scaled' in d:
+            cate_raw_raw = d['cate_raw_scaled'] * y_rng_over_2           # raw-mean
+            ate_raw_raw = float(cate_raw_raw.mean())
+            pehe_raw = float(np.sqrt(np.mean((cate_raw_raw - true_cate_raw) ** 2)))
+            eps_ate_raw = float(abs(ate_raw_raw - true_ate_raw)
+                                / max(abs(true_ate_raw), 1e-9))
 
         # Density L2 (existing)
         l2_y0 = np.array([l2_distance(d['p_y0'][q], p_y0_true[q], Y_CENTERS)
@@ -245,12 +260,21 @@ def main() -> int:
         out[f'{name}__ate_hat_raw']  = np.float32(ate_hat_raw)
         out[f'{name}__pehe']         = np.float32(pehe)
         out[f'{name}__eps_ate']      = np.float32(eps_ate)
+        if pehe_raw is not None:
+            out[f'{name}__pehe_raw']    = np.float32(pehe_raw)
+            out[f'{name}__eps_ate_raw'] = np.float32(eps_ate_raw)
         print(f'[l2 ] {name:14s}  y0={l2_y0.mean():.4f}  y1={l2_y1.mean():.4f}  '
               f'tau={l2_tau.mean():.4f}  ate={l2_ate:.4f}', flush=True)
-        print(f'[pnt] {name:14s}  PEHE={pehe:.4f}  '
-              f'eps_ATE={eps_ate:.4f}  '
-              f'(true_ATE={true_ate_raw:+.3f}, '
-              f'pred_ATE={ate_hat_raw:+.3f})', flush=True)
+        if pehe_raw is not None:
+            print(f'[pnt] {name:14s}  PEHE(MALC)={pehe:.4f}  '
+                  f'PEHE(raw)={pehe_raw:.4f}    '
+                  f'eps_ATE(MALC)={eps_ate:.4f}  eps_ATE(raw)={eps_ate_raw:.4f}  '
+                  f'(true_ATE={true_ate_raw:+.3f})', flush=True)
+        else:
+            print(f'[pnt] {name:14s}  PEHE={pehe:.4f}  '
+                  f'eps_ATE={eps_ate:.4f}  '
+                  f'(true_ATE={true_ate_raw:+.3f}, '
+                  f'pred_ATE={ate_hat_raw:+.3f})', flush=True)
 
     # ── Save shard ──────────────────────────────────────────────────────
     shard = f'{args.out}.r{args.realization:03d}.npz'
