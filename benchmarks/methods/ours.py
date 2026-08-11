@@ -106,6 +106,26 @@ def _worker_one_query(args):
     return i, p_raw, p_msk
 
 
+def _raw_p_tau_from_p_mat(p_mat_np):
+    """p(τ) from raw p_mat via marginal convolution (independence assumption).
+    Matches Do-PFN's recipe. Interpolated onto _GLOBAL['tau']."""
+    J = _GLOBAL['J']; bw = _GLOBAL['bw']
+    tau = _GLOBAL['tau']; dtau = _GLOBAL['dtau']
+    edges = _GLOBAL['edges']
+    centres = 0.5 * (edges[:-1] + edges[1:])
+    p_y0 = p_mat_np.sum(axis=1); p_y1 = p_mat_np.sum(axis=0)
+    s0 = p_y0.sum(); s1 = p_y1.sum()
+    if s0 <= 0 or s1 <= 0:
+        return np.zeros_like(tau)
+    p_y0 = p_y0 / s0; p_y1 = p_y1 / s1
+    dens_native = np.correlate(p_y1, p_y0, mode='full') / bw
+    tau_native = np.arange(-(J - 1), J) * bw
+    out = np.interp(tau, tau_native, dens_native, left=0.0, right=0.0)
+    s = out.sum() * dtau
+    if s > 0: out /= s
+    return out
+
+
 # ── main pipeline entry point ────────────────────────────────────────────────
 def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
                    centers, args, wasserstein_barycenter_1d):
@@ -280,12 +300,22 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     bary_norm = ate_bary_raw / max(ate_bary_raw.sum() * d_tau_raw, 1e-12)
     ate_ot_mean_scalar = float((tau_raw * bary_norm).sum() * d_tau_raw)
 
+    # RAW-OT-mean: W2 barycenter of per-query p(τ) derived from raw p_mat
+    # marginals via convolution (no MALC smoothing). Ablates MALC's role in
+    # the population ATE point estimate.
+    p_taus_raw_bin = np.stack([_raw_p_tau_from_p_mat(p_mats[i]) for i in range(M)])
+    ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
+    ate_bary_raw_raw = ate_bary_raw_scaled / scale
+    bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)
+    ate_ot_mean_raw_scalar = float((tau_raw * bary_raw_norm).sum() * d_tau_raw)
+
     return dict(
         ours_mean          = ours_mean,
         ours_malc_mean     = ours_malc_mean,
         ours_malc_mean_msk = ours_malc_mean_msk,
         ours_malc_mode     = ours_malc_mode,
         ours_malc_mode_msk = ours_malc_mode_msk,
-        ours_ot_mode_ate   = ate_ot_mode_scalar,  # population ATE, not per-query
-        ours_ot_mean_ate   = ate_ot_mean_scalar,  # population ATE, not per-query
+        ours_ot_mode_ate   = ate_ot_mode_scalar,       # population ATE, not per-query
+        ours_ot_mean_ate   = ate_ot_mean_scalar,       # population ATE, MALC-smoothed
+        ours_ot_mean_ate_raw = ate_ot_mean_raw_scalar, # population ATE, raw p_mat (no MALC)
     )
