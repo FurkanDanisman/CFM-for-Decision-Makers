@@ -201,6 +201,73 @@ def _run_noanc_backfill(args, out_file):
     _uwyk_only_backfill(args, out_file, variant='noanc')
 
 
+def _run_ours_only(args, out_file):
+    """Run only OURS on the dataset and write all OURS fields to a fresh npz.
+    Skips Do-PFN and UWYK entirely. Cheap way to sweep Ours point-estimate
+    variants (raw/MALC-mean, raw/MALC-OT-mean) without re-running baselines."""
+    t0 = time.time()
+    _orig_torch_load = torch.load
+    def _p_load(*a, **kw):
+        kw.setdefault('weights_only', False); return _orig_torch_load(*a, **kw)
+    torch.load = _p_load
+
+    sys.path.insert(0, args.dopfn)
+    ds_mod = types.ModuleType('datasets')
+    _src = open(os.path.join(args.dopfn, 'datasets/__init__.py')).read().split('def load_semi_real')[0]
+    exec(_src, ds_mod.__dict__)
+    sys.modules['datasets'] = ds_mod
+    sys.path.insert(0, args.causalpfn)
+
+    _log(f"[ours-only] loading {args.dataset} r{args.realization}", t0)
+    cd_raw, ad = load_realization(args.dataset, args.realization)
+    if args.dataset == 'PSIDbal':
+        cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+
+    _log("[ours-only] loading OURS", t0)
+    (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
+     wasserstein_barycenter_1d) = _load_our_model(args)
+
+    true_cate = _to_np(cd_raw.true_cate).reshape(-1)
+    true_ate  = float(getattr(ad, 'true_ate', np.mean(true_cate)))
+
+    _log("[ours-only] OURS inference (all variants)", t0)
+    ours = ours_pipeline(cd_raw, our_model, edges_np, J, bin_width, NUM_FEATURES,
+                          centers, args, wasserstein_barycenter_1d)
+
+    out = dict(dataset=args.dataset, realization=args.realization,
+                true_ate=true_ate,
+                n_queries=int(len(true_cate)), n_context=int(cd_raw.X_train.shape[0]),
+                runtime_s=time.time() - t0)
+
+    def _record(name, cate_pred):
+        out[f'pehe_{name}'] = _pehe(true_cate, cate_pred)
+        out[f'err_{name}']  = _ate_relerr(true_cate, cate_pred)
+        out[f'ate_{name}']  = float(np.mean(cate_pred))
+
+    _record('ours_mean',          ours['ours_mean'])
+    _record('ours_malc_mean',     ours['ours_malc_mean'])
+    _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
+    _record('ours_malc_mode',     ours['ours_malc_mode'])
+    _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
+
+    ot_mode_ate = ours['ours_ot_mode_ate']
+    ot_mean_ate = ours['ours_ot_mean_ate']
+    ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
+    out['ate_ours_ot_mode']     = ot_mode_ate
+    out['err_ours_ot_mode']     = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+    out['ate_ours_ot_mean']     = ot_mean_ate
+    out['err_ours_ot_mean']     = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
+    out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
+    out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
+
+    np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
+    _log(f"[ours-only] saved {out_file}  ({out['runtime_s']:.1f}s)", t0)
+    print(f"SUMMARY(ours-only) pehe_mean={out['pehe_ours_mean']:.3f} "
+          f"pehe_malc_mean={out['pehe_ours_malc_mean']:.3f} "
+          f"err_ot_mean_raw={out['err_ours_ot_mean_raw']:.3f} "
+          f"err_ot_mean={out['err_ours_ot_mean']:.3f}", flush=True)
+
+
 def _run_ours_ot_backfill(args, out_file):
     """Load OURS, rerun the OURS pipeline on the dataset, merge OT-mode + OT-mean
     into an existing npz. Leaves Do-PFN/UWYK/other OURS fields untouched.
@@ -298,6 +365,12 @@ def main():
                           'Skips Do-PFN, UWYK. Full OURS rerun (MALC + workers), so '
                           'compute cost is comparable to a fresh submit.sbatch task. '
                           'If the target npz already carries ate_ours_ot_mean, this is a no-op.')
+    ap.add_argument('--only-ours', action='store_true',
+                     help='Ours-only mode: run OURS pipeline and write ALL Ours fields '
+                          '(pehe_ours_mean, pehe_ours_malc_mean, err_ours_ot_mean, '
+                          'err_ours_ot_mean_raw, ...) to a fresh npz. Skip Do-PFN and '
+                          'UWYK entirely. Use for point-estimate sweeps at various '
+                          'MALC_B / MALC_MAX_K without paying baseline compute again.')
     args = ap.parse_args()
 
     n_avail = DATASET_N_TABLES.get(args.dataset, 100)
@@ -340,6 +413,11 @@ def main():
                 print(f'[SKIP] {out_file} already has ate_ours_ot_mean.', flush=True)
                 return
         _run_ours_ot_backfill(args, out_file); return
+
+    if args.only_ours:
+        if os.path.exists(out_file):
+            print(f'[SKIP] {out_file} exists.', flush=True); return
+        _run_ours_only(args, out_file); return
 
     if os.path.exists(out_file):
         print(f'[SKIP] {out_file} exists.', flush=True); return
