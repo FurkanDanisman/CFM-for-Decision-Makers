@@ -142,8 +142,19 @@ def ours_densities(cd,
     p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
+    # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
+    # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
+    # computed both ways (matches Table 3's `ours_mean` variant).
+    cate_raw_scaled = np.zeros(n_test, dtype=np.float64)
+    _bin_centers_raw = 0.5 * (edges_np[:-1] + edges_np[1:])                # (J,)
 
     for q in range(n_test):
+        # Raw p_mat marginals (no MALC): p_mat[j0, j1] convention has j0=y0, j1=y1
+        _pnorm = p_mats[q] / max(p_mats[q].sum(), 1e-12)
+        _E_y0 = float((_bin_centers_raw * _pnorm.sum(axis=1)).sum())
+        _E_y1 = float((_bin_centers_raw * _pnorm.sum(axis=0)).sum())
+        cate_raw_scaled[q] = _E_y1 - _E_y0
+
         seed = int(hashlib.md5(f'q{q}'.encode()).hexdigest()[:8], 16) % (10 ** 8)
         # MALC's log-concave fitter can raise RuntimeError on certain p_mat
         # shapes (e.g., mass too concentrated to fit a log-concave). Try
@@ -209,7 +220,8 @@ def ours_densities(cd,
             p_tau_native = p_tau_native / s
         p_tau[q] = p_tau_native
 
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau,
+                cate_raw_scaled=cate_raw_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────

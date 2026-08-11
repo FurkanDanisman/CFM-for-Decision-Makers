@@ -31,14 +31,21 @@ def _agg(vals):
 
 
 def _load_pehe_eps(shards, key):
-    p, e = [], []
+    """Load PEHE + eps_ATE per shard, returning both MALC-mean (existing) and
+    raw-mean (new) variants when available. Raw variant only exists for Ours
+    methods; dopfn/uwyk_noanc shards will have empty raw lists."""
+    p_malc, e_malc = [], []
+    p_raw,  e_raw  = [], []
     for path in shards:
         with np.load(path) as f:
             if f'{key}__pehe' not in f.files:
                 continue
-            p.append(float(f[f'{key}__pehe']))
-            e.append(float(f[f'{key}__eps_ate']))
-    return p, e
+            p_malc.append(float(f[f'{key}__pehe']))
+            e_malc.append(float(f[f'{key}__eps_ate']))
+            if f'{key}__pehe_raw' in f.files:
+                p_raw.append(float(f[f'{key}__pehe_raw']))
+                e_raw.append(float(f[f'{key}__eps_ate_raw']))
+    return p_malc, e_malc, p_raw, e_raw
 
 
 def _load_l2(shards, key):
@@ -71,18 +78,37 @@ def main() -> int:
         print(f'[fatal] no Do-PFN shards match {args.dopfn_shards_glob}'); return 2
 
     # ── Block 1: Table 3 row for Ours ────────────────────────────────────
-    p, e = _load_pehe_eps(ours_shards, args.ours_key)
-    if not p:
+    p_malc, e_malc, p_raw, e_raw = _load_pehe_eps(ours_shards, args.ours_key)
+    if not p_malc:
         print(f'[fatal] no {args.ours_key}__pehe found in Ours shards'); return 2
-    pm, ps, n = _agg(p)
-    em, es, _ = _agg(e)
+    pm_m, ps_m, n = _agg(p_malc)
+    em_m, es_m, _ = _agg(e_malc)
+
+    # Also load Do-PFN's PEHE/eps_ATE (only has "MALC" flavour since it doesn't
+    # use MALC — the point estimate is a single method).
+    p_dopfn_malc, e_dopfn_malc, _, _ = _load_pehe_eps(dopfn_shards, 'dopfn')
+    dopfn_pm = dopfn_ps = dopfn_em = dopfn_es = None
+    dopfn_n = 0
+    if p_dopfn_malc:
+        dopfn_pm, dopfn_ps, dopfn_n = _agg(p_dopfn_malc)
+        dopfn_em, dopfn_es, _       = _agg(e_dopfn_malc)
 
     print()
     print('── Table 3 addition — IHDP ────────────────────────────────────────')
-    print(f'{"Method":22s} {"sqrt(PEHE)":>18s}   {"eps_ATE":>16s}')
-    print('-' * 62)
-    print(f'{args.ours_label:22s} {pm:>8.2f} ± {ps:<6.2f}    '
-          f'{em:>6.2f} ± {es:<6.2f}    (n={n})')
+    print(f'{"Method":30s} {"sqrt(PEHE)":>18s}   {"eps_ATE":>16s}')
+    print('-' * 70)
+    if dopfn_pm is not None:
+        print(f'{"Do-PFN":30s} {dopfn_pm:>8.2f} ± {dopfn_ps:<6.2f}    '
+              f'{dopfn_em:>6.2f} ± {dopfn_es:<6.2f}    (n={dopfn_n})')
+    print(f'{args.ours_label + " (MALC-mean)":30s} '
+          f'{pm_m:>8.2f} ± {ps_m:<6.2f}    '
+          f'{em_m:>6.2f} ± {es_m:<6.2f}    (n={n})')
+    if p_raw:
+        pm_r, ps_r, _ = _agg(p_raw)
+        em_r, es_r, _ = _agg(e_raw)
+        print(f'{args.ours_label + " (raw-mean)":30s} '
+              f'{pm_r:>8.2f} ± {ps_r:<6.2f}    '
+              f'{em_r:>6.2f} ± {es_r:<6.2f}    (n={len(p_raw)})')
 
     # ── Block 2: Density L2 — Do-PFN vs Ours ─────────────────────────────
     print()
