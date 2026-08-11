@@ -63,7 +63,13 @@ def naive_p_tau_from_marginals(p_y0: np.ndarray, p_y1: np.ndarray) -> np.ndarray
 
 
 def _rescale_and_pad(X: np.ndarray, num_features: int) -> np.ndarray:
-    """Pad X with NaN columns up to num_features (matches sibling scripts)."""
+    """Pad X with NaN columns up to num_features (matches sibling scripts).
+
+    If num_features is -1 (or 0) the backbone accepts any feature count
+    (e.g., DoPFN's PerFeatureTransformer): return X unchanged.
+    """
+    if num_features is None or num_features <= 0:
+        return X.astype(np.float32)
     d = X.shape[1]
     if d < num_features:
         pad = np.full((X.shape[0], num_features - d), np.nan, dtype=np.float32)
@@ -139,10 +145,32 @@ def ours_densities(cd,
 
     for q in range(n_test):
         seed = int(hashlib.md5(f'q{q}'.encode()).hexdigest()[:8], 16) % (10 ** 8)
-        fit = fit_malc_inner(p_mats[q].T, edges_np, edges_np,
-                             B_fit=malc_B, B_select=malc_B,
-                             max_K=malc_max_K, seed=seed, parallel=False)
-        density_2d = dmalc_2d(fit, eval_pts).reshape(n_eval, n_eval)     # rows=y1, cols=y0
+        # MALC's log-concave fitter can raise RuntimeError on certain p_mat
+        # shapes (e.g., mass too concentrated to fit a log-concave). Try
+        # requested max_K, then a small ladder of retries, then fall back to
+        # the raw piecewise-constant p_mat so evaluation of a single query
+        # never kills the whole realization.
+        density_2d = None
+        _tried = []
+        for _K in {malc_max_K, max(malc_max_K + 1, 2), 3, 1}:
+            try:
+                fit = fit_malc_inner(p_mats[q].T, edges_np, edges_np,
+                                     B_fit=malc_B, B_select=malc_B,
+                                     max_K=_K, seed=seed, parallel=False)
+                density_2d = dmalc_2d(fit, eval_pts).reshape(n_eval, n_eval)
+                break
+            except Exception as e:
+                _tried.append(f'K={_K}:{type(e).__name__}')
+        if density_2d is None:
+            # Fallback: piecewise-constant density from the raw p_mat.
+            # Nearest-neighbour lookup onto the fine (xs, ys) grid.
+            print(f'[warn] q={q} MALC failed for all K ({" ".join(_tried)}); '
+                  f'using raw p_mat fallback', flush=True)
+            p_norm = p_mats[q] / max(p_mats[q].sum(), 1e-12)
+            j0 = np.clip(np.searchsorted(edges_np, xs) - 1, 0, J - 1)
+            j1 = np.clip(np.searchsorted(edges_np, ys) - 1, 0, J - 1)
+            # density value = probability_mass / bin_area
+            density_2d = (p_norm[np.ix_(j0, j1)] / (bin_width * bin_width)).T
 
         # Marginals over the fine grid
         m_y0_fine = density_2d.sum(axis=0) * dys                          # (n_eval,)
