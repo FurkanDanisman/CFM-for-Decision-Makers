@@ -439,6 +439,10 @@ def main():
     out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
     out['ate_ours_ot_mean'] = ot_mean_ate
     out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
+    # Raw-OT-mean: barycenter of per-query p(τ) from raw p_mat marginals (no MALC).
+    ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
+    out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
+    out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
 
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
     _log(f"saved {out_file}  ({out['runtime_s']:.1f}s)", t0)

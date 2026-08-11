@@ -32,6 +32,8 @@ EMIT_UWYK_BASELINE="${EMIT_UWYK_BASELINE:-1}"
 
 N_REAL="${N_REAL:-100}"                    # paper: 100 realizations
 WORKERS="${SLURM_CPUS_PER_TASK:-16}"
+MALC_B="${MALC_B:-100}"                    # MALC bootstrap draws; increase (e.g. 500) for stable density means
+MALC_MAX_K="${MALC_MAX_K:-3}"
 
 DATASETS=(IHDP ACIC CPS PSID PSIDbal)
 
@@ -70,6 +72,8 @@ python "$REPO/benchmarks/run_one.py" \
     --checkpoint    "$CHECKPOINT" \
     --uwyk-ckpt-dir "$UWYK_CKPT" \
     "${BASELINE_ARGS[@]}" \
+    --malc-B        "$MALC_B" \
+    --malc-max-K    "$MALC_MAX_K" \
     --workers       "$WORKERS"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$TASK"
