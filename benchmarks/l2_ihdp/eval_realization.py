@@ -76,13 +76,16 @@ def main() -> int:
     ap.add_argument('--uwyk-ckpt-dir', default=os.environ.get('UWYK_CKPT_DIR', ''))
     ap.add_argument('--checkpoint50', default=os.environ.get('CHECKPOINT50', ''))
     ap.add_argument('--checkpoint10', default=os.environ.get('CHECKPOINT10', ''))
+    ap.add_argument('--checkpoint-dopfn-bb',
+                     default=os.environ.get('CHECKPOINT_DOPFN_BB', ''),
+                     help='Ours model built on DoPFN backbone (PerFeatureTransformer)')
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn'}
+    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn', 'ours_dopfn_bb'}
                 for m in methods), f'bad methods: {methods}'
     if args.restrict_features > 0:
-        allowed = {'dopfn', 'ours_fn10'}
+        allowed = {'dopfn', 'ours_fn10', 'ours_dopfn_bb'}
         dropped = [m for m in methods if m not in allowed]
         methods = [m for m in methods if m in allowed]
         if dropped:
@@ -170,7 +173,7 @@ def main() -> int:
     # imports of Do-PFN (which has its own `utils` package with different
     # symbols). Run UWYK last so downstream imports never encounter its
     # cruft.
-    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'dopfn', 'uwyk_noanc']
+    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc']
     method_out: dict[str, dict[str, np.ndarray]] = {}
     for m in RUN_ORDER:
         if m not in methods:
@@ -179,23 +182,49 @@ def main() -> int:
             method_out[m] = _run_ours(cd, args.checkpoint50, truth, args, n_ctx)
         elif m == 'ours_fn10':
             method_out[m] = _run_ours(cd, args.checkpoint10, truth, args, n_ctx)
+        elif m == 'ours_dopfn_bb':
+            method_out[m] = _run_ours_dopfn_bb(
+                cd, args.checkpoint_dopfn_bb, truth, args, n_ctx)
         elif m == 'dopfn':
             method_out[m] = _run_dopfn(cd, truth, args, n_ctx)
         elif m == 'uwyk_noanc':
             method_out[m] = _run_uwyk_noanc(cd, truth, args, n_ctx)
 
-    # ── L2 distances ────────────────────────────────────────────────────
+    # True per-query CATE and true ATE in RAW Y units (Table-3 convention).
+    # Densities live in scaled Y ([-1, 1]); convert back via factor y_rng/2.
+    true_cate_raw = _np(cd.true_cate).reshape(-1)                      # (n_test,)
+    y_rng_over_2 = truth.y_rng / 2.0
+    true_ate_raw = float(true_cate_raw.mean())
+
+    # ── L2 distances + point-estimate metrics (PEHE, eps_ATE) ──────────
     out: dict[str, np.ndarray] = dict(
         r=np.int32(args.realization),
         n_queries=np.int32(n_queries),
         p_y0_true=p_y0_true, p_y1_true=p_y1_true,
         p_tau_true=p_tau_true, p_ate_true=p_ate_true,
+        true_cate_raw=true_cate_raw.astype(np.float32),
+        true_ate_raw=np.float32(true_ate_raw),
+        y_rng=np.float32(truth.y_rng),
     )
     for name, d in method_out.items():
         p_ate = wasserstein_barycenter_1d(d['p_tau'], TAU_CENTERS)
         s = p_ate.sum() * float(TAU_CENTERS[1] - TAU_CENTERS[0])
         if s > 0: p_ate = p_ate / s
 
+        # Per-query CATE mean in SCALED units, then convert to raw
+        tau_bin = float(TAU_CENTERS[1] - TAU_CENTERS[0])
+        cate_hat_scaled = (TAU_CENTERS[None, :] * d['p_tau']).sum(axis=1) * tau_bin
+        cate_hat_raw = cate_hat_scaled * y_rng_over_2                  # (n_queries,)
+        # ATE point estimate: mean of the aggregated ATE density
+        ate_hat_scaled = float((TAU_CENTERS * p_ate).sum() * tau_bin)
+        ate_hat_raw = ate_hat_scaled * y_rng_over_2
+
+        # Table-3 metrics
+        pehe = float(np.sqrt(np.mean((cate_hat_raw - true_cate_raw) ** 2)))
+        eps_ate = float(abs(ate_hat_raw - true_ate_raw)
+                        / max(abs(true_ate_raw), 1e-9))
+
+        # Density L2 (existing)
         l2_y0 = np.array([l2_distance(d['p_y0'][q], p_y0_true[q], Y_CENTERS)
                           for q in range(n_queries)])
         l2_y1 = np.array([l2_distance(d['p_y1'][q], p_y1_true[q], Y_CENTERS)
@@ -212,8 +241,16 @@ def main() -> int:
         out[f'{name}__l2_y1']  = l2_y1.astype(np.float32)
         out[f'{name}__l2_tau'] = l2_tau.astype(np.float32)
         out[f'{name}__l2_ate'] = np.float32(l2_ate)
-        print(f'[l2 ] {name:12s}  y0={l2_y0.mean():.4f}  y1={l2_y1.mean():.4f}  '
+        out[f'{name}__cate_hat_raw'] = cate_hat_raw.astype(np.float32)
+        out[f'{name}__ate_hat_raw']  = np.float32(ate_hat_raw)
+        out[f'{name}__pehe']         = np.float32(pehe)
+        out[f'{name}__eps_ate']      = np.float32(eps_ate)
+        print(f'[l2 ] {name:14s}  y0={l2_y0.mean():.4f}  y1={l2_y1.mean():.4f}  '
               f'tau={l2_tau.mean():.4f}  ate={l2_ate:.4f}', flush=True)
+        print(f'[pnt] {name:14s}  PEHE={pehe:.4f}  '
+              f'eps_ATE={eps_ate:.4f}  '
+              f'(true_ATE={true_ate_raw:+.3f}, '
+              f'pred_ATE={ate_hat_raw:+.3f})', flush=True)
 
     # ── Save shard ──────────────────────────────────────────────────────
     shard = f'{args.out}.r{args.realization:03d}.npz'
@@ -254,6 +291,52 @@ def _run_ours(cd, ckpt_path, truth, args, n_ctx):
         fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
     )
     print(f'[ours] done in {time.time() - t0:.1f}s', flush=True)
+    return d
+
+
+def _run_ours_dopfn_bb(cd, ckpt_path, truth, args, n_ctx):
+    """Load the DoPFN-backbone R-PFN checkpoint and run the same MALC+diag pipeline.
+
+    Uses the DoPFNBackboneWith2DHead wrapper (PerFeatureTransformer + 2D head)
+    trained from scratch. Forward interface is identical to InterventionalPFN
+    (X_context, T_context, Y_context, X_query -> predictions), so the MALC and
+    diagonal-integration downstream in ours_densities() works unchanged.
+
+    Because the DoPFN backbone uses per-feature attention (no num_features
+    cap), we pass -1 for num_features so ours_densities skips the pad/truncate
+    logic and feeds the raw IHDP X unchanged.
+    """
+    sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
+    from dopfn_backbone_head import DoPFNBackboneWith2DHead
+    from losses.BarDistribution2D import fit_malc_inner
+    from malc_2d import dmalc_2d
+    from methods_densities import ours_densities
+
+    print(f'[ours-dopfn-bb] loading {ckpt_path}', flush=True)
+    ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+    cfg = ckpt['config']; J = cfg['J']
+    edges_np = ckpt['edges'].cpu().numpy()
+    bin_width = float(edges_np[1] - edges_np[0])
+
+    # Build the wrapper. dopfn_root must point at the DoPFN repo — the
+    # wrapper only uses it to load the *architecture* (pickle + config); the
+    # actual trained weights come from `ckpt['model_state_dict']`.
+    model = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).eval()
+    model.load_state_dict(ckpt['model_state_dict'])
+
+    # No num_features cap for this backbone — pass -1 so ours_densities
+    # doesn't try to pad/truncate.
+    num_features_dummy = -1
+
+    t0 = time.time()
+    d = ours_densities(
+        cd, model, edges_np, J, bin_width, num_features_dummy,
+        y_min=truth.y_min, y_rng=truth.y_rng,
+        malc_B=args.malc_B, malc_max_K=args.malc_max_K, n_eval=args.n_eval,
+        n_context=n_ctx,
+        fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
+    )
+    print(f'[ours-dopfn-bb] done in {time.time() - t0:.1f}s', flush=True)
     return d
 
 
