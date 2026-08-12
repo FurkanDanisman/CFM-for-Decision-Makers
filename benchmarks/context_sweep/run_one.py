@@ -37,22 +37,34 @@ def _ate_relerr(true_cate, pred_cate):
 
 
 def _load_ours(args):
+    """Load OURS model. Supports both InterventionalPFN and DoPFN-backbone
+    checkpoints via --backbone flag (default: ipfn). See benchmarks/run_one.py
+    for the same loader shape.
+    """
     sys.path.insert(0, args.repo); sys.path.insert(0, os.path.join(args.repo, 'MALC'))
-    from models.InterventionalPFN import InterventionalPFN
     ckpt = torch.load(args.checkpoint, map_location=DEVICE, weights_only=False)
     cfg = ckpt['config']; J = cfg['J']
     edges_np = ckpt['edges'].cpu().numpy()
     bin_width = float(edges_np[1] - edges_np[0])
     centers = 0.5 * (edges_np[:-1] + edges_np[1:])
-    NUM_FEATURES = cfg['num_features']
-    m = InterventionalPFN(
-        num_features=NUM_FEATURES, d_model=cfg['d_model'], depth=cfg['depth'],
-        heads_feat=cfg['heads'], heads_samp=cfg['heads'], dropout=0.0,
-        output_dim=J*J + 9 + 4, hidden_mult=cfg['hidden_mult'],
-        normalize_features=True, normalize_treatment=False,
-        use_treatment_in_query=False, use_checkpoint=False,
-    ).to(DEVICE).eval()
-    m.load_state_dict(ckpt['model_state_dict'])
+
+    if getattr(args, 'backbone', 'ipfn') == 'dopfn_bb':
+        sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
+        from dopfn_backbone_head import DoPFNBackboneWith2DHead
+        m = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).to(DEVICE).eval()
+        m.load_state_dict(ckpt['model_state_dict'])
+        NUM_FEATURES = -1
+    else:
+        from models.InterventionalPFN import InterventionalPFN
+        NUM_FEATURES = cfg['num_features']
+        m = InterventionalPFN(
+            num_features=NUM_FEATURES, d_model=cfg['d_model'], depth=cfg['depth'],
+            heads_feat=cfg['heads'], heads_samp=cfg['heads'], dropout=0.0,
+            output_dim=J*J + 9 + 4, hidden_mult=cfg['hidden_mult'],
+            normalize_features=True, normalize_treatment=False,
+            use_treatment_in_query=False, use_checkpoint=False,
+        ).to(DEVICE).eval()
+        m.load_state_dict(ckpt['model_state_dict'])
 
     ot_dir = os.path.join(args.repo, 'MALC', 'Optimal_Transport')
     if ot_dir not in sys.path: sys.path.insert(0, ot_dir)
@@ -97,6 +109,9 @@ def main():
     ap.add_argument('--malc-max-K',   type=int, default=3)
     ap.add_argument('--n-eval',       type=int, default=200)
     ap.add_argument('--workers',      type=int, default=1)
+    ap.add_argument('--backbone',     choices=['ipfn', 'dopfn_bb'], default='ipfn',
+                     help='ipfn = InterventionalPFN checkpoint (default); '
+                          'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint.')
     ap.add_argument('--ours-only',    action='store_true',
                     help='Skip UWYK-NoAnc + UWYK-Ancestral + Do-PFN. Use when '
                          'baselines are already populated in a sibling corpus '

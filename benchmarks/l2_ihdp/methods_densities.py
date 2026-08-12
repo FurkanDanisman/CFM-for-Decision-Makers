@@ -301,6 +301,86 @@ def uwyk_noanc_densities(cd,
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# UWYK Full-Ancestral — same sampling path as NoAnc, full-graph adjacency
+# ─────────────────────────────────────────────────────────────────────────
+def uwyk_anc_densities(cd,
+                        uwyk_model,
+                        num_features: int,
+                        y_min: float,
+                        y_rng: float,
+                        n_context: int | None = None,
+                        n_samples: int = 1024,
+                        ) -> dict[str, np.ndarray]:
+    """UWYK Full-Ancestral: same sample-histogram recipe as uwyk_noanc_densities
+    but with the full-graph adjacency (T→Y, X→T, X→Y all wired). Marginals via
+    histogram of samples; joint p(τ) via independence convolution."""
+    X_train_full = _np(cd.X_train)
+    t_train_full = _np(cd.t_train)
+    y_train_full = _np(cd.y_train)
+    X_test = _np(cd.X_test).astype(np.float32)
+
+    N = X_train_full.shape[0] if n_context is None else min(n_context, X_train_full.shape[0])
+    X_context = X_train_full[:N].astype(np.float32)
+    t_train_orig = t_train_full[:N].astype(np.float32).reshape(-1, 1)
+    y_train_ctx = y_train_full[:N].astype(np.float32).reshape(-1, 1)
+
+    X_train_p = _rescale_and_pad(X_context, num_features)
+    X_test_p = _rescale_and_pad(X_test, num_features)
+
+    mean_y_t0 = float(y_train_ctx[t_train_orig == 0].mean())
+    mean_y_t1 = float(y_train_ctx[t_train_orig == 1].mean())
+    t_train_enc = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
+    uwyk_model.fit(X_train_p, t_train_enc, y_train_ctx)
+
+    # Full-Ancestral: T→Y=1, X→T=1, X→Y=1 for real features; padded=-1.
+    n_real = X_context.shape[1]
+    T_idx, Y_idx = 0, 1; off = 2
+    adj = np.zeros((num_features + 2, num_features + 2), dtype=np.float32)
+    adj[T_idx, Y_idx] = 1.0
+    for i in range(n_real):
+        adj[off + i, T_idx] = 1.0
+        adj[off + i, Y_idx] = 1.0
+    for i in range(n_real, num_features):
+        fi = off + i
+        adj[fi, :] = -1.0; adj[:, fi] = -1.0; adj[fi, fi] = -1.0
+
+    n_test = X_test_p.shape[0]
+    T_intv_0 = np.full((n_test, 1), mean_y_t0, dtype=np.float32)
+    T_intv_1 = np.full((n_test, 1), mean_y_t1, dtype=np.float32)
+
+    def _sample(T_intv):
+        chunks = []; got = 0
+        while got < n_samples:
+            r = uwyk_model.predict(
+                X_obs=X_train_p, T_obs=t_train_enc, Y_obs=y_train_ctx,
+                X_intv=X_test_p, T_intv=T_intv,
+                adjacency_matrix=adj,
+                prediction_type='sample', inverse_transform=True,
+            )
+            arr = np.asarray(r).reshape(n_test, -1)
+            chunks.append(arr); got += arr.shape[1]
+        return np.concatenate(chunks, axis=1)[:, :n_samples]
+
+    Y0_raw = _sample(T_intv_0)
+    Y1_raw = _sample(T_intv_1)
+
+    Y0_scaled = (Y0_raw - y_min) / y_rng * 2.0 - 1.0
+    Y1_scaled = (Y1_raw - y_min) / y_rng * 2.0 - 1.0
+
+    y_edges = np.concatenate([Y_CENTERS - 0.5 * Y_BIN, [Y_CENTERS[-1] + 0.5 * Y_BIN]])
+    p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
+    for q in range(n_test):
+        h0, _ = np.histogram(Y0_scaled[q], bins=y_edges, density=True)
+        h1, _ = np.histogram(Y1_scaled[q], bins=y_edges, density=True)
+        p_y0[q] = h0
+        p_y1[q] = h1
+        p_tau[q] = naive_p_tau_from_marginals(h0, h1)
+    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # Do-PFN — predict_full logits/borders + independence convolution
 # ─────────────────────────────────────────────────────────────────────────
 def dopfn_densities(cd,

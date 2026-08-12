@@ -27,6 +27,8 @@ def _to_np(a):
 
 
 def _pad(arr, L):
+    if L is None or L <= 0:                     # per-feature attention backbone: no cap
+        return arr
     if arr.shape[1] >= L: return arr[:, :L]
     z = np.zeros((arr.shape[0], L - arr.shape[1]), dtype=np.float32)
     return np.concatenate([arr, z], axis=1)
