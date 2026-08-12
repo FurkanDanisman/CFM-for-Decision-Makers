@@ -22,16 +22,23 @@ def _agg(vals):
 
 
 def _load_pehe_eps(shards, key):
-    p_malc, e_malc, p_raw, e_raw = [], [], [], []
+    p_m, e_m, p_r, e_r = [], [], [], []
+    p_mix, e_mix, p_k1, e_k1 = [], [], [], []
     for path in shards:
         with np.load(path) as f:
             if f'{key}__pehe' not in f.files: continue
-            p_malc.append(float(f[f'{key}__pehe']))
-            e_malc.append(float(f[f'{key}__eps_ate']))
+            p_m.append(float(f[f'{key}__pehe']))
+            e_m.append(float(f[f'{key}__eps_ate']))
             if f'{key}__pehe_raw' in f.files:
-                p_raw.append(float(f[f'{key}__pehe_raw']))
-                e_raw.append(float(f[f'{key}__eps_ate_raw']))
-    return p_malc, e_malc, p_raw, e_raw
+                p_r.append(float(f[f'{key}__pehe_raw']))
+                e_r.append(float(f[f'{key}__eps_ate_raw']))
+            if f'{key}__pehe_em_mix' in f.files:
+                p_mix.append(float(f[f'{key}__pehe_em_mix']))
+                e_mix.append(float(f[f'{key}__eps_ate_em_mix']))
+            if f'{key}__pehe_em_k1' in f.files:
+                p_k1.append(float(f[f'{key}__pehe_em_k1']))
+                e_k1.append(float(f[f'{key}__eps_ate_em_k1']))
+    return (p_m, e_m, p_r, e_r, p_mix, e_mix, p_k1, e_k1)
 
 
 def _load_l2(shards, key):
@@ -68,16 +75,25 @@ def main() -> int:
     print(f'{"Method":30s} {"sqrt(PEHE)":>16s}   {"eps_ATE":>14s}')
     print('-' * 78)
     for label, key in METHODS:
-        p_m, e_m, p_r, e_r = _load_pehe_eps(shards, key)
+        (p_m, e_m, p_r, e_r,
+         p_mix, e_mix, p_k1, e_k1) = _load_pehe_eps(shards, key)
         if not p_m: continue
         pm, ps, n = _agg(p_m); em, es, _ = _agg(e_m)
-        suffix = ' (MALC-mean)' if p_r else ''
-        print(f'{label + suffix:30s} {pm:>6.2f} ± {ps:<6.2f}   '
+        suffix = ' (MALC-CATE-mean)' if p_r else ''
+        print(f'{label + suffix:32s} {pm:>6.2f} ± {ps:<6.2f}   '
               f'{em:>5.2f} ± {es:<5.2f}   (n={n})')
         if p_r:
             pm_r, ps_r, _ = _agg(p_r); em_r, es_r, _ = _agg(e_r)
-            print(f'{label + " (raw-mean)":30s} {pm_r:>6.2f} ± {ps_r:<6.2f}   '
+            print(f'{label + " (Raw-mean)":32s} {pm_r:>6.2f} ± {ps_r:<6.2f}   '
                   f'{em_r:>5.2f} ± {es_r:<5.2f}   (n={len(p_r)})')
+        if p_k1:
+            pm_k, ps_k, _ = _agg(p_k1); em_k, es_k, _ = _agg(e_k1)
+            print(f'{label + " (EM-mean-K1)":32s} {pm_k:>6.2f} ± {ps_k:<6.2f}   '
+                  f'{em_k:>5.2f} ± {es_k:<5.2f}   (n={len(p_k1)})')
+        if p_mix:
+            pm_x, ps_x, _ = _agg(p_mix); em_x, es_x, _ = _agg(e_mix)
+            print(f'{label + " (EM-mean-Kselection)":32s} {pm_x:>6.2f} ± {ps_x:<6.2f}   '
+                  f'{em_x:>5.2f} ± {es_x:<5.2f}   (n={len(p_mix)})')
 
     print()
     print('── Density L2 — ACIC ──────────────────────────────────────────────')
