@@ -300,13 +300,19 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
 
     # RAW-OT-mean: W2 barycenter of per-query p(τ) derived from raw p_mat
     # marginals via convolution (no MALC smoothing). Ablates MALC's role in
-    # the population ATE point estimate.
-    p_taus_raw_bin = np.stack([
-        _raw_p_tau_from_p_mat(p_mats[i], J, bin_width, tau) for i in range(M)])
-    ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
-    ate_bary_raw_raw = ate_bary_raw_scaled / scale
-    bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)
-    ate_ot_mean_raw_scalar = float((tau_raw * bary_raw_norm).sum() * d_tau_raw)
+    # the population ATE point estimate. Wrapped so a failure here doesn't
+    # throw away all the MALC results computed above.
+    try:
+        p_taus_raw_bin = np.stack([
+            _raw_p_tau_from_p_mat(p_mats[i], J, bin_width, tau) for i in range(M)])
+        ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
+        ate_bary_raw_raw = ate_bary_raw_scaled / scale
+        bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)
+        ate_ot_mean_raw_scalar = float((tau_raw * bary_raw_norm).sum() * d_tau_raw)
+    except Exception as e:
+        print(f'[warn] raw-OT-mean failed ({type(e).__name__}: {e}); '
+              f'setting ate_ours_ot_mean_raw=NaN', flush=True)
+        ate_ot_mean_raw_scalar = float('nan')
 
     return dict(
         ours_mean          = ours_mean,
