@@ -27,6 +27,7 @@ UWYK_CKPT="${UWYK_CKPT:-$UWYK/experiments/checkpoints/full_conditioned_model/fin
 OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_ours_only}"
 MALC_B="${MALC_B:-500}"
 MALC_MAX_K="${MALC_MAX_K:-3}"
+BACKBONE="${BACKBONE:-ipfn}"                # ipfn | dopfn_bb
 
 N_REAL="${N_REAL:-100}"
 WORKERS="${SLURM_CPUS_PER_TASK:-8}"
@@ -63,6 +64,7 @@ python "$REPO/benchmarks/run_one.py" \
     --uwyk-ckpt-dir "$UWYK_CKPT" \
     --malc-B        "$MALC_B" \
     --malc-max-K    "$MALC_MAX_K" \
+    --backbone      "$BACKBONE" \
     --workers       "$WORKERS" \
     --only-ours
 

@@ -82,7 +82,7 @@ def main() -> int:
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn', 'ours_dopfn_bb'}
+    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb'}
                 for m in methods), f'bad methods: {methods}'
     if args.restrict_features > 0:
         allowed = {'dopfn', 'ours_fn10', 'ours_dopfn_bb'}
@@ -119,7 +119,7 @@ def main() -> int:
     )
     from ot_barycenter import wasserstein_barycenter_1d
     from methods_densities import (
-        dopfn_densities, ours_densities, uwyk_noanc_densities,
+        dopfn_densities, ours_densities, uwyk_noanc_densities, uwyk_anc_densities,
     )
 
     # ── Load IHDP realization ───────────────────────────────────────────
@@ -173,7 +173,7 @@ def main() -> int:
     # imports of Do-PFN (which has its own `utils` package with different
     # symbols). Run UWYK last so downstream imports never encounter its
     # cruft.
-    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc']
+    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
     method_out: dict[str, dict[str, np.ndarray]] = {}
     for m in RUN_ORDER:
         if m not in methods:
@@ -189,6 +189,8 @@ def main() -> int:
             method_out[m] = _run_dopfn(cd, truth, args, n_ctx)
         elif m == 'uwyk_noanc':
             method_out[m] = _run_uwyk_noanc(cd, truth, args, n_ctx)
+        elif m == 'uwyk_anc':
+            method_out[m] = _run_uwyk_anc(cd, truth, args, n_ctx)
 
     # True per-query CATE and true ATE in RAW Y units (Table-3 convention).
     # Densities live in scaled Y ([-1, 1]); convert back via factor y_rng/2.
@@ -406,6 +408,47 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     return d
 
 
+def _run_uwyk_anc(cd, truth, args, n_ctx):
+    """UWYK Full-Ancestral — same checkpoint as no-anc but full-graph adjacency."""
+    from methods_densities import uwyk_anc_densities
+
+    _saved = {}
+    for name in list(sys.modules):
+        if (name == 'models' or name.startswith('models.') or
+                name == 'utils' or name.startswith('utils.')):
+            _saved[name] = sys.modules.pop(name)
+    sys.path.insert(0, args.uwyk_src)
+    pre_mod = importlib.import_module('models.PreprocessingGraphConditionedPFN')
+    sys.path.remove(args.uwyk_src)
+    for name in list(sys.modules):
+        if (name == 'models' or name.startswith('models.') or
+                name == 'utils' or name.startswith('utils.')):
+            del sys.modules[name]
+    sys.modules.update(_saved)
+
+    print('[uwyk-anc] loading checkpoint', flush=True)
+    _orig_load = torch.load
+    def _p_load(*a, **kw):
+        kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
+    torch.load = _p_load
+    uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
+        config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
+        checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
+        device='cpu', verbose=False,
+    ).load()
+    torch.load = _orig_load
+    num_features = uwyk_model.model.num_features
+
+    t0 = time.time()
+    d = uwyk_anc_densities(
+        cd, uwyk_model, num_features,
+        y_min=truth.y_min, y_rng=truth.y_rng,
+        n_context=n_ctx, n_samples=args.uwyk_n_samples,
+    )
+    print(f'[uwyk-anc] done in {time.time() - t0:.1f}s', flush=True)
+    return d
+
+
 def _run_dopfn(cd, truth, args, n_ctx):
     # dopfn.py installs an sklearn check_array shim on import — pull it in
     # under a temporary sys.path since we can't `from benchmarks.methods...`
@@ -469,7 +512,7 @@ def _install_dopfn_datasets_shim(dopfn_dir: str) -> None:
 
 def _require_paths(args, methods) -> None:
     need_ours = any(m.startswith('ours_') for m in methods)
-    need_uwyk = 'uwyk_noanc' in methods
+    need_uwyk = 'uwyk_noanc' in methods or 'uwyk_anc' in methods
     need_dopfn = 'dopfn' in methods
 
     for label, path, cond in [
