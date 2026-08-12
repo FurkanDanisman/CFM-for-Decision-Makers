@@ -73,8 +73,26 @@ def _init_worker(edges_np, J, bin_width, N_EVAL, MALC_B, MALC_MAX_K, repo, malc_
     _GLOBAL['dtau'] = _GLOBAL['tau'][1] - _GLOBAL['tau'][0]
 
 
-def _fit_and_marginalize(p_mat_np, seed):
-    """Fit 2D MALC to p_mat, then marginalize to a 1D p(τ) on the tau grid."""
+def _em_tau_from_fit(fit):
+    """τ = E[Y1] − E[Y0] via pi-weighted per-component EM means.
+    We feed p_mat.T so axis-0 = Y1, axis-1 = Y0; _fit_component_2d then
+    computes mu_hat = [E[Y0], E[Y1]] per component. τ = mu_hat[1] − mu_hat[0]."""
+    weights = np.asarray(fit.pi, dtype=np.float64)
+    mus = np.stack([c.mu_hat for c in fit.fits if c is not None])
+    weights = weights[:len(mus)]
+    s = weights.sum()
+    if s <= 0:
+        return float('nan')
+    weights = weights / s
+    mu_y0 = float((weights * mus[:, 0]).sum())
+    mu_y1 = float((weights * mus[:, 1]).sum())
+    return mu_y1 - mu_y0
+
+
+def _fit_and_marginalize(p_mat_np, seed, return_fit=False):
+    """Fit 2D MALC to p_mat, then marginalize to a 1D p(τ) on the tau grid.
+    If return_fit=True, also returns the underlying MALC2DFit so the caller
+    can extract EM-adjusted mu_hats."""
     fit = _GLOBAL['fit'](p_mat_np.T, _GLOBAL['edges'], _GLOBAL['edges'],
                           B_fit=_GLOBAL['MALC_B'], B_select=_GLOBAL['MALC_B'],
                           max_K=_GLOBAL['MALC_MAX_K'], seed=seed, parallel=False)
@@ -97,19 +115,38 @@ def _fit_and_marginalize(p_mat_np, seed):
         out[k] = f.sum() * dy0
     s = out.sum() * _GLOBAL['dtau']
     if s > 0: out /= s
+    if return_fit:
+        return out, fit
     return out
 
 
 def _worker_one_query(args):
-    """Per-query task: fit MALC on raw and masked p_mat, return both p(τ)."""
+    """Per-query task: fit MALC on raw and masked p_mat, return p(τ)'s + EM τ's.
+
+    Returns (i, p_raw, p_msk, em_mix_tau, em_k1_tau) where the last two are
+    scaled-axis EM-mean CATE point estimates: pi-weighted mixture-fit mean and
+    forced-K=1 fit mean respectively. NaN if the corresponding fit failed.
+    """
     i, p_mat_np = args
-    from losses.BarDistribution2D import fit_malc_inner  # noqa: F401 (kept for import-side-effects)
+    from losses.BarDistribution2D import fit_malc_inner
     p_masked = _mask_diag(p_mat_np, _GLOBAL['J'], band=1)
     seed_raw = int(hashlib.md5(f"q{i}r".encode()).hexdigest()[:8], 16) % (10**8)
     seed_msk = int(hashlib.md5(f"q{i}m".encode()).hexdigest()[:8], 16) % (10**8)
-    p_raw = _fit_and_marginalize(p_mat_np, seed_raw)
+    # Mixture fit (up to _GLOBAL['MALC_MAX_K']) — used for p(τ) via density
+    # integration AND for the EM-K-selection mean.
+    p_raw, fit_mix = _fit_and_marginalize(p_mat_np, seed_raw, return_fit=True)
+    em_mix_tau = _em_tau_from_fit(fit_mix)
     p_msk = _fit_and_marginalize(p_masked, seed_msk)
-    return i, p_raw, p_msk
+    # Separate forced-K=1 fit for the EM-K1 mean-adjusted estimate.
+    em_k1_tau = float('nan')
+    try:
+        fit_k1 = fit_malc_inner(p_mat_np.T, _GLOBAL['edges'], _GLOBAL['edges'],
+                                 B_fit=_GLOBAL['MALC_B'], B_select=_GLOBAL['MALC_B'],
+                                 max_K=1, seed=seed_raw, parallel=False)
+        em_k1_tau = _em_tau_from_fit(fit_k1)
+    except Exception:
+        pass
+    return i, p_raw, p_msk, em_mix_tau, em_k1_tau
 
 
 def _raw_p_tau_from_p_mat(p_mat_np, J, bw, tau):
@@ -266,19 +303,27 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
 
     worker_args = [(i, p_mats[i]) for i in range(M)]
     p_taus_raw = np.zeros((M, 401)); p_taus_msk = np.zeros((M, 401))
+    em_mix_scaled = np.full(M, np.nan, dtype=np.float64)
+    em_k1_scaled  = np.full(M, np.nan, dtype=np.float64)
     if args.workers > 1:
         ctx = get_context('spawn')
         with ctx.Pool(processes=args.workers, initializer=_init_worker,
                       initargs=(edges_np, J, bin_width, args.n_eval,
                                 args.malc_B, args.malc_max_K,
                                 args.repo, os.path.join(args.repo, 'MALC'))) as pool:
-            for (i, pr, pm) in pool.imap_unordered(_worker_one_query, worker_args, chunksize=1):
+            for (i, pr, pm, emm, emk1) in pool.imap_unordered(
+                    _worker_one_query, worker_args, chunksize=1):
                 p_taus_raw[i] = pr; p_taus_msk[i] = pm
+                em_mix_scaled[i] = emm
+                em_k1_scaled[i]  = emk1
     else:
         _init_worker(edges_np, J, bin_width, args.n_eval, args.malc_B, args.malc_max_K,
                       args.repo, os.path.join(args.repo, 'MALC'))
         for a in worker_args:
-            i, pr, pm = _worker_one_query(a); p_taus_raw[i] = pr; p_taus_msk[i] = pm
+            i, pr, pm, emm, emk1 = _worker_one_query(a)
+            p_taus_raw[i] = pr; p_taus_msk[i] = pm
+            em_mix_scaled[i] = emm
+            em_k1_scaled[i]  = emk1
 
     tau = np.linspace(edges_np[0] - edges_np[-1], edges_np[-1] - edges_np[0], 401)
     dtau_ = tau[1] - tau[0]
@@ -293,6 +338,8 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     ours_malc_mean_msk = est_malc_mean_msk * scale
     ours_malc_mode     = est_malc_mode     * scale
     ours_malc_mode_msk = est_malc_mode_msk * scale
+    ours_em_mix_mean   = em_mix_scaled     * scale        # EM-K-selection
+    ours_em_k1_mean    = em_k1_scaled      * scale        # EM-K1
 
     # OT-mode + OT-mean: population-level ATE from W2 barycenter of masked
     # per-query densities. Mode = argmax, Mean = expectation under barycenter.
@@ -326,6 +373,8 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
         ours_malc_mean_msk = ours_malc_mean_msk,
         ours_malc_mode     = ours_malc_mode,
         ours_malc_mode_msk = ours_malc_mode_msk,
+        ours_em_mix_mean   = ours_em_mix_mean,         # EM K-selection (per-query CATE)
+        ours_em_k1_mean    = ours_em_k1_mean,          # EM K=1        (per-query CATE)
         ours_ot_mode_ate   = ate_ot_mode_scalar,       # population ATE, not per-query
         ours_ot_mean_ate   = ate_ot_mean_scalar,       # population ATE, MALC-smoothed
         ours_ot_mean_ate_raw = ate_ot_mean_raw_scalar, # population ATE, raw p_mat (no MALC)

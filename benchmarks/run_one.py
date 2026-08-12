@@ -275,6 +275,23 @@ def _run_ours_only(args, out_file):
         _log(f"[ours-only] pipeline crashed; saved metadata-only shard to {out_file}", t0)
         raise
 
+    _true_ate = float(np.mean(true_cate))
+    def _record_nan_safe(name, cate_pred):
+        """PEHE on per-query pairs where the estimate is finite;
+        eps_ATE uses the WHOLE-SAMPLE true_ate (denominator doesn't change
+        just because a few per-query fits failed)."""
+        arr = np.asarray(cate_pred, dtype=float)
+        valid = np.isfinite(arr)
+        if not np.any(valid):
+            return
+        cate_v = arr[valid]; tc_v = true_cate[valid]
+        ate_pred = float(np.mean(cate_v))
+        out[f'pehe_{name}'] = float(np.sqrt(np.mean((cate_v - tc_v) ** 2)))
+        out[f'err_{name}']  = 0.0 if abs(_true_ate) < 1e-12 else \
+                              abs(_true_ate - ate_pred) / abs(_true_ate)
+        out[f'ate_{name}']  = ate_pred
+        out[f'n_{name}']    = int(valid.sum())
+
     # Record each variant independently: if one is NaN/missing, others still land.
     for name, key in [
         ('ours_mean',          'ours_mean'),
@@ -285,6 +302,16 @@ def _run_ours_only(args, out_file):
     ]:
         try:
             _record(name, ours[key])
+        except Exception as e:
+            print(f'[warn] recording {name} failed: {type(e).__name__}: {e}', flush=True)
+
+    # EM variants — NaN-safe because per-query MALC fits can fail.
+    for name, key in [
+        ('ours_em_mix_mean', 'ours_em_mix_mean'),
+        ('ours_em_k1_mean',  'ours_em_k1_mean'),
+    ]:
+        try:
+            _record_nan_safe(name, ours[key])
         except Exception as e:
             print(f'[warn] recording {name} failed: {type(e).__name__}: {e}', flush=True)
 
