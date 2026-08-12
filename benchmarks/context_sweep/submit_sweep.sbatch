@@ -5,7 +5,7 @@
 #SBATCH --time=08:00:00
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=32
-#SBATCH --array=0-119%50
+#SBATCH --array=0-99%50
 # On Trillium:
 #   - Do NOT set --mem: whole-node allocation, 745 GiB always available.
 #   - Submit from a scratch directory (e.g. $SCRATCH/rpfn_sweep) — /project is
@@ -17,14 +17,14 @@
 ##SBATCH --cpus-per-task=8
 ##SBATCH --mem=64G
 # ── Array layout ─────────────────────────────────────────────────────────────
-# Alliance Canada limits array size to 1000. To cover 500 SCMs × 6 N × 2 sources
-# = 6000 SCM-N-source configurations, we batch N_SCMS_PER_TASK SCMs per SLURM
+# Alliance Canada limits array size to 1000. To cover 500 SCMs × 5 N × 2 sources
+# = 5000 SCM-N-source configurations, we batch N_SCMS_PER_TASK SCMs per SLURM
 # task. Total tasks = |SOURCES| × N_CONTEXTS × N_BATCHES.
 #
-# Default: SOURCES=(prior poly) → 2×6×10 = 120 tasks, array=0-119.
+# Default: SOURCES=(prior poly) → 2×5×10 = 100 tasks, array=0-99.
 # Poly-only mode:  set SOURCES_FILTER=poly (or "prior") to run only one source.
-#                  Poly-only: 60 tasks — submit with --array=0-59.
-# Prior-only:      same, submit --array=0-59.
+#                  Poly-only: 50 tasks — submit with --array=0-49.
+# Prior-only:      same, submit --array=0-49.
 #
 # Layout (given the SOURCES you've filtered to):
 #   src_idx   = TASK / (N_CONTEXTS × N_BATCHES)   ∈ {0..|SOURCES|-1}
@@ -76,8 +76,8 @@ OURS_ONLY_FLAG=""
 [ "${OURS_ONLY:-0}" = "1" ] && OURS_ONLY_FLAG="--ours-only"
 BACKBONE="${BACKBONE:-ipfn}"                        # ipfn | dopfn_bb
 N_BATCHES=$(( N_SCMS_TOTAL / N_SCMS_PER_TASK ))    # 500 / 50 = 10
-CONTEXTS=(50 250 500 1000 5000 10000)
-N_CONTEXTS=${#CONTEXTS[@]}                          # 6
+CONTEXTS=(50 250 500 1000 5000)
+N_CONTEXTS=${#CONTEXTS[@]}                          # 5
 
 # ── SOURCES_FILTER: run only prior, only poly, or both ────────────────────────
 case "${SOURCES_FILTER:-both}" in
