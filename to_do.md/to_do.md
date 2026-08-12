@@ -16,8 +16,6 @@ Submitted.
 
 2) Do all the results of Table 3 with B=500 for the 200k checkpoint.
 
-
-
 3) Do the IHDP density calc with B=500 for the 200k checkpoint and do with UYWK-Full ANC.
 
 4) Do the density calculation for ACIC for UWYK No Anc., UWYK-2DMALC, UWYK - FULL ANC, Do-PFN, 200k checkpoint.
@@ -69,6 +67,8 @@ OUTDIR=$FN50_OUT \
 CHECKPOINT=$DEPLOY_ROOT/R-PFN/checkpoints/step_50000_final.pt \
 sbatch $DEPLOY_ROOT/R-PFN/benchmarks/cluster/submit_ours_only.sbatch
 
+Submitted 
+
 6) Table 3 for 200K DoPFN-bb (task 2) — ~4-8h, 500 tasks
 
 MALC_B=500 BACKBONE=dopfn_bb \
@@ -76,13 +76,21 @@ OUTDIR=$DOPFNBB_OUT \
 CHECKPOINT=$DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step_200000.pt \
 sbatch $DEPLOY_ROOT/R-PFN/benchmarks/cluster/submit_ours_only.sbatch
 
+Submitted
+
 7) Context sweep for 200K (task 6) — depends on sweep size (We will not do the final N)
 
-MALC_B=500 BACKBONE=dopfn_bb OURS_ONLY=1 \
+export DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit
+cd $DEPLOY_ROOT/R-PFN && git pull origin main && cd $DEPLOY_ROOT
+
+# fn=50 sweep
+sbatch $DEPLOY_ROOT/R-PFN/benchmarks/context_sweep/submit_sweep.sbatch
+
+# DoPFN-bb 200K sweep
+BACKBONE=dopfn_bb \
 CHECKPOINT=$DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step_200000.pt \
 OUTDIR=$DEPLOY_ROOT/results_sweep_dopfn_bb_200K \
 sbatch $DEPLOY_ROOT/R-PFN/benchmarks/context_sweep/submit_sweep.sbatch
-
 
 
 Both arrays running. Progress script
