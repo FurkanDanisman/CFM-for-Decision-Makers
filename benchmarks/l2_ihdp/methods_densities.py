@@ -157,9 +157,13 @@ def ours_densities(cd,
     _bin_centers_raw = 0.5 * (edges_np[:-1] + edges_np[1:])                # (J,)
 
     def _em_tau_from_fit(fit):
-        weights = np.asarray(fit.pi, dtype=np.float64)
-        mus = np.stack([c.mu_hat for c in fit.fits if c is not None])
-        weights = weights[:len(mus)]
+        if fit is None:
+            return float('nan')
+        mu_list = [c.mu_hat for c in fit.fits if c is not None]
+        if not mu_list:
+            return float('nan')
+        mus = np.stack(mu_list)
+        weights = np.asarray(fit.pi, dtype=np.float64)[:len(mus)]
         if weights.sum() <= 0:
             return float('nan')
         weights = weights / weights.sum()

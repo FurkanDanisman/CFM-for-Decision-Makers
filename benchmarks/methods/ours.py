@@ -75,11 +75,14 @@ def _init_worker(edges_np, J, bin_width, N_EVAL, MALC_B, MALC_MAX_K, repo, malc_
 
 def _em_tau_from_fit(fit):
     """τ = E[Y1] − E[Y0] via pi-weighted per-component EM means.
-    We feed p_mat.T so axis-0 = Y1, axis-1 = Y0; _fit_component_2d then
-    computes mu_hat = [E[Y0], E[Y1]] per component. τ = mu_hat[1] − mu_hat[0]."""
-    weights = np.asarray(fit.pi, dtype=np.float64)
-    mus = np.stack([c.mu_hat for c in fit.fits if c is not None])
-    weights = weights[:len(mus)]
+    Returns NaN if fit is None or has no valid components."""
+    if fit is None:
+        return float('nan')
+    mu_list = [c.mu_hat for c in fit.fits if c is not None]
+    if not mu_list:
+        return float('nan')
+    mus = np.stack(mu_list)
+    weights = np.asarray(fit.pi, dtype=np.float64)[:len(mus)]
     s = weights.sum()
     if s <= 0:
         return float('nan')
