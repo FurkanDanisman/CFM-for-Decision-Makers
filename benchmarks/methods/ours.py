@@ -206,17 +206,40 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     apply_y_pt = bool(getattr(args, 'y_power_transform', False))
     y_pt_obj = None
     y_pt_min = y_pt_rng = None
+    y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
     if apply_y_pt:
-        from sklearn.preprocessing import PowerTransformer
-        y_pt_obj = PowerTransformer(method='yeo-johnson', standardize=True)
-        yt_pt = y_pt_obj.fit_transform(yt).astype(np.float32)
-        y_pt_min = float(yt_pt.min()); y_pt_max = float(yt_pt.max())
-        y_pt_rng = max(y_pt_max - y_pt_min, 1e-8)
-        yt_s = 2 * (yt_pt - y_pt_min) / y_pt_rng - 1.0
-        # for raw-unit CATE reporting later:
-        y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
+        # Try PowerTransformer → QuantileTransformer('normal') → linear fallback.
+        # PowerTransformer's Yeo-Johnson lambda optimizer can BracketError on Y
+        # with heavy zero-mass (e.g., PSID income). QuantileTransformer is more
+        # robust because it operates on empirical CDF quantiles.
+        from sklearn.preprocessing import PowerTransformer, QuantileTransformer
+        candidates = [
+            ('power', PowerTransformer(method='yeo-johnson', standardize=True)),
+            ('quantile_norm', QuantileTransformer(
+                output_distribution='normal',
+                n_quantiles=min(1000, max(10, len(yt) // 10)))),
+        ]
+        yt_pt = None
+        for name, pt in candidates:
+            try:
+                yt_pt = pt.fit_transform(yt).astype(np.float32)
+                y_pt_obj = pt
+                print(f'[ours_pipeline] Y-preprocess via {name!r} succeeded',
+                      flush=True)
+                break
+            except Exception as e:
+                print(f'[ours_pipeline] Y-preprocess {name!r} failed '
+                      f'({type(e).__name__}: {e}); trying next', flush=True)
+        if yt_pt is None:
+            print(f'[ours_pipeline] all Y-preprocess options failed; falling '
+                  f'back to plain linear scaling', flush=True)
+            apply_y_pt = False
+            yt_s = 2 * (yt - y_min) / y_rng - 1.0
+        else:
+            y_pt_min = float(yt_pt.min()); y_pt_max = float(yt_pt.max())
+            y_pt_rng = max(y_pt_max - y_pt_min, 1e-8)
+            yt_s = 2 * (yt_pt - y_pt_min) / y_pt_rng - 1.0
     else:
-        y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
         yt_s = 2 * (yt - y_min) / y_rng - 1.0
 
     # ── Hierarchical clustering — verbatim from UWYK's
