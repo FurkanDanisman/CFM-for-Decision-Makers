@@ -195,8 +195,29 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     Xtr_p = _pad(Xtr, NUM_FEATURES); Xte_p = _pad(Xte, NUM_FEATURES)
     mu = Xtr_p.mean(0, keepdims=True); sd = Xtr_p.std(0, keepdims=True); sd[sd < 1e-6] = 1.0
     Xtr_s = (Xtr_p - mu) / sd; Xte_s = (Xte_p - mu) / sd
-    y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
-    yt_s = 2 * (yt - y_min) / y_rng - 1.0
+
+    # Y scaling: two modes.
+    #   default: linear scale of raw Y to [-1, 1] (matches training data prep).
+    #   --y-power-transform: Yeo-Johnson PowerTransformer on Y, then linear
+    #     rescale of Y_pt to [-1, 1]. Mirrors Do-PFN's `regression_y_preprocess`
+    #     recipe. Bin centers are inverse-transformed to raw Y units so PEHE
+    #     is directly interpretable in raw Y (matches the un-transform of
+    #     bar_dist borders in Do-PFN's preprocess_y).
+    apply_y_pt = bool(getattr(args, 'y_power_transform', False))
+    y_pt_obj = None
+    y_pt_min = y_pt_rng = None
+    if apply_y_pt:
+        from sklearn.preprocessing import PowerTransformer
+        y_pt_obj = PowerTransformer(method='yeo-johnson', standardize=True)
+        yt_pt = y_pt_obj.fit_transform(yt).astype(np.float32)
+        y_pt_min = float(yt_pt.min()); y_pt_max = float(yt_pt.max())
+        y_pt_rng = max(y_pt_max - y_pt_min, 1e-8)
+        yt_s = 2 * (yt_pt - y_pt_min) / y_pt_rng - 1.0
+        # for raw-unit CATE reporting later:
+        y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
+    else:
+        y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
+        yt_s = 2 * (yt - y_min) / y_rng - 1.0
 
     # ── Hierarchical clustering — verbatim from UWYK's
     #    PreprocessingGraphConditionedPFN._hierarchical_cluster + _assign_to_clusters
@@ -278,6 +299,21 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     chunk = int(getattr(args, 'ours_query_chunk', 20))
     est_mean = np.zeros(M)
     p_mats = np.zeros((M, J, J), dtype=np.float32)
+
+    # Effective bin centers in RAW Y units + downstream scale multiplier for CATE.
+    # When Y is power-transformed, bin centers on the scaled [-1, 1] Y_pt grid
+    # must be inverse-mapped through the PowerTransformer to produce raw Y units,
+    # matching Do-PFN's `new_borders = pt.inverse_transform(bar_dist.borders)`.
+    if apply_y_pt:
+        centers_pt = (centers + 1.0) / 2.0 * y_pt_rng + y_pt_min           # (J,) in PT space
+        centers_raw = y_pt_obj.inverse_transform(
+            centers_pt.reshape(-1, 1).astype(np.float64)).flatten()         # (J,) in raw Y
+        eff_centers = centers_raw.astype(np.float32)
+        eff_scale = 1.0                                                     # already raw
+    else:
+        eff_centers = centers
+        eff_scale = None                                                    # apply y_rng/2 later
+
     for cid, tr_idx, te_idx in cluster_blocks:
         Xtr_t = torch.from_numpy(Xtr_s[tr_idx]).unsqueeze(0)
         tt_t  = torch.from_numpy(tt[tr_idx]).unsqueeze(0)
@@ -293,8 +329,8 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
                 p_np = p_mat.detach().cpu().numpy().astype(np.float32)
                 i = int(queries[j])
                 p_mats[i] = p_np
-                E_y0 = (centers[:, None] * p_np).sum()
-                E_y1 = (centers[None, :] * p_np).sum()
+                E_y0 = (eff_centers[:, None] * p_np).sum()
+                E_y1 = (eff_centers[None, :] * p_np).sum()
                 est_mean[i] = float(E_y1 - E_y0)
             del pred_chunk, Xte_chunk
             _gc.collect()
@@ -335,14 +371,33 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     est_malc_mean     = (tau[None, :] * p_taus_raw).sum(axis=1) * dtau_
     est_malc_mean_msk = (tau[None, :] * p_taus_msk).sum(axis=1) * dtau_
 
-    scale = y_rng / 2.0
-    ours_mean          = est_mean          * scale
-    ours_malc_mean     = est_malc_mean     * scale
-    ours_malc_mean_msk = est_malc_mean_msk * scale
-    ours_malc_mode     = est_malc_mode     * scale
-    ours_malc_mode_msk = est_malc_mode_msk * scale
-    ours_em_mix_mean   = em_mix_scaled     * scale        # EM-K-selection
-    ours_em_k1_mean    = em_k1_scaled      * scale        # EM-K1
+    # If Y-PT active, est_mean is already in raw Y units (via inverse-mapped
+    # centers). MALC/EM outputs remain on the scaled tau grid and would need
+    # their own inverse transform to become raw — set them to NaN for the
+    # Y-PT smoke test rather than reporting mis-scaled numbers.
+    if apply_y_pt:
+        # Y-PT smoke test: only raw-mean is safely convertible to raw Y units
+        # (via inverse-mapped bin centers). MALC / EM / OT paths still operate
+        # on the scaled tau grid and would need their own inverse transform —
+        # set them to NaN so they don't get misinterpreted.
+        scale = 1.0
+        _nan = np.full_like(est_mean, np.nan, dtype=np.float64)
+        ours_mean          = est_mean.astype(np.float64)   # already raw units
+        ours_malc_mean     = _nan.copy()
+        ours_malc_mean_msk = _nan.copy()
+        ours_malc_mode     = _nan.copy()
+        ours_malc_mode_msk = _nan.copy()
+        ours_em_mix_mean   = _nan.copy()
+        ours_em_k1_mean    = _nan.copy()
+    else:
+        scale = y_rng / 2.0
+        ours_mean          = est_mean          * scale
+        ours_malc_mean     = est_malc_mean     * scale
+        ours_malc_mean_msk = est_malc_mean_msk * scale
+        ours_malc_mode     = est_malc_mode     * scale
+        ours_malc_mode_msk = est_malc_mode_msk * scale
+        ours_em_mix_mean   = em_mix_scaled     * scale        # EM-K-selection
+        ours_em_k1_mean    = em_k1_scaled      * scale        # EM-K1
 
     # OT-mode + OT-mean: population-level ATE from W2 barycenter of masked
     # per-query densities. Mode = argmax, Mean = expectation under barycenter.
