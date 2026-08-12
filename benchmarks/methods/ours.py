@@ -193,6 +193,26 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     Xte = _to_np(cate_dataset.X_test).astype(np.float32)
 
     Xtr_p = _pad(Xtr, NUM_FEATURES); Xte_p = _pad(Xte, NUM_FEATURES)
+
+    # For the DoPFN backbone (NUM_FEATURES <= 0), match Do-PFN's own inference
+    # preprocessing chain (DoPFNRegressor uses PreprocessorConfig("power") from
+    # TabPFN internals): apply sklearn's Yeo-Johnson PowerTransformer to X
+    # BEFORE the model. Fitted on training-context X only, applied to both
+    # context and test. This reshapes skewed real-world features (income, wage,
+    # etc.) toward Gaussian — the SCM distribution the model was trained on.
+    # Skip for the InterventionalPFN path (NUM_FEATURES > 0) since that model
+    # was not evaluated under Do-PFN's inference recipe.
+    if NUM_FEATURES is not None and NUM_FEATURES <= 0:
+        try:
+            from sklearn.preprocessing import PowerTransformer
+            pt = PowerTransformer(method='yeo-johnson', standardize=True)
+            pt.fit(Xtr_p)
+            Xtr_p = pt.transform(Xtr_p).astype(np.float32)
+            Xte_p = pt.transform(Xte_p).astype(np.float32)
+        except Exception as _e:
+            print(f'[warn] PowerTransformer failed ({type(_e).__name__}: {_e}); '
+                  f'falling back to z-score only', flush=True)
+
     mu = Xtr_p.mean(0, keepdims=True); sd = Xtr_p.std(0, keepdims=True); sd[sd < 1e-6] = 1.0
     Xtr_s = (Xtr_p - mu) / sd; Xte_s = (Xte_p - mu) / sd
     y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
