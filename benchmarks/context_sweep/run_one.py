@@ -211,9 +211,15 @@ def main():
                 runtime_s=time.time() - t0)
 
     def _record(name, cate_pred):
-        out[f'pehe_{name}'] = _pehe(true_cate, cate_pred)
-        out[f'err_{name}']  = _ate_relerr(true_cate, cate_pred)
-        out[f'ate_{name}']  = float(np.mean(cate_pred))
+        arr = np.asarray(cate_pred, dtype=float)
+        valid = np.isfinite(arr)
+        if not np.any(valid):
+            return                                      # all-NaN → skip (e.g. skip_malc)
+        cate_v = arr[valid]
+        tc_v = np.asarray(true_cate, dtype=float)[valid]
+        out[f'pehe_{name}'] = _pehe(tc_v, cate_v)
+        out[f'err_{name}']  = _ate_relerr(tc_v, cate_v)
+        out[f'ate_{name}']  = float(np.mean(cate_v))
 
     if uwyk_noanc_cate is not None: _record('uwyk_noanc',     uwyk_noanc_cate)
     if uwyk_anc_cate   is not None: _record('uwyk_ancestral', uwyk_anc_cate)
