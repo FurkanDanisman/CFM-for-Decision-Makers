@@ -230,42 +230,66 @@ def _run_ours_only(args, out_file):
     true_cate = _to_np(cd_raw.true_cate).reshape(-1)
     true_ate  = float(getattr(ad, 'true_ate', np.mean(true_cate)))
 
-    _log("[ours-only] OURS inference (all variants)", t0)
-    ours = ours_pipeline(cd_raw, our_model, edges_np, J, bin_width, NUM_FEATURES,
-                          centers, args, wasserstein_barycenter_1d)
-
     out = dict(dataset=args.dataset, realization=args.realization,
                 true_ate=true_ate,
-                n_queries=int(len(true_cate)), n_context=int(cd_raw.X_train.shape[0]),
-                runtime_s=time.time() - t0)
+                n_queries=int(len(true_cate)), n_context=int(cd_raw.X_train.shape[0]))
+
+    def _atomic_save(path, payload):
+        """Save via .tmp + rename so a signal mid-write leaves no truncated file."""
+        tmp = path + '.tmp.npz'
+        np.savez(tmp, **{k: np.array(v) for k, v in payload.items()})
+        os.replace(tmp, path)
 
     def _record(name, cate_pred):
         out[f'pehe_{name}'] = _pehe(true_cate, cate_pred)
         out[f'err_{name}']  = _ate_relerr(true_cate, cate_pred)
         out[f'ate_{name}']  = float(np.mean(cate_pred))
 
-    _record('ours_mean',          ours['ours_mean'])
-    _record('ours_malc_mean',     ours['ours_malc_mean'])
-    _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
-    _record('ours_malc_mode',     ours['ours_malc_mode'])
-    _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
+    _log("[ours-only] OURS inference (all variants)", t0)
+    try:
+        ours = ours_pipeline(cd_raw, our_model, edges_np, J, bin_width, NUM_FEATURES,
+                              centers, args, wasserstein_barycenter_1d)
+    except Exception as e:
+        traceback.print_exc()
+        out['runtime_s'] = time.time() - t0
+        out['error'] = f'{type(e).__name__}: {e}'
+        _atomic_save(out_file, out)
+        _log(f"[ours-only] pipeline crashed; saved metadata-only shard to {out_file}", t0)
+        raise
 
-    ot_mode_ate = ours['ours_ot_mode_ate']
-    ot_mean_ate = ours['ours_ot_mean_ate']
-    ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
-    out['ate_ours_ot_mode']     = ot_mode_ate
-    out['err_ours_ot_mode']     = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
-    out['ate_ours_ot_mean']     = ot_mean_ate
-    out['err_ours_ot_mean']     = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
-    out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
-    out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
+    # Record each variant independently: if one is NaN/missing, others still land.
+    for name, key in [
+        ('ours_mean',          'ours_mean'),
+        ('ours_malc_mean',     'ours_malc_mean'),
+        ('ours_malc_mean_msk', 'ours_malc_mean_msk'),
+        ('ours_malc_mode',     'ours_malc_mode'),
+        ('ours_malc_mode_msk', 'ours_malc_mode_msk'),
+    ]:
+        try:
+            _record(name, ours[key])
+        except Exception as e:
+            print(f'[warn] recording {name} failed: {type(e).__name__}: {e}', flush=True)
 
-    np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
+    for out_key, ours_key in [
+        ('ours_ot_mode',      'ours_ot_mode_ate'),
+        ('ours_ot_mean',      'ours_ot_mean_ate'),
+        ('ours_ot_mean_raw',  'ours_ot_mean_ate_raw'),
+    ]:
+        try:
+            ate = float(ours[ours_key])
+            out[f'ate_{out_key}'] = ate
+            out[f'err_{out_key}'] = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+        except Exception as e:
+            print(f'[warn] recording {out_key} failed: {type(e).__name__}: {e}', flush=True)
+
+    out['runtime_s'] = time.time() - t0
+    _atomic_save(out_file, out)
     _log(f"[ours-only] saved {out_file}  ({out['runtime_s']:.1f}s)", t0)
-    print(f"SUMMARY(ours-only) pehe_mean={out['pehe_ours_mean']:.3f} "
-          f"pehe_malc_mean={out['pehe_ours_malc_mean']:.3f} "
-          f"err_ot_mean_raw={out['err_ours_ot_mean_raw']:.3f} "
-          f"err_ot_mean={out['err_ours_ot_mean']:.3f}", flush=True)
+    print(f"SUMMARY(ours-only) "
+          f"pehe_mean={out.get('pehe_ours_mean', float('nan')):.3f} "
+          f"pehe_malc_mean={out.get('pehe_ours_malc_mean', float('nan')):.3f} "
+          f"err_ot_mean_raw={out.get('err_ours_ot_mean_raw', float('nan')):.3f} "
+          f"err_ot_mean={out.get('err_ours_ot_mean', float('nan')):.3f}", flush=True)
 
 
 def _run_ours_ot_backfill(args, out_file):
