@@ -31,11 +31,16 @@ def _agg(vals):
 
 
 def _load_pehe_eps(shards, key):
-    """Load PEHE + eps_ATE per shard, returning both MALC-mean (existing) and
-    raw-mean (new) variants when available. Raw variant only exists for Ours
-    methods; dopfn/uwyk_noanc shards will have empty raw lists."""
-    p_malc, e_malc = [], []
-    p_raw,  e_raw  = [], []
+    """Load PEHE + eps_ATE per shard for four flavours (each optional):
+      1. MALC (density-integrated)   __pehe / __eps_ate            (always for Ours)
+      2. raw   (E[Y1]-E[Y0] marginals) __pehe_raw / __eps_ate_raw   (Ours after cate_raw_scaled shipped)
+      3. EM mixture (fit.pi-weighted μ_hat) __pehe_em_mix / __eps_ate_em_mix
+      4. EM K=1   (single-log-concave μ_hat) __pehe_em_k1  / __eps_ate_em_k1
+    """
+    p_malc,   e_malc   = [], []
+    p_raw,    e_raw    = [], []
+    p_em_mix, e_em_mix = [], []
+    p_em_k1,  e_em_k1  = [], []
     for path in shards:
         with np.load(path) as f:
             if f'{key}__pehe' not in f.files:
@@ -45,7 +50,14 @@ def _load_pehe_eps(shards, key):
             if f'{key}__pehe_raw' in f.files:
                 p_raw.append(float(f[f'{key}__pehe_raw']))
                 e_raw.append(float(f[f'{key}__eps_ate_raw']))
-    return p_malc, e_malc, p_raw, e_raw
+            if f'{key}__pehe_em_mix' in f.files:
+                p_em_mix.append(float(f[f'{key}__pehe_em_mix']))
+                e_em_mix.append(float(f[f'{key}__eps_ate_em_mix']))
+            if f'{key}__pehe_em_k1' in f.files:
+                p_em_k1.append(float(f[f'{key}__pehe_em_k1']))
+                e_em_k1.append(float(f[f'{key}__eps_ate_em_k1']))
+    return (p_malc, e_malc, p_raw, e_raw,
+            p_em_mix, e_em_mix, p_em_k1, e_em_k1)
 
 
 def _load_l2(shards, key):
@@ -78,15 +90,14 @@ def main() -> int:
         print(f'[fatal] no Do-PFN shards match {args.dopfn_shards_glob}'); return 2
 
     # ── Block 1: Table 3 row for Ours ────────────────────────────────────
-    p_malc, e_malc, p_raw, e_raw = _load_pehe_eps(ours_shards, args.ours_key)
+    (p_malc, e_malc, p_raw, e_raw,
+     p_em_mix, e_em_mix, p_em_k1, e_em_k1) = _load_pehe_eps(ours_shards, args.ours_key)
     if not p_malc:
         print(f'[fatal] no {args.ours_key}__pehe found in Ours shards'); return 2
     pm_m, ps_m, n = _agg(p_malc)
     em_m, es_m, _ = _agg(e_malc)
 
-    # Also load Do-PFN's PEHE/eps_ATE (only has "MALC" flavour since it doesn't
-    # use MALC — the point estimate is a single method).
-    p_dopfn_malc, e_dopfn_malc, _, _ = _load_pehe_eps(dopfn_shards, 'dopfn')
+    p_dopfn_malc, e_dopfn_malc, *_ = _load_pehe_eps(dopfn_shards, 'dopfn')
     dopfn_pm = dopfn_ps = dopfn_em = dopfn_es = None
     dopfn_n = 0
     if p_dopfn_malc:
@@ -95,20 +106,32 @@ def main() -> int:
 
     print()
     print('── Table 3 addition — IHDP ────────────────────────────────────────')
-    print(f'{"Method":30s} {"sqrt(PEHE)":>18s}   {"eps_ATE":>16s}')
-    print('-' * 70)
+    print(f'{"Method":32s} {"sqrt(PEHE)":>18s}   {"eps_ATE":>16s}')
+    print('-' * 74)
     if dopfn_pm is not None:
-        print(f'{"Do-PFN":30s} {dopfn_pm:>8.2f} ± {dopfn_ps:<6.2f}    '
+        print(f'{"Do-PFN":32s} {dopfn_pm:>8.2f} ± {dopfn_ps:<6.2f}    '
               f'{dopfn_em:>6.2f} ± {dopfn_es:<6.2f}    (n={dopfn_n})')
-    print(f'{args.ours_label + " (MALC-mean)":30s} '
+    print(f'{args.ours_label + " (MALC-mean, density)":32s} '
           f'{pm_m:>8.2f} ± {ps_m:<6.2f}    '
           f'{em_m:>6.2f} ± {es_m:<6.2f}    (n={n})')
     if p_raw:
         pm_r, ps_r, _ = _agg(p_raw)
         em_r, es_r, _ = _agg(e_raw)
-        print(f'{args.ours_label + " (raw-mean)":30s} '
+        print(f'{args.ours_label + " (raw-mean)":32s} '
               f'{pm_r:>8.2f} ± {ps_r:<6.2f}    '
               f'{em_r:>6.2f} ± {es_r:<6.2f}    (n={len(p_raw)})')
+    if p_em_mix:
+        pmix_m, pmix_s, _ = _agg(p_em_mix)
+        emix_m, emix_s, _ = _agg(e_em_mix)
+        print(f'{args.ours_label + " (EM mixture)":32s} '
+              f'{pmix_m:>8.2f} ± {pmix_s:<6.2f}    '
+              f'{emix_m:>6.2f} ± {emix_s:<6.2f}    (n={len(p_em_mix)})')
+    if p_em_k1:
+        pk1_m, pk1_s, _ = _agg(p_em_k1)
+        ek1_m, ek1_s, _ = _agg(e_em_k1)
+        print(f'{args.ours_label + " (EM K=1)":32s} '
+              f'{pk1_m:>8.2f} ± {pk1_s:<6.2f}    '
+              f'{ek1_m:>6.2f} ± {ek1_s:<6.2f}    (n={len(p_em_k1)})')
 
     # ── Block 2: Density L2 — Do-PFN vs Ours ─────────────────────────────
     print()

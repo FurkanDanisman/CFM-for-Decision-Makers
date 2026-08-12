@@ -145,8 +145,27 @@ def ours_densities(cd,
     # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
     # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
     # computed both ways (matches Table 3's `ours_mean` variant).
-    cate_raw_scaled = np.zeros(n_test, dtype=np.float64)
+    cate_raw_scaled     = np.zeros(n_test, dtype=np.float64)
+    # EM-adjusted MALC-mean CATE — two variants:
+    #   K=1    : force MALC to a single log-concave (no mixture over-split)
+    #   mix    : use whatever K MALC selected via BIC, weighted by pi_k
+    # By convention we fit MALC to p_mat.T so axis-0 (input) = Y1, axis-1 = Y0.
+    # _fit_component_2d then computes mu_x = E[Y0], mu_y = E[Y1] via EM →
+    # tau = mu_hat[1] - mu_hat[0] per component.
+    cate_em_mix_scaled  = np.full(n_test, np.nan, dtype=np.float64)
+    cate_em_k1_scaled   = np.full(n_test, np.nan, dtype=np.float64)
     _bin_centers_raw = 0.5 * (edges_np[:-1] + edges_np[1:])                # (J,)
+
+    def _em_tau_from_fit(fit):
+        weights = np.asarray(fit.pi, dtype=np.float64)
+        mus = np.stack([c.mu_hat for c in fit.fits if c is not None])
+        weights = weights[:len(mus)]
+        if weights.sum() <= 0:
+            return float('nan')
+        weights = weights / weights.sum()
+        mu_y0 = float((weights * mus[:, 0]).sum())      # E[Y0]
+        mu_y1 = float((weights * mus[:, 1]).sum())      # E[Y1]
+        return mu_y1 - mu_y0                             # τ = E[Y1] - E[Y0]
 
     for q in range(n_test):
         # Raw p_mat marginals (no MALC): p_mat[j0, j1] convention has j0=y0, j1=y1
@@ -163,15 +182,29 @@ def ours_densities(cd,
         # never kills the whole realization.
         density_2d = None
         _tried = []
+        fit_mix = None                                              # holds the successful fit
         for _K in {malc_max_K, max(malc_max_K + 1, 2), 3, 1}:
             try:
-                fit = fit_malc_inner(p_mats[q].T, edges_np, edges_np,
-                                     B_fit=malc_B, B_select=malc_B,
-                                     max_K=_K, seed=seed, parallel=False)
-                density_2d = dmalc_2d(fit, eval_pts).reshape(n_eval, n_eval)
+                fit_mix = fit_malc_inner(p_mats[q].T, edges_np, edges_np,
+                                          B_fit=malc_B, B_select=malc_B,
+                                          max_K=_K, seed=seed, parallel=False)
+                density_2d = dmalc_2d(fit_mix, eval_pts).reshape(n_eval, n_eval)
                 break
             except Exception as e:
                 _tried.append(f'K={_K}:{type(e).__name__}')
+        if fit_mix is not None:
+            cate_em_mix_scaled[q] = _em_tau_from_fit(fit_mix)
+
+        # EM K=1 variant — separate fit forced to K=1 for the mean-adjusted
+        # single-log-concave estimate. Cheaper than the mixture fit and never
+        # over-splits. If K=1 fails on this p_mat we leave it NaN.
+        try:
+            fit_k1 = fit_malc_inner(p_mats[q].T, edges_np, edges_np,
+                                    B_fit=malc_B, B_select=malc_B,
+                                    max_K=1, seed=seed, parallel=False)
+            cate_em_k1_scaled[q] = _em_tau_from_fit(fit_k1)
+        except Exception:
+            pass
         if density_2d is None:
             # Fallback: piecewise-constant density from the raw p_mat.
             # Nearest-neighbour lookup onto the fine (xs, ys) grid.
@@ -221,7 +254,9 @@ def ours_densities(cd,
         p_tau[q] = p_tau_native
 
     return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau,
-                cate_raw_scaled=cate_raw_scaled)
+                cate_raw_scaled=cate_raw_scaled,
+                cate_em_mix_scaled=cate_em_mix_scaled,
+                cate_em_k1_scaled=cate_em_k1_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────
