@@ -173,6 +173,22 @@ def main() -> int:
             eps_ate_raw = float(abs(ate_raw_raw - true_ate_raw)
                                 / max(abs(true_ate_raw), 1e-9))
 
+        def _malc_em_pehe(cate_em_scaled):
+            arr = np.asarray(cate_em_scaled) * y_rng_over_2
+            valid = np.isfinite(arr)
+            if not np.any(valid):
+                return None, None
+            ate_em = float(arr[valid].mean())
+            pehe = float(np.sqrt(np.mean((arr[valid] - true_cate_raw[valid]) ** 2)))
+            eps  = float(abs(ate_em - true_ate_raw) / max(abs(true_ate_raw), 1e-9))
+            return pehe, eps
+        pehe_em_mix = eps_em_mix = None
+        pehe_em_k1  = eps_em_k1  = None
+        if 'cate_em_mix_scaled' in d:
+            pehe_em_mix, eps_em_mix = _malc_em_pehe(d['cate_em_mix_scaled'])
+        if 'cate_em_k1_scaled' in d:
+            pehe_em_k1,  eps_em_k1  = _malc_em_pehe(d['cate_em_k1_scaled'])
+
         l2_y0 = np.array([l2_distance(d['p_y0'][q], p_y0_true[q], Y_CENTERS)
                           for q in range(n_queries)])
         l2_y1 = np.array([l2_distance(d['p_y1'][q], p_y1_true[q], Y_CENTERS)
@@ -196,6 +212,12 @@ def main() -> int:
         if pehe_raw is not None:
             out[f'{name}__pehe_raw']    = np.float32(pehe_raw)
             out[f'{name}__eps_ate_raw'] = np.float32(eps_ate_raw)
+        if pehe_em_mix is not None:
+            out[f'{name}__pehe_em_mix']    = np.float32(pehe_em_mix)
+            out[f'{name}__eps_ate_em_mix'] = np.float32(eps_em_mix)
+        if pehe_em_k1 is not None:
+            out[f'{name}__pehe_em_k1']     = np.float32(pehe_em_k1)
+            out[f'{name}__eps_ate_em_k1']  = np.float32(eps_em_k1)
         print(f'[l2 ] {name:14s}  y0={l2_y0.mean():.4f}  y1={l2_y1.mean():.4f}  '
               f'tau={l2_tau.mean():.4f}  ate={l2_ate:.4f}', flush=True)
 
