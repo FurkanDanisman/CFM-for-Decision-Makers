@@ -1,18 +1,28 @@
-"""Two-row-per-dataset summary for Ours(fn=50) at MALC_B=500.
+"""Four-row-per-dataset summary for Ours at MALC_B=500.
 
-Row 1  ─  raw  : PEHE(raw-mean)   | eps_ATE(raw-OT-mean)
-Row 2  ─  MALC : PEHE(MALC-mean)  | eps_ATE(MALC-OT-mean)
+For each dataset prints 4 rows corresponding to different CATE point-estimate
+recipes. Each row reports sqrt(PEHE) and eps_ATE.
 
-Fields expected in each shard:
-    pehe_ours_mean          (per-query CATE from raw p_mat marginals -> PEHE)
-    pehe_ours_malc_mean     (per-query CATE from MALC-smoothed p(τ)  -> PEHE)
-    err_ours_ot_mean_raw    (mean of W2 barycenter of raw per-query p(τ))
-    err_ours_ot_mean        (mean of W2 barycenter of MALC per-query p(τ))
+    Raw-mean            : per-query E[Y_1] - E[Y_0] from raw p_mat marginals.
+    MALC-CATE-mean      : per-query E[τ] from ∫ τ · p_MALC(τ) dτ
+                          (MALC-smoothed joint density, diagonal-integrated).
+    EM-mean-K1          : per-query τ from MALC forced to K=1, using
+                          fit.fits[0].mu_hat = [E[Y_0], E[Y_1]] (EM-adjusted
+                          single log-concave).
+    EM-mean-Kselection  : per-query τ from MALC's BIC-selected K, using
+                          Σ_k π_k · (mu_hat_k[1] - mu_hat_k[0]) across
+                          mixture components.
+
+Field mapping in the shard (written by benchmarks/run_one.py):
+    pehe_ours_mean / err_ours_mean                       → Raw-mean
+    pehe_ours_malc_mean / err_ours_malc_mean             → MALC-CATE-mean
+    pehe_ours_em_k1_mean / err_ours_em_k1_mean           → EM-mean-K1
+    pehe_ours_em_mix_mean / err_ours_em_mix_mean         → EM-mean-Kselection
 
 Usage
 -----
     python R-PFN/benchmarks/summary_table3_two_row.py \\
-        --results /scratch/furkanbd/.../results_B500
+        --results /scratch/.../results_ours_only_B500
 """
 from __future__ import annotations
 
@@ -24,19 +34,19 @@ import numpy as np
 
 DATASETS = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal']
 
-FIELDS = {
-    'pehe_raw':       'pehe_ours_mean',
-    'pehe_malc':      'pehe_ours_malc_mean',
-    'eps_raw_ot':     'err_ours_ot_mean_raw',
-    'eps_malc_ot':    'err_ours_ot_mean',
-}
+ROWS = [
+    ('Raw-mean',           'pehe_ours_mean',            'err_ours_mean'),
+    ('MALC-CATE-mean',     'pehe_ours_malc_mean',       'err_ours_malc_mean'),
+    ('EM-mean-K1',         'pehe_ours_em_k1_mean',      'err_ours_em_k1_mean'),
+    ('EM-mean-Kselection', 'pehe_ours_em_mix_mean',     'err_ours_em_mix_mean'),
+]
 
 
-def _agg(a):
-    a = np.asarray([x for x in a if np.isfinite(x)], dtype=float)
-    if a.size == 0:
-        return np.nan, np.nan, 0
-    return float(a.mean()), float(a.std(ddof=1) if a.size > 1 else 0.0), int(a.size)
+def _agg(vals):
+    arr = np.asarray([v for v in vals if np.isfinite(v)], dtype=float)
+    if arr.size == 0:
+        return float('nan'), float('nan'), 0
+    return float(arr.mean()), float(arr.std(ddof=1) if arr.size > 1 else 0.0), int(arr.size)
 
 
 def _fmt(m, s):
@@ -54,7 +64,7 @@ def main() -> int:
     if not files:
         print(f'[fatal] no shards in {args.results}'); return 2
 
-    bucket = {d: {k: [] for k in FIELDS} for d in DATASETS}
+    bucket = {d: {k: {'pehe': [], 'eps': []} for _, k, _ in ROWS} for d in DATASETS}
     for path in files:
         with np.load(path, allow_pickle=True) as f:
             try:
@@ -63,24 +73,30 @@ def main() -> int:
                 continue
             if dname not in bucket:
                 continue
-            for k, key in FIELDS.items():
-                if key in f.files:
-                    bucket[dname][k].append(float(f[key]))
+            for _, pehe_key, eps_key in ROWS:
+                if pehe_key in f.files:
+                    bucket[dname][pehe_key]['pehe'].append(float(f[pehe_key]))
+                if eps_key in f.files:
+                    bucket[dname][pehe_key]['eps'].append(float(f[eps_key]))
 
-    header = f'{"Dataset":10s} {"Variant":6s}    {"sqrt(PEHE)":>14s}    {"eps_ATE":>14s}    {"n":>4s}'
+    header = f'{"Dataset":10s} {"Variant":22s}    {"sqrt(PEHE)":>14s}    {"eps_ATE":>14s}    {"n":>4s}'
     print()
-    print('── Ours(fn=50) — Table 3 (raw vs MALC point estimates) ──────────────')
+    print('── Ours — Table 3 (four point-estimate variants) ─────────────────────')
     print(header)
     print('-' * len(header))
     for d in DATASETS:
-        pr_m, pr_s, npr = _agg(bucket[d]['pehe_raw'])
-        pm_m, pm_s, npm = _agg(bucket[d]['pehe_malc'])
-        er_m, er_s, ner = _agg(bucket[d]['eps_raw_ot'])
-        em_m, em_s, nem = _agg(bucket[d]['eps_malc_ot'])
-        print(f'{d:10s} {"raw":6s}    {_fmt(pr_m, pr_s):>14s}    '
-              f'{_fmt(er_m, er_s):>14s}    {min(npr, ner):>4d}')
-        print(f'{d:10s} {"MALC":6s}    {_fmt(pm_m, pm_s):>14s}    '
-              f'{_fmt(em_m, em_s):>14s}    {min(npm, nem):>4d}')
+        first = True
+        for label, pehe_key, _ in ROWS:
+            pehe = bucket[d][pehe_key]['pehe']
+            eps  = bucket[d][pehe_key]['eps']
+            pm, ps, np_ = _agg(pehe)
+            em, es, ne  = _agg(eps)
+            n = min(np_, ne) if (np_ and ne) else 0
+            ds_col = d if first else ''
+            print(f'{ds_col:10s} {label:22s}    {_fmt(pm, ps):>14s}    '
+                  f'{_fmt(em, es):>14s}    {n:>4d}')
+            first = False
+        print('-' * len(header))
     print()
     return 0
 
