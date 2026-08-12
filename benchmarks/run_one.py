@@ -425,6 +425,15 @@ def main():
                           'to [-1,1]. Bin centers are inverse-transformed so PEHE '
                           'stays in raw Y units. Matches Do-PFN inference recipe. '
                           'MALC/EM outputs are set to NaN in this mode (raw-mean only).')
+    ap.add_argument('--y-winsorize', type=float, default=0.0,
+                     help='Percentile for winsorized Y-scaling (e.g. 5.0). Uses '
+                          '(P, 100-P) quantiles of training Y for the [-1, 1] '
+                          'scaling instead of raw min/max, clipping values outside '
+                          'to +-1. Shrinks bin width for the dense Y region. '
+                          '0 = disabled (default).')
+    ap.add_argument('--skip-malc', action='store_true',
+                     help='Skip the MALC pool entirely; only raw-mean CATE is '
+                          'reported. Cuts CPS/PSID runtime ~10x for smoke tests.')
     ap.add_argument('--only-uwyk-baseline', action='store_true',
                      help='Backfill mode: compute ONLY UWYK-BASELINE and merge into the '
                           'existing npz. Skip Do-PFN, UWYK-Ancestral, OURS. Requires '
