@@ -28,6 +28,7 @@ OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results_ours_only}"
 MALC_B="${MALC_B:-500}"
 MALC_MAX_K="${MALC_MAX_K:-3}"
 BACKBONE="${BACKBONE:-ipfn}"                # ipfn | dopfn_bb
+Y_POWER_TRANSFORM="${Y_POWER_TRANSFORM:-0}"  # 1 → apply Yeo-Johnson on Y at inference
 
 N_REAL="${N_REAL:-100}"
 WORKERS="${SLURM_CPUS_PER_TASK:-8}"
@@ -65,6 +66,7 @@ python "$REPO/benchmarks/run_one.py" \
     --malc-B        "$MALC_B" \
     --malc-max-K    "$MALC_MAX_K" \
     --backbone      "$BACKBONE" \
+    $( [ "$Y_POWER_TRANSFORM" = "1" ] && echo "--y-power-transform" ) \
     --workers       "$WORKERS" \
     --only-ours
 

@@ -420,6 +420,11 @@ def main():
     ap.add_argument('--backbone',      choices=['ipfn', 'dopfn_bb'], default='ipfn',
                      help='ipfn = InterventionalPFN checkpoint (default); '
                           'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint.')
+    ap.add_argument('--y-power-transform', action='store_true',
+                     help='Apply Yeo-Johnson PowerTransformer to Y before scaling '
+                          'to [-1,1]. Bin centers are inverse-transformed so PEHE '
+                          'stays in raw Y units. Matches Do-PFN inference recipe. '
+                          'MALC/EM outputs are set to NaN in this mode (raw-mean only).')
     ap.add_argument('--only-uwyk-baseline', action='store_true',
                      help='Backfill mode: compute ONLY UWYK-BASELINE and merge into the '
                           'existing npz. Skip Do-PFN, UWYK-Ancestral, OURS. Requires '
