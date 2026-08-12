@@ -29,6 +29,7 @@ MALC_B="${MALC_B:-500}"
 MALC_MAX_K="${MALC_MAX_K:-3}"
 BACKBONE="${BACKBONE:-ipfn}"                # ipfn | dopfn_bb
 Y_POWER_TRANSFORM="${Y_POWER_TRANSFORM:-0}"  # 1 → apply Yeo-Johnson on Y at inference
+Y_LOG_TRANSFORM="${Y_LOG_TRANSFORM:-0}"      # 1 → apply log(y - y_min + 1) on Y at inference
 Y_WINSORIZE="${Y_WINSORIZE:-0}"              # e.g. 5 → use (5%, 95%) Y quantiles for scaling
 SKIP_MALC="${SKIP_MALC:-0}"                  # 1 → skip MALC pool entirely (raw-mean only)
 
@@ -69,6 +70,7 @@ python "$REPO/benchmarks/run_one.py" \
     --malc-max-K    "$MALC_MAX_K" \
     --backbone      "$BACKBONE" \
     $( [ "$Y_POWER_TRANSFORM" = "1" ] && echo "--y-power-transform" ) \
+    $( [ "$Y_LOG_TRANSFORM"   = "1" ] && echo "--y-log-transform" ) \
     --y-winsorize   "$Y_WINSORIZE" \
     $( [ "$SKIP_MALC" = "1" ] && echo "--skip-malc" ) \
     --workers       "$WORKERS" \

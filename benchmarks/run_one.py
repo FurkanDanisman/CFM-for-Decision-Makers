@@ -431,6 +431,12 @@ def main():
                           'scaling instead of raw min/max, clipping values outside '
                           'to +-1. Shrinks bin width for the dense Y region. '
                           '0 = disabled (default).')
+    ap.add_argument('--y-log-transform', action='store_true',
+                     help='Apply log(y - y_min + 1) transformation to Y before '
+                          'scaling to [-1, 1]. Natural for income-like heavy-right-'
+                          'tail data. Bin centers are inverse-mapped via '
+                          'exp(y_log) + y_min - 1 for raw-unit CATE reporting. '
+                          'MALC/EM outputs are NaNed (raw-mean only).')
     ap.add_argument('--skip-malc', action='store_true',
                      help='Skip the MALC pool entirely; only raw-mean CATE is '
                           'reported. Cuts CPS/PSID runtime ~10x for smoke tests.')

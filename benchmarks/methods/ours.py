@@ -204,8 +204,12 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     #     is directly interpretable in raw Y (matches the un-transform of
     #     bar_dist borders in Do-PFN's preprocess_y).
     apply_y_pt = bool(getattr(args, 'y_power_transform', False))
+    apply_y_log = bool(getattr(args, 'y_log_transform', False))
     y_pt_obj = None
     y_pt_min = y_pt_rng = None
+    # Log-Y state (only used when apply_y_log is True and apply_y_pt is False)
+    y_log_shift = 0.0
+    y_log_scale = 1.0
 
     # Y-winsorize: use symmetric percentile clipping for the [-1, 1] scaling
     # instead of raw min/max. Shrinks effective bin width for the DENSE region
@@ -256,6 +260,19 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
             y_pt_min = float(yt_pt.min()); y_pt_max = float(yt_pt.max())
             y_pt_rng = max(y_pt_max - y_pt_min, 1e-8)
             yt_s = 2 * (yt_pt - y_pt_min) / y_pt_rng - 1.0
+    elif apply_y_log:
+        # Log-Y transform: y_log = log(y - y_min + 1), then scale to [-1, 1].
+        # Shift ensures all-positive input to log. Inverse is straightforward:
+        # y_raw = exp(y_log) + y_min - 1. Bin centers are inverse-mapped for
+        # raw-mean CATE reporting (same treatment as apply_y_pt path).
+        y_log_shift = float(yt.min()) - 1.0                     # so min(y - shift) = 1
+        y_log_train = np.log(yt - y_log_shift).astype(np.float32)
+        y_log_max = float(y_log_train.max())                     # log range from 0 to y_log_max
+        y_log_scale = max(y_log_max, 1e-8)
+        # Scale y_log ∈ [0, y_log_max] to [-1, 1]
+        yt_s = 2.0 * y_log_train / y_log_scale - 1.0
+        print(f'[ours_pipeline] Y-log: raw [{float(yt.min()):.3f}, {float(yt.max()):.3f}] '
+              f'→ log-shifted [0, {y_log_max:.3f}]', flush=True)
     else:
         # Normal / winsorized linear scaling. Clip to [-1, 1] for winsorized
         # mode (values outside the percentile range get saturated at ±1).
@@ -345,15 +362,21 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     p_mats = np.zeros((M, J, J), dtype=np.float32)
 
     # Effective bin centers in RAW Y units + downstream scale multiplier for CATE.
-    # When Y is power-transformed, bin centers on the scaled [-1, 1] Y_pt grid
-    # must be inverse-mapped through the PowerTransformer to produce raw Y units,
-    # matching Do-PFN's `new_borders = pt.inverse_transform(bar_dist.borders)`.
+    # When Y is transformed (PT / log), bin centers on the scaled [-1, 1] grid
+    # are inverse-mapped through the transform to raw Y units, matching
+    # Do-PFN's `new_borders = pt.inverse_transform(bar_dist.borders)` pattern.
     if apply_y_pt:
         centers_pt = (centers + 1.0) / 2.0 * y_pt_rng + y_pt_min           # (J,) in PT space
         centers_raw = y_pt_obj.inverse_transform(
-            centers_pt.reshape(-1, 1).astype(np.float64)).flatten()         # (J,) in raw Y
+            centers_pt.reshape(-1, 1).astype(np.float64)).flatten()
         eff_centers = centers_raw.astype(np.float32)
-        eff_scale = 1.0                                                     # already raw
+        eff_scale = 1.0
+    elif apply_y_log:
+        # centers ∈ [-1, 1] → y_log ∈ [0, y_log_max] → y_raw = exp(y_log) + y_log_shift
+        centers_log = (centers + 1.0) / 2.0 * y_log_scale                   # (J,) in log space
+        centers_raw = np.exp(centers_log.astype(np.float64)) + y_log_shift
+        eff_centers = centers_raw.astype(np.float32)
+        eff_scale = 1.0
     else:
         eff_centers = centers
         eff_scale = None                                                    # apply y_rng/2 later
@@ -388,11 +411,12 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     p_taus_raw = np.zeros((M, 401)); p_taus_msk = np.zeros((M, 401))
     em_mix_scaled = np.full(M, np.nan, dtype=np.float64)
     em_k1_scaled  = np.full(M, np.nan, dtype=np.float64)
-    # Skip the MALC pool entirely when Y-PT is active (all MALC/EM outputs
-    # will be NaN'd downstream anyway — see the apply_y_pt branch further
-    # down) OR when the caller explicitly asks to skip via --skip-malc.
-    # Cuts CPS/PSID runtime by ~10× for raw-mean-only smoke tests.
-    skip_malc = apply_y_pt or bool(getattr(args, 'skip_malc', False))
+    # Skip the MALC pool entirely under any Y-transform (PT or log) since the
+    # MALC-mean would need proper Jacobian re-weighting to be in raw Y units.
+    # Also skip if the caller explicitly asks via --skip-malc. Cuts CPS/PSID
+    # runtime ~10× for raw-mean-only smoke tests.
+    skip_malc = (apply_y_pt or apply_y_log
+                 or bool(getattr(args, 'skip_malc', False)))
     if skip_malc:
         print('[ours_pipeline] skipping MALC pool '
               '(only raw-mean CATE will be reported)', flush=True)
@@ -424,11 +448,11 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     est_malc_mean_msk = (tau[None, :] * p_taus_msk).sum(axis=1) * dtau_
 
     # est_mean scaling.
-    # In Y-PT mode: est_mean is already in raw Y units (via inverse-mapped
-    # bin centers), so scale=1.
+    # Under any Y-transform (PT or log): est_mean is already in raw Y units
+    # (via inverse-mapped bin centers), so scale=1.
     # Otherwise: est_mean is on the scaled [-1, 1] tau axis; multiply by y_rng/2
     # (or the winsorized y_rng/2 for a Y-winsorize run — same code path).
-    if apply_y_pt:
+    if apply_y_pt or apply_y_log:
         scale = 1.0
         ours_mean = est_mean.astype(np.float64)
     else:
