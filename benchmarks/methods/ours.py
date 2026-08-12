@@ -206,7 +206,24 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     apply_y_pt = bool(getattr(args, 'y_power_transform', False))
     y_pt_obj = None
     y_pt_min = y_pt_rng = None
-    y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
+
+    # Y-winsorize: use symmetric percentile clipping for the [-1, 1] scaling
+    # instead of raw min/max. Shrinks effective bin width for the DENSE region
+    # of Y at the cost of clipping the tails. E.g. y_winsorize=5.0 uses
+    # (5th percentile, 95th percentile) as the scaling range and clips values
+    # outside that range to ±1. Applies uniformly to all datasets.
+    y_winsorize = float(getattr(args, 'y_winsorize', 0.0))
+    if y_winsorize > 0 and not apply_y_pt:
+        y_min = float(np.percentile(yt, y_winsorize))
+        y_max = float(np.percentile(yt, 100 - y_winsorize))
+        y_rng = max(y_max - y_min, 1e-8)
+        print(f'[ours_pipeline] Y-winsorize @ {y_winsorize}%: '
+              f'range [{y_min:.3f}, {y_max:.3f}] '
+              f'(vs raw min/max [{float(yt.min()):.3f}, {float(yt.max()):.3f}])',
+              flush=True)
+    else:
+        y_min = float(yt.min()); y_max = float(yt.max()); y_rng = max(y_max - y_min, 1e-8)
+
     if apply_y_pt:
         # Try PowerTransformer → QuantileTransformer('normal') → linear fallback.
         # PowerTransformer's Yeo-Johnson lambda optimizer can BracketError on Y
@@ -240,7 +257,11 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
             y_pt_rng = max(y_pt_max - y_pt_min, 1e-8)
             yt_s = 2 * (yt_pt - y_pt_min) / y_pt_rng - 1.0
     else:
+        # Normal / winsorized linear scaling. Clip to [-1, 1] for winsorized
+        # mode (values outside the percentile range get saturated at ±1).
         yt_s = 2 * (yt - y_min) / y_rng - 1.0
+        if y_winsorize > 0:
+            yt_s = np.clip(yt_s, -1.0, 1.0)
 
     # ── Hierarchical clustering — verbatim from UWYK's
     #    PreprocessingGraphConditionedPFN._hierarchical_cluster + _assign_to_clusters
@@ -367,7 +388,15 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     p_taus_raw = np.zeros((M, 401)); p_taus_msk = np.zeros((M, 401))
     em_mix_scaled = np.full(M, np.nan, dtype=np.float64)
     em_k1_scaled  = np.full(M, np.nan, dtype=np.float64)
-    if args.workers > 1:
+    # Skip the MALC pool entirely when Y-PT is active (all MALC/EM outputs
+    # will be NaN'd downstream anyway — see the apply_y_pt branch further
+    # down) OR when the caller explicitly asks to skip via --skip-malc.
+    # Cuts CPS/PSID runtime by ~10× for raw-mean-only smoke tests.
+    skip_malc = apply_y_pt or bool(getattr(args, 'skip_malc', False))
+    if skip_malc:
+        print('[ours_pipeline] skipping MALC pool '
+              '(only raw-mean CATE will be reported)', flush=True)
+    elif args.workers > 1:
         ctx = get_context('spawn')
         with ctx.Pool(processes=args.workers, initializer=_init_worker,
                       initargs=(edges_np, J, bin_width, args.n_eval,
@@ -394,18 +423,22 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     est_malc_mean     = (tau[None, :] * p_taus_raw).sum(axis=1) * dtau_
     est_malc_mean_msk = (tau[None, :] * p_taus_msk).sum(axis=1) * dtau_
 
-    # If Y-PT active, est_mean is already in raw Y units (via inverse-mapped
-    # centers). MALC/EM outputs remain on the scaled tau grid and would need
-    # their own inverse transform to become raw — set them to NaN for the
-    # Y-PT smoke test rather than reporting mis-scaled numbers.
+    # est_mean scaling.
+    # In Y-PT mode: est_mean is already in raw Y units (via inverse-mapped
+    # bin centers), so scale=1.
+    # Otherwise: est_mean is on the scaled [-1, 1] tau axis; multiply by y_rng/2
+    # (or the winsorized y_rng/2 for a Y-winsorize run — same code path).
     if apply_y_pt:
-        # Y-PT smoke test: only raw-mean is safely convertible to raw Y units
-        # (via inverse-mapped bin centers). MALC / EM / OT paths still operate
-        # on the scaled tau grid and would need their own inverse transform —
-        # set them to NaN so they don't get misinterpreted.
         scale = 1.0
+        ours_mean = est_mean.astype(np.float64)
+    else:
+        scale = y_rng / 2.0
+        ours_mean = est_mean * scale
+
+    # MALC / EM outputs. NaN them out when we skipped the MALC pool so we
+    # don't report meaningless values; otherwise scale from tau-axis to raw Y.
+    if skip_malc:
         _nan = np.full_like(est_mean, np.nan, dtype=np.float64)
-        ours_mean          = est_mean.astype(np.float64)   # already raw units
         ours_malc_mean     = _nan.copy()
         ours_malc_mean_msk = _nan.copy()
         ours_malc_mode     = _nan.copy()
@@ -413,8 +446,6 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
         ours_em_mix_mean   = _nan.copy()
         ours_em_k1_mean    = _nan.copy()
     else:
-        scale = y_rng / 2.0
-        ours_mean          = est_mean          * scale
         ours_malc_mean     = est_malc_mean     * scale
         ours_malc_mean_msk = est_malc_mean_msk * scale
         ours_malc_mode     = est_malc_mode     * scale
@@ -424,29 +455,33 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
 
     # OT-mode + OT-mean: population-level ATE from W2 barycenter of masked
     # per-query densities. Mode = argmax, Mean = expectation under barycenter.
-    ate_bary_scaled = wasserstein_barycenter_1d(p_taus_msk, tau)
-    tau_raw = tau * scale
-    ate_bary_raw = ate_bary_scaled / scale
-    ate_ot_mode_scalar = float(tau_raw[ate_bary_raw.argmax()])
-    d_tau_raw = tau_raw[1] - tau_raw[0]
-    bary_norm = ate_bary_raw / max(ate_bary_raw.sum() * d_tau_raw, 1e-12)
-    ate_ot_mean_scalar = float((tau_raw * bary_norm).sum() * d_tau_raw)
-
-    # RAW-OT-mean: W2 barycenter of per-query p(τ) derived from raw p_mat
-    # marginals via convolution (no MALC smoothing). Ablates MALC's role in
-    # the population ATE point estimate. Wrapped so a failure here doesn't
-    # throw away all the MALC results computed above.
-    try:
-        p_taus_raw_bin = np.stack([
-            _raw_p_tau_from_p_mat(p_mats[i], J, bin_width, tau) for i in range(M)])
-        ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
-        ate_bary_raw_raw = ate_bary_raw_scaled / scale
-        bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)
-        ate_ot_mean_raw_scalar = float((tau_raw * bary_raw_norm).sum() * d_tau_raw)
-    except Exception as e:
-        print(f'[warn] raw-OT-mean failed ({type(e).__name__}: {e}); '
-              f'setting ate_ours_ot_mean_raw=NaN', flush=True)
+    if skip_malc:
+        # p_taus_msk was never populated (all zeros) → OT-mean would be garbage.
+        ate_ot_mode_scalar = float('nan')
+        ate_ot_mean_scalar = float('nan')
         ate_ot_mean_raw_scalar = float('nan')
+    else:
+        ate_bary_scaled = wasserstein_barycenter_1d(p_taus_msk, tau)
+        tau_raw = tau * scale
+        ate_bary_raw = ate_bary_scaled / scale
+        ate_ot_mode_scalar = float(tau_raw[ate_bary_raw.argmax()])
+        d_tau_raw = tau_raw[1] - tau_raw[0]
+        bary_norm = ate_bary_raw / max(ate_bary_raw.sum() * d_tau_raw, 1e-12)
+        ate_ot_mean_scalar = float((tau_raw * bary_norm).sum() * d_tau_raw)
+
+        # RAW-OT-mean: W2 barycenter of per-query p(τ) derived from raw p_mat
+        # marginals via convolution (no MALC smoothing).
+        try:
+            p_taus_raw_bin = np.stack([
+                _raw_p_tau_from_p_mat(p_mats[i], J, bin_width, tau) for i in range(M)])
+            ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
+            ate_bary_raw_raw = ate_bary_raw_scaled / scale
+            bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)
+            ate_ot_mean_raw_scalar = float((tau_raw * bary_raw_norm).sum() * d_tau_raw)
+        except Exception as e:
+            print(f'[warn] raw-OT-mean failed ({type(e).__name__}: {e}); '
+                  f'setting ate_ours_ot_mean_raw=NaN', flush=True)
+            ate_ot_mean_raw_scalar = float('nan')
 
     return dict(
         ours_mean          = ours_mean,
