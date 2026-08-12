@@ -216,6 +216,25 @@ def main():
     _record('ours_malc_mode',     ours['ours_malc_mode'])
     _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
 
+    # EM-adjusted MALC means (per-query CATE; NaN entries → per-query fit failed)
+    _true_ate = float(np.mean(true_cate))
+    def _record_nan_safe(name, cate_pred):
+        arr = np.asarray(cate_pred, dtype=float)
+        valid = np.isfinite(arr)
+        if not np.any(valid):
+            return
+        cate_v = arr[valid]; tc_v = true_cate[valid]
+        ate_pred = float(np.mean(cate_v))
+        out[f'pehe_{name}'] = float(np.sqrt(np.mean((cate_v - tc_v) ** 2)))
+        out[f'err_{name}']  = 0.0 if abs(_true_ate) < 1e-12 else \
+                              abs(_true_ate - ate_pred) / abs(_true_ate)
+        out[f'ate_{name}']  = ate_pred
+        out[f'n_{name}']    = int(valid.sum())
+    for name, key in [('ours_em_mix_mean', 'ours_em_mix_mean'),
+                       ('ours_em_k1_mean',  'ours_em_k1_mean')]:
+        if key in ours:
+            _record_nan_safe(name, ours[key])
+
     true_ate = out['true_ate']
     ot_mode_ate = ours['ours_ot_mode_ate']
     out['ate_ours_ot_mode'] = ot_mode_ate
