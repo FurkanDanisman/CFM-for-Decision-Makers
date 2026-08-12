@@ -85,7 +85,11 @@ def _fit_and_marginalize(p_mat_np, seed):
     for k, t in enumerate(tau):
         y1 = xs + t; v = (y1 >= ys[0]) & (y1 <= ys[-1])
         if not np.any(v): continue
-        col = np.clip(np.searchsorted(xs, xs[v]) - 1, 0, len(xs) - 1)
+        # Match l2_ihdp/methods_densities.py (fix in 3cf191d): searchsorted(side='left')
+        # already returns the correct column index k for xs[v][i] == xs[k].
+        # The earlier "- 1" was a genuine off-by-one that biased MALC-mean by
+        # one bin on the scaled y-axis.
+        col = np.clip(np.searchsorted(xs, xs[v]), 0, len(xs) - 1)
         rf = (y1[v] - ys[0]) / dy1
         rlo = np.clip(np.floor(rf).astype(int), 0, len(ys) - 2)
         rhi = rlo + 1; whi = rf - rlo; wlo = 1.0 - whi
