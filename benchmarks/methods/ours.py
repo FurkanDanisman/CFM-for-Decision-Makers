@@ -106,13 +106,11 @@ def _worker_one_query(args):
     return i, p_raw, p_msk
 
 
-def _raw_p_tau_from_p_mat(p_mat_np):
+def _raw_p_tau_from_p_mat(p_mat_np, J, bw, tau):
     """p(τ) from raw p_mat via marginal convolution (independence assumption).
-    Matches Do-PFN's recipe. Interpolated onto _GLOBAL['tau']."""
-    J = _GLOBAL['J']; bw = _GLOBAL['bw']
-    tau = _GLOBAL['tau']; dtau = _GLOBAL['dtau']
-    edges = _GLOBAL['edges']
-    centres = 0.5 * (edges[:-1] + edges[1:])
+    Matches Do-PFN's recipe. Interpolated onto the given tau grid.
+    Callable from the main process (no _GLOBAL dependency)."""
+    dtau = tau[1] - tau[0]
     p_y0 = p_mat_np.sum(axis=1); p_y1 = p_mat_np.sum(axis=0)
     s0 = p_y0.sum(); s1 = p_y1.sum()
     if s0 <= 0 or s1 <= 0:
@@ -303,7 +301,8 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     # RAW-OT-mean: W2 barycenter of per-query p(τ) derived from raw p_mat
     # marginals via convolution (no MALC smoothing). Ablates MALC's role in
     # the population ATE point estimate.
-    p_taus_raw_bin = np.stack([_raw_p_tau_from_p_mat(p_mats[i]) for i in range(M)])
+    p_taus_raw_bin = np.stack([
+        _raw_p_tau_from_p_mat(p_mats[i], J, bin_width, tau) for i in range(M)])
     ate_bary_raw_scaled = wasserstein_barycenter_1d(p_taus_raw_bin, tau)
     ate_bary_raw_raw = ate_bary_raw_scaled / scale
     bary_raw_norm = ate_bary_raw_raw / max(ate_bary_raw_raw.sum() * d_tau_raw, 1e-12)

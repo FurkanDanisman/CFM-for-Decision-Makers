@@ -2,7 +2,7 @@
 #SBATCH --job-name=rpfn-ours-only
 #SBATCH --output=logs/ours_only_%A_%a.out
 #SBATCH --error=logs/ours_only_%A_%a.err
-#SBATCH --time=03:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
 #SBATCH --array=0-499%50
