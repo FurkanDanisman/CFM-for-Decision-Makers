@@ -112,6 +112,16 @@ def main():
     ap.add_argument('--backbone',     choices=['ipfn', 'dopfn_bb'], default='ipfn',
                      help='ipfn = InterventionalPFN checkpoint (default); '
                           'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint.')
+    ap.add_argument('--y-log-transform', action='store_true',
+                     help='Apply log(y - y_min + 1) transform at inference '
+                          '(NaNs MALC/EM fields; raw-mean only).')
+    ap.add_argument('--y-power-transform', action='store_true',
+                     help='Apply Yeo-Johnson PowerTransformer on Y at inference '
+                          '(NaNs MALC/EM fields; raw-mean only).')
+    ap.add_argument('--y-winsorize', type=float, default=0.0,
+                     help='Winsorize Y at (P, 100-P) percentiles.')
+    ap.add_argument('--skip-malc', action='store_true',
+                     help='Skip MALC pool entirely (raw-mean only, ~10x faster).')
     ap.add_argument('--ours-only',    action='store_true',
                     help='Skip UWYK-NoAnc + UWYK-Ancestral + Do-PFN. Use when '
                          'baselines are already populated in a sibling corpus '

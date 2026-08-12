@@ -77,6 +77,10 @@ OURS_ONLY_FLAG=""
 BACKBONE="${BACKBONE:-ipfn}"                        # ipfn | dopfn_bb
 MALC_B="${MALC_B:-500}"                              # MALC bootstrap draws
 MALC_MAX_K="${MALC_MAX_K:-3}"                        # MALC mixture max K
+Y_LOG_TRANSFORM="${Y_LOG_TRANSFORM:-0}"              # 1 → log(y - y_min + 1) inference
+Y_POWER_TRANSFORM="${Y_POWER_TRANSFORM:-0}"          # 1 → Yeo-Johnson on Y at inference
+Y_WINSORIZE="${Y_WINSORIZE:-0}"                      # e.g. 5 → (5%, 95%) Y quantile scaling
+SKIP_MALC="${SKIP_MALC:-0}"                          # 1 → skip MALC pool (raw-mean only)
 N_BATCHES=$(( N_SCMS_TOTAL / N_SCMS_PER_TASK ))    # 500 / 50 = 10
 CONTEXTS=(50 250 500 1000 5000)
 N_CONTEXTS=${#CONTEXTS[@]}                          # 5
@@ -135,6 +139,10 @@ for SEED in $(seq "$SEED_START" "$SEED_END"); do
         --backbone      "$BACKBONE" \
         --malc-B        "$MALC_B" \
         --malc-max-K    "$MALC_MAX_K" \
+        --y-winsorize   "$Y_WINSORIZE" \
+        $( [ "$Y_LOG_TRANSFORM"   = "1" ] && echo "--y-log-transform" ) \
+        $( [ "$Y_POWER_TRANSFORM" = "1" ] && echo "--y-power-transform" ) \
+        $( [ "$SKIP_MALC"         = "1" ] && echo "--skip-malc" ) \
         $OURS_ONLY_FLAG || echo "[warn] seed=$SEED failed, continuing"
 done
 
