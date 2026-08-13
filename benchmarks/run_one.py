@@ -110,9 +110,22 @@ def _load_uwyk_model(args, ckpt_dir):
         if name == 'models' or name.startswith('models.') or name == 'utils' or name.startswith('utils.'):
             del sys.modules[name]
     sys.modules.update(_saved)
+    # UWYK's own RealCauseEval uses `final_model_with_bardist.pt` — the fully-
+    # trained snapshot — NOT `best_model.pt` (early-stopping checkpoint).
+    # See uwyk_upstream/RealCauseEval/run_baselines/dofm_full_conditioning.py.
+    # Fall back to best_model.pt if the final snapshot is missing.
+    final_ckpt  = os.path.join(ckpt_dir, 'final_model_with_bardist.pt')
+    final_cfg   = os.path.join(ckpt_dir, 'final_model_with_bardist_config.yaml')
+    if os.path.isfile(final_ckpt) and os.path.isfile(final_cfg):
+        cfg_path, ckpt_path = final_cfg, final_ckpt
+    else:
+        cfg_path  = os.path.join(ckpt_dir, 'best_model_config.yaml')
+        ckpt_path = os.path.join(ckpt_dir, 'best_model.pt')
+        print(f'[warn] UWYK final_model_with_bardist.pt not found in {ckpt_dir}; '
+              f'falling back to best_model.pt', flush=True)
     return UWYK_pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=os.path.join(ckpt_dir, 'best_model_config.yaml'),
-        checkpoint_path=os.path.join(ckpt_dir, 'best_model.pt'),
+        config_path=cfg_path,
+        checkpoint_path=ckpt_path,
         device='cpu', verbose=False,
     ).load()
 
