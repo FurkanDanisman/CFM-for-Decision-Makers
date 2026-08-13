@@ -134,6 +134,19 @@ def main() -> int:
         elif m == 'dopfn':
             method_out[m] = ihdp_ev._run_dopfn(cd, truth, args, n_ctx)
 
+    # Independence-assumption variant for Ours-DoPFN-bb.
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
+
     # Per-realization density diagnostic PNG (methods vs truth).
     try:
         from density_plots import save_density_diag_png

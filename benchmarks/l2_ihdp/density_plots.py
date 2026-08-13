@@ -22,20 +22,22 @@ import numpy as np
 
 
 METHOD_COLOR = {
-    'ours_fn50':     '#0F8A3C',
-    'ours_fn10':     '#4FBF6F',
-    'ours_dopfn_bb': '#2E4A6F',
-    'dopfn':         '#8A4FBE',
-    'uwyk_noanc':    '#B84A2A',
-    'uwyk_anc':      '#DC7A5A',
+    'ours_fn50':           '#0F8A3C',
+    'ours_fn10':           '#4FBF6F',
+    'ours_dopfn_bb':       '#2E4A6F',
+    'ours_dopfn_bb_indep': '#5A7FBE',
+    'dopfn':               '#8A4FBE',
+    'uwyk_noanc':          '#B84A2A',
+    'uwyk_anc':            '#DC7A5A',
 }
 METHOD_LABEL = {
-    'ours_fn50':     'Ours (fn=50)',
-    'ours_fn10':     'Ours (fn=10)',
-    'ours_dopfn_bb': 'Ours-DoPFN-bb (200K)',
-    'dopfn':         'Do-PFN',
-    'uwyk_noanc':    'UWYK-NoAnc',
-    'uwyk_anc':      'UWYK-FullAnc',
+    'ours_fn50':           'Ours (fn=50)',
+    'ours_fn10':           'Ours (fn=10)',
+    'ours_dopfn_bb':       'Ours-DoPFN-bb (200K, joint)',
+    'ours_dopfn_bb_indep': 'Ours-DoPFN-bb (200K, indep)',
+    'dopfn':               'Do-PFN',
+    'uwyk_noanc':          'UWYK-NoAnc',
+    'uwyk_anc':            'UWYK-FullAnc',
 }
 
 
