@@ -220,10 +220,14 @@ def main():
                           flush=True)
                 rows.append(row)
 
+                # Incremental save after every seed so a timeout only loses
+                # the currently-running SCM, not all completed work.
+                keys = sorted({k for r in rows for k in r.keys()})
+                arr = {k: np.array([r.get(k, np.nan) for r in rows]) for k in keys}
+                tmp = shard_path + '.tmp.npz'
+                np.savez(tmp, **arr); os.replace(tmp, shard_path)
+
     if not rows: print(f'[skip] {shard_path} unchanged'); return
-    keys = sorted({k for r in rows for k in r.keys()})
-    arr = {k: np.array([r.get(k, np.nan) for r in rows]) for k in keys}
-    np.savez(shard_path, **arr)
     print(f'[save] {shard_path}  ({len(rows)} rows)')
 
 
