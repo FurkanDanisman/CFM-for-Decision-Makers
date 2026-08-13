@@ -217,12 +217,13 @@ def _load_our_model(args):
 
 
 def _uwyk_only_backfill(args, out_file, variant):
-    """Compute one UWYK variant (baseline|noanc) and merge into an existing npz.
+    """Compute one UWYK variant (baseline|noanc|anc) and merge into an existing npz.
 
     variant='baseline' → uses args.uwyk_baseline_ckpt_dir + zero adjacency
     variant='noanc'    → uses args.uwyk_ckpt_dir (ancestral ckpt) + zero adj
+    variant='anc'      → uses args.uwyk_ckpt_dir (ancestral ckpt) + full-graph adj
     """
-    assert variant in ('baseline', 'noanc'), variant
+    assert variant in ('baseline', 'noanc', 'anc'), variant
     ckpt_dir = args.uwyk_baseline_ckpt_dir if variant == 'baseline' else args.uwyk_ckpt_dir
     t0 = time.time()
     _orig_torch_load = torch.load
@@ -248,8 +249,12 @@ def _uwyk_only_backfill(args, out_file, variant):
 
     _log(f"[{variant}-only] loading UWYK ({variant}) ckpt", t0)
     uwyk_mdl = _load_uwyk_model(args, ckpt_dir)
-    _log(f"[{variant}-only] inference (target-encoded T, zero adjacency)", t0)
-    cate = uwyk_no_ancestral_pipeline(uwyk_mdl, cd_raw)
+    if variant == 'anc':
+        _log(f"[{variant}-only] inference (target-encoded T, full-graph adjacency)", t0)
+        cate = uwyk_ancestral_pipeline(uwyk_mdl, cd_raw)
+    else:
+        _log(f"[{variant}-only] inference (target-encoded T, zero adjacency)", t0)
+        cate = uwyk_no_ancestral_pipeline(uwyk_mdl, cd_raw)
 
     true_cate = _to_np(cd_raw.true_cate).reshape(-1)
     extras = {
@@ -277,6 +282,11 @@ def _run_baseline_backfill(args, out_file):
 def _run_noanc_backfill(args, out_file):
     """Backfill UWYK No-Ancestral (ancestral ckpt + zero adjacency)."""
     _uwyk_only_backfill(args, out_file, variant='noanc')
+
+
+def _run_anc_backfill(args, out_file):
+    """Backfill UWYK Full-Ancestral (ancestral ckpt + full-graph adjacency)."""
+    _uwyk_only_backfill(args, out_file, variant='anc')
 
 
 def _run_ours_only(args, out_file):
@@ -522,7 +532,18 @@ def main():
                      help='Backfill mode: compute ONLY UWYK-No-Ancestral (ancestral ckpt '
                           '+ zero adjacency at inference) and merge into the existing '
                           'npz. Skip everything else. Uses --uwyk-ckpt-dir. If the target '
-                          'npz already carries pehe_uwyk_noanc, this task is a no-op.')
+                          'npz already carries pehe_uwyk_noanc, this task is a no-op '
+                          '(pass --force-uwyk-recompute to override).')
+    ap.add_argument('--only-uwyk-anc', action='store_true',
+                     help='Backfill mode: compute ONLY UWYK-Ancestral (ancestral ckpt + '
+                          'full-graph adjacency at inference) and merge into the existing '
+                          'npz. Skip everything else. Uses --uwyk-ckpt-dir. If the target '
+                          'npz already carries pehe_uwyk_anc, this task is a no-op '
+                          '(pass --force-uwyk-recompute to override).')
+    ap.add_argument('--force-uwyk-recompute', action='store_true',
+                     help='In --only-uwyk-* backfill modes, ignore the existing-field '
+                          'skip check and overwrite pehe/err/ate_uwyk_* fields in place. '
+                          'Use this to re-run UWYK after wrapper/RNG/protocol fixes.')
     ap.add_argument('--only-ours-ot', action='store_true',
                      help='Backfill mode: rerun OURS and merge ONLY the OT-mode and '
                           'OT-mean fields (ate_ours_ot_mode, err_ours_ot_mode, '
@@ -563,11 +584,25 @@ def main():
         if not os.path.exists(out_file):
             print(f'[SKIP] {out_file} does not exist yet — run the full pipeline first.', flush=True)
             return
-        with np.load(out_file, allow_pickle=True) as _f:
-            if {'pehe_uwyk_noanc', 'err_uwyk_noanc', 'ate_uwyk_noanc'} <= set(_f.files):
-                print(f'[SKIP] {out_file} already has uwyk_noanc fields.', flush=True)
-                return
+        if not args.force_uwyk_recompute:
+            with np.load(out_file, allow_pickle=True) as _f:
+                if {'pehe_uwyk_noanc', 'err_uwyk_noanc', 'ate_uwyk_noanc'} <= set(_f.files):
+                    print(f'[SKIP] {out_file} already has uwyk_noanc fields '
+                          f'(pass --force-uwyk-recompute to override).', flush=True)
+                    return
         _run_noanc_backfill(args, out_file); return
+
+    if args.only_uwyk_anc:
+        if not os.path.exists(out_file):
+            print(f'[SKIP] {out_file} does not exist yet — run the full pipeline first.', flush=True)
+            return
+        if not args.force_uwyk_recompute:
+            with np.load(out_file, allow_pickle=True) as _f:
+                if {'pehe_uwyk_anc', 'err_uwyk_anc', 'ate_uwyk_anc'} <= set(_f.files):
+                    print(f'[SKIP] {out_file} already has uwyk_anc fields '
+                          f'(pass --force-uwyk-recompute to override).', flush=True)
+                    return
+        _run_anc_backfill(args, out_file); return
 
     if args.only_ours_ot:
         if not os.path.exists(out_file):
