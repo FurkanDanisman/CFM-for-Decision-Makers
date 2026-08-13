@@ -1,43 +1,38 @@
-"""Fig 2 — PEHE / marginal L2 / CATE L2 / ATE L2 vs ρ on polynomial SCM.
+"""Fig 2 v2 — PEHE / marginal-L2 / CATE-L2 / ATE-L2 vs ρ, discrete bar probs.
 
-Four methods evaluated at each ρ ∈ {0, 0.2, 0.4, 0.6, 0.8, ~1}:
-    UWYK-NoAnc            — samples for Y_do0, Y_do1 (independent draws)
-    Ours(fn=50)           — 2D BarDist joint p(Y0,Y1|X)
-    Do-PFN                — Gaussian around per-arm point estimate
-    Ours-DoPFN-bb(200K)   — same 2D BarDist head, DoPFN backbone
+Density derivation is done directly from each model's own BarDistribution
+head (no KDE, no Gaussian approximation, no sampling+smoothing):
 
-Under UWYK / Do-PFN's independence assumption:
-    p_method(τ | x)  =  p_method(Y1|x)  ⊛  p_method(-Y0|x)
+    Ours (2D BarDist head)
+        p_mat[i, j]  = raw joint density on the (J × J) bin grid.
+        marginals    : p0[i] = Σ_j p_mat[i,j]   ;   p1[j] = Σ_i p_mat[i,j]
+        CATE         : p_τ[k] = Σ_{i,j: c[j]-c[i]∈bin k} p_mat[i,j]
+                       (captures ρ; the joint sums along τ diagonals).
+        MALC variant : replace CATE p_τ with _fit_and_marginalize(p_mat, ...)
+                       from benchmarks/methods/ours.py. Marginals stay raw.
 
-The 2D-joint methods (Ours) obtain p(τ|x) by projecting the joint along
-τ = y1 - y0 diagonals; this captures the DGP's ρ. UWYK / Do-PFN cannot.
+    UWYK-NoAnc (BarDist head, per-arm)
+        p_arm[i]     = softmax over the BarDist head's interior K bins,
+                       obtained by monkey-patching bar_distribution.mode to
+                       capture raw_preds during a single predict() call.
+        CATE         : p_τ[k] = Σ_{i,j: c[j]-c[i]∈bin k} p1[j] · p0[i]
+                       (independence-assumption convolution).
 
-ATE density = 1D Wasserstein barycenter over per-query CATE densities
-(matches how l2_ihdp/eval_realization.py aggregates).
+    Do-PFN (FullSupportBarDistribution head)
+        p_arm[i]     = predict_full(X)['buckets'][i] (already softmax'd).
+        CATE         : independence convolution (as UWYK).
 
-Truth (closed-form for the polynomial SCM):
-    p(Y_dot | x_q)  =  N(μ_t(x_q), σ²)
-    p(τ    | x_q)  =  N(μ1(x_q) - μ0(x_q), 2σ²(1-ρ))
-    p_ATE(τ)       =  W-barycenter over q of p(τ | x_q)
+All densities land on each model's own K/J bin centers, then are
+interpolated to a shared τ-grid and Y-grid ONLY for L2 comparison.
+Interpolation preserves shape; direct L2 numbers within a comparison
+pair (Ours vs UWYK  or  Ours-DoPFN-bb vs Do-PFN) are meaningful.
 
-At ρ = 1 the paired-noise variance is 0 → truth CATE density is a Dirac.
-Any smooth estimate has L2 dominated by its own norm — not meaningful.
-So we internally cap ρ at 0.99 for evaluation.
+Comparison pairs (paper-relevant; no cross-method rows):
+    Pair A: {UWYK-NoAnc}  vs  {Ours(fn=50) raw, Ours(fn=50) MALC}
+    Pair B: {Do-PFN}      vs  {Ours-DoPFN-bb raw, Ours-DoPFN-bb MALC}
 
-Layout: 2x2 summary PNG + one 4-panel density-diagnostic PNG per ρ.
-
-Usage (single-task = all rhos):
-    python fig2_pehe_l2.py \
-        --repo $DEPLOY_ROOT/R-PFN --dopfn $DEPLOY_ROOT/external/dopfn \
-        --causalpfn $DEPLOY_ROOT/external/causalpfn \
-        --uwyk-src $DEPLOY_ROOT/external/uwyk/src \
-        --uwyk-ckpt-dir $DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0 \
-        --checkpoint50 $DEPLOY_ROOT/R-PFN/checkpoints/step_50000_final.pt \
-        --checkpoint-dopfn-bb $DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step_200000.pt \
-        --out fig2_pehe_l2
-
-SLURM-style per-ρ mode: pass --rho-index 0..5 (writes one shard per ρ),
-then --plot on the aggregator to build the summary + diagnostics.
+ρ grid: {0, 0.2, 0.4, 0.6, 0.8, 1.0}. ρ=1 is evaluated at 0.99 internally
+(truth CATE density becomes a Dirac at ρ=1 exactly).
 """
 from __future__ import annotations
 import argparse, gc, importlib, os, sys, time, traceback, types
@@ -51,23 +46,23 @@ if _bench not in sys.path: sys.path.insert(0, _bench)
 from methods import dopfn as _dopfn_shim   # noqa: F401  — sklearn shim
 
 if _here not in sys.path: sys.path.insert(0, _here)
-from dopfn_helpers import (load_dopfn_bb, load_dopfn, dopfn_predict_cate,
-                            dopfn_predict_ymean)
+from dopfn_helpers import load_dopfn_bb, load_dopfn
 
 DEVICE = torch.device('cpu')
 RHO_GRID = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
-RHO_EFF  = tuple(min(r, 0.99) for r in RHO_GRID)   # cap ρ=1 → 0.99 internally
+RHO_EFF  = tuple(min(r, 0.99) for r in RHO_GRID)
 
-# Shared grids for density comparison.
-Y_MIN, Y_MAX, Y_BINS = -8.0, 8.0, 201
-TAU_MIN, TAU_MAX, TAU_BINS = -10.0, 10.0, 201
+# Shared τ and Y grids used ONLY for L2 comparison across methods that
+# have different native K/J. Fine enough that interpolation error is small.
+Y_MIN, Y_MAX, Y_BINS = -8.0, 8.0, 501
+TAU_MIN, TAU_MAX, TAU_BINS = -10.0, 10.0, 501
 Y_GRID   = np.linspace(Y_MIN, Y_MAX, Y_BINS)
 TAU_GRID = np.linspace(TAU_MIN, TAU_MAX, TAU_BINS)
 Y_DX     = float(Y_GRID[1] - Y_GRID[0])
 TAU_DX   = float(TAU_GRID[1] - TAU_GRID[0])
 
 
-# ── SCM (mirrors marginal_nll_test.py) ────────────────────────────────────
+# ── Polynomial SCM ────────────────────────────────────────────────────────
 def make_polynomial_scm(seed, n_context, n_test, rho_eff, x_dim=5, degree=3,
                           sigma_eps=1.0):
     rng = np.random.default_rng(seed)
@@ -107,9 +102,8 @@ def make_polynomial_scm(seed, n_context, n_test, rho_eff, x_dim=5, degree=3,
     return cd
 
 
-# ── Truth densities ───────────────────────────────────────────────────────
+# ── Truth (analytic) ──────────────────────────────────────────────────────
 def _gauss_on_grid(mu, sigma, grid):
-    """(n,) means → (n, len(grid)) normalised Gaussian densities."""
     mu = np.asarray(mu, dtype=np.float64).reshape(-1)
     z = (grid[None, :] - mu[:, None]) / max(sigma, 1e-12)
     p = np.exp(-0.5 * z ** 2) / (np.sqrt(2 * np.pi) * max(sigma, 1e-12))
@@ -117,22 +111,35 @@ def _gauss_on_grid(mu, sigma, grid):
     return p / np.maximum(s, 1e-12)
 
 
-def true_marginals(cd):
-    """Per-query true p(Y_do0) and p(Y_do1) on Y_GRID."""
+def truth_marginals(cd):
     p0 = _gauss_on_grid(cd._mu0_test, cd._sigma_eps, Y_GRID)
     p1 = _gauss_on_grid(cd._mu1_test, cd._sigma_eps, Y_GRID)
     return p0, p1
 
 
-def true_cate(cd):
-    """Per-query true p(τ | x) on TAU_GRID. Var = 2σ²(1-ρ)."""
+def truth_cate(cd):
     var_tau = 2.0 * cd._sigma_eps ** 2 * (1.0 - cd._rho_eff)
     sd_tau = float(np.sqrt(max(var_tau, 1e-12)))
     mu_tau = cd._mu1_test - cd._mu0_test
     return _gauss_on_grid(mu_tau, sd_tau, TAU_GRID)
 
 
-# ── L2 helpers ────────────────────────────────────────────────────────────
+# ── L2 + resampling to common grid ────────────────────────────────────────
+def _to_common_grid(density_native, centers_native, common_grid):
+    """Linear-interpolate a density from its native centers onto the shared
+    common_grid. Zeros outside native support. Renormalises."""
+    p = np.interp(common_grid, centers_native, density_native, left=0.0, right=0.0)
+    dx = common_grid[1] - common_grid[0]
+    s = float(p.sum() * dx)
+    return p / s if s > 0 else p
+
+
+def _discrete_to_density(p_discrete, centers):
+    """Bar probabilities → density on the same bar centers."""
+    bw = float(centers[1] - centers[0])
+    return p_discrete / max(bw, 1e-12)
+
+
 def l2_1d(f, g, dx):
     f = np.asarray(f, dtype=np.float64).reshape(-1)
     g = np.asarray(g, dtype=np.float64).reshape(-1)
@@ -140,18 +147,36 @@ def l2_1d(f, g, dx):
 
 
 def wass_bary_of_grid(p_matrix, grid, wb_fn):
-    """1D W-barycenter over queries. p_matrix: (n_queries, len(grid))."""
-    # wasserstein_barycenter_1d expects densities on the same grid.
     p_ate = wb_fn(p_matrix, grid)
-    s = p_ate.sum() * (grid[1] - grid[0])
-    if s > 0: p_ate = p_ate / s
-    return p_ate
+    dx = grid[1] - grid[0]
+    s = p_ate.sum() * dx
+    return p_ate / s if s > 0 else p_ate
 
 
-# ── Method density derivations ────────────────────────────────────────────
+# ── CATE derivation ───────────────────────────────────────────────────────
+def _joint_to_ptau(p_mat, centers, tau_grid):
+    """CATE density from a 2D joint p_mat[i,j] on (centers × centers) bins.
+    Sums along τ = c[j] - c[i] diagonals into tau_grid bins."""
+    # Precompute τ_ij (J,J) and their tau_grid bin indices.
+    tau_ij = centers[None, :] - centers[:, None]
+    tau_min = float(tau_grid[0]); tau_dx = float(tau_grid[1] - tau_grid[0])
+    idx = np.round((tau_ij - tau_min) / tau_dx).astype(int)
+    valid = (idx >= 0) & (idx < tau_grid.shape[0])
+    hist = np.zeros(tau_grid.shape[0])
+    np.add.at(hist, idx[valid], p_mat[valid])
+    return hist / max(tau_dx, 1e-12)
+
+
+def _marginals_to_ptau(p0, p1, centers, tau_grid):
+    """CATE density under independence: p_τ[k] = Σ p1[j]·p0[i] on the same
+    τ_ij bins as _joint_to_ptau. Equivalent to a discrete convolution."""
+    joint = np.outer(p0, p1)                # (J,J), p0=row, p1=col
+    return _joint_to_ptau(joint, centers, tau_grid)
+
+
+# ── Ours (fn=50 or DoPFN-bb): raw p_mat via forward pass ──────────────────
 def _pad(X, n_feat):
-    if n_feat <= 0:  # DoPFN-bb: no cap
-        return np.asarray(X, dtype=np.float32)
+    if n_feat <= 0: return np.asarray(X, dtype=np.float32)
     X = np.asarray(X, dtype=np.float32)
     if X.ndim == 1: X = X.reshape(-1, 1)
     d = X.shape[1]
@@ -161,20 +186,23 @@ def _pad(X, n_feat):
     return X[:, :n_feat]
 
 
-def ours_densities(model, edges, J, bin_width, NF, cd):
-    """Per-query 2D BarDist forward → marginals + CATE densities on
-    the shared grids, plus per-query CATE point estimates."""
+def ours_forward(model, edges, J, bin_width, NF, cd):
+    """Returns per-query 2D joint p_mat on raw y centers.
+        p_mat_all: (n_test, J, J)
+        centers_raw: (J,)  in raw y units
+    Rescale/unscale uses train Y min/max as reference. """
     from losses.BarDistribution2D import unpack_pred
     y_ctx_raw = cd.y_train.numpy().reshape(-1)
     y_min = float(y_ctx_raw.min()); y_max = float(y_ctx_raw.max())
     y_rng = max(y_max - y_min, 1e-6)
-    def _rescale(y_raw): return (y_raw - y_min) / y_rng * 2.0 - 1.0
-    def _unscale(y_scaled): return (y_scaled + 1.0) * 0.5 * y_rng + y_min
+    def _rescale(y): return (y - y_min) / y_rng * 2.0 - 1.0
+    def _unscale(y): return (y + 1.0) * 0.5 * y_rng + y_min
 
     Y_ctx = _rescale(y_ctx_raw).reshape(-1, 1).astype(np.float32)
     T_ctx = cd.t_train.numpy().astype(np.float32).reshape(-1, 1)
     X_ctx = _pad(cd.X_train.numpy(), NF)
-    X_qry = _pad(cd.X_test.numpy(), NF)
+    X_qry = _pad(cd.X_test.numpy(),  NF)
+
     with torch.no_grad():
         pred = model(torch.from_numpy(X_ctx).unsqueeze(0),
                       torch.from_numpy(T_ctx).unsqueeze(0),
@@ -182,61 +210,52 @@ def ours_densities(model, edges, J, bin_width, NF, cd):
                       torch.from_numpy(X_qry).unsqueeze(0))['predictions'][0]
 
     centers_scaled = 0.5 * (edges[:-1] + edges[1:])
-    centers_raw = _unscale(centers_scaled)                 # (J,)
-    # τ centers = y1_raw_center - y0_raw_center for each (j0, j1) pair
-    # Diagonals of the joint at fixed (j1 - j0) give the raw τ.
-    # We resample the per-query joint onto (Y_GRID, TAU_GRID) via interp.
+    centers_raw = _unscale(centers_scaled).astype(np.float64)
 
     n_test = cd.X_test.shape[0]
-    p_y0_out = np.zeros((n_test, Y_BINS))
-    p_y1_out = np.zeros((n_test, Y_BINS))
-    p_tau_out = np.zeros((n_test, TAU_BINS))
-    cate_pt = np.zeros(n_test)
-
-    # Per-bin τ_ij = centers_raw[j] - centers_raw[i]; sum joint mass over
-    # (i, j) pairs by τ bin.
-    tau_ij = centers_raw[None, :] - centers_raw[:, None]  # (J, J)
-
+    p_mat_all = np.zeros((n_test, J, J), dtype=np.float64)
     for q in range(n_test):
         p_mat, *_ = unpack_pred(pred[q], J, bin_width)
-        pm = p_mat.detach().cpu().numpy()                  # (J, J)
-        pm = pm / max(pm.sum(), 1e-12)                     # normalise mass
-
-        # Raw-space marginals (probabilities over J bins → density on Y_GRID)
-        m0_raw = pm.sum(axis=1); m1_raw = pm.sum(axis=0)   # (J,)
-        # Convert to density on the raw centers_raw grid, then interp to Y_GRID.
-        bin_raw = float(centers_raw[1] - centers_raw[0])
-        d0_raw = m0_raw / bin_raw
-        d1_raw = m1_raw / bin_raw
-        p_y0_out[q] = np.interp(Y_GRID, centers_raw, d0_raw, left=0.0, right=0.0)
-        p_y1_out[q] = np.interp(Y_GRID, centers_raw, d1_raw, left=0.0, right=0.0)
-        # Renormalise on the target grid.
-        s0 = p_y0_out[q].sum() * Y_DX
-        s1 = p_y1_out[q].sum() * Y_DX
-        if s0 > 0: p_y0_out[q] /= s0
-        if s1 > 0: p_y1_out[q] /= s1
-
-        # CATE density from the joint: bin τ_ij into TAU_GRID centers.
-        # Convert τ_ij values to bin indices on TAU_GRID; accumulate probability.
-        idx = np.round((tau_ij - TAU_MIN) / TAU_DX).astype(int)
-        valid = (idx >= 0) & (idx < TAU_BINS)
-        hist = np.zeros(TAU_BINS)
-        np.add.at(hist, idx[valid], pm[valid])
-        p_tau = hist / max(TAU_DX, 1e-12)
-        s = p_tau.sum() * TAU_DX
-        if s > 0: p_tau /= s
-        p_tau_out[q] = p_tau
-
-        # CATE point estimate = E[τ] under this discrete joint.
-        cate_pt[q] = float((tau_ij * pm).sum())
-
-    return dict(p_y0=p_y0_out, p_y1=p_y1_out, p_tau=p_tau_out, cate=cate_pt)
+        pm = p_mat.detach().cpu().numpy().astype(np.float64)
+        # Sums to ~1 already; normalise for numerical safety.
+        s = pm.sum()
+        p_mat_all[q] = pm / s if s > 0 else pm
+    return p_mat_all, centers_raw
 
 
-def uwyk_densities(uwyk_model, cd, n_samples=500):
-    """UWYK-NoAnc: sample Y_do0 and Y_do1 independently, KDE for marginals,
-    compute CATE as (Y1-Y0) samples KDE (equivalent to convolution under
-    independence)."""
+# ── UWYK: raw bar probs via bar_distribution monkey-patch ─────────────────
+def _uwyk_capture_raw_preds(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv,
+                              adjacency):
+    """Fires uwyk_model.predict(prediction_type='mode') but grabs raw_preds
+    from bar_distribution.mode via a monkey-patch."""
+    captured = {'raw': None}
+    orig_mode = uwyk_model.bar_distribution.mode
+
+    def _mode_capture(raw_preds):
+        captured['raw'] = raw_preds.detach().cpu()
+        return orig_mode(raw_preds)
+
+    uwyk_model.bar_distribution.mode = _mode_capture
+    try:
+        _ = uwyk_model.predict(
+            X_obs=X_ctx, T_obs=T_ctx, Y_obs=Y_ctx,
+            X_intv=X_qry, T_intv=T_intv,
+            adjacency_matrix=adjacency,
+            prediction_type='mode', inverse_transform=False,
+        )
+    finally:
+        uwyk_model.bar_distribution.mode = orig_mode
+    return captured['raw']
+
+
+def uwyk_forward_raw_probs(uwyk_model, cd):
+    """Returns per-arm bar probabilities on UWYK's INTERIOR K bin centers,
+    in the model's TARGET-SCALED space [-1, 1]. Caller must inverse-scale
+    to raw y if it wants to compare in raw units.
+
+        p0_all: (n_test, K)   p1_all: (n_test, K)
+        centers_scaled: (K,)  in [-1, 1] scaled y space
+    """
     NF = uwyk_model.model.num_features
     X_ctx = _pad(cd.X_train.numpy(), NF)
     t_ctx = cd.t_train.numpy().astype(np.float32).reshape(-1, 1)
@@ -257,70 +276,139 @@ def uwyk_densities(uwyk_model, cd, n_samples=500):
     T0 = np.full((n_test, 1), mean_y_t0, dtype=np.float32)
     T1 = np.full((n_test, 1), mean_y_t1, dtype=np.float32)
 
-    def _draw(T_intv):
-        chunks = []; got = 0
-        while got < n_samples:
-            r = uwyk_model.predict(
-                X_obs=X_ctx, T_obs=t_ctx_enc, Y_obs=y_ctx,
-                X_intv=X_qry, T_intv=T_intv,
-                adjacency_matrix=adj,
-                prediction_type='sample', inverse_transform=True,
-            )
-            arr = np.asarray(r).reshape(n_test, -1)
-            chunks.append(arr); got += arr.shape[1]
-        return np.concatenate(chunks, axis=1)[:, :n_samples]
+    raw0 = _uwyk_capture_raw_preds(uwyk_model, X_ctx, t_ctx_enc, y_ctx, X_qry, T0, adj)
+    raw1 = _uwyk_capture_raw_preds(uwyk_model, X_ctx, t_ctx_enc, y_ctx, X_qry, T1, adj)
 
-    Y0 = _draw(T0)                # (n_test, n_samples)
-    Y1 = _draw(T1)
-    TAU = Y1 - Y0                 # element-wise pairing → independent τ
+    # raw shape: (B=1, n_test_padded, K+4). First K+2 are logits: [pL, bars..., pR]
+    def _to_bar_probs(raw):
+        w_logits = raw[..., :-2]                              # (1, n_test, K+2)
+        probs = torch.softmax(w_logits, dim=-1)
+        pBars = probs[..., 1:-1].squeeze(0).numpy()            # (n_test, K)
+        return pBars
 
-    def _kde_on_grid(samples, grid):
-        n_test = samples.shape[0]
-        out = np.zeros((n_test, grid.shape[0]))
-        for q in range(n_test):
-            s = samples[q]; sd = float(s.std())
-            h = max(1.06 * sd * s.size ** (-0.2), 1e-3)
-            u = (grid[None, :] - s[:, None]) / h
-            k = np.exp(-0.5 * u ** 2) / np.sqrt(2 * np.pi)
-            p = k.mean(axis=0) / h
-            z = p.sum() * (grid[1] - grid[0])
-            if z > 0: p /= z
-            out[q] = p
-        return out
+    p0_padded = _to_bar_probs(raw0)                            # (n_test_padded, K)
+    p1_padded = _to_bar_probs(raw1)
+    p0_all = p0_padded[:n_test]                                # trim padding
+    p1_all = p1_padded[:n_test]
 
-    p_y0 = _kde_on_grid(Y0, Y_GRID)
-    p_y1 = _kde_on_grid(Y1, Y_GRID)
-    p_tau = _kde_on_grid(TAU, TAU_GRID)
-    cate_pt = TAU.mean(axis=1)
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau, cate=cate_pt)
+    # Renormalise (interior bars only; tails were excluded — mass slightly < 1).
+    for arr in (p0_all, p1_all):
+        s = arr.sum(axis=1, keepdims=True)
+        arr /= np.maximum(s, 1e-12)
+
+    centers_scaled = uwyk_model.bar_distribution.centers.detach().cpu().numpy().astype(np.float64)
+    return p0_all, p1_all, centers_scaled, (mean_y_t0, mean_y_t1)
 
 
-def dopfn_densities(DoPFNRegressor, cd):
-    """Do-PFN: Gaussian around per-arm point estimate. Under independence
-    p(τ|x) = N(μ1̂-μ0̂, 2σ̂²)."""
-    yhat0, yhat1, sigma = dopfn_predict_ymean(DoPFNRegressor, cd)
-    p_y0 = _gauss_on_grid(yhat0, sigma, Y_GRID)
-    p_y1 = _gauss_on_grid(yhat1, sigma, Y_GRID)
-    sd_tau = float(np.sqrt(2.0) * sigma)
-    p_tau = _gauss_on_grid(yhat1 - yhat0, sd_tau, TAU_GRID)
-    cate_pt = yhat1 - yhat0
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau, cate=cate_pt)
+def uwyk_inverse_scale_centers(centers_scaled, cd):
+    """UWYK scales targets to [-1, 1] using train Y range at .fit() time.
+    Recover raw-y centers using the same formula."""
+    y = cd.y_train.numpy().reshape(-1)
+    y_min = float(y.min()); y_max = float(y.max())
+    y_rng = max(y_max - y_min, 1e-6)
+    return (centers_scaled + 1.0) * 0.5 * y_rng + y_min
 
 
-# ── Per-SCM scoring ───────────────────────────────────────────────────────
+# ── Do-PFN: raw bar probs via predict_full()['buckets'] ────────────────────
+def dopfn_forward_raw_probs(DoPFNRegressor, cd):
+    """Returns per-arm bar probabilities from Do-PFN's BarDistribution head.
+        p0_all: (n_test, K)   p1_all: (n_test, K)
+        centers_raw: (K,)     in raw y units (borders already rescaled by DoPFN)"""
+    def _np(a):
+        if isinstance(a, torch.Tensor): return a.numpy()
+        return np.asarray(a)
+    X_train = _np(cd.X_train).astype(np.float32)
+    t_train = _np(cd.t_train).astype(np.float32).reshape(-1)
+    y_train = _np(cd.y_train).astype(np.float32).reshape(-1)
+    X_test  = _np(cd.X_test).astype(np.float32)
+    x_tr = np.concatenate([t_train[:, None], X_train], axis=1)
+    x_te0 = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
+    x_te1 = np.concatenate([np.ones((X_test.shape[0], 1),  dtype=np.float32), X_test], axis=1)
+
+    reg = DoPFNRegressor()
+    reg.fit(torch.tensor(x_tr), torch.tensor(y_train))
+    pred0 = reg.predict_full(torch.tensor(x_te0))
+    pred1 = reg.predict_full(torch.tensor(x_te1))
+
+    p0 = np.asarray(pred0['buckets'], dtype=np.float64)       # (n_test, num_bars)
+    p1 = np.asarray(pred1['buckets'], dtype=np.float64)
+    borders = np.asarray(pred0['criterion'].borders.numpy(), dtype=np.float64)
+    centers_raw = 0.5 * (borders[:-1] + borders[1:])          # (num_bars,)
+
+    # Renormalise for numerical safety.
+    p0 /= np.maximum(p0.sum(axis=1, keepdims=True), 1e-12)
+    p1 /= np.maximum(p1.sum(axis=1, keepdims=True), 1e-12)
+    return p0, p1, centers_raw
+
+
+# ── MALC setup (in-process) ───────────────────────────────────────────────
+_MALC_STATE = {}
+
+
+def setup_malc(edges, J, bin_width, N_EVAL, MALC_B, MALC_MAX_K, repo):
+    """Populate ours.py::_GLOBAL directly (no worker pool needed)."""
+    malc_dir = os.path.join(repo, 'MALC')
+    if repo not in sys.path: sys.path.insert(0, repo)
+    if malc_dir not in sys.path: sys.path.insert(0, malc_dir)
+    from methods import ours as ours_mod
+    from losses.BarDistribution2D import fit_malc_inner
+    from malc_2d import dmalc_2d
+    G = ours_mod._GLOBAL
+    G['fit'] = fit_malc_inner; G['dmalc'] = dmalc_2d
+    G['edges'] = edges; G['J'] = J; G['bw'] = bin_width
+    G['MALC_B'] = MALC_B; G['MALC_MAX_K'] = MALC_MAX_K
+    xs = np.linspace(edges[0], edges[-1], N_EVAL)
+    ys = np.linspace(edges[0], edges[-1], N_EVAL)
+    XX, YY = np.meshgrid(xs, ys, indexing='xy')
+    G['xs'] = xs; G['ys'] = ys
+    G['eval_pts'] = np.column_stack([XX.ravel(), YY.ravel()])
+    G['dy0'] = xs[1] - xs[0]; G['dy1'] = ys[1] - ys[0]
+    G['tau'] = np.linspace(ys[0] - xs[-1], ys[-1] - xs[0], 401)
+    G['dtau'] = G['tau'][1] - G['tau'][0]
+    _MALC_STATE['fam_mod'] = ours_mod
+    _MALC_STATE['tau_scaled'] = G['tau']
+    _MALC_STATE['edges'] = edges
+
+
+def malc_cate_density_scaled(p_mat_scaled, seed):
+    """Runs _fit_and_marginalize on a (J,J) raw p_mat. Returns:
+        p_tau_scaled: (401,) density on _MALC_STATE['tau_scaled']  (scaled τ ∈ [-2, 2])"""
+    ours = _MALC_STATE['fam_mod']
+    p_tau = ours._fit_and_marginalize(p_mat_scaled, seed)     # normalised density
+    return np.asarray(p_tau, dtype=np.float64)
+
+
+def scaled_tau_to_raw_centers(cd):
+    """Convert MALC's scaled τ-grid ([-2, 2]) to raw-τ centers.
+    Ours' scaled y ∈ [-1, 1] corresponds to raw y ∈ [y_min, y_max].
+    So scaled τ = τ_raw · (2 / y_rng). Inverse: τ_raw = τ_scaled · (y_rng / 2)."""
+    y = cd.y_train.numpy().reshape(-1)
+    y_rng = max(float(y.max()) - float(y.min()), 1e-6)
+    return _MALC_STATE['tau_scaled'] * (y_rng / 2.0), y_rng
+
+
+# ── One-SCM scoring ───────────────────────────────────────────────────────
 def _pehe(true_cate, pred_cate):
     t = np.asarray(true_cate).reshape(-1)
     p = np.asarray(pred_cate).reshape(-1)
     return float(np.sqrt(np.mean((p - t) ** 2)))
 
 
-def score_one_scm(cd, method_densities, wb_fn):
-    """Given per-method density dict from *_densities(...), compute:
-        pehe, marg_l2 (avg over queries and arms), cate_l2 (avg over queries),
-        ate_l2 (single value).
-    Returns also the raw densities so caller can save diagnostic plots."""
-    p0_true, p1_true = true_marginals(cd)
-    p_tau_true = true_cate(cd)
+def _cate_point_from_density(p_tau, tau_grid):
+    dx = tau_grid[1] - tau_grid[0]
+    return float((tau_grid * p_tau).sum() * dx)
+
+
+def score_one_scm(cd, method_data, wb_fn):
+    """method_data: dict{method_name -> {p_y0_all, p_y1_all, centers_y_raw,
+                                          p_tau_all, tau_centers_raw,
+                                          cate_pred}}.
+    Everything expressed in raw-y and raw-τ units.
+    Returns per-method dict of metrics + per-method densities interpolated
+    onto the shared grids for diagnostics.
+    """
+    p0_true, p1_true = truth_marginals(cd)          # (n_test, Y_BINS)
+    p_tau_true = truth_cate(cd)                     # (n_test, TAU_BINS)
     p_ate_true = wass_bary_of_grid(p_tau_true, TAU_GRID, wb_fn)
 
     metrics = {}
@@ -328,29 +416,46 @@ def score_one_scm(cd, method_densities, wb_fn):
              'true_p_tau_q0': p_tau_true[0], 'true_p_ate': p_ate_true,
              'true_cate': cd.true_cate.numpy()}
 
-    for method_name, d in method_densities.items():
-        pehe = _pehe(cd.true_cate.numpy(), d['cate'])
-        # per-query, per-arm marginal L2; average over both arms and queries.
-        n_q = d['p_y0'].shape[0]
+    for name, d in method_data.items():
+        # ─ interpolate to shared Y_GRID / TAU_GRID for L2 ─
+        n_test = d['p_y0_all'].shape[0]
+        p0_common = np.zeros((n_test, Y_BINS));  p1_common = np.zeros((n_test, Y_BINS))
+        p_tau_common = np.zeros((n_test, TAU_BINS))
+        for q in range(n_test):
+            d0 = _discrete_to_density(d['p_y0_all'][q], d['centers_y_raw'])
+            d1 = _discrete_to_density(d['p_y1_all'][q], d['centers_y_raw'])
+            p0_common[q] = _to_common_grid(d0, d['centers_y_raw'], Y_GRID)
+            p1_common[q] = _to_common_grid(d1, d['centers_y_raw'], Y_GRID)
+            dtau = _discrete_to_density(d['p_tau_all'][q], d['tau_centers_raw'])
+            p_tau_common[q] = _to_common_grid(dtau, d['tau_centers_raw'], TAU_GRID)
+
+        # ─ PEHE ─
+        pehe = _pehe(cd.true_cate.numpy(), d['cate_pred'])
+
+        # ─ Marginal L2 (avg over both arms and queries) ─
         marg_l2 = 0.0
-        for q in range(n_q):
-            marg_l2 += l2_1d(d['p_y0'][q], p0_true[q], Y_DX)
-            marg_l2 += l2_1d(d['p_y1'][q], p1_true[q], Y_DX)
-        marg_l2 /= (2.0 * n_q)
-        cate_l2 = float(np.mean([l2_1d(d['p_tau'][q], p_tau_true[q], TAU_DX)
-                                   for q in range(n_q)]))
-        p_ate_method = wass_bary_of_grid(d['p_tau'], TAU_GRID, wb_fn)
+        for q in range(n_test):
+            marg_l2 += l2_1d(p0_common[q], p0_true[q], Y_DX)
+            marg_l2 += l2_1d(p1_common[q], p1_true[q], Y_DX)
+        marg_l2 /= (2.0 * n_test)
+
+        # ─ CATE L2 (avg over queries) ─
+        cate_l2 = float(np.mean([l2_1d(p_tau_common[q], p_tau_true[q], TAU_DX)
+                                   for q in range(n_test)]))
+
+        # ─ ATE L2 (single value) ─
+        p_ate_method = wass_bary_of_grid(p_tau_common, TAU_GRID, wb_fn)
         ate_l2 = l2_1d(p_ate_method, p_ate_true, TAU_DX)
 
-        metrics[f'pehe_{method_name}']    = pehe
-        metrics[f'marg_l2_{method_name}'] = marg_l2
-        metrics[f'cate_l2_{method_name}'] = cate_l2
-        metrics[f'ate_l2_{method_name}']  = ate_l2
+        metrics[f'pehe_{name}']    = pehe
+        metrics[f'marg_l2_{name}'] = marg_l2
+        metrics[f'cate_l2_{name}'] = cate_l2
+        metrics[f'ate_l2_{name}']  = ate_l2
 
-        diag[f'{method_name}_p_y0_q0']  = d['p_y0'][0]
-        diag[f'{method_name}_p_y1_q0']  = d['p_y1'][0]
-        diag[f'{method_name}_p_tau_q0'] = d['p_tau'][0]
-        diag[f'{method_name}_p_ate']    = p_ate_method
+        diag[f'{name}_p_y0_q0']  = p0_common[0]
+        diag[f'{name}_p_y1_q0']  = p1_common[0]
+        diag[f'{name}_p_tau_q0'] = p_tau_common[0]
+        diag[f'{name}_p_ate']    = p_ate_method
 
     return metrics, diag
 
@@ -360,8 +465,7 @@ def load_ours_ipfn(args, checkpoint_path):
     sys.path.insert(0, args.repo); sys.path.insert(0, os.path.join(args.repo, 'MALC'))
     from models.InterventionalPFN import InterventionalPFN
     _orig = torch.load
-    def _p_load(*a, **kw):
-        kw.setdefault('weights_only', False); return _orig(*a, **kw)
+    def _p_load(*a, **kw): kw.setdefault('weights_only', False); return _orig(*a, **kw)
     torch.load = _p_load
     ckpt = torch.load(checkpoint_path, map_location=DEVICE)
     torch.load = _orig
@@ -399,23 +503,34 @@ def load_uwyk(uwyk_src, uwyk_ckpt_dir):
         config_path=os.path.join(uwyk_ckpt_dir, 'best_model_config.yaml'),
         checkpoint_path=os.path.join(uwyk_ckpt_dir, 'best_model.pt'),
         device='cpu', verbose=False, random_state=42,
+        use_clustering=False,   # sample/raw shape bug in clustered path
     ).load()
 
 
 # ── Aggregation / plotting ────────────────────────────────────────────────
-METHODS = ('uwyk', 'ours50', 'dopfn', 'dopfnbb')
+METHODS = ('uwyk', 'ours50_raw', 'ours50_malc',
+           'dopfn', 'dopfnbb_raw', 'dopfnbb_malc')
 METHOD_LABEL = {
-    'uwyk':    'UWYK-NoAnc',
-    'ours50':  'Ours (fn=50)',
-    'dopfn':   'Do-PFN',
-    'dopfnbb': 'Ours-DoPFN-bb (200K)',
+    'uwyk':          'UWYK-NoAnc',
+    'ours50_raw':    'Ours(fn=50) raw',
+    'ours50_malc':   'Ours(fn=50) MALC',
+    'dopfn':         'Do-PFN',
+    'dopfnbb_raw':   'Ours-DoPFN-bb(200K) raw',
+    'dopfnbb_malc':  'Ours-DoPFN-bb(200K) MALC',
 }
 METHOD_COLOR = {
-    'uwyk':    '#B84A2A',
-    'ours50':  '#0F8A3C',
-    'dopfn':   '#8A4FBE',
-    'dopfnbb': '#2E4A6F',
+    'uwyk':          '#B84A2A',
+    'ours50_raw':    '#0F8A3C',
+    'ours50_malc':   '#4FBF6F',
+    'dopfn':         '#8A4FBE',
+    'dopfnbb_raw':   '#2E4A6F',
+    'dopfnbb_malc':  '#5A7FBE',
 }
+# Two paired comparisons — no cross-method rows in tables.
+PAIRS = [
+    ('Pair A (fn=50)',   ['uwyk',  'ours50_raw',   'ours50_malc']),
+    ('Pair B (DoPFN-bb)', ['dopfn', 'dopfnbb_raw', 'dopfnbb_malc']),
+]
 
 
 def _plot_aggregate(args):
@@ -434,111 +549,102 @@ def _plot_aggregate(args):
     np.savez(args.out + '.npz', **arr)
     print(f'[save] {args.out}.npz  ({len(arr["rho"])} rows)')
 
-    # ── Printed tables (one per metric) so user can copy-paste to paper ──
-    METRIC_LABELS = [('pehe', 'PEHE'), ('marg_l2', 'Marginal-L2'),
-                      ('cate_l2', 'CATE-L2'), ('ate_l2', 'ATE-L2')]
-    for prefix, mlabel in METRIC_LABELS:
-        header = f'{"ρ":>6s}   ' + '   '.join(
-            f'{METHOD_LABEL[m]:>22s}' for m in METHODS)
-        print(f'\n── {mlabel}  (mean ± SEM,  lower is better) ──')
-        print(header)
-        print('-' * len(header))
-        for rho in RHO_GRID:
-            mask = np.isclose(arr['rho'], rho)
-            if not mask.any(): continue
-            cells = []
-            for m in METHODS:
-                key = f'{prefix}_{m}'
-                if key not in arr:
-                    cells.append(f'{"—":>22s}'); continue
-                v = arr[key][mask]; v = v[np.isfinite(v)]
-                if v.size == 0:
-                    cells.append(f'{"—":>22s}'); continue
-                mean = v.mean()
-                sem  = v.std(ddof=1) / np.sqrt(v.size) if v.size > 1 else 0.0
-                cells.append(f'{mean:10.4f} ± {sem:8.4f}   ')
-            print(f'{rho:>6.2f}   ' + ''.join(cells))
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8.8))
-    panels = [
-        ('pehe',    axes[0, 0], 'PEHE',                    False),
-        ('marg_l2', axes[0, 1], 'Marginal-density L2',     False),
-        ('cate_l2', axes[1, 0], 'CATE-density L2',         False),
-        ('ate_l2',  axes[1, 1], 'ATE-density L2',          False),
-    ]
-    for prefix, ax, title, logy in panels:
-        for m in METHODS:
-            key = f'{prefix}_{m}'
-            if key not in arr:
-                continue
-            means, sems, xs = [], [], []
+    # ── Tables per pair ──
+    for pair_label, pair_methods in PAIRS:
+        print(f'\n╔══ {pair_label}  ({"  ".join(METHOD_LABEL[m] for m in pair_methods)}) ══')
+        for prefix, mlabel in [('pehe','PEHE'), ('marg_l2','Marg-L2'),
+                                 ('cate_l2','CATE-L2'), ('ate_l2','ATE-L2')]:
+            header = f'{mlabel:>9s}  ρ→' + '   '.join(f'{METHOD_LABEL[m]:>28s}'
+                                                        for m in pair_methods)
+            print()
+            print(header)
+            print('-' * len(header))
             for rho in RHO_GRID:
                 mask = np.isclose(arr['rho'], rho)
                 if not mask.any(): continue
-                v = arr[key][mask]; v = v[np.isfinite(v)]
-                if v.size == 0: continue
-                xs.append(rho); means.append(v.mean())
-                sems.append(v.std(ddof=1) / np.sqrt(v.size) if v.size > 1 else 0.0)
-            ax.errorbar(xs, means, yerr=sems,
-                          fmt='o-', color=METHOD_COLOR[m], lw=1.7,
-                          markersize=6, capsize=3, label=METHOD_LABEL[m])
-        ax.set_xlabel(r'true DGP $\rho$')
-        ax.set_ylabel(title + '   (lower is better)')
-        ax.set_title(title)
-        ax.grid(alpha=0.3)
-        if logy: ax.set_yscale('log')
-        if prefix == 'pehe':
-            ax.legend(loc='best', fontsize=9)
+                cells = []
+                for m in pair_methods:
+                    key = f'{prefix}_{m}'
+                    if key not in arr: cells.append(f'{"—":>28s}'); continue
+                    v = arr[key][mask]; v = v[np.isfinite(v)]
+                    if v.size == 0: cells.append(f'{"—":>28s}'); continue
+                    mean = v.mean()
+                    sem = v.std(ddof=1) / np.sqrt(v.size) if v.size > 1 else 0.0
+                    cells.append(f'{mean:12.4f} ± {sem:10.4f}    ')
+                print(f'ρ={rho:>4.2f}  ' + ''.join(cells))
 
-    fig.suptitle('Fig 2 — PEHE + density-L2 metrics vs ρ '
-                  f'(K={arr["rho"].size // len(RHO_GRID)} SCMs / ρ, '
-                  f'N-ctx={int(arr["n_context"][0]) if "n_context" in arr else "?"})',
-                  fontsize=11, y=1.02)
-    fig.tight_layout()
-    fig.savefig(args.out + '.png', dpi=140, bbox_inches='tight'); plt.close(fig)
-    print(f'[save] {args.out}.png')
+    # ── 2x2 summary plot per pair ──
+    for pair_label, pair_methods in PAIRS:
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8.8))
+        for (prefix, title), ax in zip([('pehe','PEHE'),('marg_l2','Marginal-density L2'),
+                                          ('cate_l2','CATE-density L2'),('ate_l2','ATE-density L2')],
+                                         axes.flat):
+            for m in pair_methods:
+                key = f'{prefix}_{m}'
+                if key not in arr: continue
+                xs, means, sems = [], [], []
+                for rho in RHO_GRID:
+                    mask = np.isclose(arr['rho'], rho)
+                    if not mask.any(): continue
+                    v = arr[key][mask]; v = v[np.isfinite(v)]
+                    if v.size == 0: continue
+                    xs.append(rho); means.append(v.mean())
+                    sems.append(v.std(ddof=1)/np.sqrt(v.size) if v.size > 1 else 0.0)
+                ax.errorbar(xs, means, yerr=sems, fmt='o-',
+                              color=METHOD_COLOR[m], lw=1.7, markersize=6,
+                              capsize=3, label=METHOD_LABEL[m])
+            ax.set_xlabel(r'true DGP $\rho$')
+            ax.set_ylabel(title + '  (lower is better)')
+            ax.set_title(title); ax.grid(alpha=0.3)
+            if prefix == 'pehe':
+                ax.legend(loc='best', fontsize=8)
+        fig.suptitle(f'Fig 2 — {pair_label}', fontsize=11, y=1.02)
+        fig.tight_layout()
+        suffix = pair_label.split(' ')[1][1:-1]  # 'fn=50' or 'DoPFN-bb'
+        out = f'{args.out}_{suffix.replace("=","").replace("-","_")}.png'
+        fig.savefig(out, dpi=140, bbox_inches='tight'); plt.close(fig)
+        print(f'[save] {out}')
 
 
 def _plot_diagnostics(args):
-    """One 2x2 diagnostic PNG per ρ: p(Y_do0|x_q0), p(Y_do1|x_q0), p(τ|x_q0), p(τ_ATE).
-    Curves for all 4 methods with true density as dashed reference."""
     import matplotlib.pyplot as plt
     diag_dir = os.path.join(os.path.dirname(args.out) or '.', 'density_diagnostics')
     os.makedirs(diag_dir, exist_ok=True)
     for idx, rho in enumerate(RHO_GRID):
         diag_shard = f'{args.out}.rho{idx}.diag.npz'
         if not os.path.exists(diag_shard):
-            print(f'[warn] missing diagnostic shard {diag_shard}'); continue
+            print(f'[warn] missing diag shard {diag_shard}'); continue
         with np.load(diag_shard, allow_pickle=True) as f:
             d = {k: f[k] for k in f.files}
-
-        fig, axes = plt.subplots(2, 2, figsize=(11, 8))
-        panels = [
-            ('p_y0_q0',  Y_GRID,   axes[0, 0], r'$p(Y_{do(0)} \mid x_{q=0})$'),
-            ('p_y1_q0',  Y_GRID,   axes[0, 1], r'$p(Y_{do(1)} \mid x_{q=0})$'),
-            ('p_tau_q0', TAU_GRID, axes[1, 0], r'$p(\tau \mid x_{q=0})$'),
-            ('p_ate',    TAU_GRID, axes[1, 1], r'$p(\tau_{ATE})$'),
-        ]
-        for key, grid, ax, title in panels:
-            truth = d.get(f'true_{key}')
-            if truth is not None:
-                ax.plot(grid, truth, 'k--', lw=2, label='truth', alpha=0.85)
-            for m in METHODS:
-                p = d.get(f'{m}_{key}')
-                if p is None: continue
-                ax.plot(grid, p, color=METHOD_COLOR[m], lw=1.4,
-                         label=METHOD_LABEL[m], alpha=0.9)
-            ax.set_title(title)
-            ax.set_xlabel('value'); ax.set_ylabel('density')
-            ax.grid(alpha=0.3)
-        axes[0, 0].legend(loc='upper right', fontsize=8)
-        fig.suptitle(f'Density diagnostics at ρ = {rho:.2f} '
-                      f'(first SCM, first query for marginals/CATE; barycenter for ATE)',
-                      fontsize=11, y=1.02)
-        fig.tight_layout()
-        out = os.path.join(diag_dir, f'rho_{idx}_{str(rho).replace(".", "p")}.png')
-        fig.savefig(out, dpi=130, bbox_inches='tight'); plt.close(fig)
-        print(f'[save] {out}')
+        for pair_label, pair_methods in PAIRS:
+            fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+            panels = [
+                ('p_y0_q0',  Y_GRID,   axes[0, 0], r'$p(Y_{do(0)} \mid x_{q=0})$'),
+                ('p_y1_q0',  Y_GRID,   axes[0, 1], r'$p(Y_{do(1)} \mid x_{q=0})$'),
+                ('p_tau_q0', TAU_GRID, axes[1, 0], r'$p(\tau \mid x_{q=0})$'),
+                ('p_ate',    TAU_GRID, axes[1, 1], r'$p(\tau_{ATE})$'),
+            ]
+            for key, grid, ax, title in panels:
+                truth = d.get(f'true_{key}')
+                if truth is not None:
+                    ax.plot(grid, truth, 'k--', lw=2, label='truth', alpha=0.85)
+                for m in pair_methods:
+                    p = d.get(f'{m}_{key}')
+                    if p is None: continue
+                    ax.plot(grid, p, color=METHOD_COLOR[m], lw=1.4,
+                             label=METHOD_LABEL[m], alpha=0.9)
+                ax.set_title(title); ax.grid(alpha=0.3)
+                ax.set_xlabel('value'); ax.set_ylabel('density')
+            axes[0, 0].legend(loc='upper right', fontsize=8)
+            fig.suptitle(f'Density diagnostics — {pair_label} — ρ = {rho:.2f}',
+                          fontsize=11, y=1.02)
+            fig.tight_layout()
+            suffix = pair_label.split(' ')[1][1:-1]
+            tag = suffix.replace('=','').replace('-','_')
+            out = os.path.join(diag_dir,
+                f'rho_{idx}_{str(rho).replace(".","p")}_{tag}.png')
+            fig.savefig(out, dpi=130, bbox_inches='tight'); plt.close(fig)
+            print(f'[save] {out}')
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -554,27 +660,25 @@ def main():
     ap.add_argument('--K',                    type=int, default=20)
     ap.add_argument('--N-context',            type=int, default=200)
     ap.add_argument('--N-test',               type=int, default=50)
-    ap.add_argument('--uwyk-n-samples',       type=int, default=500)
-    ap.add_argument('--out',                  default='fig2_pehe_l2')
+    ap.add_argument('--malc-B',               type=int, default=200)
+    ap.add_argument('--malc-max-K',           type=int, default=3)
+    ap.add_argument('--malc-n-eval',          type=int, default=100)
+    ap.add_argument('--out',                  default='fig2_pehe_l2_v2')
     ap.add_argument('--rho-index',            type=int, default=-1)
     ap.add_argument('--plot',                 action='store_true')
     args = ap.parse_args()
-
-    if args.plot:
-        _plot_aggregate(args)
-        _plot_diagnostics(args)
-        return
 
     _out_dir = os.path.dirname(args.out)
     if _out_dir:
         os.makedirs(_out_dir, exist_ok=True)
 
+    if args.plot:
+        _plot_aggregate(args); _plot_diagnostics(args); return
+
     if args.rho_index >= 0:
         rho_targets = [(args.rho_index, RHO_GRID[args.rho_index], RHO_EFF[args.rho_index])]
-        shard_path = f'{args.out}.rho{args.rho_index}.npz'
     else:
         rho_targets = list(zip(range(len(RHO_GRID)), RHO_GRID, RHO_EFF))
-        shard_path = args.out + '.npz'
 
     sys.path.insert(0, args.causalpfn)
     print('[load] Ours fn=50 (InterventionalPFN)', flush=True)
@@ -586,45 +690,137 @@ def main():
     uwyk = load_uwyk(args.uwyk_src, args.uwyk_ckpt_dir)
     print('[load] Do-PFN', flush=True)
     DoPFNRegressor = load_dopfn(args)
-    _dopfn_cwd = os.getcwd()
 
+    # MALC uses Ours' edges (fn=50 and DoPFN-bb use different J/edges — set up
+    # once per model at call time).
+    print('[setup] MALC in-process globals for fn=50', flush=True)
+
+    _dopfn_cwd = os.getcwd()
     rows = []
 
     for rho_idx, rho, rho_eff in rho_targets:
-        diag_this_rho = {}          # first-SCM diagnostics for this ρ only
+        diag_this_rho = {}
         for k in range(args.K):
             seed = rho_idx * 10_000 + k
             cd = make_polynomial_scm(seed, args.N_context, args.N_test, rho_eff)
-
+            n_test = cd.X_test.shape[0]
             t0 = time.time()
-            os.chdir(args.dopfn)
-            d_dopfn = dopfn_densities(DoPFNRegressor, cd)
-            os.chdir(_dopfn_cwd)
-            d_uwyk  = uwyk_densities(uwyk, cd, n_samples=args.uwyk_n_samples)
-            d_ours50 = ours_densities(ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, cd)
-            d_bb     = ours_densities(bb_model, bb_edges, bb_J, bb_bw, bb_NF, cd)
 
-            method_densities = {'uwyk': d_uwyk, 'ours50': d_ours50,
-                                  'dopfn': d_dopfn, 'dopfnbb': d_bb}
-            metrics, diag = score_one_scm(cd, method_densities, wb_fn)
+            # ─── forward passes ───
+            os.chdir(args.dopfn)
+            dopfn_p0, dopfn_p1, dopfn_centers = dopfn_forward_raw_probs(DoPFNRegressor, cd)
+            os.chdir(_dopfn_cwd)
+            uwyk_p0, uwyk_p1, uwyk_centers_scaled, _ = uwyk_forward_raw_probs(uwyk, cd)
+            uwyk_centers = uwyk_inverse_scale_centers(uwyk_centers_scaled, cd)
+
+            p_mat_50, centers_50 = ours_forward(ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, cd)
+            p_mat_bb, centers_bb = ours_forward(bb_model,  bb_edges,  bb_J,  bb_bw,  bb_NF,  cd)
+
+            # ─── derived densities per method ───
+            # Ours(fn=50) raw
+            p0_50 = p_mat_50.sum(axis=2)                            # (n_test, J)
+            p1_50 = p_mat_50.sum(axis=1)                            # (n_test, J)
+            tau_grid_50 = np.linspace(centers_50[0]-centers_50[-1],
+                                        centers_50[-1]-centers_50[0], 401)
+            p_tau_50_raw = np.stack([_joint_to_ptau(p_mat_50[q], centers_50, tau_grid_50)
+                                        for q in range(n_test)])
+            cate_50_raw = np.array([_cate_point_from_density(p_tau_50_raw[q], tau_grid_50)
+                                       for q in range(n_test)])
+
+            # Ours(fn=50) MALC
+            setup_malc(ipfn_edges, ipfn_J, ipfn_bw,
+                        args.malc_n_eval, args.malc_B, args.malc_max_K, args.repo)
+            tau_raw_50_malc, y_rng_50 = scaled_tau_to_raw_centers(cd)
+            p_tau_50_malc = np.zeros((n_test, tau_raw_50_malc.shape[0]))
+            for q in range(n_test):
+                p_scaled = malc_cate_density_scaled(p_mat_50[q], seed=seed * 1000 + q)
+                # Convert density from scaled τ (jacobian 2/y_rng) to raw τ.
+                p_tau_50_malc[q] = p_scaled * (2.0 / y_rng_50)
+            cate_50_malc = np.array([_cate_point_from_density(p_tau_50_malc[q], tau_raw_50_malc)
+                                         for q in range(n_test)])
+
+            # Ours-DoPFN-bb raw
+            p0_bb = p_mat_bb.sum(axis=2); p1_bb = p_mat_bb.sum(axis=1)
+            tau_grid_bb = np.linspace(centers_bb[0]-centers_bb[-1],
+                                        centers_bb[-1]-centers_bb[0], 401)
+            p_tau_bb_raw = np.stack([_joint_to_ptau(p_mat_bb[q], centers_bb, tau_grid_bb)
+                                        for q in range(n_test)])
+            cate_bb_raw = np.array([_cate_point_from_density(p_tau_bb_raw[q], tau_grid_bb)
+                                       for q in range(n_test)])
+
+            # Ours-DoPFN-bb MALC
+            setup_malc(bb_edges, bb_J, bb_bw,
+                        args.malc_n_eval, args.malc_B, args.malc_max_K, args.repo)
+            tau_raw_bb_malc, y_rng_bb = scaled_tau_to_raw_centers(cd)
+            p_tau_bb_malc = np.zeros((n_test, tau_raw_bb_malc.shape[0]))
+            for q in range(n_test):
+                p_scaled = malc_cate_density_scaled(p_mat_bb[q], seed=seed * 2000 + q)
+                p_tau_bb_malc[q] = p_scaled * (2.0 / y_rng_bb)
+            cate_bb_malc = np.array([_cate_point_from_density(p_tau_bb_malc[q], tau_raw_bb_malc)
+                                        for q in range(n_test)])
+
+            # UWYK (independence)
+            tau_grid_uwyk = np.linspace(uwyk_centers[0]-uwyk_centers[-1],
+                                          uwyk_centers[-1]-uwyk_centers[0], 401)
+            p_tau_uwyk = np.stack([_marginals_to_ptau(uwyk_p0[q], uwyk_p1[q],
+                                                          uwyk_centers, tau_grid_uwyk)
+                                       for q in range(n_test)])
+            cate_uwyk = np.array([_cate_point_from_density(p_tau_uwyk[q], tau_grid_uwyk)
+                                     for q in range(n_test)])
+
+            # Do-PFN (independence)
+            tau_grid_dopfn = np.linspace(dopfn_centers[0]-dopfn_centers[-1],
+                                            dopfn_centers[-1]-dopfn_centers[0], 401)
+            p_tau_dopfn = np.stack([_marginals_to_ptau(dopfn_p0[q], dopfn_p1[q],
+                                                            dopfn_centers, tau_grid_dopfn)
+                                        for q in range(n_test)])
+            cate_dopfn = np.array([_cate_point_from_density(p_tau_dopfn[q], tau_grid_dopfn)
+                                       for q in range(n_test)])
+
+            method_data = {
+                'uwyk':         dict(p_y0_all=uwyk_p0, p_y1_all=uwyk_p1,
+                                      centers_y_raw=uwyk_centers,
+                                      p_tau_all=p_tau_uwyk, tau_centers_raw=tau_grid_uwyk,
+                                      cate_pred=cate_uwyk),
+                'ours50_raw':   dict(p_y0_all=p0_50, p_y1_all=p1_50,
+                                      centers_y_raw=centers_50,
+                                      p_tau_all=p_tau_50_raw, tau_centers_raw=tau_grid_50,
+                                      cate_pred=cate_50_raw),
+                'ours50_malc':  dict(p_y0_all=p0_50, p_y1_all=p1_50,
+                                      centers_y_raw=centers_50,
+                                      p_tau_all=p_tau_50_malc, tau_centers_raw=tau_raw_50_malc,
+                                      cate_pred=cate_50_malc),
+                'dopfn':        dict(p_y0_all=dopfn_p0, p_y1_all=dopfn_p1,
+                                      centers_y_raw=dopfn_centers,
+                                      p_tau_all=p_tau_dopfn, tau_centers_raw=tau_grid_dopfn,
+                                      cate_pred=cate_dopfn),
+                'dopfnbb_raw':  dict(p_y0_all=p0_bb, p_y1_all=p1_bb,
+                                      centers_y_raw=centers_bb,
+                                      p_tau_all=p_tau_bb_raw, tau_centers_raw=tau_grid_bb,
+                                      cate_pred=cate_bb_raw),
+                'dopfnbb_malc': dict(p_y0_all=p0_bb, p_y1_all=p1_bb,
+                                      centers_y_raw=centers_bb,
+                                      p_tau_all=p_tau_bb_malc, tau_centers_raw=tau_raw_bb_malc,
+                                      cate_pred=cate_bb_malc),
+            }
+            metrics, diag = score_one_scm(cd, method_data, wb_fn)
             metrics['rho'] = rho; metrics['seed'] = seed
             metrics['n_context'] = args.N_context; metrics['n_test'] = args.N_test
             rows.append(metrics)
             if k == 0:
                 diag_this_rho = {**diag, 'rho': rho}
+
             dt = time.time() - t0
-            print(f'[scm] ρ={rho:.2f}  k={k:2d}  '
-                  f'PEHE(uwyk={metrics["pehe_uwyk"]:.3f} '
-                  f'ours50={metrics["pehe_ours50"]:.3f} '
-                  f'dopfn={metrics["pehe_dopfn"]:.3f} '
-                  f'dopfnbb={metrics["pehe_dopfnbb"]:.3f})  '
-                  f'CATE-L2(ours50={metrics["cate_l2_ours50"]:.3f} '
-                  f'dopfnbb={metrics["cate_l2_dopfnbb"]:.3f})  '
+            print(f'[scm] ρ={rho:.2f} k={k:2d}   '
+                  f'PEHE (uwyk={metrics["pehe_uwyk"]:.3f}  '
+                  f'ours50_raw={metrics["pehe_ours50_raw"]:.3f}  '
+                  f'ours50_malc={metrics["pehe_ours50_malc"]:.3f}  '
+                  f'dopfn={metrics["pehe_dopfn"]:.3f}  '
+                  f'dopfnbb_raw={metrics["pehe_dopfnbb_raw"]:.3f}  '
+                  f'dopfnbb_malc={metrics["pehe_dopfnbb_malc"]:.3f})  '
                   f'{dt:.1f}s', flush=True)
             gc.collect()
 
-        # Save one diagnostic shard per ρ so both per-task and single-process
-        # runs agree with the aggregator's per-ρ filename convention.
         if diag_this_rho:
             diag_path = f'{args.out}.rho{rho_idx}.diag.npz'
             np.savez(diag_path,
@@ -634,6 +830,8 @@ def main():
     if not rows:
         print('[skip] nothing to save'); return
 
+    shard_path = (f'{args.out}.rho{args.rho_index}.npz'
+                   if args.rho_index >= 0 else args.out + '.npz')
     keys = sorted({k for r in rows for k in r.keys()})
     arr = {k: np.array([r.get(k, np.nan) for r in rows]) for k in keys}
     np.savez(shard_path, **arr)
