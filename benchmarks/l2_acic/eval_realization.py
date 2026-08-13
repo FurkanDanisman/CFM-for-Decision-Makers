@@ -100,8 +100,13 @@ def main() -> int:
         Y_CENTERS, TAU_CENTERS, load_acic_truth,
         true_marginals_per_query, true_cate_per_query, true_ate_barycenter,
     )
-    # Reuse l2_ihdp runners — dataset-agnostic.
-    import eval_realization as ihdp_ev
+    # Reuse l2_ihdp runners — load its eval_realization.py by absolute path
+    # to sidestep the name collision with THIS file (both are eval_realization.py).
+    import importlib.util as _iu
+    _ihdp_ev_path = os.path.join(_ihdp, 'eval_realization.py')
+    _spec = _iu.spec_from_file_location('_l2_ihdp_eval_realization', _ihdp_ev_path)
+    ihdp_ev = _iu.module_from_spec(_spec)
+    _spec.loader.exec_module(ihdp_ev)
 
     # ── Load ACIC realization ─────────────────────────────────────────────
     print(f'[start] realization {args.realization}  methods={methods}', flush=True)
