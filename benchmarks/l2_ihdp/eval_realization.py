@@ -417,10 +417,16 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     def _p_load(*a, **kw):
         kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
     torch.load = _p_load
+    _final_ck  = os.path.join(args.uwyk_ckpt_dir, 'final_model_with_bardist.pt')
+    _final_cfg = os.path.join(args.uwyk_ckpt_dir, 'final_model_with_bardist_config.yaml')
+    if os.path.isfile(_final_ck) and os.path.isfile(_final_cfg):
+        _cfg_p, _ck_p = _final_cfg, _final_ck
+    else:
+        _cfg_p = os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml')
+        _ck_p  = os.path.join(args.uwyk_ckpt_dir, 'best_model.pt')
+        print(f'[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt', flush=True)
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
-        checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
-        device='cpu', verbose=False,
+        config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
@@ -458,10 +464,16 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     def _p_load(*a, **kw):
         kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
     torch.load = _p_load
+    _final_ck  = os.path.join(args.uwyk_ckpt_dir, 'final_model_with_bardist.pt')
+    _final_cfg = os.path.join(args.uwyk_ckpt_dir, 'final_model_with_bardist_config.yaml')
+    if os.path.isfile(_final_ck) and os.path.isfile(_final_cfg):
+        _cfg_p, _ck_p = _final_cfg, _final_ck
+    else:
+        _cfg_p = os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml')
+        _ck_p  = os.path.join(args.uwyk_ckpt_dir, 'best_model.pt')
+        print(f'[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt', flush=True)
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=os.path.join(args.uwyk_ckpt_dir, 'best_model_config.yaml'),
-        checkpoint_path=os.path.join(args.uwyk_ckpt_dir, 'best_model.pt'),
-        device='cpu', verbose=False,
+        config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
