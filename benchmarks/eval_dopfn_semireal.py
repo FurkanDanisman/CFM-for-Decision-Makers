@@ -192,39 +192,50 @@ def main():
     print(f'  true_ATE:          {true_ate:+.4f}   ours_ATE: {ours_ate:+.4f}')
     print(f'  runtime:           {dt:.1f}s')
 
-    if args.also_dopfn:
-        print()
-        print('[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)', flush=True)
-        _cwd = os.getcwd()
-        try:
-            os.chdir(args.dopfn)
-            sys.path.insert(0, args.dopfn)
-            from scripts.transformer_prediction_interface.base import DoPFNRegressor
-            reg = DoPFNRegressor()
-            reg.fit(torch.from_numpy(train_ds.x.astype(np.float32)) if hasattr(train_ds.x, 'dtype')
-                    else torch.tensor(np.asarray(train_ds.x, dtype=np.float32)),
-                    torch.tensor(np.asarray(train_ds.y, dtype=np.float32)))
-            dp_cate = np.asarray(reg.predict_cate(
-                torch.tensor(np.asarray(test_ds.x, dtype=np.float32)))).reshape(-1)
-        finally:
-            os.chdir(_cwd)
-        dp_ate = float(np.mean(dp_cate))
-        dp_pehe = float(np.sqrt(np.mean((dp_cate - true_cate) ** 2)))
-        dp_eps  = float(abs(dp_ate - true_ate) / max(abs(true_ate), 1e-9))
-        out['pehe_dopfn'] = dp_pehe
-        out['err_dopfn']  = dp_eps
-        out['dopfn_ate']  = dp_ate
-        print(f'=== Do-PFN reference on {args.dataset} split {args.split_number} ===')
-        print(f'  PEHE:              {dp_pehe:.4f}')
-        print(f'  eps_ATE:           {dp_eps:.4f}')
-        print(f'  true_ATE:          {true_ate:+.4f}   dopfn_ATE: {dp_ate:+.4f}')
-
+    # Save OURS shard FIRST so a downstream Do-PFN error doesn't waste OURS work.
     shard = os.path.join(args.outdir,
                           f'{args.dataset}_split{args.split_number}_of{args.n_splits}'
                           f'{"_logy" if args.y_log_transform else ""}'
                           f'{"_pt"   if args.y_power_transform else ""}.npz')
     np.savez(shard, **{k: np.asarray(v) for k, v in out.items()})
     print(f'\n[save] {shard}', flush=True)
+
+    if args.also_dopfn:
+        print()
+        print('[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)', flush=True)
+
+        def _t(x):
+            if isinstance(x, torch.Tensor):
+                return x.float()
+            return torch.as_tensor(np.asarray(x), dtype=torch.float32)
+
+        _cwd = os.getcwd()
+        try:
+            os.chdir(args.dopfn)
+            sys.path.insert(0, args.dopfn)
+            from scripts.transformer_prediction_interface.base import DoPFNRegressor
+            reg = DoPFNRegressor()
+            reg.fit(_t(train_ds.x), _t(train_ds.y))
+            dp_cate = np.asarray(reg.predict_cate(_t(test_ds.x))).reshape(-1)
+        except Exception as e:
+            print(f'[warn] Do-PFN reference failed: {type(e).__name__}: {e}')
+            dp_cate = None
+        finally:
+            os.chdir(_cwd)
+
+        if dp_cate is not None:
+            dp_ate = float(np.mean(dp_cate))
+            dp_pehe = float(np.sqrt(np.mean((dp_cate - true_cate) ** 2)))
+            dp_eps  = float(abs(dp_ate - true_ate) / max(abs(true_ate), 1e-9))
+            out['pehe_dopfn'] = dp_pehe
+            out['err_dopfn']  = dp_eps
+            out['dopfn_ate']  = dp_ate
+            # Re-save with DoPFN fields appended
+            np.savez(shard, **{k: np.asarray(v) for k, v in out.items()})
+            print(f'=== Do-PFN reference on {args.dataset} split {args.split_number} ===')
+            print(f'  PEHE:              {dp_pehe:.4f}')
+            print(f'  eps_ATE:           {dp_eps:.4f}')
+            print(f'  true_ATE:          {true_ate:+.4f}   dopfn_ATE: {dp_ate:+.4f}')
 
 
 if __name__ == '__main__':
