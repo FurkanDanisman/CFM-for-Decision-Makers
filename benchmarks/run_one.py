@@ -74,7 +74,8 @@ def load_realization(dname, r):
 
 
 def apply_balanced(cd, max_control=500, seed=0):
-    """PSID-balanced training set: all T=1 + up to `max_control` T=0."""
+    """Legacy balanced-sampling for the PSIDbal column (our old recipe):
+    seed varies per realization; treated-then-controls order after sort."""
     Xt = _to_np(cd.X_train).astype(np.float32)
     tt = _to_np(cd.t_train).astype(np.float32).reshape(-1)
     yt = _to_np(cd.y_train).astype(np.float32).reshape(-1)
@@ -88,6 +89,42 @@ def apply_balanced(cd, max_control=500, seed=0):
     cd2.X_train = torch.from_numpy(Xt[keep])
     cd2.t_train = torch.from_numpy(tt[keep])
     cd2.y_train = torch.from_numpy(yt[keep])
+    cd2.X_test  = cd.X_test
+    cd2.true_cate = cd.true_cate
+    return cd2
+
+
+def apply_uwyk_paper_balanced(cd, max_control=500):
+    """UWYK paper's exact balanced-sampling recipe (dofm_psid_balanced.py):
+    - np.random.seed(42) FIXED across realizations (same seed every run)
+    - Keep all T=1; keep up to max_control T=0 via np.random.choice
+    - Concatenate [treated ; controls] then permute with np.random.RandomState(42)
+    - Same treated/control ordering + permutation for every realization
+    """
+    Xt = _to_np(cd.X_train).astype(np.float32)
+    tt = _to_np(cd.t_train).astype(np.float32).reshape(-1)
+    yt = _to_np(cd.y_train).astype(np.float32).reshape(-1)
+    treated = tt > 0.5
+    control = tt < 0.5
+    X_t, t_t, y_t = Xt[treated], tt[treated], yt[treated]
+    X_c, t_c, y_c = Xt[control], tt[control], yt[control]
+    n_c = X_c.shape[0]
+    n_keep = min(max_control, n_c)
+    if n_c > n_keep:
+        np.random.seed(42)                                    # UWYK's fixed seed
+        indices = np.random.choice(n_c, n_keep, replace=False)
+        X_c = X_c[indices]; t_c = t_c[indices]; y_c = y_c[indices]
+    X_all = np.vstack([X_t.reshape(X_t.shape[0], -1),
+                       X_c.reshape(X_c.shape[0], -1)])
+    t_all = np.concatenate([t_t, t_c])
+    y_all = np.concatenate([y_t, y_c])
+    perm = np.random.RandomState(42).permutation(X_all.shape[0])   # fixed permutation seed
+    X_all = X_all[perm]; t_all = t_all[perm]; y_all = y_all[perm]
+    class _CD: pass
+    cd2 = _CD()
+    cd2.X_train = torch.from_numpy(X_all)
+    cd2.t_train = torch.from_numpy(t_all)
+    cd2.y_train = torch.from_numpy(y_all)
     cd2.X_test  = cd.X_test
     cd2.true_cate = cd.true_cate
     return cd2
@@ -123,10 +160,16 @@ def _load_uwyk_model(args, ckpt_dir):
         ckpt_path = os.path.join(ckpt_dir, 'best_model.pt')
         print(f'[warn] UWYK final_model_with_bardist.pt not found in {ckpt_dir}; '
               f'falling back to best_model.pt', flush=True)
+    # Deterministic clustering: UWYK's paper runs all realizations in a single
+    # Python process, sharing one global NumPy RNG. Our per-realization SLURM
+    # tasks start fresh. Set random_state=42 on the wrapper so its internal
+    # KMeans (in _hierarchical_cluster, wrapper line 562) is reproducible.
+    # Fixes RNG-driven drift on ACIC / CPS / PSID (N_train > 1000).
     return UWYK_pre_mod.PreprocessingGraphConditionedPFN(
         config_path=cfg_path,
         checkpoint_path=ckpt_path,
         device='cpu', verbose=False,
+        random_state=42,
     ).load()
 
 
@@ -198,6 +241,10 @@ def _uwyk_only_backfill(args, out_file, variant):
     cd_raw, ad = load_realization(args.dataset, args.realization)
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+    elif args.dataset == 'PSID' and bool(getattr(args, 'uwyk_match_paper', False)):
+        # Match UWYK paper's dofm_psid_balanced.py: auto-balance PSID with
+        # fixed seed=42 + fixed permutation. Reproduces their ~13K PEHE.
+        cd_raw = apply_uwyk_paper_balanced(cd_raw, max_control=500)
 
     _log(f"[{variant}-only] loading UWYK ({variant}) ckpt", t0)
     uwyk_mdl = _load_uwyk_model(args, ckpt_dir)
@@ -253,6 +300,10 @@ def _run_ours_only(args, out_file):
     cd_raw, ad = load_realization(args.dataset, args.realization)
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+    elif args.dataset == 'PSID' and bool(getattr(args, 'uwyk_match_paper', False)):
+        # Match UWYK paper's dofm_psid_balanced.py: auto-balance PSID with
+        # fixed seed=42 + fixed permutation. Reproduces their ~13K PEHE.
+        cd_raw = apply_uwyk_paper_balanced(cd_raw, max_control=500)
 
     _log("[ours-only] loading OURS", t0)
     (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
@@ -371,6 +422,10 @@ def _run_ours_ot_backfill(args, out_file):
     cd_raw, ad = load_realization(args.dataset, args.realization)
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+    elif args.dataset == 'PSID' and bool(getattr(args, 'uwyk_match_paper', False)):
+        # Match UWYK paper's dofm_psid_balanced.py: auto-balance PSID with
+        # fixed seed=42 + fixed permutation. Reproduces their ~13K PEHE.
+        cd_raw = apply_uwyk_paper_balanced(cd_raw, max_control=500)
 
     _log("[ot-only] loading OURS", t0)
     (our_model, edges_np, J, bin_width, centers, NUM_FEATURES,
@@ -433,6 +488,11 @@ def main():
     ap.add_argument('--backbone',      choices=['ipfn', 'dopfn_bb'], default='ipfn',
                      help='ipfn = InterventionalPFN checkpoint (default); '
                           'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint.')
+    ap.add_argument('--uwyk-match-paper', action='store_true',
+                     help='Reproduce UWYK paper protocol: for dataset=PSID, '
+                          'apply the exact balanced sampling from UWYK\'s '
+                          'dofm_psid_balanced.py (fixed seed=42 subsample + '
+                          'fixed seed=42 permutation, all_treated + 500 controls).')
     ap.add_argument('--y-power-transform', action='store_true',
                      help='Apply Yeo-Johnson PowerTransformer to Y before scaling '
                           'to [-1,1]. Bin centers are inverse-transformed so PEHE '
@@ -544,6 +604,10 @@ def main():
     cd_raw, ad = load_realization(args.dataset, args.realization)
     if args.dataset == 'PSIDbal':
         cd_raw = apply_balanced(cd_raw, max_control=500, seed=args.realization)
+    elif args.dataset == 'PSID' and bool(getattr(args, 'uwyk_match_paper', False)):
+        # Match UWYK paper's dofm_psid_balanced.py: auto-balance PSID with
+        # fixed seed=42 + fixed permutation. Reproduces their ~13K PEHE.
+        cd_raw = apply_uwyk_paper_balanced(cd_raw, max_control=500)
 
     _log("loading UWYK Ancestral model", t0)
     uwyk_model = _load_uwyk_model(args, args.uwyk_ckpt_dir)
