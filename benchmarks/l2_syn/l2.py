@@ -1,4 +1,16 @@
-import os, sys
-_ihdp = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'l2_ihdp'))
-if _ihdp not in sys.path: sys.path.insert(0, _ihdp)
-from l2 import l2_distance                                # noqa: F401
+"""Re-export l2_ihdp/l2.py's public API so this package doesn't duplicate it.
+
+Loaded via importlib against an absolute path to sidestep the naming
+collision with this file (both are named l2.py).
+"""
+import importlib.util as _iu
+import os as _os
+
+_ihdp_l2 = _os.path.abspath(_os.path.join(
+    _os.path.dirname(__file__), '..', 'l2_ihdp', 'l2.py'))
+_spec = _iu.spec_from_file_location('_l2_ihdp_l2', _ihdp_l2)
+_mod = _iu.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+
+l2_distance   = _mod.l2_distance                              # noqa: F401
+resample_onto = _mod.resample_onto                            # noqa: F401

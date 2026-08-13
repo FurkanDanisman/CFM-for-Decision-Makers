@@ -95,7 +95,13 @@ def main() -> int:
         Y_CENTERS, TAU_CENTERS, build_syn_truth,
         true_marginals_per_query, true_cate_per_query, true_ate_barycenter,
     )
-    import eval_realization as ihdp_ev
+    # Load l2_ihdp/eval_realization.py by absolute path to avoid name
+    # collision with THIS file (both are eval_realization.py).
+    import importlib.util as _iu
+    _ihdp_ev_path = os.path.join(_ihdp, 'eval_realization.py')
+    _spec = _iu.spec_from_file_location('_l2_ihdp_eval_realization', _ihdp_ev_path)
+    ihdp_ev = _iu.module_from_spec(_spec)
+    _spec.loader.exec_module(ihdp_ev)
 
     print(f'[start] seed={args.seed} d={args.syn_d} N={args.n_train} '
           f'methods={methods}', flush=True)
