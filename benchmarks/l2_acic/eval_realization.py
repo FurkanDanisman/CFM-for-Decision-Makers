@@ -176,6 +176,23 @@ def main() -> int:
     y_rng_over_2 = truth.y_rng / 2.0
     true_ate_raw = float(true_cate_raw.mean())
 
+    # Per-realization density diagnostic PNG (methods vs truth).
+    try:
+        from density_plots import save_density_diag_png
+        save_density_diag_png(
+            out_path=f'{args.out}.density_diag.r{args.realization:03d}.png',
+            r=args.realization,
+            method_out=method_out,
+            p_y0_true=p_y0_true, p_y1_true=p_y1_true,
+            p_tau_true=p_tau_true, p_ate_true=p_ate_true,
+            Y_CENTERS=Y_CENTERS, TAU_CENTERS=TAU_CENTERS,
+            wb_fn=wasserstein_barycenter_1d,
+            q_show=0,
+        )
+        print(f'[density-diag] saved r={args.realization}', flush=True)
+    except Exception as e:
+        print(f'[warn] density diag plot failed: {type(e).__name__}: {e}', flush=True)
+
     out = dict(
         r=np.int32(args.realization),
         n_queries=np.int32(n_queries),
