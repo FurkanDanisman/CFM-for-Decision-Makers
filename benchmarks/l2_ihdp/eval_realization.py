@@ -427,6 +427,7 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
         print(f'[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt', flush=True)
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
+        random_state=42,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
@@ -474,6 +475,7 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
         print(f'[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt', flush=True)
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
+        random_state=42,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
