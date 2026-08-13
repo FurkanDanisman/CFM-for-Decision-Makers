@@ -499,6 +499,9 @@ def _run_dopfn(cd, truth, args, n_ctx):
         sys.path.insert(0, _bench_methods)
     import dopfn as _dopfn_shim  # noqa: F401  — imports install the shim
     from scripts.transformer_prediction_interface.base import DoPFNRegressor
+    # DoPFN's base module binds its own `check_array` at import; re-run the
+    # shim now that the module is loaded so our patch reaches it.
+    _dopfn_shim._repatch_dopfn_check_array()
     from methods_densities import dopfn_densities
 
     t0 = time.time()

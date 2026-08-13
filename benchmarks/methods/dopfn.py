@@ -17,13 +17,16 @@ import torch
 
 # Patch check_array (both the utils.validation location and the top-level
 # alias) so Do-PFN can call it with `ensure_all_finite` on pre-1.6 sklearn.
+# ALSO patches DoPFN's own module-local `check_array` reference if DoPFN's
+# transformer_prediction_interface.base is already importable — because
+# `from sklearn.utils.validation import check_array` at DoPFN's module top
+# binds a separate reference that survives our patching of sklearn.
 def _install_check_array_shim():
     try:
         import inspect
         import sklearn.utils.validation as _v
         _sig = inspect.signature(_v.check_array)
-        if 'ensure_all_finite' in _sig.parameters:
-            return  # sklearn already supports it — no shim needed
+        needs_patch = 'ensure_all_finite' not in _sig.parameters
         _orig = _v.check_array
 
         def _shim(*a, **kw):
@@ -31,15 +34,31 @@ def _install_check_array_shim():
                 kw['force_all_finite'] = kw.pop('ensure_all_finite')
             return _orig(*a, **kw)
 
-        _v.check_array = _shim
-        import sklearn.utils
-        if hasattr(sklearn.utils, 'check_array'):
-            sklearn.utils.check_array = _shim
+        if needs_patch:
+            _v.check_array = _shim
+            import sklearn.utils
+            if hasattr(sklearn.utils, 'check_array'):
+                sklearn.utils.check_array = _shim
+            # DoPFN's base.py does `from sklearn.utils.validation import check_array`
+            # at module load; patch its local ref if the module is already loaded.
+            import sys as _sys
+            for _name in list(_sys.modules):
+                if _name.endswith('.transformer_prediction_interface.base') \
+                        or _name == 'scripts.transformer_prediction_interface.base':
+                    _mod = _sys.modules[_name]
+                    if hasattr(_mod, 'check_array'):
+                        _mod.check_array = _shim
     except Exception:
         pass  # best-effort — the actual sklearn call will raise if it matters
 
 
 _install_check_array_shim()
+
+
+def _repatch_dopfn_check_array():
+    """Call this AFTER importing DoPFN's DoPFNRegressor to catch late-bound
+    check_array references. Idempotent + no-op if sklearn is >= 1.6."""
+    _install_check_array_shim()
 
 
 def _to_np(a):
