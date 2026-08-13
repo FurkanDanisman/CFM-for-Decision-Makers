@@ -2,7 +2,7 @@
 #SBATCH --job-name=fig2-pehe-l2
 #SBATCH --output=logs_fig2/task_%A_%a.out
 #SBATCH --error=logs_fig2/task_%A_%a.err
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --array=0-5
