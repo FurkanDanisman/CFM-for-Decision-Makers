@@ -31,7 +31,7 @@ UWYK="$DEPLOY_ROOT/external/uwyk"
 CAUSALPFN="$DEPLOY_ROOT/external/causalpfn"
 CHECKPOINT="$REPO/checkpoints/step_50000_final.pt"
 UWYK_CKPT="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
-OUTDIR="$DEPLOY_ROOT/results"
+OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results}"
 
 if [ ! -f "$UWYK_CKPT/best_model.pt" ]; then
     echo "[error] UWYK_CKPT ($UWYK_CKPT) missing best_model.pt" >&2
