@@ -42,12 +42,18 @@ N_REAL="${N_REAL:-100}"
 WORKERS="${SLURM_CPUS_PER_TASK:-8}"
 DATASETS=(IHDP ACIC CPS PSID PSIDbal)
 
+# Which UWYK variant(s) to backfill. Space-separated list, e.g. "noanc anc".
+# Defaults to noanc to preserve the historic behavior of this sbatch.
+VARIANTS="${VARIANTS:-noanc}"
+FORCE_RECOMPUTE="${FORCE_RECOMPUTE:-0}"       # 1 → overwrite existing pehe_uwyk_* fields
+UWYK_MATCH_PAPER="${UWYK_MATCH_PAPER:-0}"     # 1 → paper-protocol PSID (fixed seed=42 balance)
+
 TASK=${SLURM_ARRAY_TASK_ID:-0}
 DS_IDX=$(( TASK / N_REAL ))
 REAL_IDX=$(( TASK % N_REAL ))
 DATASET="${DATASETS[$DS_IDX]}"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] TASK=$TASK  DATASET=$DATASET  REAL=$REAL_IDX  variant=noanc"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] TASK=$TASK  DATASET=$DATASET  REAL=$REAL_IDX  VARIANTS=$VARIANTS  FORCE=$FORCE_RECOMPUTE  MATCH_PAPER=$UWYK_MATCH_PAPER"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export OMP_NUM_THREADS="$WORKERS"
@@ -56,17 +62,31 @@ export OPENBLAS_NUM_THREADS="$WORKERS"
 export PYTHONUNBUFFERED=1
 
 cd "$DOPFN"
-python "$REPO/benchmarks/run_one.py" \
-    --dataset       "$DATASET" \
-    --realization   "$REAL_IDX" \
-    --outdir        "$OUTDIR" \
-    --repo          "$REPO" \
-    --dopfn         "$DOPFN" \
-    --uwyk          "$UWYK" \
-    --causalpfn     "$CAUSALPFN" \
-    --checkpoint    "$CHECKPOINT" \
-    --uwyk-ckpt-dir "$UWYK_CKPT" \
-    --workers       "$WORKERS" \
-    --only-uwyk-noanc
+
+FORCE_FLAG=""
+[ "$FORCE_RECOMPUTE" = "1" ] && FORCE_FLAG="--force-uwyk-recompute"
+MATCH_FLAG=""
+[ "$UWYK_MATCH_PAPER" = "1" ] && MATCH_FLAG="--uwyk-match-paper"
+
+for VARIANT in $VARIANTS; do
+    case "$VARIANT" in
+        noanc) MODE_FLAG="--only-uwyk-noanc" ;;
+        anc)   MODE_FLAG="--only-uwyk-anc" ;;
+        *) echo "[error] unknown VARIANT=$VARIANT (expected noanc|anc)" >&2; exit 2 ;;
+    esac
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] --- variant=$VARIANT ---"
+    python "$REPO/benchmarks/run_one.py" \
+        --dataset       "$DATASET" \
+        --realization   "$REAL_IDX" \
+        --outdir        "$OUTDIR" \
+        --repo          "$REPO" \
+        --dopfn         "$DOPFN" \
+        --uwyk          "$UWYK" \
+        --causalpfn     "$CAUSALPFN" \
+        --checkpoint    "$CHECKPOINT" \
+        --uwyk-ckpt-dir "$UWYK_CKPT" \
+        --workers       "$WORKERS" \
+        $MODE_FLAG $FORCE_FLAG $MATCH_FLAG
+done
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$TASK"
