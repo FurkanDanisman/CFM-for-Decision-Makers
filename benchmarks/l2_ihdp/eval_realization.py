@@ -428,6 +428,13 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # use_clustering=False because the clustered + prediction_type='sample'
+        # code path in the released wrapper has a shape bug (preds is 1D but
+        # cluster_preds is (n_test, num_samples) — the assignment
+        # preds[test_mask] = cluster_preds at line 876 raises).
+        # With clustering off, the wrapper truncates train to max_n_train=1000
+        # via _pad_or_truncate_samples and takes a single forward pass.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
@@ -476,6 +483,13 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # use_clustering=False because the clustered + prediction_type='sample'
+        # code path in the released wrapper has a shape bug (preds is 1D but
+        # cluster_preds is (n_test, num_samples) — the assignment
+        # preds[test_mask] = cluster_preds at line 876 raises).
+        # With clustering off, the wrapper truncates train to max_n_train=1000
+        # via _pad_or_truncate_samples and takes a single forward pass.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
