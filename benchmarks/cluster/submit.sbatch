@@ -29,6 +29,7 @@ OUTDIR="${OUTDIR:-$DEPLOY_ROOT/results}"
 # Toggle: emit pehe_uwyk_baseline column if the checkpoint exists.
 # Override with EMIT_UWYK_BASELINE=0 to skip.
 EMIT_UWYK_BASELINE="${EMIT_UWYK_BASELINE:-1}"
+UWYK_MATCH_PAPER="${UWYK_MATCH_PAPER:-0}"    # 1 → auto-balance PSID (UWYK paper protocol)
 
 N_REAL="${N_REAL:-100}"                    # paper: 100 realizations
 WORKERS="${SLURM_CPUS_PER_TASK:-16}"
@@ -74,6 +75,7 @@ python "$REPO/benchmarks/run_one.py" \
     "${BASELINE_ARGS[@]}" \
     --malc-B        "$MALC_B" \
     --malc-max-K    "$MALC_MAX_K" \
+    $( [ "$UWYK_MATCH_PAPER" = "1" ] && echo "--uwyk-match-paper" ) \
     --workers       "$WORKERS"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE task=$TASK"
