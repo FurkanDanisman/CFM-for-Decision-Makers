@@ -328,8 +328,10 @@ def _uwyk_densities_from_raw_probs(cd,
     uwyk_model.fit(X_train_p, t_train_enc, y_train_ctx)
 
     # Adjacency: noanc = features connected, padded masked. anc adds
-    # T→Y, X→T, X→Y edges for real features.
-    n_real = X_context.shape[1]
+    # T→Y, X→T, X→Y edges for real features. Clamp n_real to num_features
+    # because _rescale_and_pad truncates X to num_features columns
+    # (X_context can have more original features than UWYK's model cap).
+    n_real = min(X_context.shape[1], num_features)
     adj = np.zeros((num_features + 2, num_features + 2), dtype=np.float32)
     if adjacency_kind == 'anc':
         T_idx, Y_idx, off = 0, 1, 2
