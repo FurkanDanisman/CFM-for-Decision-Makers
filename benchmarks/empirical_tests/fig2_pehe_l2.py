@@ -565,6 +565,10 @@ def main():
         _plot_diagnostics(args)
         return
 
+    _out_dir = os.path.dirname(args.out)
+    if _out_dir:
+        os.makedirs(_out_dir, exist_ok=True)
+
     if args.rho_index >= 0:
         rho_targets = [(args.rho_index, RHO_GRID[args.rho_index], RHO_EFF[args.rho_index])]
         shard_path = f'{args.out}.rho{args.rho_index}.npz'

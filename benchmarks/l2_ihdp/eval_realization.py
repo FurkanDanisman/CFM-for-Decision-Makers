@@ -428,6 +428,12 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # Wrapper's clustered + prediction_type='sample' path has a
+        # (num_samples, num_bars) vs (n_test, num_bars) shape confusion in
+        # _predict_single_cluster that we cannot patch without a rewrite.
+        # Disable clustering for the L2 densities call: wrapper subsamples
+        # training to max_n_train (1000) instead. Documented limitation.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
@@ -476,6 +482,12 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # Wrapper's clustered + prediction_type='sample' path has a
+        # (num_samples, num_bars) vs (n_test, num_bars) shape confusion in
+        # _predict_single_cluster that we cannot patch without a rewrite.
+        # Disable clustering for the L2 densities call: wrapper subsamples
+        # training to max_n_train (1000) instead. Documented limitation.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features

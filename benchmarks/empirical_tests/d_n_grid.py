@@ -137,6 +137,10 @@ def main():
     if args.plot:
         _plot_aggregate(args); return
 
+    _out_dir = os.path.dirname(args.out)
+    if _out_dir:
+        os.makedirs(_out_dir, exist_ok=True)
+
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks'))
     from methods.ours   import ours_pipeline
     from methods.uwyk   import uwyk_no_ancestral_pipeline
