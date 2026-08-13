@@ -18,13 +18,37 @@ Idempotent: no-op if already patched. Prints [patched] / [skip] / [error].
 """
 import sys
 
+# Old buggy line — allocates preds as 1D regardless of prediction_type.
 BUGGY = "preds = np.zeros(n_test_original, dtype=np.float32)"
 
-FIXED = (
+# v1 patch (broken): assumed cluster_preds shape is (n_test, num_samples).
+# In practice _predict_single_cluster returns (n_test, num_bars=1000) in
+# sample mode, ignoring the outer num_samples. So we allocate lazily —
+# preds = None initially, size it from the first cluster's output.
+V1_BROKEN = (
     "if prediction_type == 'sample':\n"
     "                preds = np.zeros((n_test_original, num_samples), dtype=np.float32)\n"
     "            else:\n"
     "                preds = np.zeros(n_test_original, dtype=np.float32)"
+)
+
+V2_FIXED = (
+    "# [patched] Lazy allocation: sized from the first cluster's cluster_preds.\n"
+    "            # Works for both point ('mean'/'mode') and 'sample'/'point' modes\n"
+    "            # regardless of what num_samples column count is returned.\n"
+    "            preds = None"
+)
+
+BUGGY_ASSIGN = "preds[test_mask] = cluster_preds"
+
+FIXED_ASSIGN = (
+    "if preds is None:\n"
+    "                    if getattr(cluster_preds, 'ndim', 1) == 2:\n"
+    "                        preds = np.zeros((n_test_original, cluster_preds.shape[1]),\n"
+    "                                          dtype=np.float32)\n"
+    "                    else:\n"
+    "                        preds = np.zeros(n_test_original, dtype=np.float32)\n"
+    "                preds[test_mask] = cluster_preds"
 )
 
 
@@ -32,29 +56,33 @@ def main(path: str) -> int:
     with open(path) as f:
         src = f.read()
 
-    already = ("if prediction_type == 'sample':" in src
-               and "np.zeros((n_test_original, num_samples)" in src)
-
-    # Count occurrences of the buggy 1D allocation.
-    n_buggy = src.count(BUGGY)
-
-    if already and n_buggy == 1:
-        # The unclustered else-branch (line 878+ in upstream) also allocates
-        # 1D; if we've already added the if/else for the clustered branch,
-        # the remaining buggy occurrence is the fallback path — expected.
-        print(f'[skip] {path} already patched')
+    # Idempotent: if the v2 fix is already applied, no-op.
+    if V2_FIXED.split('\n')[-1] in src and 'if preds is None:' in src:
+        print(f'[skip] {path} already patched (v2)')
         return 0
 
-    if n_buggy == 0:
-        print(f'[error] no buggy line found; inspect manually', file=sys.stderr)
-        return 1
+    # Upgrade v1 → v2 if v1 was applied earlier.
+    if V1_BROKEN in src:
+        src = src.replace(V1_BROKEN, V2_FIXED, 1)
+        src = src.replace(BUGGY_ASSIGN, FIXED_ASSIGN, 1)
+        with open(path, 'w') as f:
+            f.write(src)
+        print(f'[patched] {path} (upgraded v1 → v2)')
+        return 0
 
-    # Replace only the first occurrence — that's the one in the clustered branch.
-    src2 = src.replace(BUGGY, FIXED, 1)
-    with open(path, 'w') as f:
-        f.write(src2)
-    print(f'[patched] {path}')
-    return 0
+    # Fresh patch on upstream: replace the 1D allocation with lazy None,
+    # then rewrite the assignment site to allocate on first cluster.
+    if BUGGY in src:
+        src = src.replace(BUGGY, V2_FIXED, 1)
+        src = src.replace(BUGGY_ASSIGN, FIXED_ASSIGN, 1)
+        with open(path, 'w') as f:
+            f.write(src)
+        print(f'[patched] {path} (fresh v2 patch)')
+        return 0
+
+    print(f'[error] no known buggy pattern found; inspect manually',
+          file=sys.stderr)
+    return 1
 
 
 if __name__ == '__main__':
