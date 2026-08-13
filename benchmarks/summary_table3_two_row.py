@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import math
 import os
 
 import numpy as np
@@ -42,11 +43,14 @@ ROWS = [
 ]
 
 
-def _agg(vals):
+def _agg(vals, use_sem=False):
+    """Return (mean, dispersion, n). dispersion = SD by default; SEM if use_sem=True."""
     arr = np.asarray([v for v in vals if np.isfinite(v)], dtype=float)
     if arr.size == 0:
         return float('nan'), float('nan'), 0
-    return float(arr.mean()), float(arr.std(ddof=1) if arr.size > 1 else 0.0), int(arr.size)
+    sd = float(arr.std(ddof=1) if arr.size > 1 else 0.0)
+    disp = sd / math.sqrt(arr.size) if (use_sem and arr.size > 0) else sd
+    return float(arr.mean()), disp, int(arr.size)
 
 
 def _fmt(m, s):
@@ -85,6 +89,9 @@ def main() -> int:
                     help='Optional directory of log-Y run shards. Only raw-mean '
                          'field is read from this dir and added as an extra '
                          '"Log-Y-mean" row per dataset.')
+    ap.add_argument('--sem', action='store_true',
+                    help='Report SEM (SD/sqrt(n)) instead of SD in the ± column '
+                         '(matches UWYK paper convention).')
     args = ap.parse_args()
 
     bucket = _collect_bucket(args.results)
@@ -100,7 +107,8 @@ def main() -> int:
     header = f'{"Dataset":10s} {"Variant":22s}    {"sqrt(PEHE)":>14s}    {"eps_ATE":>14s}    {"n":>4s}'
     print()
     title = 'four point-estimate variants' + (' + Log-Y' if logy_bucket is not None else '')
-    print(f'── Ours — Table 3 ({title}) ─────────────────────')
+    disp_label = 'SEM' if args.sem else 'SD'
+    print(f'── Ours — Table 3 ({title}) — mean ± {disp_label} ─────────────────────')
     print(header)
     print('-' * len(header))
     for d in DATASETS:
@@ -108,8 +116,8 @@ def main() -> int:
         for label, pehe_key, _ in ROWS:
             pehe = bucket[d][pehe_key]['pehe']
             eps  = bucket[d][pehe_key]['eps']
-            pm, ps, np_ = _agg(pehe)
-            em, es, ne  = _agg(eps)
+            pm, ps, np_ = _agg(pehe, use_sem=args.sem)
+            em, es, ne  = _agg(eps,  use_sem=args.sem)
             n = min(np_, ne) if (np_ and ne) else 0
             ds_col = d if first else ''
             print(f'{ds_col:10s} {label:22s}    {_fmt(pm, ps):>14s}    '
@@ -119,8 +127,8 @@ def main() -> int:
         if logy_bucket is not None:
             pehe = logy_bucket[d]['pehe_ours_mean']['pehe']
             eps  = logy_bucket[d]['pehe_ours_mean']['eps']
-            pm, ps, np_ = _agg(pehe)
-            em, es, ne  = _agg(eps)
+            pm, ps, np_ = _agg(pehe, use_sem=args.sem)
+            em, es, ne  = _agg(eps,  use_sem=args.sem)
             n = min(np_, ne) if (np_ and ne) else 0
             print(f'{"":10s} {"Log-Y-mean":22s}    {_fmt(pm, ps):>14s}    '
                   f'{_fmt(em, es):>14s}    {n:>4d}')
