@@ -192,6 +192,25 @@ def main() -> int:
         elif m == 'uwyk_anc':
             method_out[m] = _run_uwyk_anc(cd, truth, args, n_ctx)
 
+    # ── Independence-assumption variant for Ours-DoPFN-bb ──────────────
+    # Same p_y0/p_y1 marginals from the 2D joint, but re-derive p(τ) under
+    # the independence assumption (naive convolution of marginals). Reveals
+    # how much of Ours-DoPFN-bb's CATE-density fidelity comes from the joint
+    # vs the marginal quality alone. Zero extra compute — reuses marginals.
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            # Point-estimate CATEs: use raw-mean (identical joint marginal means)
+            # since independence doesn't change E[Y1] - E[Y0].
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
+
     # True per-query CATE and true ATE in RAW Y units (Table-3 convention).
     # Densities live in scaled Y ([-1, 1]); convert back via factor y_rng/2.
     true_cate_raw = _np(cd.true_cate).reshape(-1)                      # (n_test,)

@@ -172,6 +172,20 @@ def main() -> int:
             method_out[m] = ihdp_ev._run_uwyk_anc(cd, truth, args, n_ctx)
         _save_cache(m, method_out[m])
 
+    # Independence-assumption variant for Ours-DoPFN-bb (reuses marginals,
+    # rebuilds p(τ) via independence convolution).
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
+
     true_cate_raw = _np(cd.true_cate).reshape(-1)
     y_rng_over_2 = truth.y_rng / 2.0
     true_ate_raw = float(true_cate_raw.mean())
