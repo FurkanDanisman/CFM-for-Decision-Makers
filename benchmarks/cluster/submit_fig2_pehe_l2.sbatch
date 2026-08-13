@@ -31,7 +31,9 @@ CHECKPOINT_DOPFN_BB="${CHECKPOINT_DOPFN_BB:-$DEPLOY_ROOT/checkpoints_dopfn_backb
 K="${K:-20}"
 N_CONTEXT="${N_CONTEXT:-200}"
 N_TEST="${N_TEST:-50}"
-UWYK_N_SAMPLES="${UWYK_N_SAMPLES:-500}"
+MALC_B="${MALC_B:-200}"
+MALC_MAX_K="${MALC_MAX_K:-3}"
+MALC_N_EVAL="${MALC_N_EVAL:-100}"
 OUT="${OUT:-$DEPLOY_ROOT/fig2_pehe_l2/out}"
 
 mkdir -p "$(dirname "$OUT")"
@@ -56,7 +58,9 @@ python "$REPO/benchmarks/empirical_tests/fig2_pehe_l2.py" \
     --K                  "$K" \
     --N-context          "$N_CONTEXT" \
     --N-test             "$N_TEST" \
-    --uwyk-n-samples     "$UWYK_N_SAMPLES" \
+    --malc-B             "$MALC_B" \
+    --malc-max-K         "$MALC_MAX_K" \
+    --malc-n-eval        "$MALC_N_EVAL" \
     --out                "$OUT" \
     --rho-index          "$RHO_IDX"
 
