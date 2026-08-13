@@ -130,8 +130,35 @@ def main() -> int:
 
     RUN_ORDER = ['ours_fn50', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
     method_out = {}
+
+    def _cache_path(m):
+        return f'{args.out}.r{args.realization:03d}.{m}_cache.npz'
+
+    def _load_cache(m):
+        p = _cache_path(m)
+        if not os.path.exists(p):
+            return None
+        try:
+            with np.load(p, allow_pickle=True) as f:
+                d = {k: f[k] for k in f.files}
+            print(f'[cache] loaded {m} from {p}', flush=True)
+            return d
+        except Exception as e:
+            print(f'[cache] failed to load {p}: {e}', flush=True)
+            return None
+
+    def _save_cache(m, d):
+        p = _cache_path(m)
+        tmp = p + '.tmp.npz'
+        np.savez(tmp, **{k: np.asarray(v) for k, v in d.items()})
+        os.replace(tmp, p)
+        print(f'[cache] saved {m} to {p}', flush=True)
+
     for m in RUN_ORDER:
         if m not in methods: continue
+        cached = _load_cache(m)
+        if cached is not None:
+            method_out[m] = cached; continue
         if m == 'ours_fn50':
             method_out[m] = ihdp_ev._run_ours(cd, args.checkpoint50, truth, args, n_ctx)
         elif m == 'ours_dopfn_bb':
@@ -143,6 +170,7 @@ def main() -> int:
             method_out[m] = ihdp_ev._run_uwyk_noanc(cd, truth, args, n_ctx)
         elif m == 'uwyk_anc':
             method_out[m] = ihdp_ev._run_uwyk_anc(cd, truth, args, n_ctx)
+        _save_cache(m, method_out[m])
 
     true_cate_raw = _np(cd.true_cate).reshape(-1)
     y_rng_over_2 = truth.y_rng / 2.0
