@@ -263,21 +263,52 @@ def ours_densities(cd,
                 cate_em_k1_scaled=cate_em_k1_scaled)
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# UWYK No-Ancestral — sample + histogram + independence convolution
-# ─────────────────────────────────────────────────────────────────────────
-def uwyk_noanc_densities(cd,
-                          uwyk_model,
-                          num_features: int,
-                          y_min: float,
-                          y_rng: float,
-                          n_context: int | None = None,
-                          n_samples: int = 1024,
-                          ) -> dict[str, np.ndarray]:
-    """UWYK-NoAnc marginals via histogram of samples; CATE under independence.
+def _uwyk_capture_raw_preds(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv, adj):
+    """Capture raw_preds from the BarDistribution head by monkey-patching
+    uwyk_model.bar_distribution.mode. Fires a single wrapper.predict call
+    with prediction_type='mode'; the mode value is discarded — we take the
+    raw K+4 tensor before postprocessing."""
+    captured = {'raw': None}
+    orig_mode = uwyk_model.bar_distribution.mode
+    def _mode_capture(raw_preds):
+        captured['raw'] = raw_preds.detach().cpu()
+        return orig_mode(raw_preds)
+    uwyk_model.bar_distribution.mode = _mode_capture
+    try:
+        _ = uwyk_model.predict(
+            X_obs=X_ctx, T_obs=T_ctx, Y_obs=Y_ctx,
+            X_intv=X_qry, T_intv=T_intv,
+            adjacency_matrix=adj,
+            prediction_type='mode', inverse_transform=False,
+        )
+    finally:
+        uwyk_model.bar_distribution.mode = orig_mode
+    return captured['raw']
 
-    Mirrors plot_ihdp_n10_uwyk_noanc.py's construction.
-    """
+
+def _uwyk_raw_bar_probs(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv, adj, n_test):
+    """Returns (n_test, K) discrete bar probabilities on UWYK's INTERIOR K
+    centers (scaled y space [-1, 1]). Softmax over K+2 logits, then trim
+    tails, then renormalise to unit mass."""
+    raw = _uwyk_capture_raw_preds(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv, adj)
+    # raw shape: (1, n_test_padded, K+4). First K+2 are logits [pL, bars..., pR].
+    w_logits = raw[..., :-2]
+    probs = torch.softmax(w_logits, dim=-1)
+    pBars = probs[..., 1:-1].squeeze(0).numpy()             # (n_test_padded, K)
+    pBars = pBars[:n_test]                                    # trim padding
+    s = pBars.sum(axis=1, keepdims=True)
+    return pBars / np.maximum(s, 1e-12)
+
+
+def _uwyk_densities_from_raw_probs(cd,
+                                     uwyk_model,
+                                     num_features: int,
+                                     y_min: float,        # unused (scaled space)
+                                     y_rng: float,        # unused
+                                     n_context: int | None,
+                                     adjacency_kind: str,
+                                     ) -> dict[str, np.ndarray]:
+    """Shared UWYK density computation. adjacency_kind ∈ {'noanc', 'anc'}."""
     X_train_full = _np(cd.X_train)
     t_train_full = _np(cd.t_train)
     y_train_full = _np(cd.y_train)
@@ -289,16 +320,23 @@ def uwyk_noanc_densities(cd,
     y_train_ctx = y_train_full[:N].astype(np.float32).reshape(-1, 1)
 
     X_train_p = _rescale_and_pad(X_context, num_features)
-    X_test_p = _rescale_and_pad(X_test, num_features)
+    X_test_p  = _rescale_and_pad(X_test, num_features)
 
     mean_y_t0 = float(y_train_ctx[t_train_orig == 0].mean())
     mean_y_t1 = float(y_train_ctx[t_train_orig == 1].mean())
     t_train_enc = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
     uwyk_model.fit(X_train_p, t_train_enc, y_train_ctx)
 
-    # No-Ancestral adjacency: real features connected, padded features masked -1
+    # Adjacency: noanc = features connected, padded masked. anc adds
+    # T→Y, X→T, X→Y edges for real features.
     n_real = X_context.shape[1]
     adj = np.zeros((num_features + 2, num_features + 2), dtype=np.float32)
+    if adjacency_kind == 'anc':
+        T_idx, Y_idx, off = 0, 1, 2
+        adj[T_idx, Y_idx] = 1.0
+        for i in range(n_real):
+            adj[off + i, T_idx] = 1.0
+            adj[off + i, Y_idx] = 1.0
     for i in range(n_real, num_features):
         fi = 2 + i
         adj[fi, :] = -1.0; adj[:, fi] = -1.0; adj[fi, fi] = -1.0
@@ -307,40 +345,50 @@ def uwyk_noanc_densities(cd,
     T_intv_0 = np.full((n_test, 1), mean_y_t0, dtype=np.float32)
     T_intv_1 = np.full((n_test, 1), mean_y_t1, dtype=np.float32)
 
-    def _sample(T_intv):
-        chunks = []; got = 0
-        while got < n_samples:
-            r = uwyk_model.predict(
-                X_obs=X_train_p, T_obs=t_train_enc, Y_obs=y_train_ctx,
-                X_intv=X_test_p, T_intv=T_intv,
-                adjacency_matrix=adj,
-                prediction_type='sample', inverse_transform=True,
-            )
-            arr = np.asarray(r).reshape(n_test, -1)
-            chunks.append(arr); got += arr.shape[1]
-        return np.concatenate(chunks, axis=1)[:, :n_samples]
+    # Raw bar probabilities on UWYK's own K interior centers (scaled space).
+    pBars_0 = _uwyk_raw_bar_probs(uwyk_model, X_train_p, t_train_enc, y_train_ctx,
+                                    X_test_p, T_intv_0, adj, n_test)
+    pBars_1 = _uwyk_raw_bar_probs(uwyk_model, X_train_p, t_train_enc, y_train_ctx,
+                                    X_test_p, T_intv_1, adj, n_test)
+    centers_scaled = uwyk_model.bar_distribution.centers.detach().cpu().numpy().astype(np.float64)
+    bin_w = float(centers_scaled[1] - centers_scaled[0])
 
-    Y0_raw = _sample(T_intv_0)
-    Y1_raw = _sample(T_intv_1)
-
-    Y0_scaled = (Y0_raw - y_min) / y_rng * 2.0 - 1.0
-    Y1_scaled = (Y1_raw - y_min) / y_rng * 2.0 - 1.0
-
-    y_edges = np.concatenate([Y_CENTERS - 0.5 * Y_BIN, [Y_CENTERS[-1] + 0.5 * Y_BIN]])
+    # Convert probs → density on UWYK's native centers, then resample to Y_CENTERS.
+    density_0_native = pBars_0 / bin_w                        # (n_test, K)
+    density_1_native = pBars_1 / bin_w
     p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    for q in range(n_test):
+        p_y0[q] = resample_onto(centers_scaled, density_0_native[q], Y_CENTERS)
+        p_y1[q] = resample_onto(centers_scaled, density_1_native[q], Y_CENTERS)
+
+    # CATE under independence assumption via naive convolution on Y_CENTERS.
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
     for q in range(n_test):
-        h0, _ = np.histogram(Y0_scaled[q], bins=y_edges, density=True)
-        h1, _ = np.histogram(Y1_scaled[q], bins=y_edges, density=True)
-        p_y0[q] = h0
-        p_y1[q] = h1
-        p_tau[q] = naive_p_tau_from_marginals(h0, h1)
+        p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
     return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# UWYK Full-Ancestral — same sampling path as NoAnc, full-graph adjacency
+# UWYK No-Ancestral — raw BarDist probs + independence convolution
+# ─────────────────────────────────────────────────────────────────────────
+def uwyk_noanc_densities(cd,
+                          uwyk_model,
+                          num_features: int,
+                          y_min: float,
+                          y_rng: float,
+                          n_context: int | None = None,
+                          n_samples: int | None = None,   # kept for backward-compat, unused
+                          ) -> dict[str, np.ndarray]:
+    """UWYK-NoAnc raw bar probabilities via BarDist monkey-patch, then
+    resample to Y_CENTERS; CATE under independence."""
+    return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
+                                            y_min, y_rng, n_context,
+                                            adjacency_kind='noanc')
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# UWYK Full-Ancestral — raw BarDist probs with full-graph adjacency
 # ─────────────────────────────────────────────────────────────────────────
 def uwyk_anc_densities(cd,
                         uwyk_model,
@@ -348,75 +396,13 @@ def uwyk_anc_densities(cd,
                         y_min: float,
                         y_rng: float,
                         n_context: int | None = None,
-                        n_samples: int = 1024,
+                        n_samples: int | None = None,   # kept for backward-compat, unused
                         ) -> dict[str, np.ndarray]:
-    """UWYK Full-Ancestral: same sample-histogram recipe as uwyk_noanc_densities
-    but with the full-graph adjacency (T→Y, X→T, X→Y all wired). Marginals via
-    histogram of samples; joint p(τ) via independence convolution."""
-    X_train_full = _np(cd.X_train)
-    t_train_full = _np(cd.t_train)
-    y_train_full = _np(cd.y_train)
-    X_test = _np(cd.X_test).astype(np.float32)
-
-    N = X_train_full.shape[0] if n_context is None else min(n_context, X_train_full.shape[0])
-    X_context = X_train_full[:N].astype(np.float32)
-    t_train_orig = t_train_full[:N].astype(np.float32).reshape(-1, 1)
-    y_train_ctx = y_train_full[:N].astype(np.float32).reshape(-1, 1)
-
-    X_train_p = _rescale_and_pad(X_context, num_features)
-    X_test_p = _rescale_and_pad(X_test, num_features)
-
-    mean_y_t0 = float(y_train_ctx[t_train_orig == 0].mean())
-    mean_y_t1 = float(y_train_ctx[t_train_orig == 1].mean())
-    t_train_enc = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
-    uwyk_model.fit(X_train_p, t_train_enc, y_train_ctx)
-
-    # Full-Ancestral: T→Y=1, X→T=1, X→Y=1 for real features; padded=-1.
-    n_real = X_context.shape[1]
-    T_idx, Y_idx = 0, 1; off = 2
-    adj = np.zeros((num_features + 2, num_features + 2), dtype=np.float32)
-    adj[T_idx, Y_idx] = 1.0
-    for i in range(n_real):
-        adj[off + i, T_idx] = 1.0
-        adj[off + i, Y_idx] = 1.0
-    for i in range(n_real, num_features):
-        fi = off + i
-        adj[fi, :] = -1.0; adj[:, fi] = -1.0; adj[fi, fi] = -1.0
-
-    n_test = X_test_p.shape[0]
-    T_intv_0 = np.full((n_test, 1), mean_y_t0, dtype=np.float32)
-    T_intv_1 = np.full((n_test, 1), mean_y_t1, dtype=np.float32)
-
-    def _sample(T_intv):
-        chunks = []; got = 0
-        while got < n_samples:
-            r = uwyk_model.predict(
-                X_obs=X_train_p, T_obs=t_train_enc, Y_obs=y_train_ctx,
-                X_intv=X_test_p, T_intv=T_intv,
-                adjacency_matrix=adj,
-                prediction_type='sample', inverse_transform=True,
-            )
-            arr = np.asarray(r).reshape(n_test, -1)
-            chunks.append(arr); got += arr.shape[1]
-        return np.concatenate(chunks, axis=1)[:, :n_samples]
-
-    Y0_raw = _sample(T_intv_0)
-    Y1_raw = _sample(T_intv_1)
-
-    Y0_scaled = (Y0_raw - y_min) / y_rng * 2.0 - 1.0
-    Y1_scaled = (Y1_raw - y_min) / y_rng * 2.0 - 1.0
-
-    y_edges = np.concatenate([Y_CENTERS - 0.5 * Y_BIN, [Y_CENTERS[-1] + 0.5 * Y_BIN]])
-    p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
-    p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
-    p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
-    for q in range(n_test):
-        h0, _ = np.histogram(Y0_scaled[q], bins=y_edges, density=True)
-        h1, _ = np.histogram(Y1_scaled[q], bins=y_edges, density=True)
-        p_y0[q] = h0
-        p_y1[q] = h1
-        p_tau[q] = naive_p_tau_from_marginals(h0, h1)
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+    """UWYK Full-Ancestral: raw bar probabilities via BarDist monkey-patch,
+    full-graph adjacency, resample to Y_CENTERS, independence convolution."""
+    return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
+                                            y_min, y_rng, n_context,
+                                            adjacency_kind='anc')
 
 
 # ─────────────────────────────────────────────────────────────────────────
