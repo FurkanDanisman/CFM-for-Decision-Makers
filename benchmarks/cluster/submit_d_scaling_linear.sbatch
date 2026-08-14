@@ -16,6 +16,10 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
+# Optional Do-PFN comparison — set both to enable.
+CHECKPOINT_DOPFN_BB="${CHECKPOINT_DOPFN_BB:-}"
+DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
+CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 K="${K:-15}"
 N_CONTEXT="${N_CONTEXT:-200}"
 N_TEST="${N_TEST:-50}"
@@ -33,11 +37,20 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export PYTHONUNBUFFERED=1
 
+DOPFN_ARGS=()
+if [ -n "$CHECKPOINT_DOPFN_BB" ]; then
+    DOPFN_ARGS=(--checkpoint-dopfn-bb "$CHECKPOINT_DOPFN_BB"
+                 --dopfn              "$DOPFN"
+                 --causalpfn          "$CAUSALPFN")
+    echo "  CHECKPOINT_DOPFN_BB=$CHECKPOINT_DOPFN_BB"
+fi
+
 python "$REPO/benchmarks/empirical_tests/d_scaling_linear.py" \
     --repo           "$REPO" \
     --checkpoint50   "$CHECKPOINT50" \
     --uwyk-src       "$UWYK_SRC" \
     --uwyk-ckpt-dir  "$UWYK_CKPT_DIR" \
+    "${DOPFN_ARGS[@]}" \
     --K              "$K" \
     --N-context      "$N_CONTEXT" \
     --N-test         "$N_TEST" \
