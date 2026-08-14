@@ -69,7 +69,12 @@ echo "DOPFN_ROOT=$DOPFN_ROOT"
 echo "Training FROM SCRATCH (no pre-trained weights)"
 
 # ── Head / grid ─────────────────────────────────────────────
-export J=100
+# CRITICAL: keep this overridable via env var. A previous version
+# hardcoded `export J=100` here, which silently overrode any
+# `J=10 sbatch ...` submissions and produced the "J=10 scam"
+# (200K checkpoint mislabelled as J=10 but actually J=100).
+# See memory: feedback_verify_experimental_facts.md
+export J="${J:-100}"
 # NUM_FEATURES here is what the STREAMING PRIOR emits; the DoPFN backbone
 # itself accepts any number of features (per-feature attention).
 export NUM_FEATURES="${NUM_FEATURES:-10}"
