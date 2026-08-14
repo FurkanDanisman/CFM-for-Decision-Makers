@@ -192,11 +192,50 @@ def main() -> int:
         elif m == 'uwyk_anc':
             method_out[m] = _run_uwyk_anc(cd, truth, args, n_ctx)
 
+    # ── Independence-assumption variant for Ours-DoPFN-bb ──────────────
+    # Same p_y0/p_y1 marginals from the 2D joint, but re-derive p(τ) under
+    # the independence assumption (naive convolution of marginals). Reveals
+    # how much of Ours-DoPFN-bb's CATE-density fidelity comes from the joint
+    # vs the marginal quality alone. Zero extra compute — reuses marginals.
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            # Point-estimate CATEs: use raw-mean (identical joint marginal means)
+            # since independence doesn't change E[Y1] - E[Y0].
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
+
     # True per-query CATE and true ATE in RAW Y units (Table-3 convention).
     # Densities live in scaled Y ([-1, 1]); convert back via factor y_rng/2.
     true_cate_raw = _np(cd.true_cate).reshape(-1)                      # (n_test,)
     y_rng_over_2 = truth.y_rng / 2.0
     true_ate_raw = float(true_cate_raw.mean())
+
+    # ── Per-realization density diagnostic PNG (methods vs truth) ─────
+    # Saved BEFORE metric computation so it lands even if a downstream
+    # numeric step raises. One 4-panel PNG per realization at
+    # {args.out}.density_diag.r{r:03d}.png.
+    try:
+        from density_plots import save_density_diag_png
+        save_density_diag_png(
+            out_path=f'{args.out}.density_diag.r{args.realization:03d}.png',
+            r=args.realization,
+            method_out=method_out,
+            p_y0_true=p_y0_true, p_y1_true=p_y1_true,
+            p_tau_true=p_tau_true, p_ate_true=p_ate_true,
+            Y_CENTERS=Y_CENTERS, TAU_CENTERS=TAU_CENTERS,
+            wb_fn=wasserstein_barycenter_1d,
+            q_show=0,
+        )
+        print(f'[density-diag] saved r={args.realization}', flush=True)
+    except Exception as e:
+        print(f'[warn] density diag plot failed: {type(e).__name__}: {e}', flush=True)
 
     # ── L2 distances + point-estimate metrics (PEHE, eps_ATE) ──────────
     out: dict[str, np.ndarray] = dict(
@@ -428,6 +467,12 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # Wrapper's clustered + prediction_type='sample' path has a
+        # (num_samples, num_bars) vs (n_test, num_bars) shape confusion in
+        # _predict_single_cluster that we cannot patch without a rewrite.
+        # Disable clustering for the L2 densities call: wrapper subsamples
+        # training to max_n_train (1000) instead. Documented limitation.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
@@ -476,6 +521,12 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
         config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
         random_state=42,
+        # Wrapper's clustered + prediction_type='sample' path has a
+        # (num_samples, num_bars) vs (n_test, num_bars) shape confusion in
+        # _predict_single_cluster that we cannot patch without a rewrite.
+        # Disable clustering for the L2 densities call: wrapper subsamples
+        # training to max_n_train (1000) instead. Documented limitation.
+        use_clustering=False,
     ).load()
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features

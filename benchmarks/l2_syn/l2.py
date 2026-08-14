@@ -1,18 +1,16 @@
-"""Re-export l2_distance from l2_ihdp/l2.py so this package doesn't duplicate it.
+"""Re-export l2_ihdp/l2.py's public API so this package doesn't duplicate it.
 
-Loaded by file path, not by name: eval_realization.py puts this directory on
-sys.path ahead of l2_ihdp/, so a plain `from l2 import ...` here resolves back
-to this very module (already in sys.modules, still executing) and raises a
-circular-import ImportError.
+Loaded via importlib against an absolute path to sidestep the naming
+collision with this file (both are named l2.py).
 """
-import importlib.util
-import os
+import importlib.util as _iu
+import os as _os
 
-_impl_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', 'l2_ihdp', 'l2.py'))
-_spec = importlib.util.spec_from_file_location('_l2_ihdp_impl', _impl_path)
-_impl = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_impl)
+_ihdp_l2 = _os.path.abspath(_os.path.join(
+    _os.path.dirname(__file__), '..', 'l2_ihdp', 'l2.py'))
+_spec = _iu.spec_from_file_location('_l2_ihdp_l2', _ihdp_l2)
+_mod = _iu.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
 
-l2_distance = _impl.l2_distance                            # noqa: F401
-resample_onto = _impl.resample_onto                        # noqa: F401
+l2_distance   = _mod.l2_distance                              # noqa: F401
+resample_onto = _mod.resample_onto                            # noqa: F401

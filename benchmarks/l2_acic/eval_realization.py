@@ -133,8 +133,35 @@ def main() -> int:
 
     RUN_ORDER = ['ours_fn50', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
     method_out = {}
+
+    def _cache_path(m):
+        return f'{args.out}.r{args.realization:03d}.{m}_cache.npz'
+
+    def _load_cache(m):
+        p = _cache_path(m)
+        if not os.path.exists(p):
+            return None
+        try:
+            with np.load(p, allow_pickle=True) as f:
+                d = {k: f[k] for k in f.files}
+            print(f'[cache] loaded {m} from {p}', flush=True)
+            return d
+        except Exception as e:
+            print(f'[cache] failed to load {p}: {e}', flush=True)
+            return None
+
+    def _save_cache(m, d):
+        p = _cache_path(m)
+        tmp = p + '.tmp.npz'
+        np.savez(tmp, **{k: np.asarray(v) for k, v in d.items()})
+        os.replace(tmp, p)
+        print(f'[cache] saved {m} to {p}', flush=True)
+
     for m in RUN_ORDER:
         if m not in methods: continue
+        cached = _load_cache(m)
+        if cached is not None:
+            method_out[m] = cached; continue
         if m == 'ours_fn50':
             method_out[m] = ihdp_ev._run_ours(cd, args.checkpoint50, truth, args, n_ctx)
         elif m == 'ours_dopfn_bb':
@@ -146,10 +173,42 @@ def main() -> int:
             method_out[m] = ihdp_ev._run_uwyk_noanc(cd, truth, args, n_ctx)
         elif m == 'uwyk_anc':
             method_out[m] = ihdp_ev._run_uwyk_anc(cd, truth, args, n_ctx)
+        _save_cache(m, method_out[m])
+
+    # Independence-assumption variant for Ours-DoPFN-bb (reuses marginals,
+    # rebuilds p(τ) via independence convolution).
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
 
     true_cate_raw = _np(cd.true_cate).reshape(-1)
     y_rng_over_2 = truth.y_rng / 2.0
     true_ate_raw = float(true_cate_raw.mean())
+
+    # Per-realization density diagnostic PNG (methods vs truth).
+    try:
+        from density_plots import save_density_diag_png
+        save_density_diag_png(
+            out_path=f'{args.out}.density_diag.r{args.realization:03d}.png',
+            r=args.realization,
+            method_out=method_out,
+            p_y0_true=p_y0_true, p_y1_true=p_y1_true,
+            p_tau_true=p_tau_true, p_ate_true=p_ate_true,
+            Y_CENTERS=Y_CENTERS, TAU_CENTERS=TAU_CENTERS,
+            wb_fn=wasserstein_barycenter_1d,
+            q_show=0,
+        )
+        print(f'[density-diag] saved r={args.realization}', flush=True)
+    except Exception as e:
+        print(f'[warn] density diag plot failed: {type(e).__name__}: {e}', flush=True)
 
     out = dict(
         r=np.int32(args.realization),

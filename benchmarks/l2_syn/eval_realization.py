@@ -98,7 +98,13 @@ def main() -> int:
         Y_CENTERS, TAU_CENTERS, build_syn_truth,
         true_marginals_per_query, true_cate_per_query, true_ate_barycenter,
     )
-    import eval_realization as ihdp_ev
+    # Load l2_ihdp/eval_realization.py by absolute path to avoid name
+    # collision with THIS file (both are eval_realization.py).
+    import importlib.util as _iu
+    _ihdp_ev_path = os.path.join(_ihdp, 'eval_realization.py')
+    _spec = _iu.spec_from_file_location('_l2_ihdp_eval_realization', _ihdp_ev_path)
+    ihdp_ev = _iu.module_from_spec(_spec)
+    _spec.loader.exec_module(ihdp_ev)
 
     print(f'[start] seed={args.seed} d={args.syn_d} N={args.n_train} '
           f'methods={methods}', flush=True)
@@ -130,6 +136,36 @@ def main() -> int:
                 cd, args.checkpoint_dopfn_bb, truth, args, n_ctx)
         elif m == 'dopfn':
             method_out[m] = ihdp_ev._run_dopfn(cd, truth, args, n_ctx)
+
+    # Independence-assumption variant for Ours-DoPFN-bb.
+    if 'ours_dopfn_bb' in method_out:
+        from methods_densities import naive_p_tau_from_marginals
+        _d = method_out['ours_dopfn_bb']
+        _p_y0, _p_y1 = _d['p_y0'], _d['p_y1']
+        _n = _p_y0.shape[0]
+        method_out['ours_dopfn_bb_indep'] = dict(
+            p_y0=_p_y0, p_y1=_p_y1,
+            p_tau=np.stack([naive_p_tau_from_marginals(_p_y0[q], _p_y1[q])
+                              for q in range(_n)]),
+            cate_raw_scaled=_d.get('cate_raw_scaled'),
+        )
+
+    # Per-realization density diagnostic PNG (methods vs truth).
+    try:
+        from density_plots import save_density_diag_png
+        save_density_diag_png(
+            out_path=f'{args.out}.density_diag.r{args.realization:03d}.png',
+            r=args.realization,
+            method_out=method_out,
+            p_y0_true=p_y0_true, p_y1_true=p_y1_true,
+            p_tau_true=p_tau_true, p_ate_true=p_ate_true,
+            Y_CENTERS=Y_CENTERS, TAU_CENTERS=TAU_CENTERS,
+            wb_fn=wasserstein_barycenter_1d,
+            q_show=0,
+        )
+        print(f'[density-diag] saved r={args.realization}', flush=True)
+    except Exception as e:
+        print(f'[warn] density diag plot failed: {type(e).__name__}: {e}', flush=True)
 
     true_cate_raw = _np(cd.true_cate).reshape(-1)
     y_rng_over_2 = truth.y_rng / 2.0
