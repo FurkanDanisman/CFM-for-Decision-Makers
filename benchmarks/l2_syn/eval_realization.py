@@ -85,8 +85,11 @@ def main() -> int:
     sys.path.insert(0, args.repo)
     sys.path.insert(0, os.path.join(args.repo, 'MALC'))
     sys.path.insert(0, os.path.join(args.repo, 'MALC', 'Optimal_Transport'))
-    sys.path.insert(0, _ihdp)                  # methods_densities.py + runners
+    # _ihdp must outrank _here: this file is also named eval_realization.py, so
+    # with _here first `import eval_realization` re-imports *this* module
+    # instead of l2_ihdp's, and its _run_* helpers come back missing.
     sys.path.insert(0, _here)
+    sys.path.insert(0, _ihdp)                  # methods_densities.py + runners
 
     from l2 import l2_distance
     from ot_barycenter import wasserstein_barycenter_1d
