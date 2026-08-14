@@ -51,8 +51,22 @@ def _load_dopfn_architecture(dopfn_root: str):
     from before pre-training.
     """
     _cwd = os.getcwd()
-    if dopfn_root not in sys.path:
-        sys.path.insert(0, dopfn_root)
+    # Do-PFN's model/*.py import a top-level `utils`, and so does UWYK. Whoever
+    # loaded first owns sys.modules['utils'], so unpickling here after a UWYK
+    # inference pass (the order context_sweep/run_one.py uses) picks up UWYK's
+    # utils and dies on `from utils import print_once`. Evict the collidable
+    # names for the duration of the load and put them back afterwards, so this
+    # works regardless of what ran before us.
+    _shadowed = {}
+    for _name in list(sys.modules):
+        if _name in ('utils', 'models', 'model') or _name.startswith(
+                ('utils.', 'models.', 'model.')):
+            _shadowed[_name] = sys.modules.pop(_name)
+    # Force to the front — being merely present isn't enough if UWYK's src is
+    # ahead of us in sys.path.
+    while dopfn_root in sys.path:
+        sys.path.remove(dopfn_root)
+    sys.path.insert(0, dopfn_root)
     try:
         os.chdir(dopfn_root)
         import pickle as pkl
@@ -66,6 +80,13 @@ def _load_dopfn_architecture(dopfn_root: str):
         config = ck.config
     finally:
         os.chdir(_cwd)
+        # Drop Do-PFN's own utils/model entries and restore whatever we shadowed,
+        # so a later UWYK pass still sees its own modules.
+        for _name in list(sys.modules):
+            if _name in ('utils', 'models', 'model') or _name.startswith(
+                    ('utils.', 'models.', 'model.')):
+                del sys.modules[_name]
+        sys.modules.update(_shadowed)
 
     # Reset every parameter that has a reset_parameters() method — this
     # reinitialises all weights to their default init (Kaiming/Xavier/etc.
