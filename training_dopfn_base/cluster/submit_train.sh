@@ -73,6 +73,14 @@ nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
 echo "================="
 echo "DOPFN_ROOT=$DOPFN_ROOT"
 echo "Training FROM SCRATCH (no pre-trained weights)"
+# Loud dump of critical env vars so we catch propagation bugs immediately
+echo "=== ENV (post-parse of submit_train.sh) ==="
+echo "  J             = ${J}      (default 100 if not exported)"
+echo "  NUM_FEATURES  = ${NUM_FEATURES}      (default 10 if not exported)"
+echo "  N_STEPS       = ${N_STEPS}   (default 50000 if not exported)"
+echo "  CHECKPOINT_DIR= ${CHECKPOINT_DIR}"
+echo "  RESUME        = ${RESUME}"
+echo "============================================"
 
 # ── Head / grid ─────────────────────────────────────────────
 # CRITICAL: keep this overridable via env var. A previous version
