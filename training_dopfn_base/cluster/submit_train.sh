@@ -9,6 +9,12 @@
 #SBATCH --mem=64G
 #SBATCH --output=logs/train_dopfn_backbone_%j.out
 #SBATCH --error=logs/train_dopfn_backbone_%j.err
+# NOTE: SLURM opens these log files BEFORE the script body runs, so the
+# 'mkdir -p logs' below is too late — the log dir must exist at submit
+# time (relative to SLURM_SUBMIT_DIR). If your submit dir doesn't have a
+# logs/ subdir, sbatch silently fails with no output at all. Do:
+#     mkdir -p $DEPLOY_ROOT/logs
+# before your first submission from a new working directory.
 
 # From-scratch training run for R-PFN with Do-PFN's architecture.
 #
