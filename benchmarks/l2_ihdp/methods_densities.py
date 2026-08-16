@@ -62,6 +62,57 @@ def naive_p_tau_from_marginals(p_y0: np.ndarray, p_y1: np.ndarray) -> np.ndarray
     return out
 
 
+def malc_1d_cvxpy(p_marg, solver=None):
+    """Fit a 1D discrete log-concave MLE to a length-J marginal p_marg.
+
+    Solves the convex program (Rufibach-Duembgen MLE reformulated):
+
+        max_{log_p}   p_marg @ log_p
+        subject to    logsumexp(log_p) ≤ 0        (sum exp(log_p) ≤ 1)
+                      diff(log_p, 2) ≤ 0          (log-concavity)
+
+    Returns discrete probabilities of the same shape as p_marg, normalised.
+    Falls back to the raw p_marg if CVXPY / solver is unavailable or fails.
+
+    Reference: R implementation in /Users/furkandanisman/DensOLog_VS/R/malc.R
+    (which uses logcondiscr::logConDiscrMLE — same optimisation problem).
+    """
+    p_marg = np.asarray(p_marg, dtype=np.float64).reshape(-1)
+    s = p_marg.sum()
+    if s <= 0:
+        return p_marg.copy()
+    p_marg = p_marg / s  # normalise input
+
+    try:
+        import cvxpy as cp
+    except ImportError:
+        # cvxpy not installed — return raw. Downstream will still normalise.
+        return p_marg
+
+    J = int(p_marg.shape[0])
+    log_p = cp.Variable(J)
+    obj = cp.Maximize(p_marg @ log_p)
+    constraints = [
+        cp.log_sum_exp(log_p) <= 0,   # sum exp(log_p) ≤ 1
+        cp.diff(log_p, 2) <= 0,        # log-concavity (2nd-diff ≤ 0)
+    ]
+    prob = cp.Problem(obj, constraints)
+    solved = False
+    for slv in ([solver] if solver else ['SCS', 'ECOS']):
+        try:
+            prob.solve(solver=slv, verbose=False)
+            if log_p.value is not None:
+                solved = True; break
+        except Exception:
+            continue
+    if not solved or log_p.value is None:
+        return p_marg
+    p_fit = np.exp(np.asarray(log_p.value, dtype=np.float64))
+    p_fit = np.clip(p_fit, 0.0, None)
+    total = p_fit.sum()
+    return p_fit / total if total > 0 else p_marg
+
+
 def _rescale_and_pad(X: np.ndarray, num_features: int) -> np.ndarray:
     """Pad X with NaN columns up to num_features (matches sibling scripts).
 
@@ -220,11 +271,22 @@ def ours_densities(cd,
             # density value = probability_mass / bin_area
             density_2d = (p_norm[np.ix_(j0, j1)] / (bin_width * bin_width)).T
 
-        # Marginals over the fine grid
-        m_y0_fine = density_2d.sum(axis=0) * dys                          # (n_eval,)
-        m_y1_fine = density_2d.sum(axis=1) * dxs                          # (n_eval,)
-        p_y0[q] = resample_onto(xs, m_y0_fine, Y_CENTERS)
-        p_y1[q] = resample_onto(ys, m_y1_fine, Y_CENTERS)
+        # Marginals via 1D MALC (per density_calc.md):
+        # take the raw marginal from p_mat, fit 1D log-concave MLE via
+        # CVXPY, then convert to density on centers_raw and resample to
+        # Y_CENTERS. Falls back to 2D MALC marginalisation if cvxpy fails.
+        centers_raw_scaled = 0.5 * (edges_np[:-1] + edges_np[1:])          # (J,)
+        bin_w_scaled = float(edges_np[1] - edges_np[0])
+        # p_mat convention: p_mat[j0, j1] (j0 = y0 axis, j1 = y1 axis)
+        p_marg_y0_raw = p_mats[q].sum(axis=1)                              # (J,)
+        p_marg_y1_raw = p_mats[q].sum(axis=0)                              # (J,)
+        p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
+        p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
+        # Convert probs → density on centers (density = prob / bin_width)
+        d_y0_native = p_marg_y0_malc / max(bin_w_scaled, 1e-12)
+        d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
+        p_y0[q] = resample_onto(centers_raw_scaled, d_y0_native, Y_CENTERS)
+        p_y1[q] = resample_onto(centers_raw_scaled, d_y1_native, Y_CENTERS)
 
         # CATE via diagonal integration.
         # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
