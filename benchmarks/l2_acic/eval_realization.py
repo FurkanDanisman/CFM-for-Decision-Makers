@@ -264,6 +264,22 @@ def main() -> int:
                            for q in range(n_queries)])
         l2_ate = l2_distance(p_ate, p_ate_true, TAU_CENTERS)
 
+        # KL divergence, both directions.
+        Y_DX   = float(Y_CENTERS[1] - Y_CENTERS[0])
+        TAU_DX = float(TAU_CENTERS[1] - TAU_CENTERS[0])
+        def _kl(p, q, dx, eps=1e-12):
+            p = np.asarray(p, dtype=np.float64) + eps
+            q = np.asarray(q, dtype=np.float64) + eps
+            return float(np.sum(p * np.log(p / q)) * dx)
+        kl_y0_fwd = np.array([_kl(p_y0_true[q], d['p_y0'][q], Y_DX)   for q in range(n_queries)])
+        kl_y1_fwd = np.array([_kl(p_y1_true[q], d['p_y1'][q], Y_DX)   for q in range(n_queries)])
+        kl_tau_fwd = np.array([_kl(p_tau_true[q], d['p_tau'][q], TAU_DX) for q in range(n_queries)])
+        kl_ate_fwd = _kl(p_ate_true, p_ate, TAU_DX)
+        kl_y0_rev = np.array([_kl(d['p_y0'][q], p_y0_true[q], Y_DX)   for q in range(n_queries)])
+        kl_y1_rev = np.array([_kl(d['p_y1'][q], p_y1_true[q], Y_DX)   for q in range(n_queries)])
+        kl_tau_rev = np.array([_kl(d['p_tau'][q], p_tau_true[q], TAU_DX) for q in range(n_queries)])
+        kl_ate_rev = _kl(p_ate, p_ate_true, TAU_DX)
+
         out[f'{name}__p_y0']  = d['p_y0']
         out[f'{name}__p_y1']  = d['p_y1']
         out[f'{name}__p_tau'] = d['p_tau']
@@ -272,6 +288,14 @@ def main() -> int:
         out[f'{name}__l2_y1']  = l2_y1.astype(np.float32)
         out[f'{name}__l2_tau'] = l2_tau.astype(np.float32)
         out[f'{name}__l2_ate'] = np.float32(l2_ate)
+        out[f'{name}__kl_y0_fwd']  = kl_y0_fwd.astype(np.float32)
+        out[f'{name}__kl_y1_fwd']  = kl_y1_fwd.astype(np.float32)
+        out[f'{name}__kl_tau_fwd'] = kl_tau_fwd.astype(np.float32)
+        out[f'{name}__kl_ate_fwd'] = np.float32(kl_ate_fwd)
+        out[f'{name}__kl_y0_rev']  = kl_y0_rev.astype(np.float32)
+        out[f'{name}__kl_y1_rev']  = kl_y1_rev.astype(np.float32)
+        out[f'{name}__kl_tau_rev'] = kl_tau_rev.astype(np.float32)
+        out[f'{name}__kl_ate_rev'] = np.float32(kl_ate_rev)
         out[f'{name}__cate_hat_raw'] = cate_hat_raw.astype(np.float32)
         out[f'{name}__ate_hat_raw']  = np.float32(ate_hat_raw)
         out[f'{name}__pehe']         = np.float32(pehe)
@@ -287,6 +311,10 @@ def main() -> int:
             out[f'{name}__eps_ate_em_k1']  = np.float32(eps_em_k1)
         print(f'[l2 ] {name:14s}  y0={l2_y0.mean():.4f}  y1={l2_y1.mean():.4f}  '
               f'tau={l2_tau.mean():.4f}  ate={l2_ate:.4f}', flush=True)
+        print(f'[KL_fwd] {name:14s}  y0={kl_y0_fwd.mean():.4f}  y1={kl_y1_fwd.mean():.4f}  '
+              f'tau={kl_tau_fwd.mean():.4f}  ate={kl_ate_fwd:.4f}', flush=True)
+        print(f'[KL_rev] {name:14s}  y0={kl_y0_rev.mean():.4f}  y1={kl_y1_rev.mean():.4f}  '
+              f'tau={kl_tau_rev.mean():.4f}  ate={kl_ate_rev:.4f}', flush=True)
 
     shard = f'{args.out}.r{args.realization:03d}.npz'
     os.makedirs(os.path.dirname(shard) or '.', exist_ok=True)
