@@ -728,7 +728,18 @@ def main():
     ap.add_argument('--out',                  default='fig2_pehe_l2_v2')
     ap.add_argument('--rho-index',            type=int, default=-1)
     ap.add_argument('--plot',                 action='store_true')
+    ap.add_argument('--methods',              default=','.join(METHODS),
+                    help='Comma-separated subset of methods to run. Skipped '
+                         'methods produce no metrics in the shard — merge with '
+                         'a prior shard via merge_fig2_shards.py to combine.')
     args = ap.parse_args()
+
+    wanted = set(m.strip() for m in args.methods.split(',') if m.strip())
+    unknown = wanted - set(METHODS)
+    if unknown:
+        sys.exit(f'[error] unknown --methods entries: {sorted(unknown)}   '
+                  f'valid: {METHODS}')
+    print(f'[cfg] running methods: {sorted(wanted)}', flush=True)
 
     _out_dir = os.path.dirname(args.out)
     if _out_dir:
@@ -743,17 +754,33 @@ def main():
         rho_targets = list(zip(range(len(RHO_GRID)), RHO_GRID, RHO_EFF))
 
     sys.path.insert(0, args.causalpfn)
-    print('[load] Ours fn=50 (InterventionalPFN)', flush=True)
-    ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, wb_fn = load_ours_ipfn(args, args.checkpoint50)
-    print('[load] UWYK (single ckpt — used for both NoAnc and FullAnc)', flush=True)
-    uwyk = load_uwyk(args.uwyk_src, args.uwyk_ckpt_dir)
-    print('[load] Do-PFN', flush=True)
-    DoPFNRegressor = load_dopfn(args)
 
-    # MALC uses Ours(fn=50)'s edges — set up ONCE (no more DoPFN-bb swap).
-    setup_malc(ipfn_edges, ipfn_J, ipfn_bw,
-                args.malc_n_eval, args.malc_B, args.malc_max_K, args.repo)
-    print('[setup] MALC in-process globals set for fn=50 edges', flush=True)
+    ipfn_model = ipfn_edges = ipfn_J = ipfn_bw = ipfn_NF = None
+    uwyk = None
+    DoPFNRegressor = None
+    wb_fn = None
+
+    if 'ours_fn50' in wanted:
+        print('[load] Ours fn=50 (InterventionalPFN)', flush=True)
+        ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, wb_fn = \
+            load_ours_ipfn(args, args.checkpoint50)
+        # MALC uses Ours(fn=50)'s edges — set up ONCE.
+        setup_malc(ipfn_edges, ipfn_J, ipfn_bw,
+                    args.malc_n_eval, args.malc_B, args.malc_max_K, args.repo)
+        print('[setup] MALC in-process globals set for fn=50 edges', flush=True)
+    if 'uwyk_noanc' in wanted or 'uwyk_anc' in wanted:
+        print('[load] UWYK (single ckpt — used for both NoAnc and FullAnc)', flush=True)
+        uwyk = load_uwyk(args.uwyk_src, args.uwyk_ckpt_dir)
+    if 'dopfn' in wanted:
+        print('[load] Do-PFN', flush=True)
+        DoPFNRegressor = load_dopfn(args)
+
+    # wass_bary_1d is used for ATE regardless of which methods run — load it
+    # directly if load_ours_ipfn didn't already provide it.
+    if wb_fn is None:
+        ot_dir = os.path.join(args.repo, 'MALC', 'Optimal_Transport')
+        if ot_dir not in sys.path: sys.path.insert(0, ot_dir)
+        from ot_barycenter import wasserstein_barycenter_1d as wb_fn
 
     _dopfn_cwd = os.getcwd()
     rows = []
@@ -766,91 +793,108 @@ def main():
             n_test = cd.X_test.shape[0]
             t0 = time.time()
 
-            # ─── forward passes ───
+            # ─── forward passes (only for methods in --methods) ───
             _t = time.time()
-            os.chdir(args.dopfn)
-            print(f'[fwd] ρ={rho:.2f} k={k} DoPFN...', flush=True)
-            dopfn_p0, dopfn_p1, dopfn_centers = dopfn_forward_raw_probs(DoPFNRegressor, cd)
-            os.chdir(_dopfn_cwd)
-            print(f'[fwd] ρ={rho:.2f} k={k} UWYK-NoAnc... ({time.time()-_t:.1f}s so far)', flush=True); _t = time.time()
-            uwyk_noanc_p0, uwyk_noanc_p1, uwyk_centers_scaled, _ = \
-                uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='noanc')
-            print(f'[fwd] ρ={rho:.2f} k={k} UWYK-FullAnc... ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
-            uwyk_anc_p0,   uwyk_anc_p1,   _,                   _ = \
-                uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='anc')
-            uwyk_centers = uwyk_inverse_scale_centers(uwyk_centers_scaled, cd)
-            print(f'[fwd] ρ={rho:.2f} k={k} Ours(fn=50)... ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+            dopfn_p0 = dopfn_p1 = dopfn_centers = None
+            uwyk_noanc_p0 = uwyk_noanc_p1 = None
+            uwyk_anc_p0 = uwyk_anc_p1 = None
+            uwyk_centers = None
+            p_mat_50 = centers_50 = None
 
-            p_mat_50, centers_50 = ours_forward(ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, cd)
-            print(f'[fwd] ρ={rho:.2f} k={k} Ours forward done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+            if 'dopfn' in wanted:
+                os.chdir(args.dopfn)
+                print(f'[fwd] ρ={rho:.2f} k={k} DoPFN...', flush=True)
+                dopfn_p0, dopfn_p1, dopfn_centers = dopfn_forward_raw_probs(DoPFNRegressor, cd)
+                os.chdir(_dopfn_cwd)
+                print(f'[fwd] ρ={rho:.2f} k={k} DoPFN done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+            if 'uwyk_noanc' in wanted:
+                print(f'[fwd] ρ={rho:.2f} k={k} UWYK-NoAnc...', flush=True)
+                uwyk_noanc_p0, uwyk_noanc_p1, uwyk_centers_scaled, _ = \
+                    uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='noanc')
+                uwyk_centers = uwyk_inverse_scale_centers(uwyk_centers_scaled, cd)
+                print(f'[fwd] ρ={rho:.2f} k={k} UWYK-NoAnc done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+            if 'uwyk_anc' in wanted:
+                print(f'[fwd] ρ={rho:.2f} k={k} UWYK-FullAnc...', flush=True)
+                uwyk_anc_p0, uwyk_anc_p1, uwyk_centers_scaled_a, _ = \
+                    uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='anc')
+                if uwyk_centers is None:
+                    uwyk_centers = uwyk_inverse_scale_centers(uwyk_centers_scaled_a, cd)
+                print(f'[fwd] ρ={rho:.2f} k={k} UWYK-FullAnc done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+            if 'ours_fn50' in wanted:
+                print(f'[fwd] ρ={rho:.2f} k={k} Ours(fn=50)...', flush=True)
+                p_mat_50, centers_50 = ours_forward(ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, cd)
+                print(f'[fwd] ρ={rho:.2f} k={k} Ours forward done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
 
             # ─── derived densities per method ───
-            # Ours(fn=50) — marginals via 1D MALC on raw p_mat marginal
-            # (density_calc.md §3b). CATE via 2D MALC + diagonal integration.
-            _bw_50 = float(centers_50[1] - centers_50[0])
-            p0_marg_raw_50 = p_mat_50.sum(axis=2)     # (n_test, J) raw marginal probs
-            p1_marg_raw_50 = p_mat_50.sum(axis=1)
-            p0_50 = np.stack([malc_1d_cvxpy(p0_marg_raw_50[q]) for q in range(n_test)])
-            p1_50 = np.stack([malc_1d_cvxpy(p1_marg_raw_50[q]) for q in range(n_test)])
-            _nan_marg = int(np.isnan(p0_50).any(axis=1).sum() + np.isnan(p1_50).any(axis=1).sum())
-            print(f'[malc1d] Ours marginals done ({time.time()-_t:.1f}s, NaN queries={_nan_marg}/{2*n_test})', flush=True); _t = time.time()
+            method_data = {}
 
-            # Ours(fn=50) CATE — 2D MALC on p_mat, diagonal-integrate to 1D p(τ).
-            tau_raw_50_malc, y_rng_50 = scaled_tau_to_raw_centers(cd)
-            p_tau_50 = np.zeros((n_test, tau_raw_50_malc.shape[0]))
-            for q in range(n_test):
-                _tq = time.time()
-                p_scaled = malc_cate_density_scaled(p_mat_50[q], seed=seed * 1000 + q)
-                p_tau_50[q] = p_scaled * (2.0 / y_rng_50)
-                if q < 3 or (q + 1) % 10 == 0 or q == n_test - 1:
-                    print(f'[malc2d] q={q+1:3d}/{n_test}  {time.time()-_tq:5.1f}s  '
-                          f'(elapsed since start of MALC2D: {time.time()-_t:.1f}s)', flush=True)
-            cate_50 = np.array([_cate_point_from_density(p_tau_50[q], tau_raw_50_malc)
-                                   for q in range(n_test)])
+            if 'ours_fn50' in wanted:
+                # Marginals via 1D MALC on raw p_mat marginal (density_calc.md §3b).
+                # CATE via 2D MALC + diagonal integration.
+                p0_marg_raw_50 = p_mat_50.sum(axis=2)     # (n_test, J) raw marginal
+                p1_marg_raw_50 = p_mat_50.sum(axis=1)
+                p0_50 = np.stack([malc_1d_cvxpy(p0_marg_raw_50[q]) for q in range(n_test)])
+                p1_50 = np.stack([malc_1d_cvxpy(p1_marg_raw_50[q]) for q in range(n_test)])
+                _nan_marg = int(np.isnan(p0_50).any(axis=1).sum() + np.isnan(p1_50).any(axis=1).sum())
+                print(f'[malc1d] Ours marginals done ({time.time()-_t:.1f}s, NaN queries={_nan_marg}/{2*n_test})', flush=True); _t = time.time()
 
-            # UWYK-NoAnc (independence-outer for CATE)
-            tau_grid_uwyk = np.linspace(uwyk_centers[0]-uwyk_centers[-1],
-                                          uwyk_centers[-1]-uwyk_centers[0], 401)
-            p_tau_uwyk_noanc = np.stack([_marginals_to_ptau(uwyk_noanc_p0[q], uwyk_noanc_p1[q],
-                                                                 uwyk_centers, tau_grid_uwyk)
-                                            for q in range(n_test)])
-            cate_uwyk_noanc = np.array([_cate_point_from_density(p_tau_uwyk_noanc[q], tau_grid_uwyk)
-                                           for q in range(n_test)])
-
-            # UWYK-FullAnc (independence-outer for CATE)
-            p_tau_uwyk_anc = np.stack([_marginals_to_ptau(uwyk_anc_p0[q], uwyk_anc_p1[q],
-                                                              uwyk_centers, tau_grid_uwyk)
-                                          for q in range(n_test)])
-            cate_uwyk_anc = np.array([_cate_point_from_density(p_tau_uwyk_anc[q], tau_grid_uwyk)
-                                         for q in range(n_test)])
-
-            # Do-PFN (independence-outer for CATE)
-            tau_grid_dopfn = np.linspace(dopfn_centers[0]-dopfn_centers[-1],
-                                            dopfn_centers[-1]-dopfn_centers[0], 401)
-            p_tau_dopfn = np.stack([_marginals_to_ptau(dopfn_p0[q], dopfn_p1[q],
-                                                            dopfn_centers, tau_grid_dopfn)
-                                        for q in range(n_test)])
-            cate_dopfn = np.array([_cate_point_from_density(p_tau_dopfn[q], tau_grid_dopfn)
+                tau_raw_50_malc, y_rng_50 = scaled_tau_to_raw_centers(cd)
+                p_tau_50 = np.zeros((n_test, tau_raw_50_malc.shape[0]))
+                for q in range(n_test):
+                    _tq = time.time()
+                    p_scaled = malc_cate_density_scaled(p_mat_50[q], seed=seed * 1000 + q)
+                    p_tau_50[q] = p_scaled * (2.0 / y_rng_50)
+                    if q < 3 or (q + 1) % 10 == 0 or q == n_test - 1:
+                        print(f'[malc2d] q={q+1:3d}/{n_test}  {time.time()-_tq:5.1f}s  '
+                              f'(elapsed since start of MALC2D: {time.time()-_t:.1f}s)', flush=True)
+                cate_50 = np.array([_cate_point_from_density(p_tau_50[q], tau_raw_50_malc)
                                        for q in range(n_test)])
+                method_data['ours_fn50'] = dict(
+                    p_y0_all=p0_50, p_y1_all=p1_50, centers_y_raw=centers_50,
+                    p_tau_all=p_tau_50, tau_centers_raw=tau_raw_50_malc,
+                    cate_pred=cate_50)
 
-            method_data = {
-                'uwyk_noanc': dict(p_y0_all=uwyk_noanc_p0, p_y1_all=uwyk_noanc_p1,
-                                    centers_y_raw=uwyk_centers,
-                                    p_tau_all=p_tau_uwyk_noanc, tau_centers_raw=tau_grid_uwyk,
-                                    cate_pred=cate_uwyk_noanc),
-                'uwyk_anc':   dict(p_y0_all=uwyk_anc_p0,   p_y1_all=uwyk_anc_p1,
-                                    centers_y_raw=uwyk_centers,
-                                    p_tau_all=p_tau_uwyk_anc,   tau_centers_raw=tau_grid_uwyk,
-                                    cate_pred=cate_uwyk_anc),
-                'dopfn':      dict(p_y0_all=dopfn_p0, p_y1_all=dopfn_p1,
-                                    centers_y_raw=dopfn_centers,
-                                    p_tau_all=p_tau_dopfn, tau_centers_raw=tau_grid_dopfn,
-                                    cate_pred=cate_dopfn),
-                'ours_fn50':  dict(p_y0_all=p0_50, p_y1_all=p1_50,
-                                    centers_y_raw=centers_50,
-                                    p_tau_all=p_tau_50, tau_centers_raw=tau_raw_50_malc,
-                                    cate_pred=cate_50),
-            }
+            if 'uwyk_noanc' in wanted or 'uwyk_anc' in wanted:
+                tau_grid_uwyk = np.linspace(uwyk_centers[0]-uwyk_centers[-1],
+                                              uwyk_centers[-1]-uwyk_centers[0], 401)
+
+            if 'uwyk_noanc' in wanted:
+                p_tau_uwyk_noanc = np.stack([_marginals_to_ptau(uwyk_noanc_p0[q], uwyk_noanc_p1[q],
+                                                                     uwyk_centers, tau_grid_uwyk)
+                                                for q in range(n_test)])
+                cate_uwyk_noanc = np.array([_cate_point_from_density(p_tau_uwyk_noanc[q], tau_grid_uwyk)
+                                               for q in range(n_test)])
+                method_data['uwyk_noanc'] = dict(
+                    p_y0_all=uwyk_noanc_p0, p_y1_all=uwyk_noanc_p1,
+                    centers_y_raw=uwyk_centers,
+                    p_tau_all=p_tau_uwyk_noanc, tau_centers_raw=tau_grid_uwyk,
+                    cate_pred=cate_uwyk_noanc)
+
+            if 'uwyk_anc' in wanted:
+                p_tau_uwyk_anc = np.stack([_marginals_to_ptau(uwyk_anc_p0[q], uwyk_anc_p1[q],
+                                                                  uwyk_centers, tau_grid_uwyk)
+                                              for q in range(n_test)])
+                cate_uwyk_anc = np.array([_cate_point_from_density(p_tau_uwyk_anc[q], tau_grid_uwyk)
+                                             for q in range(n_test)])
+                method_data['uwyk_anc'] = dict(
+                    p_y0_all=uwyk_anc_p0, p_y1_all=uwyk_anc_p1,
+                    centers_y_raw=uwyk_centers,
+                    p_tau_all=p_tau_uwyk_anc, tau_centers_raw=tau_grid_uwyk,
+                    cate_pred=cate_uwyk_anc)
+
+            if 'dopfn' in wanted:
+                tau_grid_dopfn = np.linspace(dopfn_centers[0]-dopfn_centers[-1],
+                                                dopfn_centers[-1]-dopfn_centers[0], 401)
+                p_tau_dopfn = np.stack([_marginals_to_ptau(dopfn_p0[q], dopfn_p1[q],
+                                                                dopfn_centers, tau_grid_dopfn)
+                                            for q in range(n_test)])
+                cate_dopfn = np.array([_cate_point_from_density(p_tau_dopfn[q], tau_grid_dopfn)
+                                           for q in range(n_test)])
+                method_data['dopfn'] = dict(
+                    p_y0_all=dopfn_p0, p_y1_all=dopfn_p1,
+                    centers_y_raw=dopfn_centers,
+                    p_tau_all=p_tau_dopfn, tau_centers_raw=tau_grid_dopfn,
+                    cate_pred=cate_dopfn)
             metrics, diag = score_one_scm(cd, method_data, wb_fn)
             metrics['rho'] = rho; metrics['seed'] = seed
             metrics['n_context'] = args.N_context; metrics['n_test'] = args.N_test
@@ -859,11 +903,9 @@ def main():
                 diag_this_rho = {**diag, 'rho': rho}
 
             dt = time.time() - t0
-            print(f'[scm] ρ={rho:.2f} k={k:2d}   '
-                  f'PEHE (uwyk_noanc={metrics["pehe_uwyk_noanc"]:.3f}  '
-                  f'uwyk_anc={metrics["pehe_uwyk_anc"]:.3f}  '
-                  f'dopfn={metrics["pehe_dopfn"]:.3f}  '
-                  f'ours_fn50={metrics["pehe_ours_fn50"]:.3f})  '
+            pehe_parts = [f'{m}={metrics[f"pehe_{m}"]:.3f}'
+                          for m in METHODS if f'pehe_{m}' in metrics]
+            print(f'[scm] ρ={rho:.2f} k={k:2d}   PEHE ({"  ".join(pehe_parts)})  '
                   f'{dt:.1f}s', flush=True)
             gc.collect()
 
