@@ -72,36 +72,41 @@ KL_rev vs the analytic truth Gaussian evaluated on the same common grid.
 Reference: `_uwyk_densities_from_raw_probs` and `dopfn_densities` in
 `benchmarks/l2_ihdp/methods_densities.py`.
 
-### 3b. Ours (fn=50) — 1D MALC on the marginal from p_mat
+### 3b. Ours (fn=50) — RAW marginal from p_mat (updated 2026-08-17)
 
     1.  Raw marginal from the 2D joint (mass on J bins in scaled y):
             p_marg_t[j] = Σ_other p_mat[j0 or j1, other]
 
-    2.  Fit 1D discrete log-concave MLE to p_marg_t via CVXPY:
-            log_p = cp.Variable(J)
-            obj   = cp.Maximize(p_marg_t @ log_p)
-            constr= [ cp.log_sum_exp(log_p) <= 0,     # sum exp <= 1
-                      cp.diff(log_p, 2) <= 0 ]         # log-concavity
-            solve with SCS (fallback ECOS)
-            p_smooth = exp(log_p); renormalise
-        Falls back to raw p_marg_t if CVXPY unavailable or solver fails.
+    2.  Convert probs → density on the native centers:
+            d_native[j] = p_marg_t[j] / bin_w_scaled
 
-    3.  Convert probs → density on the native centers:
-            d_native[j] = p_smooth[j] / bin_w_scaled
-
-    4.  Resample d_native onto the common Y-grid (`resample_onto`).
+    3.  Resample d_native onto the common Y-grid (`resample_onto`).
         Compute L2 + KL_fwd + KL_rev vs truth Gaussian on the same grid.
 
-Reference: `malc_1d_cvxpy()` + `ours_densities` in
-`benchmarks/l2_ihdp/methods_densities.py`.
+Reference: `ours_forward` + marginal sum in
+`benchmarks/empirical_tests/fig2_pehe_l2.py::main`.
 
-**Why 1D MALC on the 1D marginal (rather than marginalising 2D MALC?):**
-matches the reference R implementation `R/malc.R::MALC` which fits a 1D
-discrete log-concave MLE to the marginal directly. Cleaner interpretation
-than marginalising a 2D fit that solves a different optimisation problem.
+**Why RAW and not 1D MALC?**  Between 2026-08-16 and 2026-08-17 we tried
+1D MALC via CVXPY (`malc_1d_cvxpy`) on the marginals for consistency with
+the 2D-MALC path used for CATE. In practice the CVXPY / SCS solver
+collapsed broad log-concave Gaussian marginals into spikes at many
+queries (peak_ratio 11× vs truth, support shrunk from ~150 grid points
+to ~14 for the same Y_do(1) marginal). Reproducer:
+`benchmarks/empirical_tests/inspect_malc_1d_solver.py`.
 
-**Deps**: `pip install cvxpy` (any modern version). SCS and ECOS solvers
-ship with the default install.
+R's `logcondiscr::logConDiscrMLE` (active-set solver, used in the
+reference R implementation `R/malc.R::MALC`) does NOT exhibit this
+behaviour — it converges tightly to the empirical MLE when the input is
+already log-concave. The Python spike is a first-order solver artefact,
+not an inherent MALC issue. Until a Python solver that matches R's
+tightness is wired in (candidates: ECOS-first, CLARABEL, or an active-set
+port), we use the raw marginal for the Fig 2 pipeline.
+
+**Consequence — asymmetric smoothing (documented in §8.2):** Ours' CATE
+path still uses 2D MALC; only marginals use raw. Same asymmetry as v1.
+
+**Deps** (retained for the 2D-MALC-CATE path and the diagnostic script):
+`pip install cvxpy`. SCS and ECOS solvers ship with the default install.
 
 ## 4. CATE density — τ = Y1 − Y0
 
@@ -233,6 +238,13 @@ pipeline bug.
 
 ## 9. Change log
 
+- **v3 (2026-08-17)**: §3b reverted to RAW marginal for Ours(fn=50) —
+  the Python CVXPY/SCS port of 1D MALC collapses broad log-concave
+  Gaussians into spikes in ~50% of queries, blowing up Marg-KLfwd
+  (13.2 vs 0.6 for baselines). R's `logcondiscr::logConDiscrMLE` does
+  not have this bug (uses an active-set method). Diagnostic:
+  `benchmarks/empirical_tests/inspect_malc_1d_solver.py`. TODO: swap
+  Python solver to ECOS-first or an active-set port, then revisit.
 - **v2 (2026-08-16)**: added `malc_1d_cvxpy` Python port for §3b. Added
   KL divergence (both directions) as a second metric alongside L2 in all
   L2-eval pipelines. Documented the ρ-identification limitation (§8.1).
