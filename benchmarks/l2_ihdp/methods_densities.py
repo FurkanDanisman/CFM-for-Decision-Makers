@@ -62,6 +62,30 @@ def naive_p_tau_from_marginals(p_y0: np.ndarray, p_y1: np.ndarray) -> np.ndarray
     return out
 
 
+# Cache one CVXPY problem instance per J. Building a CVXPY Problem does
+# a ~5-10s symbolic canonicalisation for J≈50; re-using the same Problem
+# with a Parameter for p_marg lets SCS/ECOS reuse the compiled representation.
+# Without this cache, 20 calls per SCM (2 arms × 10 queries) cost ~200s.
+_MALC_1D_CACHE: dict = {}
+
+
+def _get_malc_1d_problem(J: int):
+    """Return (problem, p_param, log_p_var) for length-J MLE, cached per J."""
+    entry = _MALC_1D_CACHE.get(J)
+    if entry is not None:
+        return entry
+    import cvxpy as cp
+    p_param = cp.Parameter(J, nonneg=True)
+    log_p = cp.Variable(J)
+    prob = cp.Problem(
+        cp.Maximize(p_param @ log_p),
+        [cp.log_sum_exp(log_p) <= 0, cp.diff(log_p, 2) <= 0],
+    )
+    entry = (prob, p_param, log_p)
+    _MALC_1D_CACHE[J] = entry
+    return entry
+
+
 def malc_1d_cvxpy(p_marg, solver=None):
     """Fit a 1D discrete log-concave MLE to a length-J marginal p_marg.
 
@@ -84,23 +108,18 @@ def malc_1d_cvxpy(p_marg, solver=None):
     p_marg = p_marg / s  # normalise input
 
     try:
-        import cvxpy as cp
+        import cvxpy as cp  # noqa: F401 — probe availability
     except ImportError:
         # cvxpy not installed — return raw. Downstream will still normalise.
         return p_marg
 
     J = int(p_marg.shape[0])
-    log_p = cp.Variable(J)
-    obj = cp.Maximize(p_marg @ log_p)
-    constraints = [
-        cp.log_sum_exp(log_p) <= 0,   # sum exp(log_p) ≤ 1
-        cp.diff(log_p, 2) <= 0,        # log-concavity (2nd-diff ≤ 0)
-    ]
-    prob = cp.Problem(obj, constraints)
+    prob, p_param, log_p = _get_malc_1d_problem(J)
+    p_param.value = p_marg
     solved = False
     for slv in ([solver] if solver else ['SCS', 'ECOS']):
         try:
-            prob.solve(solver=slv, verbose=False)
+            prob.solve(solver=slv, verbose=False, warm_start=True)
             if log_p.value is not None:
                 solved = True; break
         except Exception:
