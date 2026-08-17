@@ -767,16 +767,22 @@ def main():
             t0 = time.time()
 
             # ─── forward passes ───
+            _t = time.time()
             os.chdir(args.dopfn)
+            print(f'[fwd] ρ={rho:.2f} k={k} DoPFN...', flush=True)
             dopfn_p0, dopfn_p1, dopfn_centers = dopfn_forward_raw_probs(DoPFNRegressor, cd)
             os.chdir(_dopfn_cwd)
+            print(f'[fwd] ρ={rho:.2f} k={k} UWYK-NoAnc... ({time.time()-_t:.1f}s so far)', flush=True); _t = time.time()
             uwyk_noanc_p0, uwyk_noanc_p1, uwyk_centers_scaled, _ = \
                 uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='noanc')
+            print(f'[fwd] ρ={rho:.2f} k={k} UWYK-FullAnc... ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
             uwyk_anc_p0,   uwyk_anc_p1,   _,                   _ = \
                 uwyk_forward_raw_probs(uwyk, cd, adjacency_kind='anc')
             uwyk_centers = uwyk_inverse_scale_centers(uwyk_centers_scaled, cd)
+            print(f'[fwd] ρ={rho:.2f} k={k} Ours(fn=50)... ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
 
             p_mat_50, centers_50 = ours_forward(ipfn_model, ipfn_edges, ipfn_J, ipfn_bw, ipfn_NF, cd)
+            print(f'[fwd] ρ={rho:.2f} k={k} Ours forward done ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
 
             # ─── derived densities per method ───
             # Ours(fn=50) — marginals via 1D MALC on raw p_mat marginal
@@ -786,13 +792,19 @@ def main():
             p1_marg_raw_50 = p_mat_50.sum(axis=1)
             p0_50 = np.stack([malc_1d_cvxpy(p0_marg_raw_50[q]) for q in range(n_test)])
             p1_50 = np.stack([malc_1d_cvxpy(p1_marg_raw_50[q]) for q in range(n_test)])
+            _nan_marg = int(np.isnan(p0_50).any(axis=1).sum() + np.isnan(p1_50).any(axis=1).sum())
+            print(f'[malc1d] Ours marginals done ({time.time()-_t:.1f}s, NaN queries={_nan_marg}/{2*n_test})', flush=True); _t = time.time()
 
             # Ours(fn=50) CATE — 2D MALC on p_mat, diagonal-integrate to 1D p(τ).
             tau_raw_50_malc, y_rng_50 = scaled_tau_to_raw_centers(cd)
             p_tau_50 = np.zeros((n_test, tau_raw_50_malc.shape[0]))
             for q in range(n_test):
+                _tq = time.time()
                 p_scaled = malc_cate_density_scaled(p_mat_50[q], seed=seed * 1000 + q)
                 p_tau_50[q] = p_scaled * (2.0 / y_rng_50)
+                if q < 3 or (q + 1) % 10 == 0 or q == n_test - 1:
+                    print(f'[malc2d] q={q+1:3d}/{n_test}  {time.time()-_tq:5.1f}s  '
+                          f'(elapsed since start of MALC2D: {time.time()-_t:.1f}s)', flush=True)
             cate_50 = np.array([_cate_point_from_density(p_tau_50[q], tau_raw_50_malc)
                                    for q in range(n_test)])
 
