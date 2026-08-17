@@ -75,6 +75,37 @@ def _init_sigma_1d(props, centers, mean_est, bin_width):
     return s if np.isfinite(s) and s > 0 else bin_width
 
 
+def _compute_y_scale(y_train, scheme, iqr_target=0.6, std_target=0.3, trim_pct=5.0):
+    """Return (y_center, y_scale) so that y_scaled = (y_raw - y_center) / y_scale
+    puts the bulk of y_train into [-1, 1]. Choice of scheme controls robustness:
+
+    - min_max:      current default — y_center=mid, y_scale=(max−min)/2. Any
+                    outlier in y_train blows up y_scale and crushes signal.
+    - std:          y_center=mean, y_scale=std/std_target. Robust to a few
+                    outliers if std_target < 1; still moved by extreme ones.
+    - iqr:          y_center=median, y_scale=IQR/iqr_target. Ignores outliers
+                    entirely (Q1/Q3 unaffected). Best for outlier-heavy IHDP.
+    - trim_min_max: y_center=mid of (q_lo, q_hi), y_scale=(q_hi−q_lo)/2 where
+                    q_lo, q_hi = percentile(y_train, [trim_pct, 100−trim_pct]).
+
+    For the CATE, only y_scale matters — y_center cancels in the difference.
+    """
+    y = np.asarray(y_train, dtype=np.float64).reshape(-1)
+    if scheme == 'min_max':
+        lo, hi = float(y.min()), float(y.max())
+        return 0.5 * (lo + hi), 0.5 * max(hi - lo, 1e-8)
+    if scheme == 'std':
+        return float(y.mean()), max(float(y.std()) / max(std_target, 1e-6), 1e-8)
+    if scheme == 'iqr':
+        q25, q75 = np.percentile(y, [25, 75])
+        med = float(np.median(y))
+        return med, max(float(q75 - q25) / max(iqr_target, 1e-6), 1e-8)
+    if scheme == 'trim_min_max':
+        lo, hi = np.percentile(y, [trim_pct, 100.0 - trim_pct])
+        return 0.5 * float(lo + hi), 0.5 * max(float(hi - lo), 1e-8)
+    raise ValueError(f'unknown y-scaling scheme: {scheme}')
+
+
 def _install_dopfn_datasets_shim(dopfn_dir):
     if 'datasets' in sys.modules:
         return
@@ -117,6 +148,21 @@ def main():
                     help='B_fit / B_select for MALC 2D fit (default 100 — smaller than the '
                          'main pipeline default 500 for speed; L2/KL not evaluated here so '
                          'precision matters less).')
+    ap.add_argument('--y-scaling', default='min_max',
+                    choices=['min_max', 'std', 'iqr', 'trim_min_max'],
+                    help='How to rescale Y_ctx for the model. Outlier-heavy IHDP '
+                         'realizations compress the true CATE below bin_width under '
+                         'min_max — try iqr or trim_min_max to keep signal resolvable.')
+    ap.add_argument('--iqr-target', type=float, default=0.6,
+                    help='Target scaled-IQR for --y-scaling iqr (default 0.6, meaning '
+                         'central 50%% of y_train maps to a scaled IQR of 0.6, i.e. '
+                         'roughly [-0.3, 0.3]).')
+    ap.add_argument('--std-target', type=float, default=0.3,
+                    help='Target scaled-σ for --y-scaling std (default 0.3, so σ ≈ 1.5×'
+                         ' bin_width at J=10; ±3σ fits inside [-1,1]).')
+    ap.add_argument('--trim-pct', type=float, default=5.0,
+                    help='Percentile trim for --y-scaling trim_min_max (default 5, i.e. '
+                         'use [5th, 95th] pct as the rescale range).')
     args = ap.parse_args()
 
     # ── Paths ─────────────────────────────────────────────────────────────
@@ -150,6 +196,14 @@ def main():
     sys.path.insert(0, args.causalpfn)
     from benchmarks import IHDPDataset
 
+    print(f'[cfg] y-scaling scheme: {args.y_scaling}', flush=True)
+    if args.y_scaling == 'iqr':
+        print(f'[cfg]   iqr_target={args.iqr_target}', flush=True)
+    elif args.y_scaling == 'std':
+        print(f'[cfg]   std_target={args.std_target}', flush=True)
+    elif args.y_scaling == 'trim_min_max':
+        print(f'[cfg]   trim_pct={args.trim_pct}', flush=True)
+
     # ── Load checkpoint ───────────────────────────────────────────────────
     print(f'[load] {args.checkpoint}', flush=True)
     ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
@@ -177,7 +231,6 @@ def main():
         cd, _ = IHDPDataset()[r]
         y_train_full = _np(cd.y_train)
         truth = load_ihdp_truth(r, args.causalpfn, y_train_full)
-        y_min = float(truth.y_min); y_rng = float(truth.y_rng)
 
         # Subsample context if requested
         if args.n_context > 0 and args.n_context < cd.X_train.shape[0]:
@@ -192,8 +245,17 @@ def main():
             Y_ctx = _np(cd.y_train)
         X_qry = _np(cd.X_test)
 
-        # Rescale Y to [-1, 1] using truth's y_min / y_rng
-        Y_ctx_s = ((Y_ctx.reshape(-1) - y_min) / y_rng * 2.0 - 1.0).astype(np.float32)
+        # Rescale Y based on chosen scheme. y_scale (not the legacy y_rng/2)
+        # is what un-scales CATE predictions.
+        y_center, y_scale = _compute_y_scale(
+            y_train_full, args.y_scaling,
+            iqr_target=args.iqr_target,
+            std_target=args.std_target,
+            trim_pct=args.trim_pct,
+        )
+        Y_ctx_s = ((Y_ctx.reshape(-1) - y_center) / y_scale).astype(np.float32)
+        # Keep y_rng around only for legacy print — un-scaling uses y_scale.
+        y_rng = 2.0 * y_scale
 
         X_ctx_t = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0)
         T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32).reshape(-1, 1)).unsqueeze(0)
