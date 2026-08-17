@@ -286,8 +286,13 @@ def main():
                     p_fine = dens * (fine_bw * fine_bw)
                     ps = p_fine.sum()
                     if ps > 0: p_fine = p_fine / ps
-                    p_marg0_fine = p_fine.sum(axis=1)
-                    p_marg1_fine = p_fine.sum(axis=0)
+                    # AXIS CONVENTION: after dmalc_2d(...).reshape(n_ev, n_ev),
+                    # first axis (rows) is Y1 index, second axis (cols) is Y0
+                    # index (see methods_densities.py:345 for reference).
+                    # So Y0 marginal = sum over rows (axis=0);
+                    #    Y1 marginal = sum over cols (axis=1).
+                    p_marg0_fine = p_fine.sum(axis=0)   # Y0 marginal
+                    p_marg1_fine = p_fine.sum(axis=1)   # Y1 marginal
                     # Raw mean on fine grid
                     m0_raw_f = float((fine_centers * p_marg0_fine).sum())
                     m1_raw_f = float((fine_centers * p_marg1_fine).sum())
