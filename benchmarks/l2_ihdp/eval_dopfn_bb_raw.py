@@ -83,6 +83,8 @@ def main():
 
     # ── Iterate over realizations ─────────────────────────────────────────
     pehe_list, eps_ate_list = [], []
+    pehe_em_k1_list, eps_em_k1_list = [], []
+    std_y0_list, std_y1_list = [], []
     t_all = time.time()
     end = min(args.start_realization + args.n_realizations, 100)
     for r in range(args.start_realization, end):
@@ -117,7 +119,11 @@ def main():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
 
         n_test = X_qry.shape[0]
-        cate_pred_scaled = np.zeros(n_test, dtype=np.float64)
+        cate_raw_scaled     = np.zeros(n_test, dtype=np.float64)   # E[Y1] - E[Y0], raw
+        cate_em_k1_scaled   = np.zeros(n_test, dtype=np.float64)   # K=1 Gaussian MLE mean
+        std_em_k1_y0_scaled = np.zeros(n_test, dtype=np.float64)   # per-arm fitted σ
+        std_em_k1_y1_scaled = np.zeros(n_test, dtype=np.float64)
+
         for q in range(n_test):
             p_mat, *_ = unpack_pred(pred[q], J, bin_width)
             pm = p_mat.detach().cpu().numpy().astype(np.float64)
@@ -125,34 +131,76 @@ def main():
             if s > 0: pm /= s
             p_marg0 = pm.sum(axis=1)  # marg over Y1 → gives Y0 marginal
             p_marg1 = pm.sum(axis=0)  # marg over Y0 → gives Y1 marginal
+
+            # ── raw-mean (weighted expectation) ─────────────────────────
             mean0_s = float((centers_scaled * p_marg0).sum())
             mean1_s = float((centers_scaled * p_marg1).sum())
-            cate_pred_scaled[q] = mean1_s - mean0_s
+            cate_raw_scaled[q] = mean1_s - mean0_s
 
-        cate_pred_raw = cate_pred_scaled * (y_rng / 2.0)
+            # ── EM K=1 Gaussian MLE ─────────────────────────────────────
+            # For K=1 the closed-form MLE for (μ, σ²) given discrete probs
+            # p_i on bin centers c_i is exactly:
+            #     μ_k1 = Σ p_i · c_i       (identical to the raw mean)
+            #     σ_k1 = √( Σ p_i · (c_i − μ)² )
+            # Reported separately for paper-table completeness; σ is new
+            # info (raw-mean has no width companion).
+            cate_em_k1_scaled[q] = mean1_s - mean0_s   # ≡ raw
+            std_em_k1_y0_scaled[q] = float(np.sqrt(((centers_scaled - mean0_s) ** 2 * p_marg0).sum()))
+            std_em_k1_y1_scaled[q] = float(np.sqrt(((centers_scaled - mean1_s) ** 2 * p_marg1).sum()))
+
+        cate_pred_raw    = cate_raw_scaled   * (y_rng / 2.0)
+        cate_pred_em_k1  = cate_em_k1_scaled * (y_rng / 2.0)
+        std_em_k1_y0_raw = std_em_k1_y0_scaled * (y_rng / 2.0)
+        std_em_k1_y1_raw = std_em_k1_y1_scaled * (y_rng / 2.0)
+
         true_cate_raw = _np(cd.true_cate).reshape(-1).astype(np.float64)
-        pehe = float(np.sqrt(np.mean((cate_pred_raw - true_cate_raw) ** 2)))
-        eps_ate = float(abs(cate_pred_raw.mean() - true_cate_raw.mean()))
+        pehe        = float(np.sqrt(np.mean((cate_pred_raw   - true_cate_raw) ** 2)))
+        pehe_em_k1  = float(np.sqrt(np.mean((cate_pred_em_k1 - true_cate_raw) ** 2)))
+        eps_ate       = float(abs(cate_pred_raw.mean()   - true_cate_raw.mean()))
+        eps_ate_em_k1 = float(abs(cate_pred_em_k1.mean() - true_cate_raw.mean()))
         pehe_list.append(pehe); eps_ate_list.append(eps_ate)
-        print(f'  r={r:3d}  PEHE={pehe:.4f}  eps_ATE={eps_ate:.4f}  '
+        # Also collect em_k1 arrays for the summary
+        try:
+            pehe_em_k1_list.append(pehe_em_k1); eps_em_k1_list.append(eps_ate_em_k1)
+            std_y0_list.append(float(std_em_k1_y0_raw.mean()))
+            std_y1_list.append(float(std_em_k1_y1_raw.mean()))
+        except NameError:
+            pass
+        print(f'  r={r:3d}  PEHE(raw)={pehe:.4f}  PEHE(em_k1)={pehe_em_k1:.4f}  '
+              f'eps_ATE(raw)={eps_ate:.4f}  eps_ATE(em_k1)={eps_ate_em_k1:.4f}  '
+              f'<σ_Y0>={std_em_k1_y0_raw.mean():.3f}  <σ_Y1>={std_em_k1_y1_raw.mean():.3f}  '
               f'({time.time()-t_r:.1f}s)', flush=True)
 
-    pehe_arr = np.array(pehe_list)
-    eps_arr  = np.array(eps_ate_list)
+    def _summary(arr, label):
+        arr = np.asarray(arr)
+        n = len(arr)
+        m = arr.mean() if n else float('nan')
+        s = arr.std(ddof=1) if n > 1 else 0.0
+        sem = s / np.sqrt(n) if n > 1 else 0.0
+        med = float(np.median(arr)) if n else float('nan')
+        print(f'{label:<20s}  mean={m:.4f}  std={s:.4f}  median={med:.4f}  sem={sem:.4f}')
+
+    pehe_arr        = np.array(pehe_list)
+    eps_arr         = np.array(eps_ate_list)
+    pehe_em_k1_arr  = np.array(pehe_em_k1_list)
+    eps_em_k1_arr   = np.array(eps_em_k1_list)
+    std_y0_arr      = np.array(std_y0_list)
+    std_y1_arr      = np.array(std_y1_list)
     print('')
     print(f'== step={step}  n={len(pehe_arr)}  total={time.time()-t_all:.1f}s ==')
-    print(f'PEHE     mean={pehe_arr.mean():.4f}  '
-          f'std={pehe_arr.std(ddof=1) if len(pehe_arr)>1 else 0:.4f}  '
-          f'median={np.median(pehe_arr):.4f}  '
-          f'sem={pehe_arr.std(ddof=1)/np.sqrt(len(pehe_arr)) if len(pehe_arr)>1 else 0:.4f}')
-    print(f'eps_ATE  mean={eps_arr.mean():.4f}  '
-          f'std={eps_arr.std(ddof=1) if len(eps_arr)>1 else 0:.4f}  '
-          f'median={np.median(eps_arr):.4f}  '
-          f'sem={eps_arr.std(ddof=1)/np.sqrt(len(eps_arr)) if len(eps_arr)>1 else 0:.4f}')
+    _summary(pehe_arr,        'PEHE (raw)')
+    _summary(pehe_em_k1_arr,  'PEHE (em_k1)')
+    _summary(eps_arr,         'eps_ATE (raw)')
+    _summary(eps_em_k1_arr,   'eps_ATE (em_k1)')
+    _summary(std_y0_arr,      'fitted σ Y_do(0)')
+    _summary(std_y1_arr,      'fitted σ Y_do(1)')
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
-        np.savez(args.out, pehe=pehe_arr, eps_ate=eps_arr,
+        np.savez(args.out,
+                  pehe=pehe_arr, eps_ate=eps_arr,
+                  pehe_em_k1=pehe_em_k1_arr, eps_ate_em_k1=eps_em_k1_arr,
+                  std_em_k1_y0=std_y0_arr, std_em_k1_y1=std_y1_arr,
                   step=step, checkpoint=args.checkpoint)
         print(f'[save] {args.out}')
 
