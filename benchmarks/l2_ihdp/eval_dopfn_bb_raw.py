@@ -149,10 +149,10 @@ def main():
                          'main pipeline default 500 for speed; L2/KL not evaluated here so '
                          'precision matters less).')
     ap.add_argument('--y-scaling', default='min_max',
-                    choices=['min_max', 'std', 'iqr', 'trim_min_max'],
+                    choices=['min_max', 'std', 'iqr', 'trim_min_max', 'power_transform'],
                     help='How to rescale Y_ctx for the model. Outlier-heavy IHDP '
                          'realizations compress the true CATE below bin_width under '
-                         'min_max — try iqr or trim_min_max to keep signal resolvable.')
+                         'min_max — try power_transform (Do-PFN\'s recipe) or iqr.')
     ap.add_argument('--iqr-target', type=float, default=0.6,
                     help='Target scaled-IQR for --y-scaling iqr (default 0.6, meaning '
                          'central 50%% of y_train maps to a scaled IQR of 0.6, i.e. '
@@ -245,17 +245,57 @@ def main():
             Y_ctx = _np(cd.y_train)
         X_qry = _np(cd.X_test)
 
-        # Rescale Y based on chosen scheme. y_scale (not the legacy y_rng/2)
-        # is what un-scales CATE predictions.
-        y_center, y_scale = _compute_y_scale(
-            y_train_full, args.y_scaling,
-            iqr_target=args.iqr_target,
-            std_target=args.std_target,
-            trim_pct=args.trim_pct,
-        )
-        Y_ctx_s = ((Y_ctx.reshape(-1) - y_center) / y_scale).astype(np.float32)
-        # Keep y_rng around only for legacy print — un-scaling uses y_scale.
-        y_rng = 2.0 * y_scale
+        # Rescale Y based on chosen scheme. Two flavours:
+        #   linear (min_max, std, iqr, trim_min_max): y_center + y_scale,
+        #     un-scale is y_raw = y_scaled * y_scale + y_center.
+        #   power_transform: fits Yeo-Johnson (fallback: QuantileTransformer
+        #     to normal) on y_train, then linearly rescales pt(y) to [-1, 1].
+        #     Un-scale is nonlinear: pt.inverse_transform(scaled → pt space).
+        # Both paths expose an `unscale_arr(scaled_arr)` callable used later.
+        if args.y_scaling == 'power_transform':
+            from sklearn.preprocessing import PowerTransformer, QuantileTransformer
+            yt = y_train_full.reshape(-1, 1).astype(np.float64)
+            _pt = None
+            for _name, _cand in [
+                ('yeo_johnson', PowerTransformer(method='yeo-johnson', standardize=True)),
+                ('quantile_normal', QuantileTransformer(
+                    output_distribution='normal',
+                    n_quantiles=min(1000, max(10, len(yt) // 10)))),
+            ]:
+                try:
+                    _yt_pt = _cand.fit_transform(yt).astype(np.float64).reshape(-1)
+                    _pt = _cand
+                    break
+                except Exception:
+                    continue
+            if _pt is None:
+                # fallback to min_max
+                y_center, y_scale = _compute_y_scale(y_train_full, 'min_max')
+                Y_ctx_s = ((Y_ctx.reshape(-1) - y_center) / y_scale).astype(np.float32)
+                unscale_arr = lambda a: np.asarray(a) * y_scale + y_center
+            else:
+                _pt_min = float(_yt_pt.min())
+                _pt_max = float(_yt_pt.max())
+                _pt_rng = max(_pt_max - _pt_min, 1e-8)
+                Y_ctx_pt = _pt.transform(Y_ctx.reshape(-1, 1)).astype(np.float32).reshape(-1)
+                Y_ctx_s = ((Y_ctx_pt - _pt_min) / _pt_rng * 2.0 - 1.0).astype(np.float32)
+                def unscale_arr(a):
+                    arr = np.atleast_1d(np.asarray(a, dtype=np.float64))
+                    pt_val = (arr + 1.0) / 2.0 * _pt_rng + _pt_min
+                    raw = _pt.inverse_transform(pt_val.reshape(-1, 1)).reshape(-1)
+                    return raw
+                y_scale = _pt_rng / 2.0  # rough effective slope, for σ diagnostics
+                y_center = float(_pt.inverse_transform(np.array([[0.5 * (_pt_min + _pt_max)]]))[0, 0])
+        else:
+            y_center, y_scale = _compute_y_scale(
+                y_train_full, args.y_scaling,
+                iqr_target=args.iqr_target,
+                std_target=args.std_target,
+                trim_pct=args.trim_pct,
+            )
+            Y_ctx_s = ((Y_ctx.reshape(-1) - y_center) / y_scale).astype(np.float32)
+            unscale_arr = lambda a: np.asarray(a, dtype=np.float64) * y_scale + y_center
+        y_rng = 2.0 * y_scale  # legacy diagnostic only
 
         X_ctx_t = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0)
         T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32).reshape(-1, 1)).unsqueeze(0)
@@ -266,10 +306,12 @@ def main():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
 
         n_test = X_qry.shape[0]
-        cate_raw_scaled      = np.zeros(n_test, dtype=np.float64)   # inner-only Σ p·c
-        cate_em_scaled       = np.zeros(n_test, dtype=np.float64)   # inner + tails (9 regions)
-        cate_malc_raw_scaled = np.zeros(n_test, dtype=np.float64)   # MALC-upsampled Σ p·c (no tails)
-        cate_malc_em_scaled  = np.zeros(n_test, dtype=np.float64)   # MALC-upsampled + truncnorm EM
+        # Store per-query MEANS in scaled space (not CATE), so we can unscale
+        # them via unscale_arr(...) — works for linear AND power_transform.
+        m0_inner_s      = np.zeros(n_test, dtype=np.float64); m1_inner_s      = np.zeros(n_test, dtype=np.float64)
+        m0_full_s       = np.zeros(n_test, dtype=np.float64); m1_full_s       = np.zeros(n_test, dtype=np.float64)
+        m0_malc_raw_s   = np.zeros(n_test, dtype=np.float64); m1_malc_raw_s   = np.zeros(n_test, dtype=np.float64)
+        m0_malc_em_s    = np.zeros(n_test, dtype=np.float64); m1_malc_em_s    = np.zeros(n_test, dtype=np.float64)
         sigma_em_y0_scaled = np.zeros(n_test, dtype=np.float64)
         sigma_em_y1_scaled = np.zeros(n_test, dtype=np.float64)
         n_malc_fail = 0
@@ -300,7 +342,8 @@ def main():
             # ── OLD raw bin-center mean (inner region only, ignores tails) ─
             mean0_inner_s = float((centers_scaled * p_marg0).sum())
             mean1_inner_s = float((centers_scaled * p_marg1).sum())
-            cate_raw_scaled[q] = mean1_inner_s - mean0_inner_s
+            m0_inner_s[q] = mean0_inner_s
+            m1_inner_s[q] = mean1_inner_s
 
             # ── FULL 9-region mean (inner + tail regions) ────────────────
             # Y_do0 side:
@@ -326,7 +369,8 @@ def main():
                              + P1_L     * E1_L
                              + P1_R     * E1_R)
 
-            cate_em_scaled[q] = mean1_full_s - mean0_full_s
+            m0_full_s[q] = mean0_full_s
+            m1_full_s[q] = mean1_full_s
 
             # ── Pure MALC-upsampled means (raw + EM), no tails ───────────
             # User's literal proposal: fit MALC 2D to the discrete J=10 inner
@@ -358,26 +402,29 @@ def main():
                     # Raw mean on fine grid
                     m0_raw_f = float((fine_centers * p_marg0_fine).sum())
                     m1_raw_f = float((fine_centers * p_marg1_fine).sum())
-                    cate_malc_raw_scaled[q] = m1_raw_f - m0_raw_f
+                    m0_malc_raw_s[q] = m0_raw_f; m1_malc_raw_s[q] = m1_raw_f
                     # EM mean on fine grid (truncnorm fixed-point)
                     sig0_f = _init_sigma_1d(p_marg0_fine, fine_centers, m0_raw_f, fine_bw)
                     sig1_f = _init_sigma_1d(p_marg1_fine, fine_centers, m1_raw_f, fine_bw)
                     m0_em_f = _em_mean_1d(p_marg0_fine, fine_edges, sig0_f, m0_raw_f)
                     m1_em_f = _em_mean_1d(p_marg1_fine, fine_edges, sig1_f, m1_raw_f)
-                    cate_malc_em_scaled[q] = m1_em_f - m0_em_f
+                    m0_malc_em_s[q] = m0_em_f; m1_malc_em_s[q] = m1_em_f
                 except Exception:
                     n_malc_fail += 1
-                    cate_malc_raw_scaled[q] = cate_raw_scaled[q]  # fallback to inner-only
-                    cate_malc_em_scaled[q]  = cate_raw_scaled[q]
+                    m0_malc_raw_s[q] = mean0_inner_s; m1_malc_raw_s[q] = mean1_inner_s
+                    m0_malc_em_s[q]  = mean0_inner_s; m1_malc_em_s[q]  = mean1_inner_s
 
             sigma_em_y0_scaled[q] = 0.5 * (sL0_v + sR0_v)
             sigma_em_y1_scaled[q] = 0.5 * (sL1_v + sR1_v)
 
-        cate_pred_raw      = cate_raw_scaled      * (y_rng / 2.0)  # inner-only
-        cate_pred_em       = cate_em_scaled       * (y_rng / 2.0)  # inner + tails
-        cate_pred_malc_raw = cate_malc_raw_scaled * (y_rng / 2.0)  # MALC upsamp raw
-        cate_pred_malc_em  = cate_malc_em_scaled  * (y_rng / 2.0)  # MALC upsamp + EM
-        sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)
+        # Un-scale each arm's per-query mean via unscale_arr, then diff.
+        # For linear schemes this reduces to (m1 - m0) * y_scale exactly.
+        # For power_transform it correctly handles the nonlinear inverse.
+        cate_pred_raw      = unscale_arr(m1_inner_s)    - unscale_arr(m0_inner_s)
+        cate_pred_em       = unscale_arr(m1_full_s)     - unscale_arr(m0_full_s)
+        cate_pred_malc_raw = unscale_arr(m1_malc_raw_s) - unscale_arr(m0_malc_raw_s)
+        cate_pred_malc_em  = unscale_arr(m1_malc_em_s)  - unscale_arr(m0_malc_em_s)
+        sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)   # legacy scalar diag
         sigma_em_y1_raw = sigma_em_y1_scaled * (y_rng / 2.0)
 
         true_cate_raw = _np(cd.true_cate).reshape(-1).astype(np.float64)
