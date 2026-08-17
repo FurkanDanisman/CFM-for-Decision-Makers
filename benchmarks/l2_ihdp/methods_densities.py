@@ -107,10 +107,21 @@ def malc_1d_cvxpy(p_marg, solver=None):
             continue
     if not solved or log_p.value is None:
         return p_marg
-    p_fit = np.exp(np.asarray(log_p.value, dtype=np.float64))
+    lp = np.asarray(log_p.value, dtype=np.float64)
+    # Numerical safety — solver can return values > 0 that would blow up exp;
+    # subtract max BEFORE exp (softmax trick), then normalise.
+    if not np.all(np.isfinite(lp)):
+        return p_marg
+    lp = lp - float(lp.max())
+    p_fit = np.exp(lp)
     p_fit = np.clip(p_fit, 0.0, None)
-    total = p_fit.sum()
-    return p_fit / total if total > 0 else p_marg
+    total = float(p_fit.sum())
+    if not np.isfinite(total) or total <= 0:
+        return p_marg
+    result = p_fit / total
+    if not np.all(np.isfinite(result)):
+        return p_marg
+    return result
 
 
 def _rescale_and_pad(X: np.ndarray, num_features: int) -> np.ndarray:
