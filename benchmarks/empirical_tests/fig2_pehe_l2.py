@@ -454,27 +454,38 @@ def score_one_scm(cd, method_data, wb_fn):
         # ─ PEHE ─
         pehe = _pehe(cd.true_cate.numpy(), d['cate_pred'])
 
-        # ─ Marginal L2 + KL (avg over both arms and queries) ─
-        marg_l2 = 0.0
-        marg_kl_fwd = 0.0; marg_kl_rev = 0.0
+        # ─ Marginal L2 + KL (NaN-safe mean over both arms and queries) ─
+        _mv = lambda vs: float(np.nanmean(vs)) if np.any(np.isfinite(vs)) else float('nan')
+        marg_l2_all      = []
+        marg_kl_fwd_all  = []
+        marg_kl_rev_all  = []
         for q in range(n_test):
-            marg_l2 += l2_1d(p0_common[q], p0_true[q], Y_DX)
-            marg_l2 += l2_1d(p1_common[q], p1_true[q], Y_DX)
-            marg_kl_fwd += kl_1d(p0_true[q], p0_common[q], Y_DX)
-            marg_kl_fwd += kl_1d(p1_true[q], p1_common[q], Y_DX)
-            marg_kl_rev += kl_1d(p0_common[q], p0_true[q], Y_DX)
-            marg_kl_rev += kl_1d(p1_common[q], p1_true[q], Y_DX)
-        marg_l2      /= (2.0 * n_test)
-        marg_kl_fwd  /= (2.0 * n_test)
-        marg_kl_rev  /= (2.0 * n_test)
+            for tside in (0, 1):
+                if tside == 0:
+                    pe, pt = p0_common[q], p0_true[q]
+                else:
+                    pe, pt = p1_common[q], p1_true[q]
+                if not (np.all(np.isfinite(pe)) and np.all(np.isfinite(pt))):
+                    continue
+                marg_l2_all.append(l2_1d(pe, pt, Y_DX))
+                marg_kl_fwd_all.append(kl_1d(pt, pe, Y_DX))
+                marg_kl_rev_all.append(kl_1d(pe, pt, Y_DX))
+        marg_l2      = _mv(marg_l2_all)
+        marg_kl_fwd  = _mv(marg_kl_fwd_all)
+        marg_kl_rev  = _mv(marg_kl_rev_all)
 
-        # ─ CATE L2 + KL (avg over queries) ─
-        cate_l2      = float(np.mean([l2_1d(p_tau_common[q], p_tau_true[q], TAU_DX)
-                                        for q in range(n_test)]))
-        cate_kl_fwd  = float(np.mean([kl_1d(p_tau_true[q], p_tau_common[q], TAU_DX)
-                                        for q in range(n_test)]))
-        cate_kl_rev  = float(np.mean([kl_1d(p_tau_common[q], p_tau_true[q], TAU_DX)
-                                        for q in range(n_test)]))
+        # ─ CATE L2 + KL (NaN-safe mean over queries) ─
+        cate_l2_all, cate_kl_fwd_all, cate_kl_rev_all = [], [], []
+        for q in range(n_test):
+            pe, pt = p_tau_common[q], p_tau_true[q]
+            if not (np.all(np.isfinite(pe)) and np.all(np.isfinite(pt))):
+                continue
+            cate_l2_all.append(l2_1d(pe, pt, TAU_DX))
+            cate_kl_fwd_all.append(kl_1d(pt, pe, TAU_DX))
+            cate_kl_rev_all.append(kl_1d(pe, pt, TAU_DX))
+        cate_l2     = _mv(cate_l2_all)
+        cate_kl_fwd = _mv(cate_kl_fwd_all)
+        cate_kl_rev = _mv(cate_kl_rev_all)
 
         # ─ ATE L2 + KL (single value) ─
         p_ate_method = wass_bary_of_grid(p_tau_common, TAU_GRID, wb_fn)
