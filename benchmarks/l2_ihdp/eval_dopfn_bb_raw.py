@@ -1,11 +1,20 @@
-"""Fast IHDP eval for a DoPFN-backbone Ours checkpoint — RAW-MEAN CATE only.
+"""Fast IHDP eval for a DoPFN-backbone Ours checkpoint — raw-mean AND
+truncated-normal EM-corrected mean CATE. No MALC 2D, no density L2/KL.
 
-Skips MALC (1D and 2D), skips L2/KL density metrics. Just:
-    load ckpt → forward on each IHDP realization → raw marginal means →
-    CATE_pred_raw = E[Y1] - E[Y0] → PEHE, eps_ATE against truth.
+Two CATE estimators are reported side-by-side:
 
-Use to quickly compare training checkpoints (e.g. steps 30k/40k/50k/60k of
-the J=10 DoPFN-backbone training) without paying for MALC.
+  * RAW MEAN — μ = Σ p_i · c_i on bin centers c_i. Simple, but for small J
+    the bin-center quantization biases μ by up to bin_width/2, which
+    dominates on J=10 (IHDP bin width ≈ 3 raw units).
+
+  * EM MEAN — truncated-normal EM correction on the binned Gaussian data
+    (MALC/malc_2d.py::_em_mean_2d). Method-of-moments start (raw mean +
+    Sheppard-corrected σ), then fixed-point iteration on
+        μ ← μ − σ · Σ p_j · [φ(a_{j+1}) − φ(a_j)] / [Φ(a_{j+1}) − Φ(a_j)],
+        a_k = (grid_k − μ)/σ.
+    This is E-step: E[Y|bin, μ, σ]; M-step: match observed E[Y]. Recovers
+    the true latent Gaussian mean without paying the bin-quantization cost.
+    Converges within ~1 bin width of truth even at J=10.
 
 Usage:
     python eval_dopfn_bb_raw.py \
@@ -19,6 +28,43 @@ from __future__ import annotations
 import argparse, os, sys, time, types, traceback
 import numpy as np
 import torch
+from scipy.stats import norm as _scipy_norm
+
+
+# ── EM mean correction on binned Gaussian data ─────────────────────────────
+# Copied verbatim from MALC/malc_2d.py::_em_mean_2d (which is 1D despite the
+# name — used per-axis in the 2D MALC pipeline). Duplicated here so the eval
+# doesn't need to pull in the whole MALC module (which drags Cython deps).
+def _em_mean_1d(props, grid_edges, sigma, start,
+                 max_step=1000, eps2=1e-10, eps1=1e-5):
+    """One-dimensional truncated-normal EM for the latent Gaussian mean
+    given binned probabilities.
+
+    Args:
+        props: (J,) probabilities per bin (sums to 1).
+        grid_edges: (J+1,) bin edges.
+        sigma: initial Gaussian std (kept fixed across iterations).
+        start: initial μ guess (typically raw bin-center mean).
+    """
+    pn = props / max(props.sum(), 1e-300)
+    mu = start
+    for _ in range(max_step):
+        a = (grid_edges - mu) / sigma
+        G1 = _scipy_norm.cdf(a)
+        G2 = _scipy_norm.pdf(a)
+        temp = (np.diff(G2) + eps2) / (np.diff(G1) + eps2)
+        mu_new = mu - sigma * float(np.sum(pn * temp))
+        if abs(mu_new - mu) < eps1:
+            return mu_new
+        mu = mu_new
+    return mu
+
+
+def _init_sigma_1d(props, centers, mean_est, bin_width):
+    """Sheppard-corrected σ² = Var_p[c] + Δ²/12. Guarantees positive."""
+    var = float(np.sum(props * (centers - mean_est) ** 2)) + (bin_width ** 2) / 12.0
+    s = float(np.sqrt(max(var, (bin_width / 12.0) ** 2)))
+    return s if np.isfinite(s) and s > 0 else bin_width
 
 
 def _install_dopfn_datasets_shim(dopfn_dir):
@@ -119,10 +165,11 @@ def main():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
 
         n_test = X_qry.shape[0]
-        cate_raw_scaled     = np.zeros(n_test, dtype=np.float64)   # E[Y1] - E[Y0], raw
-        cate_em_k1_scaled   = np.zeros(n_test, dtype=np.float64)   # K=1 Gaussian MLE mean
-        std_em_k1_y0_scaled = np.zeros(n_test, dtype=np.float64)   # per-arm fitted σ
-        std_em_k1_y1_scaled = np.zeros(n_test, dtype=np.float64)
+        cate_raw_scaled  = np.zeros(n_test, dtype=np.float64)   # Σ p·c on bin centers
+        cate_em_scaled   = np.zeros(n_test, dtype=np.float64)   # truncnorm EM-corrected
+        sigma_em_y0_scaled = np.zeros(n_test, dtype=np.float64)
+        sigma_em_y1_scaled = np.zeros(n_test, dtype=np.float64)
+        bin_w_scaled = float(centers_scaled[1] - centers_scaled[0])
 
         for q in range(n_test):
             p_mat, *_ = unpack_pred(pred[q], J, bin_width)
@@ -132,43 +179,38 @@ def main():
             p_marg0 = pm.sum(axis=1)  # marg over Y1 → gives Y0 marginal
             p_marg1 = pm.sum(axis=0)  # marg over Y0 → gives Y1 marginal
 
-            # ── raw-mean (weighted expectation) ─────────────────────────
-            mean0_s = float((centers_scaled * p_marg0).sum())
-            mean1_s = float((centers_scaled * p_marg1).sum())
-            cate_raw_scaled[q] = mean1_s - mean0_s
+            # ── raw bin-center mean ────────────────────────────────────
+            mean0_raw_s = float((centers_scaled * p_marg0).sum())
+            mean1_raw_s = float((centers_scaled * p_marg1).sum())
+            cate_raw_scaled[q] = mean1_raw_s - mean0_raw_s
 
-            # ── EM K=1 Gaussian MLE ─────────────────────────────────────
-            # For K=1 the closed-form MLE for (μ, σ²) given discrete probs
-            # p_i on bin centers c_i is exactly:
-            #     μ_k1 = Σ p_i · c_i       (identical to the raw mean)
-            #     σ_k1 = √( Σ p_i · (c_i − μ)² )
-            # Reported separately for paper-table completeness; σ is new
-            # info (raw-mean has no width companion).
-            cate_em_k1_scaled[q] = mean1_s - mean0_s   # ≡ raw
-            std_em_k1_y0_scaled[q] = float(np.sqrt(((centers_scaled - mean0_s) ** 2 * p_marg0).sum()))
-            std_em_k1_y1_scaled[q] = float(np.sqrt(((centers_scaled - mean1_s) ** 2 * p_marg1).sum()))
+            # ── EM-corrected mean (truncated-normal fixed-point) ───────
+            # Method-of-moments start + Sheppard-corrected σ, then iterate.
+            sigma0 = _init_sigma_1d(p_marg0, centers_scaled, mean0_raw_s, bin_w_scaled)
+            sigma1 = _init_sigma_1d(p_marg1, centers_scaled, mean1_raw_s, bin_w_scaled)
+            mean0_em_s = _em_mean_1d(p_marg0, edges_np, sigma=sigma0, start=mean0_raw_s)
+            mean1_em_s = _em_mean_1d(p_marg1, edges_np, sigma=sigma1, start=mean1_raw_s)
+            cate_em_scaled[q] = mean1_em_s - mean0_em_s
+            sigma_em_y0_scaled[q] = sigma0
+            sigma_em_y1_scaled[q] = sigma1
 
-        cate_pred_raw    = cate_raw_scaled   * (y_rng / 2.0)
-        cate_pred_em_k1  = cate_em_k1_scaled * (y_rng / 2.0)
-        std_em_k1_y0_raw = std_em_k1_y0_scaled * (y_rng / 2.0)
-        std_em_k1_y1_raw = std_em_k1_y1_scaled * (y_rng / 2.0)
+        cate_pred_raw = cate_raw_scaled * (y_rng / 2.0)
+        cate_pred_em  = cate_em_scaled  * (y_rng / 2.0)
+        sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)
+        sigma_em_y1_raw = sigma_em_y1_scaled * (y_rng / 2.0)
 
         true_cate_raw = _np(cd.true_cate).reshape(-1).astype(np.float64)
-        pehe        = float(np.sqrt(np.mean((cate_pred_raw   - true_cate_raw) ** 2)))
-        pehe_em_k1  = float(np.sqrt(np.mean((cate_pred_em_k1 - true_cate_raw) ** 2)))
-        eps_ate       = float(abs(cate_pred_raw.mean()   - true_cate_raw.mean()))
-        eps_ate_em_k1 = float(abs(cate_pred_em_k1.mean() - true_cate_raw.mean()))
-        pehe_list.append(pehe); eps_ate_list.append(eps_ate)
-        # Also collect em_k1 arrays for the summary
-        try:
-            pehe_em_k1_list.append(pehe_em_k1); eps_em_k1_list.append(eps_ate_em_k1)
-            std_y0_list.append(float(std_em_k1_y0_raw.mean()))
-            std_y1_list.append(float(std_em_k1_y1_raw.mean()))
-        except NameError:
-            pass
-        print(f'  r={r:3d}  PEHE(raw)={pehe:.4f}  PEHE(em_k1)={pehe_em_k1:.4f}  '
-              f'eps_ATE(raw)={eps_ate:.4f}  eps_ATE(em_k1)={eps_ate_em_k1:.4f}  '
-              f'<σ_Y0>={std_em_k1_y0_raw.mean():.3f}  <σ_Y1>={std_em_k1_y1_raw.mean():.3f}  '
+        pehe_raw = float(np.sqrt(np.mean((cate_pred_raw - true_cate_raw) ** 2)))
+        pehe_em  = float(np.sqrt(np.mean((cate_pred_em  - true_cate_raw) ** 2)))
+        eps_ate_raw = float(abs(cate_pred_raw.mean() - true_cate_raw.mean()))
+        eps_ate_em  = float(abs(cate_pred_em.mean()  - true_cate_raw.mean()))
+        pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
+        pehe_em_k1_list.append(pehe_em); eps_em_k1_list.append(eps_ate_em)
+        std_y0_list.append(float(sigma_em_y0_raw.mean()))
+        std_y1_list.append(float(sigma_em_y1_raw.mean()))
+        print(f'  r={r:3d}  PEHE raw={pehe_raw:.4f}  em={pehe_em:.4f}   '
+              f'eps_ATE raw={eps_ate_raw:.4f}  em={eps_ate_em:.4f}   '
+              f'<σ_Y0>={sigma_em_y0_raw.mean():.3f}  <σ_Y1>={sigma_em_y1_raw.mean():.3f}   '
               f'({time.time()-t_r:.1f}s)', flush=True)
 
     def _summary(arr, label):
@@ -189,18 +231,18 @@ def main():
     print('')
     print(f'== step={step}  n={len(pehe_arr)}  total={time.time()-t_all:.1f}s ==')
     _summary(pehe_arr,        'PEHE (raw)')
-    _summary(pehe_em_k1_arr,  'PEHE (em_k1)')
+    _summary(pehe_em_k1_arr,  'PEHE (em_corr)')
     _summary(eps_arr,         'eps_ATE (raw)')
-    _summary(eps_em_k1_arr,   'eps_ATE (em_k1)')
-    _summary(std_y0_arr,      'fitted σ Y_do(0)')
-    _summary(std_y1_arr,      'fitted σ Y_do(1)')
+    _summary(eps_em_k1_arr,   'eps_ATE (em_corr)')
+    _summary(std_y0_arr,      'σ_init Y_do(0)')
+    _summary(std_y1_arr,      'σ_init Y_do(1)')
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
         np.savez(args.out,
                   pehe=pehe_arr, eps_ate=eps_arr,
-                  pehe_em_k1=pehe_em_k1_arr, eps_ate_em_k1=eps_em_k1_arr,
-                  std_em_k1_y0=std_y0_arr, std_em_k1_y1=std_y1_arr,
+                  pehe_em=pehe_em_k1_arr, eps_ate_em=eps_em_k1_arr,
+                  sigma_em_y0=std_y0_arr, sigma_em_y1=std_y1_arr,
                   step=step, checkpoint=args.checkpoint)
         print(f'[save] {args.out}')
 
