@@ -105,6 +105,18 @@ def main():
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
     ap.add_argument('--n-context', type=int, default=0,
                     help='If > 0, subsample this many context rows per realization.')
+    ap.add_argument('--malc-upsample', action='store_true',
+                    help='Also fit MALC 2D to the inner p_mat and re-sample on a fine '
+                         'grid to compute an upsampled-mean CATE (inner MALC + tail '
+                         'expectations). Slower (~0.2-1s per query).')
+    ap.add_argument('--malc-n-eval', type=int, default=100,
+                    help='Fine grid resolution when --malc-upsample is set (default 100).')
+    ap.add_argument('--malc-max-K', type=int, default=1,
+                    help='Max mixture components for MALC 2D fit (default 1 = single log-concave).')
+    ap.add_argument('--malc-B',     type=int, default=100,
+                    help='B_fit / B_select for MALC 2D fit (default 100 — smaller than the '
+                         'main pipeline default 500 for speed; L2/KL not evaluated here so '
+                         'precision matters less).')
     args = ap.parse_args()
 
     # ── Paths ─────────────────────────────────────────────────────────────
@@ -116,6 +128,23 @@ def main():
     from true_ihdp import load_ihdp_truth
     from dopfn_backbone_head import DoPFNBackboneWith2DHead
     from losses.BarDistribution2D import unpack_pred
+
+    fit_malc_inner = dmalc_2d = None
+    fine_centers = fine_edges = fine_eval_pts = fine_bw = None
+    if args.malc_upsample:
+        from losses.BarDistribution2D import fit_malc_inner  # noqa: F811
+        malc_dir = os.path.join(args.repo, 'MALC')
+        if malc_dir not in sys.path: sys.path.insert(0, malc_dir)
+        from malc_2d import dmalc_2d  # noqa: F811
+        # fine grid on the same scaled [-1, 1] support
+        n_ev = args.malc_n_eval
+        fine_edges = np.linspace(-1.0, 1.0, n_ev + 1, dtype=np.float64)
+        fine_centers = 0.5 * (fine_edges[:-1] + fine_edges[1:])
+        fine_bw = float(fine_edges[1] - fine_edges[0])
+        XX, YY = np.meshgrid(fine_centers, fine_centers, indexing='xy')
+        fine_eval_pts = np.column_stack([XX.ravel(), YY.ravel()])
+        print(f'[malc] upsample enabled: n_eval={n_ev}  max_K={args.malc_max_K}  '
+              f'B={args.malc_B}', flush=True)
 
     _install_dopfn_datasets_shim(args.dopfn)
     sys.path.insert(0, args.causalpfn)
@@ -138,6 +167,7 @@ def main():
     # ── Iterate over realizations ─────────────────────────────────────────
     pehe_list, eps_ate_list = [], []
     pehe_em_k1_list, eps_em_k1_list = [], []
+    pehe_malc_list, eps_malc_list = [], []
     std_y0_list, std_y1_list = [], []
     t_all = time.time()
     end = min(args.start_realization + args.n_realizations, 100)
@@ -175,8 +205,10 @@ def main():
         n_test = X_qry.shape[0]
         cate_raw_scaled  = np.zeros(n_test, dtype=np.float64)   # inner-only Σ p·c
         cate_em_scaled   = np.zeros(n_test, dtype=np.float64)   # inner + tails (9 regions)
+        cate_malc_scaled = np.zeros(n_test, dtype=np.float64)   # MALC-upsampled inner + tails
         sigma_em_y0_scaled = np.zeros(n_test, dtype=np.float64)
         sigma_em_y1_scaled = np.zeros(n_test, dtype=np.float64)
+        n_malc_fail = 0
         bin_w_scaled = float(centers_scaled[1] - centers_scaled[0])
         lo = float(edges_np[0])   # -1 in scaled space
         hi = float(edges_np[-1])  # +1
@@ -232,29 +264,71 @@ def main():
 
             cate_em_scaled[q] = mean1_full_s - mean0_full_s
 
-            # σ diagnostic per query — total σ² = P_inner·(inner var) +
-            # P_L·(σL² + (E_L−μ)²) + P_R·(σR² + (E_R−μ)²) ... but for a
-            # quick indicator, just report an average of the two tail σ's:
+            # ── MALC-upsampled inner mean + tails ────────────────────────
+            # If enabled: fit MALC 2D to the discrete J=10 inner p_mat,
+            # evaluate the smooth density on a finer grid (n_eval bins),
+            # marginalize to get inner marginals at higher resolution,
+            # then combine with the same tail expectations.
+            if args.malc_upsample:
+                try:
+                    fit = fit_malc_inner(
+                        pm.T, edges_np, edges_np,
+                        B_fit=args.malc_B, B_select=args.malc_B,
+                        max_K=args.malc_max_K,
+                        seed=int((q + 1) * 1_000_003 + r) & 0x7fffffff,
+                        parallel=False,
+                    )
+                    dens = dmalc_2d(fit, fine_eval_pts).reshape(
+                        args.malc_n_eval, args.malc_n_eval)
+                    # convert density → prob mass by · bin_area, renormalize
+                    p_fine = dens * (fine_bw * fine_bw)
+                    ps = p_fine.sum()
+                    if ps > 0: p_fine = p_fine / ps
+                    p_marg0_fine = p_fine.sum(axis=1)
+                    p_marg1_fine = p_fine.sum(axis=0)
+                    m0_inner_fine = float((fine_centers * p_marg0_fine).sum())
+                    m1_inner_fine = float((fine_centers * p_marg1_fine).sum())
+                    # Same 9-region combination but with the MALC inner mean
+                    m0_full_malc = (P0_inner * m0_inner_fine
+                                    + P0_L     * E0_L
+                                    + P0_R     * E0_R)
+                    m1_full_malc = (P1_inner * m1_inner_fine
+                                    + P1_L     * E1_L
+                                    + P1_R     * E1_R)
+                    cate_malc_scaled[q] = m1_full_malc - m0_full_malc
+                except Exception:
+                    n_malc_fail += 1
+                    cate_malc_scaled[q] = cate_em_scaled[q]  # fallback
+
             sigma_em_y0_scaled[q] = 0.5 * (sL0_v + sR0_v)
             sigma_em_y1_scaled[q] = 0.5 * (sL1_v + sR1_v)
 
-        cate_pred_raw = cate_raw_scaled * (y_rng / 2.0)   # inner-only
-        cate_pred_em  = cate_em_scaled  * (y_rng / 2.0)   # inner + tails
+        cate_pred_raw  = cate_raw_scaled  * (y_rng / 2.0)   # inner-only
+        cate_pred_em   = cate_em_scaled   * (y_rng / 2.0)   # inner + tails
+        cate_pred_malc = cate_malc_scaled * (y_rng / 2.0)   # MALC inner + tails
         sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)
         sigma_em_y1_raw = sigma_em_y1_scaled * (y_rng / 2.0)
 
         true_cate_raw = _np(cd.true_cate).reshape(-1).astype(np.float64)
-        pehe_raw   = float(np.sqrt(np.mean((cate_pred_raw - true_cate_raw) ** 2)))
-        pehe_full  = float(np.sqrt(np.mean((cate_pred_em  - true_cate_raw) ** 2)))
-        eps_ate_raw  = float(abs(cate_pred_raw.mean() - true_cate_raw.mean()))
-        eps_ate_full = float(abs(cate_pred_em.mean()  - true_cate_raw.mean()))
+        pehe_raw   = float(np.sqrt(np.mean((cate_pred_raw  - true_cate_raw) ** 2)))
+        pehe_full  = float(np.sqrt(np.mean((cate_pred_em   - true_cate_raw) ** 2)))
+        pehe_malc  = float(np.sqrt(np.mean((cate_pred_malc - true_cate_raw) ** 2))) \
+                        if args.malc_upsample else float('nan')
+        eps_ate_raw  = float(abs(cate_pred_raw.mean()  - true_cate_raw.mean()))
+        eps_ate_full = float(abs(cate_pred_em.mean()   - true_cate_raw.mean()))
+        eps_ate_malc = float(abs(cate_pred_malc.mean() - true_cate_raw.mean())) \
+                        if args.malc_upsample else float('nan')
         pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
         pehe_em_k1_list.append(pehe_full); eps_em_k1_list.append(eps_ate_full)
+        pehe_malc_list.append(pehe_malc); eps_malc_list.append(eps_ate_malc)
         std_y0_list.append(float(sigma_em_y0_raw.mean()))
         std_y1_list.append(float(sigma_em_y1_raw.mean()))
-        print(f'  r={r:3d}  PEHE inner={pehe_raw:.4f}  full={pehe_full:.4f}   '
+        malc_note = f'  malc_fail={n_malc_fail}/{n_test}' if args.malc_upsample else ''
+        malc_extra = (f'   PEHE malc={pehe_malc:.4f}  eps_ATE malc={eps_ate_malc:.4f}'
+                       if args.malc_upsample else '')
+        print(f'  r={r:3d}  PEHE inner={pehe_raw:.4f}  full={pehe_full:.4f}{malc_extra}   '
               f'eps_ATE inner={eps_ate_raw:.4f}  full={eps_ate_full:.4f}   '
-              f'<σ_tail Y0>={sigma_em_y0_raw.mean():.3f}  <σ_tail Y1>={sigma_em_y1_raw.mean():.3f}   '
+              f'<σ_tail>=({sigma_em_y0_raw.mean():.3f},{sigma_em_y1_raw.mean():.3f}){malc_note}   '
               f'({time.time()-t_r:.1f}s)', flush=True)
 
     def _summary(arr, label):
@@ -270,24 +344,35 @@ def main():
     eps_arr         = np.array(eps_ate_list)
     pehe_em_k1_arr  = np.array(pehe_em_k1_list)
     eps_em_k1_arr   = np.array(eps_em_k1_list)
+    pehe_malc_arr   = np.array(pehe_malc_list)
+    eps_malc_arr    = np.array(eps_malc_list)
     std_y0_arr      = np.array(std_y0_list)
     std_y1_arr      = np.array(std_y1_list)
     print('')
     print(f'== step={step}  n={len(pehe_arr)}  total={time.time()-t_all:.1f}s ==')
     _summary(pehe_arr,        'PEHE (inner)')
     _summary(pehe_em_k1_arr,  'PEHE (full 9-reg)')
+    if args.malc_upsample:
+        _summary(pehe_malc_arr,   'PEHE (malc upsamp)')
     _summary(eps_arr,         'eps_ATE (inner)')
     _summary(eps_em_k1_arr,   'eps_ATE (full 9-reg)')
+    if args.malc_upsample:
+        _summary(eps_malc_arr,   'eps_ATE (malc upsamp)')
     _summary(std_y0_arr,      'σ_tail Y_do(0)')
     _summary(std_y1_arr,      'σ_tail Y_do(1)')
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
-        np.savez(args.out,
-                  pehe=pehe_arr, eps_ate=eps_arr,
-                  pehe_em=pehe_em_k1_arr, eps_ate_em=eps_em_k1_arr,
-                  sigma_em_y0=std_y0_arr, sigma_em_y1=std_y1_arr,
-                  step=step, checkpoint=args.checkpoint)
+        save_kw = dict(
+            pehe=pehe_arr, eps_ate=eps_arr,
+            pehe_em=pehe_em_k1_arr, eps_ate_em=eps_em_k1_arr,
+            sigma_em_y0=std_y0_arr, sigma_em_y1=std_y1_arr,
+            step=step, checkpoint=args.checkpoint,
+        )
+        if args.malc_upsample:
+            save_kw['pehe_malc'] = pehe_malc_arr
+            save_kw['eps_ate_malc'] = eps_malc_arr
+        np.savez(args.out, **save_kw)
         print(f'[save] {args.out}')
 
 
