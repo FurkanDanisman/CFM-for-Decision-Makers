@@ -829,14 +829,15 @@ def main():
             method_data = {}
 
             if 'ours_fn50' in wanted:
-                # Marginals: RAW p_mat.sum (see density_calc.md §3b, updated
-                # 2026-08-17). Previously wrapped in malc_1d_cvxpy but the
-                # CVXPY-SCS solver collapsed broad log-concave Gaussians into
-                # spikes for many queries — see inspect_malc_1d_solver.py.
-                # CATE via 2D MALC + diagonal integration (unchanged).
-                p0_50 = p_mat_50.sum(axis=2)     # (n_test, J) raw marginal
-                p1_50 = p_mat_50.sum(axis=1)
-                print(f'[marg] Ours raw marginals ({time.time()-_t:.1f}s)', flush=True); _t = time.time()
+                # Marginals via 1D MALC on raw p_mat marginal (density_calc.md §3b —
+                # matches the IHDP/ACIC pipeline which uses the same wrapper).
+                # CATE via 2D MALC + diagonal integration.
+                p0_marg_raw_50 = p_mat_50.sum(axis=2)     # (n_test, J) raw marginal
+                p1_marg_raw_50 = p_mat_50.sum(axis=1)
+                p0_50 = np.stack([malc_1d_cvxpy(p0_marg_raw_50[q]) for q in range(n_test)])
+                p1_50 = np.stack([malc_1d_cvxpy(p1_marg_raw_50[q]) for q in range(n_test)])
+                _nan_marg = int(np.isnan(p0_50).any(axis=1).sum() + np.isnan(p1_50).any(axis=1).sum())
+                print(f'[malc1d] Ours marginals done ({time.time()-_t:.1f}s, NaN queries={_nan_marg}/{2*n_test})', flush=True); _t = time.time()
 
                 tau_raw_50_malc, y_rng_50 = scaled_tau_to_raw_centers(cd)
                 p_tau_50 = np.zeros((n_test, tau_raw_50_malc.shape[0]))
