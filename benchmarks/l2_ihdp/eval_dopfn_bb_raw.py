@@ -1,20 +1,28 @@
-"""Fast IHDP eval for a DoPFN-backbone Ours checkpoint — raw-mean AND
-truncated-normal EM-corrected mean CATE. No MALC 2D, no density L2/KL.
+"""Fast IHDP eval for a DoPFN-backbone Ours checkpoint — inner-only-mean AND
+full 9-region mean CATE. No MALC 2D, no density L2/KL.
 
 Two CATE estimators are reported side-by-side:
 
-  * RAW MEAN — μ = Σ p_i · c_i on bin centers c_i. Simple, but for small J
-    the bin-center quantization biases μ by up to bin_width/2, which
-    dominates on J=10 (IHDP bin width ≈ 3 raw units).
+  * INNER-ONLY (aka 'raw' in output) — μ = Σ p_i · c_i on the J² inner bin
+    centers only. Ignores the 8 tail regions of the 2D BarDist head, so
+    any predicted mass beyond [-1, 1] in scaled Y is invisible. On IHDP
+    realizations with large y_rng (outlier-heavy training Y), true CATE
+    in scaled units can be << bin_width and the model puts its mass in
+    the outer regions — inner-only mean systematically under-predicts.
 
-  * EM MEAN — truncated-normal EM correction on the binned Gaussian data
-    (MALC/malc_2d.py::_em_mean_2d). Method-of-moments start (raw mean +
-    Sheppard-corrected σ), then fixed-point iteration on
-        μ ← μ − σ · Σ p_j · [φ(a_{j+1}) − φ(a_j)] / [Φ(a_{j+1}) − Φ(a_j)],
-        a_k = (grid_k − μ)/σ.
-    This is E-step: E[Y|bin, μ, σ]; M-step: match observed E[Y]. Recovers
-    the true latent Gaussian mean without paying the bin-quantization cost.
-    Converges within ~1 bin width of truth even at J=10.
+  * FULL 9-REGION — the 2D BarDist output is a mixture of 9 regions
+    (inner + 8 outer / mixed) with 9 mixture weights w_region and 4
+    half-Gaussian tail scales sL0/sR0/sL1/sR1 (see losses/BarDistribution2D.py).
+    For each arm t ∈ {0,1}:
+        E[Y_t] = P_inner_t · E[Y_t | inner marginal]
+                + P_L_t     · (−1 − σ_L·√(2/π))
+                + P_R_t     · (+1 + σ_R·√(2/π))
+    where P_inner/L/R_t sum the appropriate w_region entries and
+    E[Y_t | inner marginal] is the bin-center-weighted mean of the inner
+    marginal (p_mat.sum axis). Half-Gaussian expected values follow from
+    the tail parametrisation used in training.
+    Result: predictions can extend outside [-1, 1] naturally, matching
+    what the head was trained to represent.
 
 Usage:
     python eval_dopfn_bb_raw.py \
@@ -165,52 +173,88 @@ def main():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
 
         n_test = X_qry.shape[0]
-        cate_raw_scaled  = np.zeros(n_test, dtype=np.float64)   # Σ p·c on bin centers
-        cate_em_scaled   = np.zeros(n_test, dtype=np.float64)   # truncnorm EM-corrected
+        cate_raw_scaled  = np.zeros(n_test, dtype=np.float64)   # inner-only Σ p·c
+        cate_em_scaled   = np.zeros(n_test, dtype=np.float64)   # inner + tails (9 regions)
         sigma_em_y0_scaled = np.zeros(n_test, dtype=np.float64)
         sigma_em_y1_scaled = np.zeros(n_test, dtype=np.float64)
         bin_w_scaled = float(centers_scaled[1] - centers_scaled[0])
+        lo = float(edges_np[0])   # -1 in scaled space
+        hi = float(edges_np[-1])  # +1
+        _sqrt_2_over_pi = float(np.sqrt(2.0 / np.pi))
+
+        # Region layout (see losses/BarDistribution2D.py):
+        # 0=inner-inner  1=L0-inner  2=R0-inner  3=inner-L1  4=inner-R1
+        # 5=L0-L1  6=L0-R1  7=R0-L1  8=R0-R1
+        # Y_do0 side:  inner={0,3,4}  L0={1,5,6}  R0={2,7,8}
+        # Y_do1 side:  inner={0,1,2}  L1={3,5,7}  R1={4,6,8}
+        Y0_INNER = [0, 3, 4]; Y0_L = [1, 5, 6]; Y0_R = [2, 7, 8]
+        Y1_INNER = [0, 1, 2]; Y1_L = [3, 5, 7]; Y1_R = [4, 6, 8]
 
         for q in range(n_test):
-            p_mat, *_ = unpack_pred(pred[q], J, bin_width)
+            p_mat, w_region, sL0, sR0, sL1, sR1 = unpack_pred(pred[q], J, bin_width)
             pm = p_mat.detach().cpu().numpy().astype(np.float64)
             s = pm.sum()
             if s > 0: pm /= s
-            p_marg0 = pm.sum(axis=1)  # marg over Y1 → gives Y0 marginal
-            p_marg1 = pm.sum(axis=0)  # marg over Y0 → gives Y1 marginal
+            w = w_region.detach().cpu().numpy().astype(np.float64)
+            sL0_v = float(sL0); sR0_v = float(sR0)
+            sL1_v = float(sL1); sR1_v = float(sR1)
+            p_marg0 = pm.sum(axis=1)  # inner marg for Y0 (conditional on Y0∈inner)
+            p_marg1 = pm.sum(axis=0)  # inner marg for Y1
 
-            # ── raw bin-center mean ────────────────────────────────────
-            mean0_raw_s = float((centers_scaled * p_marg0).sum())
-            mean1_raw_s = float((centers_scaled * p_marg1).sum())
-            cate_raw_scaled[q] = mean1_raw_s - mean0_raw_s
+            # ── OLD raw bin-center mean (inner region only, ignores tails) ─
+            mean0_inner_s = float((centers_scaled * p_marg0).sum())
+            mean1_inner_s = float((centers_scaled * p_marg1).sum())
+            cate_raw_scaled[q] = mean1_inner_s - mean0_inner_s
 
-            # ── EM-corrected mean (truncated-normal fixed-point) ───────
-            # Method-of-moments start + Sheppard-corrected σ, then iterate.
-            sigma0 = _init_sigma_1d(p_marg0, centers_scaled, mean0_raw_s, bin_w_scaled)
-            sigma1 = _init_sigma_1d(p_marg1, centers_scaled, mean1_raw_s, bin_w_scaled)
-            mean0_em_s = _em_mean_1d(p_marg0, edges_np, sigma=sigma0, start=mean0_raw_s)
-            mean1_em_s = _em_mean_1d(p_marg1, edges_np, sigma=sigma1, start=mean1_raw_s)
-            cate_em_scaled[q] = mean1_em_s - mean0_em_s
-            sigma_em_y0_scaled[q] = sigma0
-            sigma_em_y1_scaled[q] = sigma1
+            # ── FULL 9-region mean (inner + tail regions) ────────────────
+            # Y_do0 side:
+            P0_inner = float(w[Y0_INNER].sum())
+            P0_L     = float(w[Y0_L].sum())
+            P0_R     = float(w[Y0_R].sum())
+            # Half-Gaussian tail expectations at boundaries ±1 with scales σ:
+            #   E[Y | Y < lo] = lo - σ · √(2/π)
+            #   E[Y | Y > hi] = hi + σ · √(2/π)
+            E0_L = lo - sL0_v * _sqrt_2_over_pi
+            E0_R = hi + sR0_v * _sqrt_2_over_pi
+            mean0_full_s = (P0_inner * mean0_inner_s
+                             + P0_L     * E0_L
+                             + P0_R     * E0_R)
 
-        cate_pred_raw = cate_raw_scaled * (y_rng / 2.0)
-        cate_pred_em  = cate_em_scaled  * (y_rng / 2.0)
+            # Y_do1 side:
+            P1_inner = float(w[Y1_INNER].sum())
+            P1_L     = float(w[Y1_L].sum())
+            P1_R     = float(w[Y1_R].sum())
+            E1_L = lo - sL1_v * _sqrt_2_over_pi
+            E1_R = hi + sR1_v * _sqrt_2_over_pi
+            mean1_full_s = (P1_inner * mean1_inner_s
+                             + P1_L     * E1_L
+                             + P1_R     * E1_R)
+
+            cate_em_scaled[q] = mean1_full_s - mean0_full_s
+
+            # σ diagnostic per query — total σ² = P_inner·(inner var) +
+            # P_L·(σL² + (E_L−μ)²) + P_R·(σR² + (E_R−μ)²) ... but for a
+            # quick indicator, just report an average of the two tail σ's:
+            sigma_em_y0_scaled[q] = 0.5 * (sL0_v + sR0_v)
+            sigma_em_y1_scaled[q] = 0.5 * (sL1_v + sR1_v)
+
+        cate_pred_raw = cate_raw_scaled * (y_rng / 2.0)   # inner-only
+        cate_pred_em  = cate_em_scaled  * (y_rng / 2.0)   # inner + tails
         sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)
         sigma_em_y1_raw = sigma_em_y1_scaled * (y_rng / 2.0)
 
         true_cate_raw = _np(cd.true_cate).reshape(-1).astype(np.float64)
-        pehe_raw = float(np.sqrt(np.mean((cate_pred_raw - true_cate_raw) ** 2)))
-        pehe_em  = float(np.sqrt(np.mean((cate_pred_em  - true_cate_raw) ** 2)))
-        eps_ate_raw = float(abs(cate_pred_raw.mean() - true_cate_raw.mean()))
-        eps_ate_em  = float(abs(cate_pred_em.mean()  - true_cate_raw.mean()))
+        pehe_raw   = float(np.sqrt(np.mean((cate_pred_raw - true_cate_raw) ** 2)))
+        pehe_full  = float(np.sqrt(np.mean((cate_pred_em  - true_cate_raw) ** 2)))
+        eps_ate_raw  = float(abs(cate_pred_raw.mean() - true_cate_raw.mean()))
+        eps_ate_full = float(abs(cate_pred_em.mean()  - true_cate_raw.mean()))
         pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
-        pehe_em_k1_list.append(pehe_em); eps_em_k1_list.append(eps_ate_em)
+        pehe_em_k1_list.append(pehe_full); eps_em_k1_list.append(eps_ate_full)
         std_y0_list.append(float(sigma_em_y0_raw.mean()))
         std_y1_list.append(float(sigma_em_y1_raw.mean()))
-        print(f'  r={r:3d}  PEHE raw={pehe_raw:.4f}  em={pehe_em:.4f}   '
-              f'eps_ATE raw={eps_ate_raw:.4f}  em={eps_ate_em:.4f}   '
-              f'<σ_Y0>={sigma_em_y0_raw.mean():.3f}  <σ_Y1>={sigma_em_y1_raw.mean():.3f}   '
+        print(f'  r={r:3d}  PEHE inner={pehe_raw:.4f}  full={pehe_full:.4f}   '
+              f'eps_ATE inner={eps_ate_raw:.4f}  full={eps_ate_full:.4f}   '
+              f'<σ_tail Y0>={sigma_em_y0_raw.mean():.3f}  <σ_tail Y1>={sigma_em_y1_raw.mean():.3f}   '
               f'({time.time()-t_r:.1f}s)', flush=True)
 
     def _summary(arr, label):
@@ -230,12 +274,12 @@ def main():
     std_y1_arr      = np.array(std_y1_list)
     print('')
     print(f'== step={step}  n={len(pehe_arr)}  total={time.time()-t_all:.1f}s ==')
-    _summary(pehe_arr,        'PEHE (raw)')
-    _summary(pehe_em_k1_arr,  'PEHE (em_corr)')
-    _summary(eps_arr,         'eps_ATE (raw)')
-    _summary(eps_em_k1_arr,   'eps_ATE (em_corr)')
-    _summary(std_y0_arr,      'σ_init Y_do(0)')
-    _summary(std_y1_arr,      'σ_init Y_do(1)')
+    _summary(pehe_arr,        'PEHE (inner)')
+    _summary(pehe_em_k1_arr,  'PEHE (full 9-reg)')
+    _summary(eps_arr,         'eps_ATE (inner)')
+    _summary(eps_em_k1_arr,   'eps_ATE (full 9-reg)')
+    _summary(std_y0_arr,      'σ_tail Y_do(0)')
+    _summary(std_y1_arr,      'σ_tail Y_do(1)')
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
