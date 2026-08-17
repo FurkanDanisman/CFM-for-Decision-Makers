@@ -306,12 +306,20 @@ def main():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
 
         n_test = X_qry.shape[0]
-        # Store per-query MEANS in scaled space (not CATE), so we can unscale
-        # them via unscale_arr(...) — works for linear AND power_transform.
-        m0_inner_s      = np.zeros(n_test, dtype=np.float64); m1_inner_s      = np.zeros(n_test, dtype=np.float64)
-        m0_full_s       = np.zeros(n_test, dtype=np.float64); m1_full_s       = np.zeros(n_test, dtype=np.float64)
-        m0_malc_raw_s   = np.zeros(n_test, dtype=np.float64); m1_malc_raw_s   = np.zeros(n_test, dtype=np.float64)
-        m0_malc_em_s    = np.zeros(n_test, dtype=np.float64); m1_malc_em_s    = np.zeros(n_test, dtype=np.float64)
+        # Precompute RAW-Y bin centers (inverse-transform of scaled centers
+        # via unscale_arr). For linear schemes this is scaled*y_scale + y_center;
+        # for power_transform it's pt.inverse_transform(...) — the same trick
+        # Do-PFN uses in preprocess_y ("new_borders = pt.inverse_transform(...)").
+        raw_centers_inner = unscale_arr(centers_scaled)  # (J,) raw user y
+        if args.malc_upsample:
+            raw_centers_fine = unscale_arr(fine_centers)  # (n_ev,) raw user y
+        # Store per-query MEANS in RAW y space directly. This is correct for
+        # both linear (identical to old flow) and PT (fixes the nonlinear
+        # inverse-of-mean vs mean-of-inverse bug).
+        m0_inner_raw    = np.zeros(n_test, dtype=np.float64); m1_inner_raw    = np.zeros(n_test, dtype=np.float64)
+        m0_full_raw     = np.zeros(n_test, dtype=np.float64); m1_full_raw     = np.zeros(n_test, dtype=np.float64)
+        m0_malc_raw_raw = np.zeros(n_test, dtype=np.float64); m1_malc_raw_raw = np.zeros(n_test, dtype=np.float64)
+        m0_malc_em_raw  = np.zeros(n_test, dtype=np.float64); m1_malc_em_raw  = np.zeros(n_test, dtype=np.float64)
         sigma_em_y0_scaled = np.zeros(n_test, dtype=np.float64)
         sigma_em_y1_scaled = np.zeros(n_test, dtype=np.float64)
         n_malc_fail = 0
@@ -339,11 +347,17 @@ def main():
             p_marg0 = pm.sum(axis=1)  # inner marg for Y0 (conditional on Y0∈inner)
             p_marg1 = pm.sum(axis=0)  # inner marg for Y1
 
-            # ── OLD raw bin-center mean (inner region only, ignores tails) ─
+            # ── Inner region mean (using RAW-Y bin centers directly) ─
+            # For PT this uses pt.inverse_transform(scaled_centers) — the
+            # Do-PFN border-reinterpretation trick. For linear this is
+            # mathematically identical to scaled_centers*y_scale + y_center.
+            mean0_inner_raw = float((raw_centers_inner * p_marg0).sum())
+            mean1_inner_raw = float((raw_centers_inner * p_marg1).sum())
+            # keep scaled versions too for the tail-mix math (needs scaled units)
             mean0_inner_s = float((centers_scaled * p_marg0).sum())
             mean1_inner_s = float((centers_scaled * p_marg1).sum())
-            m0_inner_s[q] = mean0_inner_s
-            m1_inner_s[q] = mean1_inner_s
+            m0_inner_raw[q] = mean0_inner_raw
+            m1_inner_raw[q] = mean1_inner_raw
 
             # ── FULL 9-region mean (inner + tail regions) ────────────────
             # Y_do0 side:
@@ -369,8 +383,13 @@ def main():
                              + P1_L     * E1_L
                              + P1_R     * E1_R)
 
-            m0_full_s[q] = mean0_full_s
-            m1_full_s[q] = mean1_full_s
+            # Convert full-region mixture mean to raw y via unscale_arr.
+            # For linear this equals P_inner*mean0_inner_raw + P_L*raw(E_L) + P_R*raw(E_R).
+            # For PT this uses pt.inverse_transform on the mixture — an
+            # approximation for a nonlinear pt (tail contribution is small,
+            # error is bounded).
+            m0_full_raw[q] = float(unscale_arr(np.array([mean0_full_s]))[0])
+            m1_full_raw[q] = float(unscale_arr(np.array([mean1_full_s]))[0])
 
             # ── Pure MALC-upsampled means (raw + EM), no tails ───────────
             # User's literal proposal: fit MALC 2D to the discrete J=10 inner
@@ -399,31 +418,36 @@ def main():
                     #    Y1 marginal = sum over cols (axis=1).
                     p_marg0_fine = p_fine.sum(axis=0)   # Y0 marginal
                     p_marg1_fine = p_fine.sum(axis=1)   # Y1 marginal
-                    # Raw mean on fine grid
-                    m0_raw_f = float((fine_centers * p_marg0_fine).sum())
-                    m1_raw_f = float((fine_centers * p_marg1_fine).sum())
-                    m0_malc_raw_s[q] = m0_raw_f; m1_malc_raw_s[q] = m1_raw_f
-                    # EM mean on fine grid (truncnorm fixed-point)
-                    sig0_f = _init_sigma_1d(p_marg0_fine, fine_centers, m0_raw_f, fine_bw)
-                    sig1_f = _init_sigma_1d(p_marg1_fine, fine_centers, m1_raw_f, fine_bw)
-                    m0_em_f = _em_mean_1d(p_marg0_fine, fine_edges, sig0_f, m0_raw_f)
-                    m1_em_f = _em_mean_1d(p_marg1_fine, fine_edges, sig1_f, m1_raw_f)
-                    m0_malc_em_s[q] = m0_em_f; m1_malc_em_s[q] = m1_em_f
+                    # Raw mean using fine-grid RAW centers (correct for PT too)
+                    m0_malc_raw_raw[q] = float((raw_centers_fine * p_marg0_fine).sum())
+                    m1_malc_raw_raw[q] = float((raw_centers_fine * p_marg1_fine).sum())
+                    # EM mean on fine grid (in scaled space, then convert to raw)
+                    m0_raw_f_s = float((fine_centers * p_marg0_fine).sum())
+                    m1_raw_f_s = float((fine_centers * p_marg1_fine).sum())
+                    sig0_f = _init_sigma_1d(p_marg0_fine, fine_centers, m0_raw_f_s, fine_bw)
+                    sig1_f = _init_sigma_1d(p_marg1_fine, fine_centers, m1_raw_f_s, fine_bw)
+                    m0_em_f_s = _em_mean_1d(p_marg0_fine, fine_edges, sig0_f, m0_raw_f_s)
+                    m1_em_f_s = _em_mean_1d(p_marg1_fine, fine_edges, sig1_f, m1_raw_f_s)
+                    m0_malc_em_raw[q] = float(unscale_arr(np.array([m0_em_f_s]))[0])
+                    m1_malc_em_raw[q] = float(unscale_arr(np.array([m1_em_f_s]))[0])
                 except Exception:
                     n_malc_fail += 1
-                    m0_malc_raw_s[q] = mean0_inner_s; m1_malc_raw_s[q] = mean1_inner_s
-                    m0_malc_em_s[q]  = mean0_inner_s; m1_malc_em_s[q]  = mean1_inner_s
+                    m0_malc_raw_raw[q] = mean0_inner_raw; m1_malc_raw_raw[q] = mean1_inner_raw
+                    m0_malc_em_raw[q]  = mean0_inner_raw; m1_malc_em_raw[q]  = mean1_inner_raw
 
             sigma_em_y0_scaled[q] = 0.5 * (sL0_v + sR0_v)
             sigma_em_y1_scaled[q] = 0.5 * (sL1_v + sR1_v)
 
-        # Un-scale each arm's per-query mean via unscale_arr, then diff.
-        # For linear schemes this reduces to (m1 - m0) * y_scale exactly.
-        # For power_transform it correctly handles the nonlinear inverse.
-        cate_pred_raw      = unscale_arr(m1_inner_s)    - unscale_arr(m0_inner_s)
-        cate_pred_em       = unscale_arr(m1_full_s)     - unscale_arr(m0_full_s)
-        cate_pred_malc_raw = unscale_arr(m1_malc_raw_s) - unscale_arr(m0_malc_raw_s)
-        cate_pred_malc_em  = unscale_arr(m1_malc_em_s)  - unscale_arr(m0_malc_em_s)
+        # Per-query means already in RAW user-Y space (see mean assignments
+        # above). CATE = mean1_raw - mean0_raw. For linear schemes this is
+        # exactly (mean_scaled_1 - mean_scaled_0) * y_scale. For PT this uses
+        # the Do-PFN-style border reinterpretation (raw_centers_inner =
+        # pt.inverse_transform(scaled_centers)) on the inner region, and
+        # unscale_arr on the tail-mixture / MALC-EM means as an approximation.
+        cate_pred_raw      = m1_inner_raw    - m0_inner_raw
+        cate_pred_em       = m1_full_raw     - m0_full_raw
+        cate_pred_malc_raw = m1_malc_raw_raw - m0_malc_raw_raw
+        cate_pred_malc_em  = m1_malc_em_raw  - m0_malc_em_raw
         sigma_em_y0_raw = sigma_em_y0_scaled * (y_rng / 2.0)   # legacy scalar diag
         sigma_em_y1_raw = sigma_em_y1_scaled * (y_rng / 2.0)
 
