@@ -76,6 +76,13 @@ def sanity_check():
           '(σ ~ ≤ bin_width). At σ_true ≥ 0.5 both are small.\n')
 
 
+def _np(a):
+    import torch
+    if isinstance(a, torch.Tensor):
+        return a.numpy()
+    return np.asarray(a)
+
+
 def per_realization(args):
     import torch
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -113,13 +120,14 @@ def per_realization(args):
     biases_raw, biases_em = [], []
     for r in range(min(args.n_realizations, 100)):
         cd, _ = IHDPDataset()[r]
-        y_train = cd.y_train.numpy()
+        y_train = _np(cd.y_train)
         truth = load_ihdp_truth(r, args.causalpfn, y_train)
         y_min = float(truth.y_min); y_rng = float(truth.y_rng)
         Y_ctx_s = ((y_train.reshape(-1) - y_min) / y_rng * 2 - 1).astype(np.float32)
-        X_ctx = cd.X_train.numpy().astype(np.float32)
-        T_ctx = cd.t_train.numpy().astype(np.float32).reshape(-1, 1)
-        X_qry = cd.X_test.numpy().astype(np.float32)
+        X_ctx = _np(cd.X_train).astype(np.float32)
+        T_ctx = _np(cd.t_train).astype(np.float32).reshape(-1, 1)
+        X_qry = _np(cd.X_test).astype(np.float32)
+        true_cate = _np(cd.true_cate).reshape(-1)
         with torch.no_grad():
             pred = model(
                 torch.from_numpy(X_ctx).unsqueeze(0),
@@ -143,7 +151,7 @@ def per_realization(args):
             sigs.append(0.5 * (s0 + s1))
         pred_ate_raw = cate_raw.mean() * (y_rng / 2)
         pred_ate_em  = cate_em.mean()  * (y_rng / 2)
-        true_ate = float(cd.true_cate.numpy().mean())
+        true_ate = float(true_cate.mean())
         b_raw = pred_ate_raw - true_ate
         b_em  = pred_ate_em  - true_ate
         biases_raw.append(b_raw); biases_em.append(b_em)
