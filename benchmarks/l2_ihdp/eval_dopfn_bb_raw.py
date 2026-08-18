@@ -129,8 +129,11 @@ def main():
     ap.add_argument('--causalpfn',       required=True)
     ap.add_argument('--checkpoint',      required=True,
                     help='Path to DoPFN-backbone checkpoint (.pt with model_state_dict + config + edges).')
+    ap.add_argument('--dataset', default='IHDP',
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal'],
+                    help='Which benchmark dataset to eval on. All expose cd.true_cate.')
     ap.add_argument('--n-realizations',  type=int, default=100,
-                    help='How many IHDP realizations to score (0..N-1). IHDP has 100 total.')
+                    help='How many realizations to score (0..N-1). IHDP=100, ACIC~77, CPS=100, PSID=100.')
     ap.add_argument('--start-realization', type=int, default=0)
     ap.add_argument('--out', default='',
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
@@ -149,10 +152,11 @@ def main():
                          'main pipeline default 500 for speed; L2/KL not evaluated here so '
                          'precision matters less).')
     ap.add_argument('--y-scaling', default='min_max',
-                    choices=['min_max', 'std', 'iqr', 'trim_min_max', 'power_transform'],
-                    help='How to rescale Y_ctx for the model. Outlier-heavy IHDP '
+                    choices=['min_max', 'std', 'iqr', 'trim_min_max',
+                             'power_transform', 'log_transform'],
+                    help='How to rescale Y_ctx for the model. Outlier-heavy '
                          'realizations compress the true CATE below bin_width under '
-                         'min_max — try power_transform (Do-PFN\'s recipe) or iqr.')
+                         'min_max — try trim_min_max or log_transform.')
     ap.add_argument('--iqr-target', type=float, default=0.6,
                     help='Target scaled-IQR for --y-scaling iqr (default 0.6, meaning '
                          'central 50%% of y_train maps to a scaled IQR of 0.6, i.e. '
@@ -171,7 +175,6 @@ def main():
     sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
     sys.path.insert(0, _here)
 
-    from true_ihdp import load_ihdp_truth
     from dopfn_backbone_head import DoPFNBackboneWith2DHead
     from losses.BarDistribution2D import unpack_pred
 
@@ -194,9 +197,23 @@ def main():
 
     _install_dopfn_datasets_shim(args.dopfn)
     sys.path.insert(0, args.causalpfn)
-    from benchmarks import IHDPDataset
-
-    print(f'[cfg] y-scaling scheme: {args.y_scaling}', flush=True)
+    from benchmarks import (IHDPDataset, ACIC2016Dataset,
+                              RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset)
+    # 'balanced' kwarg exists on RealCauseLalondePSIDDataset in some builds; guard.
+    import inspect as _ins
+    _has_bal = 'balanced' in _ins.signature(RealCauseLalondePSIDDataset.__init__).parameters
+    def _load_psid_bal():
+        return (RealCauseLalondePSIDDataset(balanced=True) if _has_bal
+                else RealCauseLalondePSIDDataset())
+    _LOADERS = {
+        'IHDP':    IHDPDataset,
+        'ACIC':    ACIC2016Dataset,
+        'CPS':     RealCauseLalondeCPSDataset,
+        'PSID':    RealCauseLalondePSIDDataset,
+        'PSIDbal': _load_psid_bal,
+    }
+    dataset = _LOADERS[args.dataset]()
+    print(f'[cfg] dataset: {args.dataset}   y-scaling scheme: {args.y_scaling}', flush=True)
     if args.y_scaling == 'iqr':
         print(f'[cfg]   iqr_target={args.iqr_target}', flush=True)
     elif args.y_scaling == 'std':
@@ -228,9 +245,8 @@ def main():
     end = min(args.start_realization + args.n_realizations, 100)
     for r in range(args.start_realization, end):
         t_r = time.time()
-        cd, _ = IHDPDataset()[r]
+        cd, _ = dataset[r]
         y_train_full = _np(cd.y_train)
-        truth = load_ihdp_truth(r, args.causalpfn, y_train_full)
 
         # Subsample context if requested
         if args.n_context > 0 and args.n_context < cd.X_train.shape[0]:
@@ -252,7 +268,27 @@ def main():
         #     to normal) on y_train, then linearly rescales pt(y) to [-1, 1].
         #     Un-scale is nonlinear: pt.inverse_transform(scaled → pt space).
         # Both paths expose an `unscale_arr(scaled_arr)` callable used later.
-        if args.y_scaling == 'power_transform':
+        if args.y_scaling == 'log_transform':
+            # Reference: benchmarks/methods/ours.py lines 263-275.
+            # y_log_shift = min(y_train) - 1 → log(y - shift) has min = 0.
+            # Then y_log_scaled = 2 * log(y - shift) / y_log_max - 1 ∈ [-1, +1].
+            # Requires y - shift > 0 for context and query points; guard for
+            # queries strictly below train min (rare; fall back to shift-safe log).
+            y_arr = np.asarray(y_train_full, dtype=np.float64).reshape(-1)
+            y_log_shift = float(y_arr.min()) - 1.0
+            y_log_train = np.log(y_arr - y_log_shift)
+            y_log_max = max(float(y_log_train.max()), 1e-8)
+            Y_ctx_shifted = np.asarray(Y_ctx.reshape(-1), dtype=np.float64) - y_log_shift
+            Y_ctx_shifted = np.clip(Y_ctx_shifted, 1e-8, None)   # positive for log
+            Y_ctx_s = (2.0 * np.log(Y_ctx_shifted) / y_log_max - 1.0).astype(np.float32)
+            def unscale_arr(a):
+                arr = np.atleast_1d(np.asarray(a, dtype=np.float64))
+                log_val = (arr + 1.0) / 2.0 * y_log_max
+                raw = np.exp(log_val) + y_log_shift
+                return raw
+            y_scale = y_log_max / 2.0   # rough slope for σ diagnostic
+            y_center = float(np.exp(y_log_max / 2.0) + y_log_shift)
+        elif args.y_scaling == 'power_transform':
             from sklearn.preprocessing import PowerTransformer, QuantileTransformer
             yt = y_train_full.reshape(-1, 1).astype(np.float64)
             _pt = None
