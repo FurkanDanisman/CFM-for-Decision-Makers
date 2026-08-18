@@ -175,6 +175,8 @@ def ours_densities(cd,
                     n_context: int | None = None,
                     fit_malc_inner: Callable[..., Any] = None,
                     dmalc_2d: Callable[..., Any] = None,
+                    y_scaling: str = 'min_max',
+                    std_target: float = 0.3,
                     ) -> dict[str, np.ndarray]:
     """Joint-head forward pass, per-query MALC fit, marginalise + diagonal
     integrate onto the common (Y_CENTERS, TAU_CENTERS) grids.
@@ -191,7 +193,21 @@ def ours_densities(cd,
     X_context = X_train_full[:N].astype(np.float32)
     T_context = t_train_full[:N].astype(np.float32).reshape(-1, 1)
     Y_context = y_train_full[:N].astype(np.float32).reshape(-1, 1)
-    Y_context = ((Y_context - y_min) / y_rng * 2.0 - 1.0).astype(np.float32)
+    # Y rescaling: min_max (default, legacy) or std (matches eval_dopfn_bb_raw's
+    # `--y-scaling std`). Both linear, so downstream un-scaling (y_rng/2) still
+    # works if callers derive a matching y_rng from the same scheme.
+    if y_scaling == 'std':
+        _yt = y_train_full.astype(np.float64).reshape(-1)
+        _mu = float(_yt.mean())
+        _sig = float(_yt.std()) if _yt.size > 1 else 1.0
+        _y_scale = max(_sig / max(std_target, 1e-6), 1e-8)
+        Y_context = ((Y_context - _mu) / _y_scale).astype(np.float32)
+        # override y_min/y_rng so the caller's downstream un-scaling matches.
+        # y_min becomes the raw Y value that maps to scaled -1, y_rng is 2·y_scale.
+        y_min = _mu - _y_scale
+        y_rng = 2.0 * _y_scale
+    else:
+        Y_context = ((Y_context - y_min) / y_rng * 2.0 - 1.0).astype(np.float32)
 
     X_context = _rescale_and_pad(X_context, num_features)
     X_test_p = _rescale_and_pad(X_test.astype(np.float32), num_features)

@@ -79,6 +79,14 @@ def main() -> int:
     ap.add_argument('--checkpoint-dopfn-bb',
                      default=os.environ.get('CHECKPOINT_DOPFN_BB', ''),
                      help='Ours model built on DoPFN backbone (PerFeatureTransformer)')
+    ap.add_argument('--y-scaling', default=os.environ.get('Y_SCALING', 'min_max'),
+                     choices=['min_max', 'std'],
+                     help='Y-scaling scheme for ours_densities (only). min_max = legacy '
+                          'per-task (y_min, y_rng); std = (y - mean)/(std/std_target) as '
+                          'in eval_dopfn_bb_raw.py.')
+    ap.add_argument('--std-target', type=float,
+                     default=float(os.environ.get('STD_TARGET', 0.3)),
+                     help='Target scaled sigma for --y-scaling std.')
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
@@ -459,8 +467,10 @@ def _run_ours_dopfn_bb(cd, ckpt_path, truth, args, n_ctx):
         malc_B=args.malc_B, malc_max_K=args.malc_max_K, n_eval=args.n_eval,
         n_context=n_ctx,
         fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
+        y_scaling=args.y_scaling,
+        std_target=args.std_target,
     )
-    print(f'[ours-dopfn-bb] done in {time.time() - t0:.1f}s', flush=True)
+    print(f'[ours-dopfn-bb] done in {time.time() - t0:.1f}s   (y_scaling={args.y_scaling})', flush=True)
     return d
 
 
