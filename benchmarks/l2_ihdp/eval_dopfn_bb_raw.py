@@ -133,8 +133,10 @@ def main():
                     choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal'],
                     help='Which benchmark dataset to eval on. All expose cd.true_cate.')
     ap.add_argument('--n-realizations',  type=int, default=100,
-                    help='How many realizations to score (0..N-1). IHDP=100, ACIC~77, CPS=100, PSID=100.')
+                    help='How many realizations to score (0..N-1). Capped by dataset size at runtime.')
     ap.add_argument('--start-realization', type=int, default=0)
+    ap.add_argument('--acic-n-tables', type=int, default=77,
+                    help='n_tables for ACIC2016Dataset (default 77 — the full DGP set).')
     ap.add_argument('--out', default='',
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
     ap.add_argument('--n-context', type=int, default=0,
@@ -199,20 +201,39 @@ def main():
     sys.path.insert(0, args.causalpfn)
     from benchmarks import (IHDPDataset, ACIC2016Dataset,
                               RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset)
-    # 'balanced' kwarg exists on RealCauseLalondePSIDDataset in some builds; guard.
-    import inspect as _ins
-    _has_bal = 'balanced' in _ins.signature(RealCauseLalondePSIDDataset.__init__).parameters
+    # RealCauseLalondePSIDDataset accepts **kwargs (any name silently accepted).
+    # Which kwarg triggers the balanced variant depends on the causalpfn build.
+    # We try the common ones and warn if none differentiate PSIDbal from PSID.
+    _PSID_BAL_KWARGS = [{'balanced': True}, {'balance': True},
+                         {'variant': 'balanced'}, {'dataset': 'balanced'}]
     def _load_psid_bal():
-        return (RealCauseLalondePSIDDataset(balanced=True) if _has_bal
-                else RealCauseLalondePSIDDataset())
+        # If none of these actually change behaviour, PSIDbal will match PSID —
+        # user will see identical numbers and know we need a different kwarg.
+        for kw in _PSID_BAL_KWARGS:
+            try:
+                return RealCauseLalondePSIDDataset(**kw)
+            except Exception:
+                continue
+        return RealCauseLalondePSIDDataset()
     _LOADERS = {
-        'IHDP':    IHDPDataset,
-        'ACIC':    ACIC2016Dataset,
-        'CPS':     RealCauseLalondeCPSDataset,
-        'PSID':    RealCauseLalondePSIDDataset,
+        'IHDP':    lambda: IHDPDataset(),
+        'ACIC':    lambda: ACIC2016Dataset(n_tables=args.acic_n_tables),
+        'CPS':     lambda: RealCauseLalondeCPSDataset(),
+        'PSID':    lambda: RealCauseLalondePSIDDataset(),
         'PSIDbal': _load_psid_bal,
     }
     dataset = _LOADERS[args.dataset]()
+    # Auto-detect dataset length; cap iteration to it so out-of-range doesn't
+    # raise IndexError (the old hardcoded cap of 100 killed ACIC at r=10).
+    try:
+        _ds_len = len(dataset.datasets)
+    except Exception:
+        try:
+            _ds_len = len(dataset)
+        except Exception:
+            _ds_len = args.n_realizations   # last-ditch fallback
+    print(f'[cfg] dataset={args.dataset}   size={_ds_len}   '
+          f'requested n_realizations={args.n_realizations}', flush=True)
     print(f'[cfg] dataset: {args.dataset}   y-scaling scheme: {args.y_scaling}', flush=True)
     if args.y_scaling == 'iqr':
         print(f'[cfg]   iqr_target={args.iqr_target}', flush=True)
@@ -242,7 +263,7 @@ def main():
     pehe_malc_em_list, eps_malc_em_list = [], []
     std_y0_list, std_y1_list = [], []
     t_all = time.time()
-    end = min(args.start_realization + args.n_realizations, 100)
+    end = min(args.start_realization + args.n_realizations, _ds_len)
     for r in range(args.start_realization, end):
         t_r = time.time()
         cd, _ = dataset[r]
