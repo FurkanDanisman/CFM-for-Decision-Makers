@@ -513,10 +513,15 @@ def main():
         pehe_full      = float(np.sqrt(np.mean((cate_pred_em       - true_cate_raw) ** 2)))
         pehe_malc_raw  = float(np.sqrt(np.mean((cate_pred_malc_raw - true_cate_raw) ** 2))) if args.malc_upsample else float('nan')
         pehe_malc_em   = float(np.sqrt(np.mean((cate_pred_malc_em  - true_cate_raw) ** 2))) if args.malc_upsample else float('nan')
-        eps_ate_raw       = float(abs(cate_pred_raw.mean()      - true_cate_raw.mean()))
-        eps_ate_full      = float(abs(cate_pred_em.mean()       - true_cate_raw.mean()))
-        eps_ate_malc_raw  = float(abs(cate_pred_malc_raw.mean() - true_cate_raw.mean())) if args.malc_upsample else float('nan')
-        eps_ate_malc_em   = float(abs(cate_pred_malc_em.mean()  - true_cate_raw.mean())) if args.malc_upsample else float('nan')
+        # eps_ATE is RELATIVE: |ATE_pred - ATE_true| / |ATE_true|
+        # (matches benchmarks/uwyk_direct_repro.py:146). Predicting 0 CATE
+        # yields eps_ATE = 1. Guard denominator for near-zero true ATE.
+        _ate_true = float(true_cate_raw.mean())
+        _ate_denom = max(abs(_ate_true), 1e-9)
+        eps_ate_raw       = float(abs(cate_pred_raw.mean()      - _ate_true) / _ate_denom)
+        eps_ate_full      = float(abs(cate_pred_em.mean()       - _ate_true) / _ate_denom)
+        eps_ate_malc_raw  = float(abs(cate_pred_malc_raw.mean() - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')
+        eps_ate_malc_em   = float(abs(cate_pred_malc_em.mean()  - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')
         pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
         pehe_em_k1_list.append(pehe_full); eps_em_k1_list.append(eps_ate_full)
         pehe_malc_list.append(pehe_malc_raw); eps_malc_list.append(eps_ate_malc_raw)
