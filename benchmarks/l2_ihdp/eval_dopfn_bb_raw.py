@@ -142,6 +142,11 @@ def main():
                     help='n_tables for ACIC2016Dataset (default 10 — matches every '
                          'other script in this repo; 77 requires internet to download '
                          'extra tables which compute nodes do not have).')
+    ap.add_argument('--backbone', choices=['dopfn_bb', 'ipfn'], default='dopfn_bb',
+                    help='Which model architecture the checkpoint uses. dopfn_bb = '
+                         'DoPFNBackboneWith2DHead (per-feature attention, any NF). '
+                         'ipfn = InterventionalPFN (fixed NF, requires X padding to '
+                         'match cfg[\'num_features\']).')
     ap.add_argument('--out', default='',
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
     ap.add_argument('--n-context', type=int, default=0,
@@ -182,8 +187,11 @@ def main():
     sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
     sys.path.insert(0, _here)
 
-    from dopfn_backbone_head import DoPFNBackboneWith2DHead
     from losses.BarDistribution2D import unpack_pred
+    if args.backbone == 'dopfn_bb':
+        from dopfn_backbone_head import DoPFNBackboneWith2DHead
+    else:
+        from models.InterventionalPFN import InterventionalPFN
 
     fit_malc_inner = dmalc_2d = None
     fine_centers = fine_edges = fine_eval_pts = fine_bw = None
@@ -289,8 +297,32 @@ def main():
     print(f'[ckpt] J={J}  edges=[{edges_np[0]:+.2f}, {edges_np[-1]:+.2f}]  '
           f'bw={bin_width:.4f}  step={step}', flush=True)
 
-    model = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).eval()
+    if args.backbone == 'dopfn_bb':
+        model = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).eval()
+        NUM_FEATURES = -1   # sentinel: no padding needed
+    else:
+        NUM_FEATURES = int(cfg['num_features'])
+        model = InterventionalPFN(
+            num_features=NUM_FEATURES,
+            d_model=cfg['d_model'], depth=cfg['depth'],
+            heads_feat=cfg['heads'], heads_samp=cfg['heads'], dropout=0.0,
+            output_dim=J * J + 9 + 4, hidden_mult=cfg['hidden_mult'],
+            normalize_features=True, normalize_treatment=False,
+            use_treatment_in_query=False, use_checkpoint=False,
+        ).eval()
     model.load_state_dict(ckpt['model_state_dict'])
+    print(f'[ckpt] backbone={args.backbone}  NUM_FEATURES={NUM_FEATURES}', flush=True)
+
+    def _pad(X, n_feat):
+        """Pad X to n_feat columns with NaN if needed; truncate if too wide.
+        No-op when n_feat == -1 (per-feature attention accepts any width)."""
+        if n_feat is None or n_feat <= 0:
+            return X.astype(np.float32)
+        d = X.shape[1]
+        if d < n_feat:
+            pad = np.full((X.shape[0], n_feat - d), np.nan, dtype=np.float32)
+            return np.concatenate([X.astype(np.float32), pad], axis=1)
+        return X.astype(np.float32)[:, :n_feat]
 
     # ── Iterate over realizations ─────────────────────────────────────────
     pehe_list, eps_ate_list = [], []
@@ -408,10 +440,10 @@ def main():
             unscale_arr = lambda a: np.asarray(a, dtype=np.float64) * y_scale + y_center
         y_rng = 2.0 * y_scale  # legacy diagnostic only
 
-        X_ctx_t = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0)
+        X_ctx_t = torch.from_numpy(_pad(X_ctx, NUM_FEATURES)).unsqueeze(0)
         T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32).reshape(-1, 1)).unsqueeze(0)
         Y_ctx_t = torch.from_numpy(Y_ctx_s.reshape(-1, 1)).unsqueeze(0)
-        X_qry_t = torch.from_numpy(X_qry.astype(np.float32)).unsqueeze(0)
+        X_qry_t = torch.from_numpy(_pad(X_qry, NUM_FEATURES)).unsqueeze(0)
 
         with torch.no_grad():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
