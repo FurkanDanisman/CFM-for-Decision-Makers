@@ -130,8 +130,10 @@ def main():
     ap.add_argument('--checkpoint',      required=True,
                     help='Path to DoPFN-backbone checkpoint (.pt with model_state_dict + config + edges).')
     ap.add_argument('--dataset', default='IHDP',
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal'],
-                    help='Which benchmark dataset to eval on. All expose cd.true_cate.')
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal', 'law_race'],
+                    help='Which benchmark dataset to eval on. IHDP/ACIC/CPS/PSID/PSIDbal '
+                         'expose cd.true_cate directly; law_race is Do-PFN semi-real '
+                         '(Kusner et al. 2017), split via ds.generate_valid_split.')
     ap.add_argument('--n-realizations',  type=int, default=100,
                     help='How many realizations to score (0..N-1). Capped by dataset size at runtime.')
     ap.add_argument('--start-realization', type=int, default=0)
@@ -212,7 +214,23 @@ def main():
         # as benchmarks/run_one.py::apply_balanced (seed per realization).
         'PSIDbal': lambda: RealCauseLalondePSIDDataset(),
     }
-    dataset = _LOADERS[args.dataset]()
+    if args.dataset == 'law_race':
+        # Do-PFN semi-real dataset — different interface (splits via
+        # ds.generate_valid_split). Import DoPFN's `datasets` module fresh
+        # from the dopfn repo, undoing the shim above just for this call.
+        _cwd = os.getcwd()
+        if 'datasets' in sys.modules:
+            del sys.modules['datasets']
+        if args.dopfn not in sys.path:
+            sys.path.insert(0, args.dopfn)
+        try:
+            os.chdir(args.dopfn)
+            from datasets import load_dataset as _dopfn_load
+            dataset = _dopfn_load(ds_name='law_race')
+        finally:
+            os.chdir(_cwd)
+    else:
+        dataset = _LOADERS[args.dataset]()
 
     def _apply_psid_balanced(cd, r, max_control=500):
         """Verbatim of benchmarks/run_one.py::apply_balanced. Keeps all treated
@@ -237,13 +255,18 @@ def main():
         return cd2
     # Auto-detect dataset length; cap iteration to it so out-of-range doesn't
     # raise IndexError (the old hardcoded cap of 100 killed ACIC at r=10).
-    try:
-        _ds_len = len(dataset.datasets)
-    except Exception:
+    if args.dataset == 'law_race':
+        # For law_race, "realizations" are split indices in [1, n_splits].
+        # Do-PFN convention (see benchmarks/eval_dopfn_semireal.py): n_splits=5.
+        _ds_len = min(args.n_realizations, 5) if args.n_realizations > 0 else 5
+    else:
         try:
-            _ds_len = len(dataset)
+            _ds_len = len(dataset.datasets)
         except Exception:
-            _ds_len = args.n_realizations   # last-ditch fallback
+            try:
+                _ds_len = len(dataset)
+            except Exception:
+                _ds_len = args.n_realizations   # last-ditch fallback
     print(f'[cfg] dataset={args.dataset}   size={_ds_len}   '
           f'requested n_realizations={args.n_realizations}', flush=True)
     print(f'[cfg] dataset: {args.dataset}   y-scaling scheme: {args.y_scaling}', flush=True)
@@ -278,9 +301,25 @@ def main():
     end = min(args.start_realization + args.n_realizations, _ds_len)
     for r in range(args.start_realization, end):
         t_r = time.time()
-        cd, _ = dataset[r]
-        if args.dataset == 'PSIDbal':
-            cd = _apply_psid_balanced(cd, r, max_control=500)
+        if args.dataset == 'law_race':
+            # law_race: split_number ∈ [1, n_splits]. Convert 0-based r → 1-based.
+            train_ds, test_ds = dataset.generate_valid_split(
+                split_number=r + 1, n_splits=5)
+            # DoPFN's TabularDataset has .x with T as column 0 and .y as outcome.
+            xt = _np(train_ds.x); yt = _np(train_ds.y)
+            xe = _np(test_ds.x)
+            true_cate = _np(test_ds.cate).reshape(-1)
+            class _CD: pass
+            cd = _CD()
+            cd.X_train = torch.from_numpy(xt[:, 1:].astype(np.float32))
+            cd.t_train = torch.from_numpy(xt[:, 0].astype(np.float32))
+            cd.y_train = torch.from_numpy(yt.astype(np.float32))
+            cd.X_test  = torch.from_numpy(xe[:, 1:].astype(np.float32))
+            cd.true_cate = torch.from_numpy(true_cate.astype(np.float32))
+        else:
+            cd, _ = dataset[r]
+            if args.dataset == 'PSIDbal':
+                cd = _apply_psid_balanced(cd, r, max_control=500)
         y_train_full = _np(cd.y_train)
 
         # Subsample context if requested
