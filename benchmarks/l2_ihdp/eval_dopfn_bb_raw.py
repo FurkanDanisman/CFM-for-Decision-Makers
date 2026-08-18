@@ -201,28 +201,38 @@ def main():
     sys.path.insert(0, args.causalpfn)
     from benchmarks import (IHDPDataset, ACIC2016Dataset,
                               RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset)
-    # RealCauseLalondePSIDDataset accepts **kwargs (any name silently accepted).
-    # Which kwarg triggers the balanced variant depends on the causalpfn build.
-    # We try the common ones and warn if none differentiate PSIDbal from PSID.
-    _PSID_BAL_KWARGS = [{'balanced': True}, {'balance': True},
-                         {'variant': 'balanced'}, {'dataset': 'balanced'}]
-    def _load_psid_bal():
-        # If none of these actually change behaviour, PSIDbal will match PSID —
-        # user will see identical numbers and know we need a different kwarg.
-        for kw in _PSID_BAL_KWARGS:
-            try:
-                return RealCauseLalondePSIDDataset(**kw)
-            except Exception:
-                continue
-        return RealCauseLalondePSIDDataset()
     _LOADERS = {
         'IHDP':    lambda: IHDPDataset(),
         'ACIC':    lambda: ACIC2016Dataset(n_tables=args.acic_n_tables),
         'CPS':     lambda: RealCauseLalondeCPSDataset(),
         'PSID':    lambda: RealCauseLalondePSIDDataset(),
-        'PSIDbal': _load_psid_bal,
+        # PSIDbal is PSID with post-load balanced subsampling — same recipe
+        # as benchmarks/run_one.py::apply_balanced (seed per realization).
+        'PSIDbal': lambda: RealCauseLalondePSIDDataset(),
     }
     dataset = _LOADERS[args.dataset]()
+
+    def _apply_psid_balanced(cd, r, max_control=500):
+        """Verbatim of benchmarks/run_one.py::apply_balanced. Keeps all treated
+        rows + up to max_control randomly sampled control rows (seed per
+        realization → reproducible balanced context)."""
+        Xt = _np(cd.X_train).astype(np.float32)
+        tt = _np(cd.t_train).astype(np.float32).reshape(-1)
+        yt = _np(cd.y_train).astype(np.float32).reshape(-1)
+        rng = np.random.default_rng(r)
+        idx_t = np.where(tt > 0.5)[0]
+        idx_c = np.where(tt < 0.5)[0]
+        if idx_c.size > max_control:
+            idx_c = np.sort(rng.choice(idx_c, max_control, replace=False))
+        keep = np.sort(np.concatenate([idx_t, idx_c]))
+        class _CD: pass
+        cd2 = _CD()
+        cd2.X_train = torch.from_numpy(Xt[keep])
+        cd2.t_train = torch.from_numpy(tt[keep])
+        cd2.y_train = torch.from_numpy(yt[keep])
+        cd2.X_test  = cd.X_test
+        cd2.true_cate = cd.true_cate
+        return cd2
     # Auto-detect dataset length; cap iteration to it so out-of-range doesn't
     # raise IndexError (the old hardcoded cap of 100 killed ACIC at r=10).
     try:
@@ -267,6 +277,8 @@ def main():
     for r in range(args.start_realization, end):
         t_r = time.time()
         cd, _ = dataset[r]
+        if args.dataset == 'PSIDbal':
+            cd = _apply_psid_balanced(cd, r, max_control=500)
         y_train_full = _np(cd.y_train)
 
         # Subsample context if requested
