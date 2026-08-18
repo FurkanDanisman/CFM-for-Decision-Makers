@@ -65,8 +65,17 @@ def parse_stats(path: str) -> dict:
     return out
 
 
-CKPT_ORDER = ['J=10 s25k', 'J=10 s50k', 'J=10 s100k', 'J=10 s150k',
-              'fn=50', 'Do-PFN ref']
+STATIC_CKPTS = ['fn=50', 'Do-PFN ref']
+
+
+def _order_ckpts(seen: set) -> list:
+    """Sort J=10 checkpoints numerically ascending, then fn=50, then Do-PFN ref."""
+    j10 = sorted(
+        [c for c in seen if c.startswith('J=10 s')],
+        key=lambda c: int(c.split('s', 1)[1].rstrip('k')),
+    )
+    tail = [c for c in STATIC_CKPTS if c in seen]
+    return j10 + tail
 DATASETS   = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal', 'law_race', 'sales']
 SCHEMES    = ['min_max', 'std', 'trim5', 'trim10', 'log_transform']
 
@@ -103,6 +112,10 @@ def main():
     n_done = len(rows)
     print(f'[aggregate] parsed {len(files)} .out files, {n_done} completed rows\n')
 
+    # Build the dynamic checkpoint ordering from what actually appears in rows.
+    seen_ckpts = {c for (c, _, _) in rows.keys()}
+    CKPT_ORDER = _order_ckpts(seen_ckpts)
+
     if args.scheme == 'all':
         # Original per-checkpoint per-scheme layout
         for ckpt in CKPT_ORDER:
@@ -130,8 +143,8 @@ def main():
     # ── Ckpt-pivot mode: rows=datasets, cols=schemes + Do-PFN, for one ckpt ──
     if args.ckpt is not None:
         ckpt = args.ckpt
-        if ckpt not in CKPT_ORDER:
-            sys.exit(f'--ckpt must be one of {CKPT_ORDER}; got {ckpt!r}')
+        if ckpt not in seen_ckpts:
+            sys.exit(f'--ckpt must be one of {sorted(seen_ckpts)}; got {ckpt!r}')
 
         # Do-PFN reference per dataset (scheme-independent)
         dopfn_refs = {}
