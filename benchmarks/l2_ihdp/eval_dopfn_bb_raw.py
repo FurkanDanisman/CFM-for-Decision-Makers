@@ -147,6 +147,9 @@ def main():
                          'DoPFNBackboneWith2DHead (per-feature attention, any NF). '
                          'ipfn = InterventionalPFN (fixed NF, requires X padding to '
                          'match cfg[\'num_features\']).')
+    ap.add_argument('--also-dopfn', action='store_true',
+                    help='Also run Do-PFN\'s DoPFNRegressor on the same context/queries '
+                         'per realization. Adds PEHE_dopfn and eps_ATE_dopfn columns.')
     ap.add_argument('--out', default='',
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
     ap.add_argument('--n-context', type=int, default=0,
@@ -313,6 +316,17 @@ def main():
     model.load_state_dict(ckpt['model_state_dict'])
     print(f'[ckpt] backbone={args.backbone}  NUM_FEATURES={NUM_FEATURES}', flush=True)
 
+    # Optional: DoPFN reference. Import lazily so schemes that don't need
+    # DoPFN don't pay the import cost. Uses the same helper as Fig 2 v3.
+    DoPFNRegressor = None
+    if args.also_dopfn:
+        _empirical_tests = os.path.join(args.repo, 'benchmarks', 'empirical_tests')
+        if _empirical_tests not in sys.path:
+            sys.path.insert(0, _empirical_tests)
+        from dopfn_helpers import load_dopfn as _load_dopfn_reg, dopfn_predict_cate
+        DoPFNRegressor = _load_dopfn_reg(args)
+        print(f'[cfg] --also-dopfn enabled: DoPFNRegressor loaded', flush=True)
+
     def _pad(X, n_feat):
         """Pad X to n_feat columns with NaN if needed; truncate if too wide.
         No-op when n_feat == -1 (per-feature attention accepts any width)."""
@@ -330,7 +344,9 @@ def main():
     pehe_malc_list, eps_malc_list = [], []
     pehe_malc_em_list, eps_malc_em_list = [], []
     std_y0_list, std_y1_list = [], []
+    pehe_dopfn_list, eps_ate_dopfn_list = [], []   # populated only if --also-dopfn
     t_all = time.time()
+    _dopfn_cwd = os.getcwd()
     end = min(args.start_realization + args.n_realizations, _ds_len)
     for r in range(args.start_realization, end):
         t_r = time.time()
@@ -609,6 +625,22 @@ def main():
         eps_ate_malc_raw  = float(abs(cate_pred_malc_raw.mean() - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')
         eps_ate_malc_em   = float(abs(cate_pred_malc_em.mean()  - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')
         pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
+
+        # ── Optional Do-PFN reference on the same split ──────────────────
+        if args.also_dopfn and DoPFNRegressor is not None:
+            try:
+                os.chdir(args.dopfn)
+                cate_dopfn = dopfn_predict_cate(DoPFNRegressor, cd)
+                os.chdir(_dopfn_cwd)
+                cate_dopfn = np.asarray(cate_dopfn, dtype=np.float64).reshape(-1)
+                pehe_dopfn = float(np.sqrt(np.mean((cate_dopfn - true_cate_raw) ** 2)))
+                eps_ate_dopfn = float(abs(cate_dopfn.mean() - _ate_true) / _ate_denom)
+            except Exception as e:
+                os.chdir(_dopfn_cwd)
+                print(f'[warn] DoPFN failed on r={r}: {type(e).__name__}: {e}', flush=True)
+                pehe_dopfn = float('nan'); eps_ate_dopfn = float('nan')
+            pehe_dopfn_list.append(pehe_dopfn)
+            eps_ate_dopfn_list.append(eps_ate_dopfn)
         pehe_em_k1_list.append(pehe_full); eps_em_k1_list.append(eps_ate_full)
         pehe_malc_list.append(pehe_malc_raw); eps_malc_list.append(eps_ate_malc_raw)
         # New: also collect malc_em
@@ -658,6 +690,9 @@ def main():
         _summary(np.array(eps_malc_em_list), 'eps_ATE (malc em)')
     _summary(std_y0_arr,      'σ_tail Y_do(0)')
     _summary(std_y1_arr,      'σ_tail Y_do(1)')
+    if args.also_dopfn and len(pehe_dopfn_list) > 0:
+        _summary(np.array(pehe_dopfn_list),    'PEHE (Do-PFN)')
+        _summary(np.array(eps_ate_dopfn_list), 'eps_ATE (Do-PFN)')
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
@@ -672,6 +707,9 @@ def main():
             save_kw['eps_ate_malc_raw'] = eps_malc_arr
             save_kw['pehe_malc_em'] = np.array(pehe_malc_em_list)
             save_kw['eps_ate_malc_em'] = np.array(eps_malc_em_list)
+        if args.also_dopfn and len(pehe_dopfn_list) > 0:
+            save_kw['pehe_dopfn'] = np.array(pehe_dopfn_list)
+            save_kw['eps_ate_dopfn'] = np.array(eps_ate_dopfn_list)
         np.savez(args.out, **save_kw)
         print(f'[save] {args.out}')
 
