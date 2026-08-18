@@ -77,6 +77,10 @@ def main():
     ap.add_argument('--scheme', default='min_max',
                     help='Which single scheme to pivot the table on (default: min_max). '
                          'Set to "all" to print the full per-scheme sections instead.')
+    ap.add_argument('--ckpt', default=None,
+                    help='If given, pivot on schemes instead of checkpoints: rows are '
+                         'datasets, columns are the 5 schemes + Do-PFN. Value must be one '
+                         'of: "J=10 s25k", "J=10 s50k", "J=10 s100k", "J=10 s150k", "fn=50".')
     args = ap.parse_args()
     if not args.deploy:
         sys.exit('DEPLOY_ROOT not set; pass --deploy or export it')
@@ -120,6 +124,50 @@ def main():
                     ei = f'{s.get("ate_i",  float("nan")):10.4f}'
                     ef = f'{s.get("ate_f",  float("nan")):10.4f}'
                     print(f'{ds:10s} {tag:<14s} {pi} {pf} {ei} {ef}')
+            print()
+        return
+
+    # ── Ckpt-pivot mode: rows=datasets, cols=schemes + Do-PFN, for one ckpt ──
+    if args.ckpt is not None:
+        ckpt = args.ckpt
+        if ckpt not in CKPT_ORDER:
+            sys.exit(f'--ckpt must be one of {CKPT_ORDER}; got {ckpt!r}')
+
+        # Do-PFN reference per dataset (scheme-independent)
+        dopfn_refs = {}
+        for (_c, ds, _t), (_m, s) in rows.items():
+            if 'ate_dopfn' not in s:
+                continue
+            cur = dopfn_refs.get(ds)
+            if cur is None or _t == 'min_max':
+                dopfn_refs[ds] = (s.get('pehe_dopfn', float('nan')),
+                                    s.get('ate_dopfn', float('nan')))
+
+        for metric_key, metric_label in [('ate_f', 'eps_ATE (full 9-region)'),
+                                          ('pehe_f', 'PEHE (full 9-region)')]:
+            dopfn_idx = 1 if metric_key == 'ate_f' else 0
+            print(f'========== ckpt={ckpt}   metric={metric_label} ==========')
+            header = f'{"dataset":10s} '
+            for s in SCHEMES:
+                header += f'{s:>14s} '
+            header += f'{"Do-PFN":>14s}'
+            print(header)
+            print('-' * len(header))
+            for ds in DATASETS:
+                row = f'{ds:10s} '
+                for s in SCHEMES:
+                    key = (ckpt, ds, s)
+                    if key in rows:
+                        v = rows[key][1].get(metric_key, float('nan'))
+                        row += f'{v:14.4f} '
+                    else:
+                        row += f'{"—":>14s} '
+                dref = dopfn_refs.get(ds)
+                if dref and dref[dopfn_idx] == dref[dopfn_idx]:
+                    row += f'{dref[dopfn_idx]:14.4f}'
+                else:
+                    row += f'{"—":>14s}'
+                print(row)
             print()
         return
 
