@@ -20,22 +20,42 @@ DATASETS = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal', 'law_race', 'sales']
 
 
 def _shard_path(deploy: str, ckpt: str, ds: str, scheme_tag: str):
-    """Map (ckpt, ds, scheme) → shard .npz path (newest match wins)."""
+    """Map (ckpt, ds, scheme) → shard .npz path.
+
+    Sweeps saved shards under a few different naming conventions across
+    submissions:
+        rel_${ds}_${tag}.npz              (early J=10 s150k)
+        rel_${ds}_${tag}_s${step}.npz     (later J=10 s150k)
+        j10_s${step}_${ds}_${tag}.npz     (J=10 at other step)
+        fn50_${ds}_${tag}.npz             (fn=50)
+    Newest matching file wins (mtime).
+    """
+    import glob as _glob
     scheme_alias = {'trim5': 'trim5', 'trim10': 'trim10'}.get(scheme_tag, scheme_tag)
-    # rel_${ds}_${tag}.npz (J=10 s150k) OR j10_s${step}_${ds}_${tag}.npz
-    candidates = []
+    dirpath = os.path.join(deploy, 'eval_dopfn_bb_raw')
+    patterns = []
     if ckpt == 'J=10 s150k':
-        candidates.append(os.path.join(deploy, f'eval_dopfn_bb_raw/rel_{ds}_{scheme_alias}.npz'))
+        patterns += [
+            f'rel_{ds}_{scheme_alias}.npz',
+            f'rel_{ds}_{scheme_alias}_s150000.npz',
+        ]
     m = re.match(r'^J=10 s(\d+)k$', ckpt)
     if m:
         step = int(m.group(1)) * 1000
-        candidates.append(os.path.join(deploy, f'eval_dopfn_bb_raw/j10_s{step}_{ds}_{scheme_alias}.npz'))
+        patterns += [
+            f'j10_s{step}_{ds}_{scheme_alias}.npz',
+            f'j10_s{step}_{ds}_{scheme_alias}_s{step}.npz',
+        ]
     if ckpt == 'fn=50':
-        candidates.append(os.path.join(deploy, f'eval_dopfn_bb_raw/fn50_{ds}_{scheme_alias}.npz'))
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
+        patterns += [f'fn50_{ds}_{scheme_alias}.npz']
+
+    hits = []
+    for pat in patterns:
+        hits.extend(_glob.glob(os.path.join(dirpath, pat)))
+    if not hits:
+        return None
+    hits.sort(key=os.path.getmtime, reverse=True)
+    return hits[0]
 
 
 def _stats(arr: np.ndarray) -> tuple:
