@@ -302,6 +302,11 @@ def ours_densities(cd,
     p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
+    # Raw-marginal diagnostic: raw p_mat marginals converted to density and
+    # resampled onto Y_CENTERS with no MALC smoothing at all. Used to
+    # measure how much MALC helps (or hurts) the y0/y1 densities.
+    p_y0_raw = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_y1_raw = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
     # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
     # computed both ways (matches Table 3's `ours_mean` variant).
@@ -392,6 +397,16 @@ def ours_densities(cd,
         # integration convention below (col = y0 index, row = y1 index).
         centers_raw_scaled = 0.5 * (edges_np[:-1] + edges_np[1:])          # (J,)
         bin_w_scaled = float(edges_np[1] - edges_np[0])
+        # Raw-marginal diagnostic — no MALC, no log-linear interp, just
+        # divide by bin width and resample. Always computed alongside
+        # whichever main marginal path (1D-MALC or 2D-marginalise) is in
+        # use, so we can compare per-realization L2s.
+        _p_marg_y0_raw = p_mats[q].sum(axis=1)                             # (J,)
+        _p_marg_y1_raw = p_mats[q].sum(axis=0)                             # (J,)
+        _d_y0_raw_native = _p_marg_y0_raw / max(bin_w_scaled, 1e-12)
+        _d_y1_raw_native = _p_marg_y1_raw / max(bin_w_scaled, 1e-12)
+        p_y0_raw[q] = resample_onto(centers_raw_scaled, _d_y0_raw_native, Y_CENTERS)
+        p_y1_raw[q] = resample_onto(centers_raw_scaled, _d_y1_raw_native, Y_CENTERS)
         if marginals_from_2d and fit_mix is not None:
             d_y0_native = density_2d.sum(axis=0) * dys                     # (n_eval,) on xs
             d_y1_native = density_2d.sum(axis=1) * dxs                     # (n_eval,) on ys
@@ -446,6 +461,7 @@ def ours_densities(cd,
         p_tau[q] = p_tau_native
 
     return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau,
+                p_y0_raw=p_y0_raw, p_y1_raw=p_y1_raw,
                 cate_raw_scaled=cate_raw_scaled,
                 cate_em_mix_scaled=cate_em_mix_scaled,
                 cate_em_k1_scaled=cate_em_k1_scaled)
