@@ -87,6 +87,11 @@ def main() -> int:
     ap.add_argument('--std-target', type=float,
                      default=float(os.environ.get('STD_TARGET', 0.3)),
                      help='Target scaled sigma for --y-scaling std.')
+    ap.add_argument('--marginals-from-2d', action='store_true',
+                     default=(os.environ.get('MARGINALS_FROM_2D', '0') == '1'),
+                     help='Take p(Y_do0), p(Y_do1) by marginalising the 2D-MALC '
+                          'joint (same fit CATE uses) instead of running 1D MALC '
+                          'on the raw marginals. Applies to all "ours_*" methods.')
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
@@ -421,8 +426,10 @@ def _run_ours(cd, ckpt_path, truth, args, n_ctx):
         malc_B=args.malc_B, malc_max_K=args.malc_max_K, n_eval=args.n_eval,
         n_context=n_ctx,
         fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
+        marginals_from_2d=args.marginals_from_2d,
     )
-    print(f'[ours] done in {time.time() - t0:.1f}s', flush=True)
+    print(f'[ours] done in {time.time() - t0:.1f}s   '
+          f'(marginals_from_2d={args.marginals_from_2d})', flush=True)
     return d
 
 
@@ -469,8 +476,11 @@ def _run_ours_dopfn_bb(cd, ckpt_path, truth, args, n_ctx):
         fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
         y_scaling=args.y_scaling,
         std_target=args.std_target,
+        marginals_from_2d=args.marginals_from_2d,
     )
-    print(f'[ours-dopfn-bb] done in {time.time() - t0:.1f}s   (y_scaling={args.y_scaling})', flush=True)
+    print(f'[ours-dopfn-bb] done in {time.time() - t0:.1f}s   '
+          f'(y_scaling={args.y_scaling}, marginals_from_2d={args.marginals_from_2d})',
+          flush=True)
     return d
 
 

@@ -177,6 +177,7 @@ def ours_densities(cd,
                     dmalc_2d: Callable[..., Any] = None,
                     y_scaling: str = 'min_max',
                     std_target: float = 0.3,
+                    marginals_from_2d: bool = False,
                     ) -> dict[str, np.ndarray]:
     """Joint-head forward pass, per-query MALC fit, marginalise + diagonal
     integrate onto the common (Y_CENTERS, TAU_CENTERS) grids.
@@ -317,22 +318,33 @@ def ours_densities(cd,
             # density value = probability_mass / bin_area
             density_2d = (p_norm[np.ix_(j0, j1)] / (bin_width * bin_width)).T
 
-        # Marginals via 1D MALC (per density_calc.md):
-        # take the raw marginal from p_mat, fit 1D log-concave MLE via
-        # CVXPY, then convert to density on centers_raw and resample to
-        # Y_CENTERS. Falls back to 2D MALC marginalisation if cvxpy fails.
+        # Marginals — two variants:
+        #   default (marginals_from_2d=False): fit 1D log-concave MLE via CVXPY
+        #     on the raw marginals of p_mat. Two independent 1D MALCs.
+        #   marginals_from_2d=True: marginalise the 2D-MALC-fitted joint
+        #     (density_2d) — same joint that CATE integrates. Only used when
+        #     the 2D fit succeeded (fit_mix is not None); falls back to 1D
+        #     MALC otherwise so the raw-fallback path never regresses.
+        # Convention: density_2d[row, col] is the density at (xs[col], ys[row]),
+        # where xs is the y0 grid and ys is the y1 grid — matches the diagonal-
+        # integration convention below (col = y0 index, row = y1 index).
         centers_raw_scaled = 0.5 * (edges_np[:-1] + edges_np[1:])          # (J,)
         bin_w_scaled = float(edges_np[1] - edges_np[0])
-        # p_mat convention: p_mat[j0, j1] (j0 = y0 axis, j1 = y1 axis)
-        p_marg_y0_raw = p_mats[q].sum(axis=1)                              # (J,)
-        p_marg_y1_raw = p_mats[q].sum(axis=0)                              # (J,)
-        p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
-        p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
-        # Convert probs → density on centers (density = prob / bin_width)
-        d_y0_native = p_marg_y0_malc / max(bin_w_scaled, 1e-12)
-        d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
-        p_y0[q] = resample_onto(centers_raw_scaled, d_y0_native, Y_CENTERS)
-        p_y1[q] = resample_onto(centers_raw_scaled, d_y1_native, Y_CENTERS)
+        if marginals_from_2d and fit_mix is not None:
+            d_y0_native = density_2d.sum(axis=0) * dys                     # (n_eval,) on xs
+            d_y1_native = density_2d.sum(axis=1) * dxs                     # (n_eval,) on ys
+            p_y0[q] = resample_onto(xs, d_y0_native, Y_CENTERS)
+            p_y1[q] = resample_onto(ys, d_y1_native, Y_CENTERS)
+        else:
+            # p_mat convention: p_mat[j0, j1] (j0 = y0 axis, j1 = y1 axis)
+            p_marg_y0_raw = p_mats[q].sum(axis=1)                          # (J,)
+            p_marg_y1_raw = p_mats[q].sum(axis=0)                          # (J,)
+            p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
+            p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
+            d_y0_native = p_marg_y0_malc / max(bin_w_scaled, 1e-12)
+            d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
+            p_y0[q] = resample_onto(centers_raw_scaled, d_y0_native, Y_CENTERS)
+            p_y1[q] = resample_onto(centers_raw_scaled, d_y1_native, Y_CENTERS)
 
         # CATE via diagonal integration.
         # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
