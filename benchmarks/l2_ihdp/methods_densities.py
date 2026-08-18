@@ -86,6 +86,68 @@ def _get_malc_1d_problem(J: int):
     return entry
 
 
+def evaluate_malc_1d_on_grid(p_malc, src_centers, dst_grid, dst_bin=None):
+    """Evaluate a length-J log-concave discrete MLE at arbitrary points via
+    log-linear interpolation — the canonical way to lift the discrete MLE to
+    a continuous density (see R's logcondens::evaluateLogConDens).
+
+    The discrete log-concave MLE fits log p at J bin centers. The
+    corresponding CONTINUOUS log-concave density is uniquely determined:
+    log p is piecewise-linear between the J fit points, and exp(log p) is a
+    valid density on the support interval.
+
+    Linear interpolation IN PROBABILITY (np.interp on p_malc) does NOT
+    preserve log-concavity and gives a piecewise-linear staircase between
+    the J bars — which is what we want to avoid, especially for small J.
+
+    Args:
+      p_malc     : (J,) length-J discrete probabilities from malc_1d_cvxpy
+      src_centers: (J,) bin centers where p_malc lives
+      dst_grid   : (M,) target evaluation grid (uniform assumed)
+      dst_bin    : bin width of dst_grid (for normalisation); auto if None
+
+    Returns:
+      (M,) density on dst_grid, normalised to integrate to 1 on dst_grid,
+      zero outside [src_centers[0], src_centers[-1]].
+    """
+    p_malc = np.asarray(p_malc, dtype=np.float64).reshape(-1)
+    src_centers = np.asarray(src_centers, dtype=np.float64).reshape(-1)
+    dst_grid = np.asarray(dst_grid, dtype=np.float64).reshape(-1)
+    if dst_bin is None:
+        dst_bin = float(dst_grid[1] - dst_grid[0])
+
+    # Convert discrete probs to log-density values at src_centers so the
+    # interpolation lives on the density scale (constant offset — doesn't
+    # matter since we renormalise, but keeps semantics clean).
+    src_bin = float(src_centers[1] - src_centers[0])
+    d_src = p_malc / max(src_bin, 1e-12)
+    # Log-linear interpolation. Guard zeros so log stays finite; anything
+    # that maps to log(-inf) at a fit point stays -inf under linear interp
+    # in log space, so mass-zero regions remain mass-zero.
+    with np.errstate(divide='ignore'):
+        log_d_src = np.log(d_src)
+    finite = np.isfinite(log_d_src)
+    if not finite.any():
+        return np.zeros_like(dst_grid)
+    # For log-linear interp, np.interp on log-density values, then exp.
+    # Points where BOTH neighbours are -inf stay at -inf → 0 after exp.
+    # Points where one neighbour is -inf will spike; safer to fall back to
+    # linear-in-prob at those points. In practice log-concave MLE rarely
+    # produces exact zeros in the interior, so this is edge-case cleanup.
+    log_d_safe = np.where(finite, log_d_src, -1e18)
+    log_d_dst = np.interp(dst_grid, src_centers, log_d_safe,
+                          left=-1e18, right=-1e18)
+    d_dst = np.exp(log_d_dst)
+    # Zero out beyond src support (np.interp doesn't, since our sentinel is
+    # -1e18 not -inf; exp(-1e18)=0 numerically but be explicit).
+    outside = (dst_grid < src_centers[0]) | (dst_grid > src_centers[-1])
+    d_dst[outside] = 0.0
+    total = float(d_dst.sum() * dst_bin)
+    if total > 0:
+        d_dst = d_dst / total
+    return d_dst
+
+
 def malc_1d_cvxpy(p_marg, solver=None):
     """Fit a 1D discrete log-concave MLE to a length-J marginal p_marg.
 
@@ -341,10 +403,16 @@ def ours_densities(cd,
             p_marg_y1_raw = p_mats[q].sum(axis=0)                          # (J,)
             p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
             p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
-            d_y0_native = p_marg_y0_malc / max(bin_w_scaled, 1e-12)
-            d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
-            p_y0[q] = resample_onto(centers_raw_scaled, d_y0_native, Y_CENTERS)
-            p_y1[q] = resample_onto(centers_raw_scaled, d_y1_native, Y_CENTERS)
+            # Evaluate the continuous log-concave MLE directly on Y_CENTERS
+            # via log-linear interpolation (matches R's evaluateLogConDens).
+            # Previously used resample_onto (linear-in-prob), which reduces
+            # a J=10 MLE to a piecewise-linear 10-bar staircase on 100 pts.
+            p_y0[q] = evaluate_malc_1d_on_grid(p_marg_y0_malc,
+                                                centers_raw_scaled, Y_CENTERS,
+                                                dst_bin=Y_BIN)
+            p_y1[q] = evaluate_malc_1d_on_grid(p_marg_y1_malc,
+                                                centers_raw_scaled, Y_CENTERS,
+                                                dst_bin=Y_BIN)
 
         # CATE via diagonal integration.
         # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
