@@ -51,6 +51,8 @@ def parse_stats(path: str) -> dict:
                 ('PEHE (full 9-reg)',   'pehe_f'),
                 ('eps_ATE (inner)',     'ate_i'),
                 ('eps_ATE (full 9-reg)', 'ate_f'),
+                # Do-PFN reference lines from --also-dopfn logs
+                ('PEHE (Do-PFN)',       'pehe_dopfn'),
                 ('eps_ATE (Do-PFN)',    'ate_dopfn'),
             ]:
                 if line.startswith(prefix):
@@ -72,6 +74,9 @@ SCHEMES    = ['min_max', 'std', 'trim5', 'trim10', 'log_transform']
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--deploy', default=os.environ.get('DEPLOY_ROOT'))
+    ap.add_argument('--scheme', default='min_max',
+                    help='Which single scheme to pivot the table on (default: min_max). '
+                         'Set to "all" to print the full per-scheme sections instead.')
     args = ap.parse_args()
     if not args.deploy:
         sys.exit('DEPLOY_ROOT not set; pass --deploy or export it')
@@ -94,26 +99,91 @@ def main():
     n_done = len(rows)
     print(f'[aggregate] parsed {len(files)} .out files, {n_done} completed rows\n')
 
-    for ckpt in CKPT_ORDER:
-        has_any = any((ckpt, ds, tag) in rows for ds in DATASETS for tag in SCHEMES)
-        if not has_any:
+    if args.scheme == 'all':
+        # Original per-checkpoint per-scheme layout
+        for ckpt in CKPT_ORDER:
+            has_any = any((ckpt, ds, tag) in rows for ds in DATASETS for tag in SCHEMES)
+            if not has_any:
+                continue
+            print(f'========== {ckpt} ==========')
+            print(f'{"dataset":10s} {"scheme":<14s} {"PEHE_inner":>14s} '
+                  f'{"PEHE_full":>14s} {"eps_ATE_i":>10s} {"eps_ATE_f":>10s}')
+            print('-' * 80)
+            for ds in DATASETS:
+                for tag in SCHEMES:
+                    key = (ckpt, ds, tag)
+                    if key not in rows:
+                        continue
+                    s = rows[key][1]
+                    pi = f'{s.get("pehe_i", float("nan")):14.4f}'
+                    pf = f'{s.get("pehe_f", float("nan")):14.4f}'
+                    ei = f'{s.get("ate_i",  float("nan")):10.4f}'
+                    ef = f'{s.get("ate_f",  float("nan")):10.4f}'
+                    print(f'{ds:10s} {tag:<14s} {pi} {pf} {ei} {ef}')
+            print()
+        return
+
+    # Single-scheme pivot: for each dataset, one row with columns per checkpoint
+    # plus Do-PFN reference. Only full 9-region numbers.
+    tag = args.scheme
+
+    # Gather Do-PFN reference numbers for this scheme (across all datasets) —
+    # DoPFN is dataset-dependent but scheme-independent (DoPFN has its own
+    # internal preprocessing; our --y-scaling doesn't affect it). Prefer the
+    # min_max shard, fall back to any shard for that dataset.
+    dopfn_refs = {}   # ds -> (pehe_dopfn, ate_dopfn)
+    for (_ckpt, ds, _tag), (_mt, s) in rows.items():
+        if 'ate_dopfn' not in s:
             continue
-        print(f'========== {ckpt} ==========')
-        print(f'{"dataset":10s} {"scheme":<14s} {"PEHE_inner":>14s} '
-              f'{"PEHE_full":>14s} {"eps_ATE_i":>10s} {"eps_ATE_f":>10s}')
-        print('-' * 80)
-        for ds in DATASETS:
-            for tag in SCHEMES:
-                key = (ckpt, ds, tag)
-                if key not in rows:
-                    continue
-                s = rows[key][1]
-                pi = f'{s.get("pehe_i", float("nan")):14.4f}'
-                pf = f'{s.get("pehe_f", float("nan")):14.4f}'
-                ei = f'{s.get("ate_i",  float("nan")):10.4f}'
-                ef = f'{s.get("ate_f",  float("nan")):10.4f}'
-                print(f'{ds:10s} {tag:<14s} {pi} {pf} {ei} {ef}')
-        print()
+        # Only overwrite if we don't have it yet, or prefer 'min_max' shard
+        cur = dopfn_refs.get(ds)
+        if cur is None or _tag == 'min_max':
+            dopfn_refs[ds] = (s.get('pehe_dopfn', float('nan')),
+                                s.get('ate_dopfn', float('nan')))
+
+    print(f'========== scheme={tag}   metric=eps_ATE (full 9-region) ==========')
+    print(f'Do-PFN reference is scheme-independent (comes from --also-dopfn logs).\n')
+    header = f'{"dataset":10s} '
+    for ckpt in CKPT_ORDER:
+        header += f'{ckpt:>12s} '
+    header += f'{"Do-PFN":>12s}'
+    print(header)
+    print('-' * len(header))
+    for ds in DATASETS:
+        row = f'{ds:10s} '
+        for ckpt in CKPT_ORDER:
+            key = (ckpt, ds, tag)
+            if key in rows:
+                v = rows[key][1].get('ate_f', float('nan'))
+                row += f'{v:12.4f} '
+            else:
+                row += f'{"—":>12s} '
+        dref = dopfn_refs.get(ds)
+        if dref and dref[1] == dref[1]:   # not NaN
+            row += f'{dref[1]:12.4f}'
+        else:
+            row += f'{"—":>12s}'
+        print(row)
+
+    print()
+    print(f'========== scheme={tag}   metric=PEHE (full 9-region) ==========')
+    print(header)
+    print('-' * len(header))
+    for ds in DATASETS:
+        row = f'{ds:10s} '
+        for ckpt in CKPT_ORDER:
+            key = (ckpt, ds, tag)
+            if key in rows:
+                v = rows[key][1].get('pehe_f', float('nan'))
+                row += f'{v:12.4f} '
+            else:
+                row += f'{"—":>12s} '
+        dref = dopfn_refs.get(ds)
+        if dref and dref[0] == dref[0]:
+            row += f'{dref[0]:12.4f}'
+        else:
+            row += f'{"—":>12s}'
+        print(row)
 
 
 if __name__ == '__main__':
