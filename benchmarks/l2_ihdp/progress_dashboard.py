@@ -22,8 +22,8 @@ TASKS = [
     ('(4) d,N grid (N=1250·d)',        'dn-grid-',            11,  'd_n_grid_dopfnbb_j10s150k.png.d*.npz'),
     # 500 seeds × 5 N values × 1 source (poly) = 2500 shards
     ('(5) context sweep (poly)',       'rpfn-ctxsweep',       2500, 'results_sweep_dopfnbb_j10s150k/poly_seed*_N*.npz'),
-    ('(7) IHDP L2 density',            'rpfn-ihdp-l2',        100, 'ihdp_l2_dopfnbb_j10_s150k/out.r*.npz'),
-    ('(8) ACIC L2 density',            'rpfn-acic-l2',        10,  'acic_l2_dopfnbb_j10_s150k/out.r*.npz'),
+    ('(7) IHDP L2 density (std)',      'rpfn-ihdp-l2',        100, 'ihdp_l2_dopfnbb_j10_s150k_std/out.r*.npz'),
+    ('(8) ACIC L2 density (std)',      'rpfn-acic-l2',        10,  'acic_l2_dopfnbb_j10_s150k_std/out.r*.npz'),
     ('(9) d=6 density DoPFN vs bb',    'd6-density',          1,   'd6_density_dopfnbb_j10s150k.png.d*.npz'),
     # J=10 s200k CPS sweep (side-quest)
     ('J=10 s200k CPS eval',            'j10s200000-CPS',      5,   'eval_dopfn_bb_raw/j10_s200000_CPS_*.npz'),
