@@ -135,8 +135,10 @@ def main():
     ap.add_argument('--n-realizations',  type=int, default=100,
                     help='How many realizations to score (0..N-1). Capped by dataset size at runtime.')
     ap.add_argument('--start-realization', type=int, default=0)
-    ap.add_argument('--acic-n-tables', type=int, default=77,
-                    help='n_tables for ACIC2016Dataset (default 77 — the full DGP set).')
+    ap.add_argument('--acic-n-tables', type=int, default=10,
+                    help='n_tables for ACIC2016Dataset (default 10 — matches every '
+                         'other script in this repo; 77 requires internet to download '
+                         'extra tables which compute nodes do not have).')
     ap.add_argument('--out', default='',
                     help='Optional .npz with per-realization PEHE / eps_ATE arrays.')
     ap.add_argument('--n-context', type=int, default=0,
