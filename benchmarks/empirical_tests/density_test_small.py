@@ -76,10 +76,14 @@ def main():
     DoPFNRegressor = load_dopfn(args)
 
     # ── Accumulators (per-seed averages, then agg across seeds) ───────
-    l2_y0 = {'dopfn': [], 'dopfn_bb': []}
-    l2_y1 = {'dopfn': [], 'dopfn_bb': []}
-    l2_tau = {'dopfn': [], 'dopfn_bb': []}
-    l2_ate = {'dopfn': [], 'dopfn_bb': []}
+    # Four ours variants: MALC-OLD (resample_onto), MALC-LOGLIN (log-linear),
+    # RAW (no MALC), plus Do-PFN reference. Same p_tau across all ours
+    # variants (2D MALC diagonal integration doesn't depend on marginal path).
+    METHOD_NAMES = ['dopfn', 'bb_malc_old', 'bb_malc_loglin', 'bb_raw']
+    l2_y0 = {m: [] for m in METHOD_NAMES}
+    l2_y1 = {m: [] for m in METHOD_NAMES}
+    l2_tau = {m: [] for m in METHOD_NAMES}
+    l2_ate = {m: [] for m in METHOD_NAMES}
 
     print(f'[cfg] d={args.d}  N={args.N}  n_test={args.n_test}  '
           f'n_seeds={args.n_seeds}  rho={args.rho}  sigma_eps={args.sigma_eps}', flush=True)
@@ -138,17 +142,26 @@ def main():
         raw_TAU_from_tcenters = TAU_CENTERS * y_rng / 2.0
         scale_factor_y = 2.0 / y_rng   # density transforms inversely to bin width
 
-        for method_name, d_out in [('dopfn', d_dopfn), ('dopfn_bb', d_bb)]:
+        # Method variants: each gives its own (p_y0, p_y1); τ / ATE share
+        # d_bb's p_tau across bb variants (2D-MALC diagonal integration is
+        # unchanged by marginal path). Do-PFN uses its own p_tau.
+        variants = [
+            ('dopfn',           d_dopfn['p_y0'],         d_dopfn['p_y1'],         d_dopfn['p_tau']),
+            ('bb_malc_old',     d_bb['p_y0_malc_old'],   d_bb['p_y1_malc_old'],   d_bb['p_tau']),
+            ('bb_malc_loglin',  d_bb['p_y0'],            d_bb['p_y1'],            d_bb['p_tau']),
+            ('bb_raw',          d_bb['p_y0_raw'],        d_bb['p_y1_raw'],        d_bb['p_tau']),
+        ]
+        for method_name, m_p_y0, m_p_y1, m_p_tau in variants:
             per_q_l2_y0 = []
             per_q_l2_y1 = []
             per_q_l2_tau = []
             for q in range(args.n_test):
                 # Interp method's density on Y_CENTERS-derived raw grid onto Y_GRID
                 py0_raw = np.interp(Y_GRID, raw_Y_from_ycenters,
-                                     d_out['p_y0'][q] * scale_factor_y,
+                                     m_p_y0[q] * scale_factor_y,
                                      left=0.0, right=0.0)
                 py1_raw = np.interp(Y_GRID, raw_Y_from_ycenters,
-                                     d_out['p_y1'][q] * scale_factor_y,
+                                     m_p_y1[q] * scale_factor_y,
                                      left=0.0, right=0.0)
                 # Renormalise on Y_GRID
                 s0 = py0_raw.sum() * Y_DX; py0_raw = py0_raw / s0 if s0 > 0 else py0_raw
@@ -157,7 +170,7 @@ def main():
                 per_q_l2_y1.append(l2_1d(py1_raw, p_y1_true[q], Y_DX))
                 # τ
                 ptau_raw = np.interp(TAU_GRID, raw_TAU_from_tcenters,
-                                      d_out['p_tau'][q] * scale_factor_y,
+                                      m_p_tau[q] * scale_factor_y,
                                       left=0.0, right=0.0)
                 st = ptau_raw.sum() * TAU_DX
                 if st > 0: ptau_raw = ptau_raw / st
@@ -165,7 +178,7 @@ def main():
             # ATE via barycenter of per-query τ densities
             p_ate_hat = wass_bary_of_grid(
                 np.stack([np.interp(TAU_GRID, raw_TAU_from_tcenters,
-                                     d_out['p_tau'][q] * scale_factor_y,
+                                     m_p_tau[q] * scale_factor_y,
                                      left=0.0, right=0.0)
                           for q in range(args.n_test)]),
                 TAU_GRID, wasserstein_barycenter_1d)
@@ -175,12 +188,10 @@ def main():
             l2_ate[method_name].append(l2_1d(p_ate_hat, p_ate_true, TAU_DX))
 
         dt = time.time() - t0
-        print(f'  seed={seed:2d}  done in {dt:.1f}s  '
-              f'dopfn: y0={l2_y0["dopfn"][-1]:.3f} y1={l2_y1["dopfn"][-1]:.3f} '
-              f'tau={l2_tau["dopfn"][-1]:.3f} ate={l2_ate["dopfn"][-1]:.3f}  '
-              f'bb: y0={l2_y0["dopfn_bb"][-1]:.3f} y1={l2_y1["dopfn_bb"][-1]:.3f} '
-              f'tau={l2_tau["dopfn_bb"][-1]:.3f} ate={l2_ate["dopfn_bb"][-1]:.3f}',
-              flush=True)
+        print(f'  seed={seed:2d}  done in {dt:.1f}s', flush=True)
+        for m in METHOD_NAMES:
+            print(f'    {m:18s}  y0={l2_y0[m][-1]:.3f}  y1={l2_y1[m][-1]:.3f}  '
+                  f'tau={l2_tau[m][-1]:.3f}  ate={l2_ate[m][-1]:.3f}', flush=True)
 
     # ── Aggregate mean ± SEM ──────────────────────────────────────────
     def _stat(vs):
@@ -194,15 +205,36 @@ def main():
     print()
     print(f'══ Density L2 — polynomial SCM  d={args.d}  N={args.N}  '
           f'ρ={args.rho}  n_seeds={args.n_seeds} ══')
-    print(f'{"metric":<8s}  {"Do-PFN":>22s}  {"DoPFN-bb":>22s}  {"winner":<8s}')
-    print('-' * 78)
+    LABELS = {
+        'dopfn':          'Do-PFN',
+        'bb_malc_old':    'DoPFN-bb MALC-OLD',
+        'bb_malc_loglin': 'DoPFN-bb MALC-LOGLIN',
+        'bb_raw':         'DoPFN-bb RAW',
+    }
+    header = f'{"metric":<6s}  ' + '  '.join(f'{LABELS[m]:>22s}' for m in METHOD_NAMES)
+    print(header)
+    print('-' * len(header))
     for metric_name, d_dict in [('y0', l2_y0), ('y1', l2_y1),
                                    ('tau', l2_tau), ('ate', l2_ate)]:
-        m_d, sem_d, n_d = _stat(d_dict['dopfn'])
-        m_b, sem_b, n_b = _stat(d_dict['dopfn_bb'])
-        winner = 'DoPFN-bb' if float(m_b) < float(m_d) else 'Do-PFN'
-        print(f'{metric_name:<8s}  {m_d:>10s} ± {sem_d:<8s}  '
-              f'{m_b:>10s} ± {sem_b:<8s}  {winner:<8s}')
+        row = f'{metric_name:<6s}  '
+        best_m, best_v = None, float('inf')
+        cells = {}
+        for m in METHOD_NAMES:
+            mn, sem, n = _stat(d_dict[m])
+            cells[m] = (mn, sem, n)
+            try:
+                v = float(mn)
+                if v < best_v: best_v, best_m = v, m
+            except Exception:
+                pass
+        for m in METHOD_NAMES:
+            mn, sem, _ = cells[m]
+            marker = '*' if m == best_m else ' '
+            cell = f'{marker}{mn:>10s} ± {sem:<8s}'
+            row += f'  {cell:>22s}'
+        print(row)
+    print()
+    print('(* marks the lowest L2 in each row)')
 
 
 if __name__ == '__main__':

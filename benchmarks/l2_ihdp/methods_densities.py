@@ -307,6 +307,11 @@ def ours_densities(cd,
     # measure how much MALC helps (or hurts) the y0/y1 densities.
     p_y0_raw = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1_raw = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    # OLD-MALC diagnostic: 1D-MALC-smoothed marginal but with linear-in-prob
+    # interp (resample_onto) — reproduces the pre-log-linear behaviour, useful
+    # for A/B comparing whether log-linear evaluation actually helped.
+    p_y0_malc_old = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_y1_malc_old = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
     # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
     # computed both ways (matches Table 3's `ours_mean` variant).
@@ -418,16 +423,21 @@ def ours_densities(cd,
             p_marg_y1_raw = p_mats[q].sum(axis=0)                          # (J,)
             p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
             p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
-            # Evaluate the continuous log-concave MLE directly on Y_CENTERS
-            # via log-linear interpolation (matches R's evaluateLogConDens).
-            # Previously used resample_onto (linear-in-prob), which reduces
-            # a J=10 MLE to a piecewise-linear 10-bar staircase on 100 pts.
+            # LOGLIN (default main output): evaluate the continuous log-
+            # concave MLE directly on Y_CENTERS via log-linear interpolation.
             p_y0[q] = evaluate_malc_1d_on_grid(p_marg_y0_malc,
                                                 centers_raw_scaled, Y_CENTERS,
                                                 dst_bin=Y_BIN)
             p_y1[q] = evaluate_malc_1d_on_grid(p_marg_y1_malc,
                                                 centers_raw_scaled, Y_CENTERS,
                                                 dst_bin=Y_BIN)
+            # OLD-MALC (diagnostic): same MALC fit, but resample_onto
+            # (linear-in-prob) instead of log-linear. Reproduces pre-fix
+            # behaviour; no extra MALC compute cost.
+            _d_y0_native = p_marg_y0_malc / max(bin_w_scaled, 1e-12)
+            _d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
+            p_y0_malc_old[q] = resample_onto(centers_raw_scaled, _d_y0_native, Y_CENTERS)
+            p_y1_malc_old[q] = resample_onto(centers_raw_scaled, _d_y1_native, Y_CENTERS)
 
         # CATE via diagonal integration.
         # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
@@ -462,6 +472,7 @@ def ours_densities(cd,
 
     return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau,
                 p_y0_raw=p_y0_raw, p_y1_raw=p_y1_raw,
+                p_y0_malc_old=p_y0_malc_old, p_y1_malc_old=p_y1_malc_old,
                 cate_raw_scaled=cate_raw_scaled,
                 cate_em_mix_scaled=cate_em_mix_scaled,
                 cate_em_k1_scaled=cate_em_k1_scaled)
