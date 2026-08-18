@@ -30,16 +30,35 @@ def count_ours(args):
     model.load_state_dict(ckpt['model_state_dict'])
 
     total = sum(p.numel() for p in model.parameters())
-    # Head = anything under the module path 'head' (our added 2D BarDist head)
-    head_names = [n for n, _ in model.named_parameters() if n.startswith('head.')]
-    head = sum(p.numel() for n, p in model.named_parameters() if n.startswith('head.'))
+    # Our added 2D BarDist head lives at self.head_2d in DoPFNBackboneWith2DHead
+    # (also aliased into backbone.decoder_dict['standard'] — pytorch de-duplicates
+    # so no double-counting).
+    HEAD_PREFIXES = ('head_2d.', 'backbone.decoder_dict.standard.')
+    head_names = [n for n, _ in model.named_parameters()
+                   if any(n.startswith(p) for p in HEAD_PREFIXES)]
+    head = sum(p.numel() for n, p in model.named_parameters()
+                if any(n.startswith(pre) for pre in HEAD_PREFIXES))
+    # De-duplicate: head_2d and backbone.decoder_dict.standard may share ids
+    seen_ids = set()
+    head_unique = 0
+    for n, p in model.named_parameters():
+        if any(n.startswith(pre) for pre in HEAD_PREFIXES):
+            if id(p) in seen_ids: continue
+            seen_ids.add(id(p))
+            head_unique += p.numel()
+    head = head_unique
 
     print(f'\n══ Ours (DoPFN-bb + 2D head, J={J})  |  {os.path.basename(args.checkpoint)} ══')
     print(f'  total params:  {_fmt_M(total):>10s}   ({total:,})')
     print(f'  head params:   {_fmt_M(head):>10s}   ({head:,})')
     print(f'  head fraction: {head / max(total, 1) * 100:.3f}%')
     if head_names:
-        print(f'  head modules:  {sorted({n.split(".")[1] for n in head_names})}')
+        preview = sorted({n.split(".")[0] for n in head_names})
+        print(f'  matched prefixes: {preview}')
+    else:
+        # No match on the expected prefixes — dump top-level modules so user can see
+        top = sorted({n.split(".")[0] for n, _ in model.named_parameters()})
+        print(f'  (no match — top-level modules: {top})')
     return total, head
 
 
