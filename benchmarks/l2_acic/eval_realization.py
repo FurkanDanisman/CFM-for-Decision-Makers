@@ -83,6 +83,11 @@ def main() -> int:
     ap.add_argument('--std-target', type=float,
                      default=float(os.environ.get('STD_TARGET', 0.3)),
                      help='Target scaled sigma for --y-scaling std.')
+    ap.add_argument('--marginals-from-2d', action='store_true',
+                     default=(os.environ.get('MARGINALS_FROM_2D', '0') == '1'),
+                     help='Take p(Y_do0), p(Y_do1) by marginalising the 2D-MALC '
+                          'joint (same fit CATE uses) instead of running 1D MALC '
+                          'on the raw marginals.')
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
