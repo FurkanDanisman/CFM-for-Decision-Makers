@@ -77,6 +77,12 @@ def main() -> int:
     ap.add_argument('--restrict-features', type=int, default=0)   # unused for ACIC
     ap.add_argument('--acic-cache-dir',
                      default=os.environ.get('ACIC_CACHE_DIR', ''))
+    ap.add_argument('--y-scaling', default=os.environ.get('Y_SCALING', 'min_max'),
+                     choices=['min_max', 'std'],
+                     help='Y-scaling scheme for ours_densities (mirrors l2_ihdp).')
+    ap.add_argument('--std-target', type=float,
+                     default=float(os.environ.get('STD_TARGET', 0.3)),
+                     help='Target scaled sigma for --y-scaling std.')
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
