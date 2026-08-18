@@ -12,6 +12,7 @@ Usage:
     python dump_marginals_for_R.py \\
         --repo $DEPLOY_ROOT/R-PFN \\
         --dopfn $DEPLOY_ROOT/external/dopfn \\
+        --causalpfn $DEPLOY_ROOT/external/CausalPFN \\
         --checkpoint-dopfn-bb $DEPLOY_ROOT/checkpoints_dopfn_backbone_realj10/step_150000.pt \\
         --realization 0 \\
         --out ihdp_marginals_r0.json
@@ -27,6 +28,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--repo', required=True)
     ap.add_argument('--dopfn', required=True)
+    ap.add_argument('--causalpfn', required=True,
+                     help='Path to the CausalPFN repo (has benchmarks.IHDPDataset).')
     ap.add_argument('--checkpoint-dopfn-bb', required=True)
     ap.add_argument('--realization', type=int, default=0)
     ap.add_argument('--n-context', type=int, default=100)
@@ -42,16 +45,20 @@ def main():
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
     sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
     sys.path.insert(0, args.repo)
+    sys.path.insert(0, args.causalpfn)
 
     import torch
-    from true_ihdp import IHDPTruth, Y_CENTERS
+    from true_ihdp import load_ihdp_truth, true_marginals_per_query, Y_CENTERS
     from methods_densities import ours_densities
     from dopfn_backbone_head import DoPFNBackboneWith2DHead
     from losses.BarDistribution2D import fit_malc_inner, unpack_pred
     from malc_2d import dmalc_2d
+    from benchmarks import IHDPDataset
 
-    truth = IHDPTruth(realization=args.realization)
-    cd = truth.get_context_data()
+    cd, _ = IHDPDataset()[args.realization]
+    y_train_full = np.asarray(cd.y_train.detach().cpu()
+                              if hasattr(cd.y_train, 'detach') else cd.y_train)
+    truth = load_ihdp_truth(args.realization, args.causalpfn, y_train_full)
 
     # ── Load model + get raw p_mats ────────────────────────────────
     print(f'[load] {args.checkpoint_dopfn_bb}', flush=True)
@@ -102,7 +109,6 @@ def main():
         p_mats[q] = p_mat.detach().cpu().numpy()
 
     # True densities on Y_CENTERS
-    from true_ihdp import true_marginals_per_query
     p_y0_true, p_y1_true = true_marginals_per_query(truth)
 
     # Cap n_queries for JSON size
