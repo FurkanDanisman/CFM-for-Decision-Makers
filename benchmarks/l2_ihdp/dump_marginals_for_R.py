@@ -44,6 +44,7 @@ def main():
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
     sys.path.insert(0, os.path.join(args.repo, 'training_dopfn_base'))
+    sys.path.insert(0, os.path.join(args.repo, 'MALC'))
     sys.path.insert(0, os.path.join(args.repo, 'MALC', 'Optimal_Transport'))
     sys.path.insert(0, args.repo)
     sys.path.insert(0, args.causalpfn)
