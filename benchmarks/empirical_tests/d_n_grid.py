@@ -132,6 +132,9 @@ def main():
     ap.add_argument('--out',                 default='d_n_grid.png')
     ap.add_argument('--d-index',             type=int, default=-1)
     ap.add_argument('--plot',                action='store_true')
+    ap.add_argument('--skip-malc',           action='store_true',
+                    help='Skip MALC 2D fit; use raw p_mat marginal means for CATE. ~10x '
+                         'faster — for PEHE-only experiments.')
     args = ap.parse_args()
 
     if args.plot:
@@ -191,7 +194,8 @@ def main():
                 m50, edges50, J50, bw50, ctr50, NF50, wb50 = o50
                 _ours_args = types.SimpleNamespace(repo=args.repo,
                                                       malc_B=30, malc_max_K=3,
-                                                      n_eval=200, workers=8)
+                                                      n_eval=200, workers=8,
+                                                      skip_malc=args.skip_malc)
                 ours50 = ours_pipeline(cd, m50, edges50, J50, bw50, NF50, ctr50,
                                          _ours_args, wb50)
                 pehe_ours50 = _pehe(true_cate, ours50['ours_mean'])
