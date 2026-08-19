@@ -52,9 +52,9 @@ def main() -> int:
     ap.add_argument('--n-context', type=int,
                      default=int(os.environ.get('N_CONTEXT', 0)))         # 0 = full
     ap.add_argument('--malc-B', type=int,
-                     default=int(os.environ.get('MALC_B', 60)))
+                     default=int(os.environ.get('MALC_B', 100)))
     ap.add_argument('--malc-max-K', type=int,
-                     default=int(os.environ.get('MALC_MAX_K', 3)))
+                     default=int(os.environ.get('MALC_MAX_K', 1)))
     ap.add_argument('--n-eval', type=int,
                      default=int(os.environ.get('N_EVAL', 200)))
     ap.add_argument('--uwyk-n-samples', type=int,
