@@ -100,13 +100,33 @@ def main():
         ('ours_dopfn_bb_old',     'BB OLD'),
         ('ours_dopfn_bb_rawmarg', 'BB RAW'),
         ('ours_dopfn_bb_indep',   'BB INDEP-τ'),
+        ('ours_fn50',             'fn=50'),
+        ('uwyk_noanc',            'UWYK-NoAnc'),
+        ('uwyk_anc',              'UWYK-FullAnc'),
         ('dopfn',                 'Do-PFN'),
     ]
 
-    # Accumulators
+    # Accumulators — J=10 (coarse), J=100 (Y_CENTERS native), J=1000 (upsampled fine)
     METRICS = ['y0_j100', 'y1_j100', 'tau_j100', 'ate_j100',
-               'y0_j10',  'y1_j10',  'tau_j10',  'ate_j10']
+               'y0_j10',  'y1_j10',  'tau_j10',  'ate_j10',
+               'y0_j1000','y1_j1000','tau_j1000','ate_j1000']
     acc = {label: {m: [] for m in METRICS} for _, label in VARIANTS}
+
+    # J=1000 grids — 10× upsampled from Y_CENTERS / TAU_CENTERS
+    Y_1000 = np.linspace(Y_CENTERS[0], Y_CENTERS[-1], 1000)
+    Y_BIN_1000 = float(Y_1000[1] - Y_1000[0])
+    TAU_1000 = np.linspace(TAU_CENTERS[0], TAU_CENTERS[-1], 1000)
+    TAU_BIN_1000 = float(TAU_1000[1] - TAU_1000[0])
+
+    def to_1000_y(density_on_Y):
+        p = np.interp(Y_1000, Y_CENTERS, density_on_Y, left=0.0, right=0.0)
+        s = p.sum() * Y_BIN_1000
+        return p / s if s > 0 else p
+
+    def to_1000_tau(density_on_tau):
+        p = np.interp(TAU_1000, TAU_CENTERS, density_on_tau, left=0.0, right=0.0)
+        s = p.sum() * TAU_BIN_1000
+        return p / s if s > 0 else p
 
     shards = sorted(glob.glob(args.shards_glob))
     if not shards:
@@ -148,6 +168,7 @@ def main():
                     ate_j10   = to_j10_tau(ate_L)
                     t_ate_j10 = to_j10_tau(p_ate_true)
                     acc[label]['ate_j10'].append(l2(ate_j10/tau_bin_w_J10, t_ate_j10/tau_bin_w_J10, tau_bin_w_J10))
+                    acc[label]['ate_j1000'].append(l2(to_1000_tau(ate_L), to_1000_tau(p_ate_true), TAU_BIN_1000))
                 for q in range(n_q):
                     # y0 / y1 — LEFT-edge convention
                     p0_L = shift_y(z[py0_key][q])
@@ -156,6 +177,8 @@ def main():
                     acc[label]['y1_j100'].append(l2(p1_L, p_y1_true[q], Y_BIN))
                     acc[label]['y0_j10'].append(l2(to_j10_y(p0_L)/bin_w_J10, to_j10_y(p_y0_true[q])/bin_w_J10, bin_w_J10))
                     acc[label]['y1_j10'].append(l2(to_j10_y(p1_L)/bin_w_J10, to_j10_y(p_y1_true[q])/bin_w_J10, bin_w_J10))
+                    acc[label]['y0_j1000'].append(l2(to_1000_y(p0_L), to_1000_y(p_y0_true[q]), Y_BIN_1000))
+                    acc[label]['y1_j1000'].append(l2(to_1000_y(p1_L), to_1000_y(p_y1_true[q]), Y_BIN_1000))
                     # τ — LEFT-edge shift (per user request 2026-08-19)
                     if ptau_key in z.files:
                         tau_L = shift_tau(z[ptau_key][q])
@@ -163,6 +186,7 @@ def main():
                         acc[label]['tau_j10'].append(l2(to_j10_tau(tau_L)/tau_bin_w_J10,
                                                         to_j10_tau(p_tau_true[q])/tau_bin_w_J10,
                                                         tau_bin_w_J10))
+                        acc[label]['tau_j1000'].append(l2(to_1000_tau(tau_L), to_1000_tau(p_tau_true[q]), TAU_BIN_1000))
         if (si + 1) % 10 == 0:
             print(f'  processed {si+1}/{len(shards)}', flush=True)
 
@@ -176,14 +200,14 @@ def main():
     print(f'══ {args.dataset.upper()} — LEFT-edge y0/y1, center-conv τ/ATE  '
           f'(n_queries pooled across {len(shards)} realizations) ══')
     print(f'{"variant":18s}  '
-          f'{"y0 J=10":>16s}  {"y0 J=100":>16s}  '
-          f'{"y1 J=10":>16s}  {"y1 J=100":>16s}  '
-          f'{"τ J=10":>16s}  {"τ J=100":>16s}  '
-          f'{"ATE J=10":>16s}  {"ATE J=100":>16s}')
+          f'{"y0 J=100":>16s}  {"y0 J=1000":>16s}  '
+          f'{"y1 J=100":>16s}  {"y1 J=1000":>16s}  '
+          f'{"τ J=100":>16s}  {"τ J=1000":>16s}  '
+          f'{"ATE J=100":>16s}  {"ATE J=1000":>16s}')
     for _, label in VARIANTS:
         row = f'{label:18s}  '
-        for metric in ['y0_j10','y0_j100','y1_j10','y1_j100',
-                        'tau_j10','tau_j100','ate_j10','ate_j100']:
+        for metric in ['y0_j100','y0_j1000','y1_j100','y1_j1000',
+                        'tau_j100','tau_j1000','ate_j100','ate_j1000']:
             row += f'  {_agg(acc[label][metric]):>16s}'
         print(row)
 
