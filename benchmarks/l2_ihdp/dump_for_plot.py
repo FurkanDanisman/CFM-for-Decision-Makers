@@ -211,6 +211,37 @@ def main():
     if q >= n_test:
         print(f'[warn] q={q} out of range (n_test={n_test}), clamping to 0'); q = 0
 
+    # Synthetic-case fixup: truth lives on fig2's raw-Y Y_GRID (e.g. 501 pts
+    # over [-8, 8]) but dopfn_densities / ours_densities emit densities on
+    # IHDP's scaled Y_CENTERS (100 pts over [-1.5, 1.5]). Unscale + interp
+    # method outputs onto the truth's Y_GRID so everything shares one grid.
+    if args.case == 'synthetic':
+        from true_ihdp import Y_CENTERS as IHDP_YC, TAU_CENTERS as IHDP_TC
+        raw_Y = y_min + (np.asarray(IHDP_YC) + 1.0) * y_rng / 2.0
+        raw_TAU = np.asarray(IHDP_TC) * y_rng / 2.0
+        scale_y = 2.0 / y_rng
+        Y_GRID_np = np.asarray(Y_CENTERS)
+        TAU_GRID_np = np.asarray(TAU_CENTERS)
+        Y_DX_np = float(Y_GRID_np[1] - Y_GRID_np[0])
+        TAU_DX_np = float(TAU_GRID_np[1] - TAU_GRID_np[0])
+        def _interp_y(p_scaled):
+            p = np.interp(Y_GRID_np, raw_Y, p_scaled * scale_y, left=0.0, right=0.0)
+            s = p.sum() * Y_DX_np
+            return p / s if s > 0 else p
+        def _interp_tau(p_scaled):
+            p = np.interp(TAU_GRID_np, raw_TAU, p_scaled * scale_y, left=0.0, right=0.0)
+            s = p.sum() * TAU_DX_np
+            return p / s if s > 0 else p
+        # Overwrite in-place so the storage block below is unchanged
+        d_bb = {**d_bb,
+                'p_y0': np.stack([_interp_y(d_bb['p_y0'][k])   for k in range(n_test)]),
+                'p_y1': np.stack([_interp_y(d_bb['p_y1'][k])   for k in range(n_test)]),
+                'p_tau': np.stack([_interp_tau(d_bb['p_tau'][k]) for k in range(n_test)])}
+        d_dopfn = {**d_dopfn,
+                'p_y0': np.stack([_interp_y(d_dopfn['p_y0'][k])   for k in range(n_test)]),
+                'p_y1': np.stack([_interp_y(d_dopfn['p_y1'][k])   for k in range(n_test)]),
+                'p_tau': np.stack([_interp_tau(d_dopfn['p_tau'][k]) for k in range(n_test)])}
+
     print(f'[dump] q={q}  n_test={n_test}  → {args.out}', flush=True)
     blob = {
         'case': args.case,
