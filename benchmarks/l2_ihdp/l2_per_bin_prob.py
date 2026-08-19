@@ -136,7 +136,7 @@ def main():
 
     # Accumulators — pool across (realization, query)
     acc = {m: {q: [] for q in ('y0', 'y1', 'tau', 'ate')}
-           for m in ('dopfn', 'bb_raw', 'bb_malc')}
+           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep')}
 
     for si, shard_path in enumerate(shards):
         r = int(shard_path.split('.r')[-1].split('.')[0])
@@ -196,7 +196,7 @@ def main():
                 sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
                 t_tau = truth_probs_tau(mu_tau, sigma_tau)
 
-                # ── DoPFN-bb MALC ──────────────────────────────────────
+                # ── DoPFN-bb MALC (2D-MALC diagonal τ) ─────────────────
                 if has_malc:
                     p_bb_malc_y0 = y_probs_from_stored(z['ours_dopfn_bb__p_y0'][q])
                     p_bb_malc_y1 = y_probs_from_stored(z['ours_dopfn_bb__p_y1'][q])
@@ -207,6 +207,19 @@ def main():
                     acc['bb_malc']['y0'].append(l2(p_bb_malc_y0, t_y0, bin_w_Y))
                     acc['bb_malc']['y1'].append(l2(p_bb_malc_y1, t_y1, bin_w_Y))
                     acc['bb_malc']['tau'].append(l2(p_bb_malc_tau, t_tau, bin_w_tau))
+                    # ── DoPFN-bb MALC + INDEPENDENCE τ ────────────────
+                    # Same marginals as bb_malc; τ via convolution of MALC marginals
+                    # (assumes Y0 ⊥ Y1, ignoring the 2D joint fit).
+                    p_bb_mi_tau_conv = np.convolve(p_bb_malc_y1, p_bb_malc_y0[::-1], mode='full')
+                    tau_conv_offsets = np.arange(-(J-1), J) * bin_w_Y
+                    p_bb_mi_tau = np.zeros(n_tau_bins)
+                    for i, off in enumerate(tau_conv_offsets):
+                        k = int(np.clip(np.searchsorted(edges_tau, off, side='right') - 1,
+                                         0, n_tau_bins - 1))
+                        p_bb_mi_tau[k] += p_bb_mi_tau_conv[i]
+                    acc['bb_malc_indep']['y0'].append(l2(p_bb_malc_y0, t_y0, bin_w_Y))
+                    acc['bb_malc_indep']['y1'].append(l2(p_bb_malc_y1, t_y1, bin_w_Y))
+                    acc['bb_malc_indep']['tau'].append(l2(p_bb_mi_tau, t_tau, bin_w_tau))
 
                 # ── DoPFN-bb raw marginals ────────────────────────────
                 if has_rawmarg:
@@ -244,25 +257,34 @@ def main():
                 # Do-PFN-bb RAW ATE: barycenter of per-query raw τ densities.
                 # Raw τ per query = independence convolution of raw y0/y1 marginals
                 # (on Y_CENTERS grid), yielding a τ density on a natural convolution grid.
-                if has_rawmarg:
-                    raw_tau_dens = []
+                def _conv_ate(y0_key, y1_key):
+                    dens_per_q = []
                     for q in range(n_q):
-                        d_y0 = z['ours_dopfn_bb_rawmarg__p_y0'][q]  # on Y_CENTERS
-                        d_y1 = z['ours_dopfn_bb_rawmarg__p_y1'][q]
-                        # Convolve → τ density on grid stepped by Y_BIN, spanning
-                        # roughly [Y_CENTERS[0]-Y_CENTERS[-1], Y_CENTERS[-1]-Y_CENTERS[0]]
-                        # Use FFT convolution on Y_CENTERS spacing
+                        d_y0 = z[y0_key][q]
+                        d_y1 = z[y1_key][q]
                         conv = np.convolve(d_y1, d_y0[::-1], mode='full') * Y_BIN
                         tau_grid_conv = np.arange(-(len(Y_CENTERS)-1), len(Y_CENTERS)) * Y_BIN + (Y_CENTERS[0]-Y_CENTERS[-1])
-                        # Interp onto TAU_FINE
                         d_tau_q = np.interp(TAU_FINE_C, tau_grid_conv, conv, left=0, right=0)
                         s = d_tau_q.sum() * TAU_FINE_BIN
                         if s > 0: d_tau_q = d_tau_q / s
-                        raw_tau_dens.append(d_tau_q)
-                    raw_tau_dens = np.stack(raw_tau_dens)
+                        dens_per_q.append(d_tau_q)
+                    return np.stack(dens_per_q)
+
+                if has_rawmarg:
+                    raw_tau_dens = _conv_ate('ours_dopfn_bb_rawmarg__p_y0',
+                                              'ours_dopfn_bb_rawmarg__p_y1')
                     raw_ate = wasserstein_barycenter_1d(raw_tau_dens, TAU_FINE_C)
                     p_bb_raw_ate = density_to_tau_probs(raw_ate, TAU_FINE_C, TAU_FINE_BIN)
                     acc['bb_raw']['ate'].append(l2(p_bb_raw_ate, t_ate, bin_w_tau))
+
+                # Do-PFN-bb MALC + INDEPENDENCE ATE: barycenter of convolutions of
+                # MALC-smoothed marginals (same marginals as bb_malc, τ via independence).
+                if has_malc:
+                    malc_conv_tau_dens = _conv_ate('ours_dopfn_bb__p_y0',
+                                                    'ours_dopfn_bb__p_y1')
+                    malc_conv_ate = wasserstein_barycenter_1d(malc_conv_tau_dens, TAU_FINE_C)
+                    p_bb_mi_ate = density_to_tau_probs(malc_conv_ate, TAU_FINE_C, TAU_FINE_BIN)
+                    acc['bb_malc_indep']['ate'].append(l2(p_bb_mi_ate, t_ate, bin_w_tau))
 
         # ── Do-PFN reference shard (separate file) ────────────────────
         if r in dopfn_by_r:
@@ -316,7 +338,8 @@ def main():
     print(f'{"method":18s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
     for m_key, m_label in [('dopfn', 'Do-PFN'),
                             ('bb_raw', 'Do-PFN-bb raw'),
-                            ('bb_malc', 'Do-PFN-bb MALC')]:
+                            ('bb_malc', 'Do-PFN-bb MALC (2D-τ)'),
+                            ('bb_malc_indep', 'Do-PFN-bb MALC (indep-τ)')]:
         row = f'{m_label:18s}'
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
