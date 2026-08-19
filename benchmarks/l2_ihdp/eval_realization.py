@@ -233,6 +233,15 @@ def main() -> int:
                 p_tau=_d['p_tau'],
                 cate_raw_scaled=_d.get('cate_raw_scaled'),
             )
+        # MEAN-ADJUSTED MALC diagnostic: R's get_fhatn recipe (Beta jitter
+        # to encode empirical-mean shift + refit log-concave). Same p_tau
+        # as main; only y0/y1 marginals differ.
+        if 'p_y0_malc_madj' in _d and 'p_y1_malc_madj' in _d:
+            method_out['ours_dopfn_bb_madj'] = dict(
+                p_y0=_d['p_y0_malc_madj'], p_y1=_d['p_y1_malc_madj'],
+                p_tau=_d['p_tau'],
+                cate_raw_scaled=_d.get('cate_raw_scaled'),
+            )
 
     # True per-query CATE and true ATE in RAW Y units (Table-3 convention).
     # Densities live in scaled Y ([-1, 1]); convert back via factor y_rng/2.

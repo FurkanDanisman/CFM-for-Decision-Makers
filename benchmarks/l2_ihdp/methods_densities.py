@@ -86,6 +86,87 @@ def _get_malc_1d_problem(J: int):
     return entry
 
 
+def malc_1d_mean_adjusted(p_marg, src_centers, dst_grid, dst_bin=None,
+                            B=10000, alpha=2, seed=20180621):
+    """Mean-adjusted 1D MALC — Python port of R's get_fhatn recipe.
+
+    The vanilla discrete log-concave MLE (malc_1d_cvxpy) doesn't preserve
+    the empirical mean of the input p_marg. R's get_fhatn corrects this
+    by sampling from the log-concave fit + adding Beta-distributed jitter
+    whose parameters encode the empirical-mean shift, then refitting
+    log-concave on the corrected samples.
+
+    Steps:
+      1. Fit discrete log-concave MLE on p_marg  → phat
+      2. Compute empirical mean of raw p_marg    → mu_n
+      3. Compute Delta = mu_n - left_edge_mean; Beta shape param
+         beta_ = 2*alpha*(Delta/delta - 0.5)
+      4. Sample B points from phat, then add jitter drawn from
+         Beta(alpha + beta_, alpha - beta_) × delta
+      5. Histogram jittered samples onto dst_grid; refit log-concave
+         via CVXPY at dst_grid resolution
+      6. Return density on dst_grid
+
+    Args:
+      p_marg     : (J,) raw marginal probs (input to MALC)
+      src_centers: (J,) bin centers where p_marg lives
+      dst_grid   : (M,) target evaluation grid
+      dst_bin    : bin width of dst_grid (auto if None)
+      B          : number of jittered samples (default 10000)
+      alpha      : Beta smoothing parameter (default 2; higher = more mass
+                   near midpoint, lower = more mass near edges)
+      seed       : RNG seed for reproducibility
+
+    Returns:
+      (M,) density on dst_grid, normalised.
+    """
+    p_marg = np.asarray(p_marg, dtype=np.float64).reshape(-1)
+    src_centers = np.asarray(src_centers, dtype=np.float64).reshape(-1)
+    dst_grid = np.asarray(dst_grid, dtype=np.float64).reshape(-1)
+    if dst_bin is None:
+        dst_bin = float(dst_grid[1] - dst_grid[0])
+    s = float(p_marg.sum())
+    if s <= 0: return np.zeros_like(dst_grid)
+    p_marg = p_marg / s
+
+    # Step 1: discrete log-concave MLE
+    phat = malc_1d_cvxpy(p_marg)
+
+    # Step 2: empirical mean + Delta
+    delta = float(src_centers[1] - src_centers[0])
+    left_edges = src_centers - delta / 2.0
+    mu_n = float(np.sum(p_marg * src_centers))         # empirical mean (bin midpoints)
+    mu_low = float(np.sum(p_marg * left_edges))         # left-edge mean
+    Delta = mu_n - mu_low
+    # Beta shape param — clamped so alpha ± beta_ > 0 (rbeta requires positive)
+    beta_ = 2.0 * alpha * (Delta / delta - 0.5)
+    beta_ = float(np.clip(beta_, -alpha + 1e-6, alpha - 1e-6))
+
+    # Step 3: sample from phat with Beta jitter
+    rng = np.random.default_rng(seed)
+    ystar_idx = rng.choice(len(phat), size=B, p=phat)
+    ystar = left_edges[ystar_idx]
+    zstar = delta * rng.beta(alpha + beta_, alpha - beta_, size=B)
+    xstar = ystar + zstar
+
+    # Step 4: histogram onto dst_grid + refit log-concave
+    dst_edges = np.linspace(dst_grid[0] - dst_bin/2,
+                             dst_grid[-1] + dst_bin/2,
+                             len(dst_grid) + 1)
+    counts, _ = np.histogram(xstar, bins=dst_edges)
+    total = counts.sum()
+    if total == 0: return np.zeros_like(dst_grid)
+    p_hist = counts / total
+    p_hist_malc = malc_1d_cvxpy(p_hist)
+
+    # Convert to density
+    d = p_hist_malc / max(dst_bin, 1e-12)
+    # Normalise on dst_grid
+    tot = float(d.sum() * dst_bin)
+    if tot > 0: d = d / tot
+    return d
+
+
 def evaluate_malc_1d_on_grid(p_malc, src_centers, dst_grid, dst_bin=None):
     """Evaluate a length-J log-concave discrete MLE at arbitrary points via
     log-linear interpolation — the canonical way to lift the discrete MLE to
@@ -240,6 +321,8 @@ def ours_densities(cd,
                     y_scaling: str = 'min_max',
                     std_target: float = 0.3,
                     marginals_from_2d: bool = False,
+                    mean_adjust_B: int = 10000,
+                    mean_adjust_alpha: float = 2.0,
                     ) -> dict[str, np.ndarray]:
     """Joint-head forward pass, per-query MALC fit, marginalise + diagonal
     integrate onto the common (Y_CENTERS, TAU_CENTERS) grids.
@@ -312,6 +395,12 @@ def ours_densities(cd,
     # for A/B comparing whether log-linear evaluation actually helped.
     p_y0_malc_old = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1_malc_old = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    # MEAN-ADJUSTED MALC diagnostic: port of R's get_fhatn — samples from
+    # discrete log-concave + Beta jitter that encodes the empirical-mean
+    # shift, then refits log-concave on Y_CENTERS. Fixes systematic mean
+    # bias in the vanilla log-concave MLE.
+    p_y0_malc_madj = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_y1_malc_madj = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
     # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
     # computed both ways (matches Table 3's `ours_mean` variant).
@@ -438,6 +527,17 @@ def ours_densities(cd,
             _d_y1_native = p_marg_y1_malc / max(bin_w_scaled, 1e-12)
             p_y0_malc_old[q] = resample_onto(centers_raw_scaled, _d_y0_native, Y_CENTERS)
             p_y1_malc_old[q] = resample_onto(centers_raw_scaled, _d_y1_native, Y_CENTERS)
+            # MEAN-ADJUSTED MALC (diagnostic): port of R's get_fhatn recipe.
+            # Fits vanilla log-concave, then adds Beta jitter that encodes
+            # the empirical-mean shift, and refits log-concave on Y_CENTERS.
+            p_y0_malc_madj[q] = malc_1d_mean_adjusted(
+                p_marg_y0_raw, centers_raw_scaled, Y_CENTERS,
+                dst_bin=Y_BIN, B=mean_adjust_B, alpha=mean_adjust_alpha,
+                seed=20180621 + q)
+            p_y1_malc_madj[q] = malc_1d_mean_adjusted(
+                p_marg_y1_raw, centers_raw_scaled, Y_CENTERS,
+                dst_bin=Y_BIN, B=mean_adjust_B, alpha=mean_adjust_alpha,
+                seed=20180621 + q)
 
         # CATE via diagonal integration.
         # For each tau, integrate p(y0, y0+tau) over y0. y0 runs over xs
@@ -473,6 +573,7 @@ def ours_densities(cd,
     return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau,
                 p_y0_raw=p_y0_raw, p_y1_raw=p_y1_raw,
                 p_y0_malc_old=p_y0_malc_old, p_y1_malc_old=p_y1_malc_old,
+                p_y0_malc_madj=p_y0_malc_madj, p_y1_malc_madj=p_y1_malc_madj,
                 cate_raw_scaled=cate_raw_scaled,
                 cate_em_mix_scaled=cate_em_mix_scaled,
                 cate_em_k1_scaled=cate_em_k1_scaled)
