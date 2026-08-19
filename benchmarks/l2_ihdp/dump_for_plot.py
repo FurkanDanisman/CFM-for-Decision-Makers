@@ -99,12 +99,25 @@ def _load_ihdp_case(args):
 
 
 def _load_acic_case(args):
-    """ACIC per-realization truth + context data. Follows benchmarks/l2_acic/eval_realization.py."""
-    from true_acic import load_acic_truth, true_marginals_per_query, true_cate_per_query
-    from true_ihdp import Y_CENTERS, TAU_CENTERS
-    from acic_dataset import ACICDataset
-    cd, _ = ACICDataset()[args.realization]
-    truth = load_acic_truth(args.realization)
+    """ACIC per-realization truth + context data. Mirrors benchmarks/l2_acic/eval_realization.py."""
+    # ACIC's true_acic.py lives in l2_acic/ (not l2_ihdp/) — its Y_CENTERS may
+    # differ from IHDP's; source from the same place.
+    from true_acic import (load_acic_truth, true_marginals_per_query,
+                            true_cate_per_query, Y_CENTERS, TAU_CENTERS)
+    # ACIC via causalpfn.benchmarks
+    from benchmarks import ACIC2016Dataset
+    # Reuse the datasets-module shim from l2_acic/eval_realization.py so
+    # dopfn's benchmark imports resolve.
+    from eval_realization import _install_dopfn_datasets_shim   # noqa: F401
+    try:
+        _install_dopfn_datasets_shim(args.dopfn)
+    except Exception as e:
+        print(f'[warn] dopfn datasets shim failed: {type(e).__name__}: {e}', flush=True)
+    cd, _ = ACIC2016Dataset()[args.realization]
+    y_train_full = np.asarray(cd.y_train.detach().cpu()
+                              if hasattr(cd.y_train, 'detach') else cd.y_train)
+    truth = load_acic_truth(args.realization, y_train_full,
+                             cache_dir=(args.acic_cache_dir or None))
     p_y0_true, p_y1_true = true_marginals_per_query(truth)
     p_tau_true = true_cate_per_query(truth)
     return cd, truth.y_min, truth.y_rng, p_y0_true, p_y1_true, p_tau_true, Y_CENTERS, TAU_CENTERS
@@ -136,6 +149,8 @@ def main():
     ap.add_argument('--checkpoint-dopfn-bb', required=True)
     ap.add_argument('--realization', type=int, default=0,
                      help='For ihdp/acic cases.')
+    ap.add_argument('--acic-cache-dir', default='',
+                     help='Optional cache dir for ACIC truth (empty = use default).')
     ap.add_argument('--query', type=int, default=0,
                      help='Which test query to dump for plotting.')
     ap.add_argument('--n-context', type=int, default=100)
