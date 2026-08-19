@@ -166,32 +166,41 @@ def main():
         return float(np.sqrt(np.sum((np.asarray(p) - np.asarray(t))**2) / bin_w))
 
     # ── Load shards ──────────────────────────────────────────────────
-    shards = sorted(glob.glob(args.shards_glob))
-    dopfn_shards = sorted(glob.glob(args.dopfn_shards_glob)) if args.dopfn_shards_glob else []
+    # Filter globs to STRICT shard basenames — a shard file's basename must
+    # end with `.rNNN.npz` and nothing else. Sibling cache files like
+    # `.r000.ours_fn50_cache.npz` or `.r000.dopfn_cache.npz` would otherwise
+    # sort AFTER the real shard alphabetically and clobber the dict
+    # last-wins race, silently zeroing out every method row.
+    import re
+    _SHARD_RE = re.compile(r'\.r\d+\.npz$')
+    def _shards(pattern):
+        return sorted(f for f in glob.glob(pattern) if _SHARD_RE.search(os.path.basename(f)))
+    shards = _shards(args.shards_glob)
+    dopfn_shards = _shards(args.dopfn_shards_glob) if args.dopfn_shards_glob else []
     dopfn_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in dopfn_shards}
-    fn50_shards = sorted(glob.glob(args.fn50_shards_glob)) if args.fn50_shards_glob else []
+    fn50_shards = _shards(args.fn50_shards_glob) if args.fn50_shards_glob else []
     fn50_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_shards}
-    uwyk_shards = sorted(glob.glob(args.uwyk_shards_glob)) if args.uwyk_shards_glob else []
+    uwyk_shards = _shards(args.uwyk_shards_glob) if args.uwyk_shards_glob else []
     uwyk_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in uwyk_shards}
-    bb_2dmarg_shards = sorted(glob.glob(args.bb_2dmarg_shards_glob)) if args.bb_2dmarg_shards_glob else []
+    bb_2dmarg_shards = _shards(args.bb_2dmarg_shards_glob) if args.bb_2dmarg_shards_glob else []
     bb_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_shards}
-    bb_b500_shards = sorted(glob.glob(args.bb_b500_shards_glob)) if args.bb_b500_shards_glob else []
+    bb_b500_shards = _shards(args.bb_b500_shards_glob) if args.bb_b500_shards_glob else []
     bb_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_b500_shards}
-    bb_2dmarg_b500_shards = sorted(glob.glob(args.bb_2dmarg_b500_shards_glob)) if args.bb_2dmarg_b500_shards_glob else []
+    bb_2dmarg_b500_shards = _shards(args.bb_2dmarg_b500_shards_glob) if args.bb_2dmarg_b500_shards_glob else []
     bb_2dmarg_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_b500_shards}
-    fn50_2dmarg_shards = sorted(glob.glob(args.fn50_2dmarg_shards_glob)) if args.fn50_2dmarg_shards_glob else []
+    fn50_2dmarg_shards = _shards(args.fn50_2dmarg_shards_glob) if args.fn50_2dmarg_shards_glob else []
     fn50_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_shards}
-    fn50_b500_shards = sorted(glob.glob(args.fn50_b500_shards_glob)) if args.fn50_b500_shards_glob else []
+    fn50_b500_shards = _shards(args.fn50_b500_shards_glob) if args.fn50_b500_shards_glob else []
     fn50_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_b500_shards}
-    fn50_2dmarg_b500_shards = sorted(glob.glob(args.fn50_2dmarg_b500_shards_glob)) if args.fn50_2dmarg_b500_shards_glob else []
+    fn50_2dmarg_b500_shards = _shards(args.fn50_2dmarg_b500_shards_glob) if args.fn50_2dmarg_b500_shards_glob else []
     fn50_2dmarg_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_b500_shards}
-    bb_b1000_shards = sorted(glob.glob(args.bb_b1000_shards_glob)) if args.bb_b1000_shards_glob else []
+    bb_b1000_shards = _shards(args.bb_b1000_shards_glob) if args.bb_b1000_shards_glob else []
     bb_b1000_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_b1000_shards}
-    bb_2dmarg_b1000_shards = sorted(glob.glob(args.bb_2dmarg_b1000_shards_glob)) if args.bb_2dmarg_b1000_shards_glob else []
+    bb_2dmarg_b1000_shards = _shards(args.bb_2dmarg_b1000_shards_glob) if args.bb_2dmarg_b1000_shards_glob else []
     bb_2dmarg_b1000_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_b1000_shards}
-    fn50_b1000_shards = sorted(glob.glob(args.fn50_b1000_shards_glob)) if args.fn50_b1000_shards_glob else []
+    fn50_b1000_shards = _shards(args.fn50_b1000_shards_glob) if args.fn50_b1000_shards_glob else []
     fn50_b1000_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_b1000_shards}
-    fn50_2dmarg_b1000_shards = sorted(glob.glob(args.fn50_2dmarg_b1000_shards_glob)) if args.fn50_2dmarg_b1000_shards_glob else []
+    fn50_2dmarg_b1000_shards = _shards(args.fn50_2dmarg_b1000_shards_glob) if args.fn50_2dmarg_b1000_shards_glob else []
     fn50_2dmarg_b1000_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_b1000_shards}
     print(f'[load] BB[B100:{len(shards)} B500:{len(bb_b500_shards)} B1000:{len(bb_b1000_shards)} '
           f'2d-B100:{len(bb_2dmarg_shards)} 2d-B500:{len(bb_2dmarg_b500_shards)} 2d-B1000:{len(bb_2dmarg_b1000_shards)}]  '
@@ -231,8 +240,11 @@ def main():
                         + [int(s.split('.r')[-1].split('.')[0]) for s in shards]))
     main_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in shards}
 
+    _debug = os.environ.get('AGG_DEBUG', '0') == '1'
     for si, r in enumerate(all_r):
         shard_path = main_by_r.get(r, None)
+        if _debug and r == all_r[0]:
+            print(f'[dbg] r={r} main_shard={shard_path}', flush=True)
         # Load truth for this realization
         if args.dataset == 'ihdp':
             cd, _ = IHDPDataset()[r]
