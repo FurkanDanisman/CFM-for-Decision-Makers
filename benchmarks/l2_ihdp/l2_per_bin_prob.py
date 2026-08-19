@@ -54,9 +54,13 @@ def main():
     ap.add_argument('--dopfn-shards-glob', default='',
                      help='Do-PFN shards (any sweep that has dopfn__* keys — B does not apply).')
     ap.add_argument('--fn50-shards-glob', default='',
-                     help='fn=50 sweep with 1D-MALC marginals (marginals_from_2d=0).')
+                     help='fn=50 @ B=100 with 1D-MALC marginals (marginals_from_2d=0).')
+    ap.add_argument('--fn50-b500-shards-glob', default='',
+                     help='fn=50 @ B=500 with 1D-MALC marginals.')
     ap.add_argument('--fn50-2dmarg-shards-glob', default='',
-                     help='fn=50 sweep with marginals_from_2d=True — new row.')
+                     help='fn=50 @ B=100 with marginals_from_2d=True.')
+    ap.add_argument('--fn50-2dmarg-b500-shards-glob', default='',
+                     help='fn=50 @ B=500 with marginals_from_2d=True.')
     ap.add_argument('--uwyk-shards-glob', default='',
                      help='UWYK sweep — reads uwyk_noanc__* and uwyk_anc__* keys.')
     ap.add_argument('--repo', required=True)
@@ -164,20 +168,26 @@ def main():
     bb_2dmarg_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_b500_shards}
     fn50_2dmarg_shards = sorted(glob.glob(args.fn50_2dmarg_shards_glob)) if args.fn50_2dmarg_shards_glob else []
     fn50_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_shards}
-    print(f'[load] {len(shards)} main-B100, {len(bb_b500_shards)} main-B500, '
-          f'{len(bb_2dmarg_shards)} 2dmarg-B100, {len(bb_2dmarg_b500_shards)} 2dmarg-B500, '
-          f'{len(dopfn_shards)} dopfn, {len(fn50_shards)} fn50-1D, '
-          f'{len(fn50_2dmarg_shards)} fn50-2D, {len(uwyk_shards)} uwyk', flush=True)
+    fn50_b500_shards = sorted(glob.glob(args.fn50_b500_shards_glob)) if args.fn50_b500_shards_glob else []
+    fn50_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_b500_shards}
+    fn50_2dmarg_b500_shards = sorted(glob.glob(args.fn50_2dmarg_b500_shards_glob)) if args.fn50_2dmarg_b500_shards_glob else []
+    fn50_2dmarg_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_b500_shards}
+    print(f'[load] BB[B100:{len(shards)} B500:{len(bb_b500_shards)} '
+          f'2d-B100:{len(bb_2dmarg_shards)} 2d-B500:{len(bb_2dmarg_b500_shards)}]  '
+          f'fn50[1d-B100:{len(fn50_shards)} 1d-B500:{len(fn50_b500_shards)} '
+          f'2d-B100:{len(fn50_2dmarg_shards)} 2d-B500:{len(fn50_2dmarg_b500_shards)}]  '
+          f'dopfn:{len(dopfn_shards)}  uwyk:{len(uwyk_shards)}', flush=True)
     if not shards:
         sys.exit('no main (B=100) shards match')
 
     # Accumulators — pool across (realization, query)
     acc = {m: {q: [] for q in ('y0', 'y1', 'tau', 'ate')}
            for m in ('dopfn',
-                       'bb_malc_b100', 'bb_2dmarg_b100',
-                       'bb_malc_b500', 'bb_2dmarg_b500',
-                       'fn50_1d',      'fn50_2d',
-                       'uwyk_noanc',   'uwyk_anc',
+                       'bb_malc_b100',      'bb_2dmarg_b100',
+                       'bb_malc_b500',      'bb_2dmarg_b500',
+                       'fn50_1d_b100',      'fn50_2d_b100',
+                       'fn50_1d_b500',      'fn50_2d_b500',
+                       'uwyk_noanc',        'uwyk_anc',
                        # kept for backwards-compat with old sweeps; unused rows
                        'bb_raw', 'bb_malc_indep')}
 
@@ -423,13 +433,21 @@ def main():
         if r in dopfn_by_r:
             _read_reference_method(dopfn_by_r[r], 'dopfn', 'dopfn',
                                     tau_via='indep_convolve', use_j100=False)
-        # fn=50 (1D-MALC marginals) — J=100 grid, native head resolution
+        # fn=50 @ B=100, 1D-MALC marginals — J=100 grid, native head resolution
         if r in fn50_by_r:
-            _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50_1d',
+            _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50_1d_b100',
                                     tau_via='stored_ptau', use_j100=True)
-        # fn=50 (2D-MALC marginals — separate sweep with MARGINALS_FROM_2D=1)
+        # fn=50 @ B=100, 2D-MALC marginals (sweep with MARGINALS_FROM_2D=1)
         if r in fn50_2dmarg_by_r:
-            _read_reference_method(fn50_2dmarg_by_r[r], 'ours_fn50', 'fn50_2d',
+            _read_reference_method(fn50_2dmarg_by_r[r], 'ours_fn50', 'fn50_2d_b100',
+                                    tau_via='stored_ptau', use_j100=True)
+        # fn=50 @ B=500, 1D-MALC marginals
+        if r in fn50_b500_by_r:
+            _read_reference_method(fn50_b500_by_r[r], 'ours_fn50', 'fn50_1d_b500',
+                                    tau_via='stored_ptau', use_j100=True)
+        # fn=50 @ B=500, 2D-MALC marginals
+        if r in fn50_2dmarg_b500_by_r:
+            _read_reference_method(fn50_2dmarg_b500_by_r[r], 'ours_fn50', 'fn50_2d_b500',
                                     tau_via='stored_ptau', use_j100=True)
         # UWYK — J=100 grid
         if r in uwyk_by_r:
@@ -466,19 +484,22 @@ def main():
           f'fn=50/UWYK: J={J_100} y-bins, {n_tau_bins_100} τ-bins @{bin_w_tau_100:.2f}) ══')
     print(f'{"method":52s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
     rows = [
-        ('dopfn',          'Do-PFN [J=10]'),
-        ('__sep__',        '─── B=100 ───────────────────────────────'),
-        ('bb_malc_b100',   'Do-PFN-bb MALC (2D-τ) 1D-marg [B=100, J=10]'),
-        ('bb_2dmarg_b100', 'Do-PFN-bb MALC (2D-τ) 2D-marg [B=100, J=10]'),
-        ('__sep__',        '─── B=500 ───────────────────────────────'),
-        ('bb_malc_b500',   'Do-PFN-bb MALC (2D-τ) 1D-marg [B=500, J=10]'),
-        ('bb_2dmarg_b500', 'Do-PFN-bb MALC (2D-τ) 2D-marg [B=500, J=10]'),
-        ('__sep__',        '─── fn=50 (B=100) ───────────────────────'),
-        ('fn50_1d',        'fn=50 (2D-τ) 1D-marg [B=100, J=100]'),
-        ('fn50_2d',        'fn=50 (2D-τ) 2D-marg [B=100, J=100]'),
-        ('__sep__',        '─── UWYK ────────────────────────────────'),
-        ('uwyk_noanc',     'UWYK-NoAnc [J=100]'),
-        ('uwyk_anc',       'UWYK-FullAnc [J=100]'),
+        ('dopfn',           'Do-PFN [J=10]'),
+        ('__sep__',         '─── BB @ B=100 ──────────────────────────'),
+        ('bb_malc_b100',    'Do-PFN-bb MALC (2D-τ) 1D-marg [B=100, J=10]'),
+        ('bb_2dmarg_b100',  'Do-PFN-bb MALC (2D-τ) 2D-marg [B=100, J=10]'),
+        ('__sep__',         '─── BB @ B=500 ──────────────────────────'),
+        ('bb_malc_b500',    'Do-PFN-bb MALC (2D-τ) 1D-marg [B=500, J=10]'),
+        ('bb_2dmarg_b500',  'Do-PFN-bb MALC (2D-τ) 2D-marg [B=500, J=10]'),
+        ('__sep__',         '─── fn=50 @ B=100 ───────────────────────'),
+        ('fn50_1d_b100',    'fn=50 (2D-τ) 1D-marg [B=100, J=100]'),
+        ('fn50_2d_b100',    'fn=50 (2D-τ) 2D-marg [B=100, J=100]'),
+        ('__sep__',         '─── fn=50 @ B=500 ───────────────────────'),
+        ('fn50_1d_b500',    'fn=50 (2D-τ) 1D-marg [B=500, J=100]'),
+        ('fn50_2d_b500',    'fn=50 (2D-τ) 2D-marg [B=500, J=100]'),
+        ('__sep__',         '─── UWYK ────────────────────────────────'),
+        ('uwyk_noanc',      'UWYK-NoAnc [J=100]'),
+        ('uwyk_anc',        'UWYK-FullAnc [J=100]'),
     ]
     for m_key, m_label in rows:
         if m_key == '__sep__':
