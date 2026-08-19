@@ -137,7 +137,8 @@ def main():
 
         try:
             d_dopfn = dopfn_densities(cd, DoPFNRegressor, y_min=y_min, y_rng=y_rng,
-                                        dopfn_root=args.dopfn, n_context=args.N)
+                                        dopfn_root=args.dopfn, n_context=args.N,
+                                        edges_j10_scaled=edges_np)
             d_bb = ours_densities(cd, model_bb, edges_np, J, bin_width, -1,
                                     y_min=y_min, y_rng=y_rng,
                                     malc_B=args.malc_B, malc_max_K=args.malc_max_K,
@@ -163,9 +164,11 @@ def main():
             sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
             t_tau = truth_probs_tau(mu_tau, sigma_tau)
 
-            # Do-PFN: Riemann on Y_CENTERS → J=10 (matches IHDP aggregator)
-            pd_y0 = y_probs_from_stored(d_dopfn['p_y0'][q])
-            pd_y1 = y_probs_from_stored(d_dopfn['p_y1'][q])
+            # Do-PFN: recipe-strict per-J=10-bin probability via CDF-interp
+            # of the native bar distribution at the J=10 edges (piecewise-
+            # uniform density assumption inside each Do-PFN bar).
+            pd_y0 = np.asarray(d_dopfn['p_y0_bins_j10'][q], dtype=np.float64)
+            pd_y1 = np.asarray(d_dopfn['p_y1_bins_j10'][q], dtype=np.float64)
             pd_tau = tau_probs_from_stored(d_dopfn['p_tau'][q])
             acc['dopfn']['y0'].append(l2(pd_y0, t_y0, bin_w_Y))
             acc['dopfn']['y1'].append(l2(pd_y1, t_y1, bin_w_Y))

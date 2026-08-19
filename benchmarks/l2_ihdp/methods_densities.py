@@ -800,6 +800,7 @@ def dopfn_densities(cd,
                      y_rng: float,
                      dopfn_root: str,
                      n_context: int | None = None,
+                     edges_j10_scaled: np.ndarray | None = None,
                      ) -> dict[str, np.ndarray]:
     """DoPFN per-arm density via predict_full()['logits'] over criterion.borders.
 
@@ -841,14 +842,19 @@ def dopfn_densities(cd,
         reg = DoPFNRegressor()
         reg.fit(torch.tensor(x_tr), torch.tensor(y_train_ctx))
 
-        def _arm_density(arm: int) -> np.ndarray:
+        # Extra returns: per-J=10-bin probability using the RAW native-bar
+        # CDF interpolated at the J=10 (scaled-Y) edges — the recipe-strict
+        # per-bin probability. Requires edges_j10_scaled to be passed in.
+        _J10 = None if edges_j10_scaled is None else int(len(edges_j10_scaled) - 1)
+
+        def _arm_density(arm: int):
             x = x_te.copy()
             x[:, 0] = float(arm)
             full = reg.predict_full(torch.tensor(x))
             logits = np.asarray(full['logits'])                     # (n_test, num_bars)
             borders = np.asarray(full['criterion'].borders.cpu())    # (num_bars + 1,) in raw Y units
             bar_widths = np.diff(borders)                            # (num_bars,)
-            # Softmax + convert to density on the (raw-Y) bar centres
+            # Softmax → per-bar probabilities (exact native discretization)
             z = logits - logits.max(axis=1, keepdims=True)
             probs = np.exp(z); probs /= probs.sum(axis=1, keepdims=True)
             density_raw = probs / bar_widths[None, :]                # (n_test, num_bars)
@@ -860,17 +866,36 @@ def dopfn_densities(cd,
             out = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
             for q in range(n_test):
                 out[q] = resample_onto(bar_centres_scaled, density_scaled[q], Y_CENTERS)
-            return out
 
-        p_y0 = _arm_density(0)
-        p_y1 = _arm_density(1)
+            # Recipe-strict per-J=10-bin probability: build the piecewise-
+            # uniform CDF at native bar borders (in scaled Y), interpolate
+            # at the J=10 edges, difference. F(border[k+1]) = Σ_{i≤k} probs[i].
+            if edges_j10_scaled is None:
+                return out, None
+            borders_scaled = (borders - y_min) / y_rng * 2.0 - 1.0    # (num_bars+1,)
+            bins_j10 = np.zeros((n_test, _J10), dtype=np.float64)
+            for q in range(n_test):
+                cdf = np.concatenate(([0.0], np.cumsum(probs[q])))    # (num_bars+1,)
+                F_at_edges = np.interp(edges_j10_scaled, borders_scaled, cdf,
+                                        left=0.0, right=1.0)
+                pj = np.diff(F_at_edges)
+                s = pj.sum()
+                bins_j10[q] = pj / s if s > 0 else pj
+            return out, bins_j10
+
+        p_y0, p_y0_bins_j10 = _arm_density(0)
+        p_y1, p_y1_bins_j10 = _arm_density(1)
     finally:
         os.chdir(_cwd)
 
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
     for q in range(n_test):
         p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+    out = dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+    if p_y0_bins_j10 is not None:
+        out['p_y0_bins_j10'] = p_y0_bins_j10
+        out['p_y1_bins_j10'] = p_y1_bins_j10
+    return out
 
 
 def _np(a):

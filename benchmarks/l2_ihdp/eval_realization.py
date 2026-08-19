@@ -641,12 +641,19 @@ def _run_dopfn(cd, truth, args, n_ctx):
     _dopfn_shim._repatch_dopfn_check_array()
     from methods_densities import dopfn_densities
 
+    # Pull J=10 scaled-Y edges from the DoPFN-bb checkpoint (same edges
+    # the aggregator uses) so dopfn_densities can emit recipe-strict
+    # per-J=10-bin probabilities via CDF-interp of the native bar dist.
+    _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
+    _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+
     t0 = time.time()
     d = dopfn_densities(
         cd, DoPFNRegressor,
         y_min=truth.y_min, y_rng=truth.y_rng,
         dopfn_root=args.dopfn,
         n_context=n_ctx,
+        edges_j10_scaled=_edges_j10,
     )
     print(f'[dopfn] done in {time.time() - t0:.1f}s', flush=True)
     return d
