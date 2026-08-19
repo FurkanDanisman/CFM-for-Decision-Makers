@@ -200,14 +200,16 @@ def main():
     print(f'══ {args.dataset.upper()} — LEFT-edge y0/y1, center-conv τ/ATE  '
           f'(n_queries pooled across {len(shards)} realizations) ══')
     print(f'{"variant":18s}  '
-          f'{"y0 J=100":>16s}  {"y0 J=1000":>16s}  '
-          f'{"y1 J=100":>16s}  {"y1 J=1000":>16s}  '
-          f'{"τ J=100":>16s}  {"τ J=1000":>16s}  '
-          f'{"ATE J=100":>16s}  {"ATE J=1000":>16s}')
+          f'{"y0 J=10":>16s}  {"y0 J=100":>16s}  {"y0 J=1000":>16s}  '
+          f'{"y1 J=10":>16s}  {"y1 J=100":>16s}  {"y1 J=1000":>16s}  '
+          f'{"τ J=10":>16s}  {"τ J=100":>16s}  {"τ J=1000":>16s}  '
+          f'{"ATE J=10":>16s}  {"ATE J=100":>16s}  {"ATE J=1000":>16s}')
     for _, label in VARIANTS:
         row = f'{label:18s}  '
-        for metric in ['y0_j100','y0_j1000','y1_j100','y1_j1000',
-                        'tau_j100','tau_j1000','ate_j100','ate_j1000']:
+        for metric in ['y0_j10','y0_j100','y0_j1000',
+                        'y1_j10','y1_j100','y1_j1000',
+                        'tau_j10','tau_j100','tau_j1000',
+                        'ate_j10','ate_j100','ate_j1000']:
             row += f'  {_agg(acc[label][metric]):>16s}'
         print(row)
 
