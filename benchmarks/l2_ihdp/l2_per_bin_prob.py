@@ -49,6 +49,9 @@ def main():
                      help='Optional separate shards for Ours(fn=50) — reads ours_fn50__* keys.')
     ap.add_argument('--uwyk-shards-glob', default='',
                      help='Optional separate shards for UWYK — reads uwyk_noanc__* and uwyk_anc__* keys.')
+    ap.add_argument('--bb-2dmarg-shards-glob', default='',
+                     help='Optional BB sweep run with marginals_from_2d=True — its '
+                          'ours_dopfn_bb__p_y0 / p_y1 are the marginalised 2D-MALC densities.')
     ap.add_argument('--repo', required=True)
     ap.add_argument('--causalpfn', required=True)
     ap.add_argument('--dopfn', default='', help='DoPFN repo path (ACIC only)')
@@ -146,14 +149,17 @@ def main():
     fn50_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_shards}
     uwyk_shards = sorted(glob.glob(args.uwyk_shards_glob)) if args.uwyk_shards_glob else []
     uwyk_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in uwyk_shards}
+    bb_2dmarg_shards = sorted(glob.glob(args.bb_2dmarg_shards_glob)) if args.bb_2dmarg_shards_glob else []
+    bb_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_shards}
     print(f'[load] {len(shards)} main, {len(dopfn_shards)} dopfn, '
-          f'{len(fn50_shards)} fn50, {len(uwyk_shards)} uwyk ref shards', flush=True)
+          f'{len(fn50_shards)} fn50, {len(uwyk_shards)} uwyk, '
+          f'{len(bb_2dmarg_shards)} bb-2dmarg ref shards', flush=True)
     if not shards:
         sys.exit('no main shards match')
 
     # Accumulators — pool across (realization, query)
     acc = {m: {q: [] for q in ('y0', 'y1', 'tau', 'ate')}
-           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep',
+           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep', 'bb_2dmarg',
                        'fn50', 'uwyk_noanc', 'uwyk_anc')}
 
     for si, shard_path in enumerate(shards):
@@ -394,6 +400,10 @@ def main():
                                     tau_via='indep_convolve', use_j100=True)
             _read_reference_method(uwyk_by_r[r], 'uwyk_anc', 'uwyk_anc',
                                     tau_via='indep_convolve', use_j100=True)
+        # BB with marginals from 2D-MALC (separate sweep run with marginals_from_2d=True)
+        if r in bb_2dmarg_by_r:
+            _read_reference_method(bb_2dmarg_by_r[r], 'ours_dopfn_bb', 'bb_2dmarg',
+                                    tau_via='stored_ptau', use_j100=False)
 
         if (si + 1) % 10 == 0:
             print(f'  processed {si+1}/{len(shards)}', flush=True)
@@ -413,6 +423,7 @@ def main():
                             ('bb_raw',         'Do-PFN-bb raw [J=10]'),
                             ('bb_malc',        'Do-PFN-bb MALC (2D-τ) [J=10]'),
                             ('bb_malc_indep',  'Do-PFN-bb MALC (indep-τ) [J=10]'),
+                            ('bb_2dmarg',      'Do-PFN-bb 2D-MALC marginals [J=10]'),
                             ('fn50',           'Ours(fn=50) [J=100]'),
                             ('uwyk_noanc',     'UWYK-NoAnc [J=100]'),
                             ('uwyk_anc',       'UWYK-FullAnc [J=100]')]:
