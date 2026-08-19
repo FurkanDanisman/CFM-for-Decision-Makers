@@ -691,6 +691,7 @@ def _uwyk_densities_from_raw_probs(cd,
                                      y_rng: float,        # unused
                                      n_context: int | None,
                                      adjacency_kind: str,
+                                     edges_j10_scaled: np.ndarray | None = None,
                                      ) -> dict[str, np.ndarray]:
     """Shared UWYK density computation. adjacency_kind ∈ {'noanc', 'anc'}."""
     X_train_full = _np(cd.X_train)
@@ -752,7 +753,32 @@ def _uwyk_densities_from_raw_probs(cd,
     p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
     for q in range(n_test):
         p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
-    return dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+    out = dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+
+    # Recipe-strict per-J=10-bin probability: piecewise-uniform CDF of the
+    # native bar distribution (K uniform bars in scaled Y) interpolated at
+    # the J=10 edges. UWYK's centers are uniform so borders are exactly
+    # centers ± bin_w/2.
+    if edges_j10_scaled is not None:
+        borders_scaled = np.concatenate([
+            centers_scaled - bin_w / 2.0,
+            [centers_scaled[-1] + bin_w / 2.0]
+        ])                                                            # (K+1,)
+        J10 = int(len(edges_j10_scaled) - 1)
+        y0_bins_j10 = np.zeros((n_test, J10), dtype=np.float64)
+        y1_bins_j10 = np.zeros((n_test, J10), dtype=np.float64)
+        for q in range(n_test):
+            cdf0 = np.concatenate(([0.0], np.cumsum(pBars_0[q])))     # (K+1,)
+            cdf1 = np.concatenate(([0.0], np.cumsum(pBars_1[q])))
+            F0 = np.interp(edges_j10_scaled, borders_scaled, cdf0, left=0.0, right=1.0)
+            F1 = np.interp(edges_j10_scaled, borders_scaled, cdf1, left=0.0, right=1.0)
+            p0 = np.diff(F0); s0 = p0.sum()
+            p1 = np.diff(F1); s1 = p1.sum()
+            y0_bins_j10[q] = p0 / s0 if s0 > 0 else p0
+            y1_bins_j10[q] = p1 / s1 if s1 > 0 else p1
+        out['p_y0_bins_j10'] = y0_bins_j10
+        out['p_y1_bins_j10'] = y1_bins_j10
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -765,12 +791,14 @@ def uwyk_noanc_densities(cd,
                           y_rng: float,
                           n_context: int | None = None,
                           n_samples: int | None = None,   # kept for backward-compat, unused
+                          edges_j10_scaled: np.ndarray | None = None,
                           ) -> dict[str, np.ndarray]:
     """UWYK-NoAnc raw bar probabilities via BarDist monkey-patch, then
     resample to Y_CENTERS; CATE under independence."""
     return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
                                             y_min, y_rng, n_context,
-                                            adjacency_kind='noanc')
+                                            adjacency_kind='noanc',
+                                            edges_j10_scaled=edges_j10_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -783,12 +811,14 @@ def uwyk_anc_densities(cd,
                         y_rng: float,
                         n_context: int | None = None,
                         n_samples: int | None = None,   # kept for backward-compat, unused
+                        edges_j10_scaled: np.ndarray | None = None,
                         ) -> dict[str, np.ndarray]:
     """UWYK Full-Ancestral: raw bar probabilities via BarDist monkey-patch,
     full-graph adjacency, resample to Y_CENTERS, independence convolution."""
     return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
                                             y_min, y_rng, n_context,
-                                            adjacency_kind='anc')
+                                            adjacency_kind='anc',
+                                            edges_j10_scaled=edges_j10_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────
