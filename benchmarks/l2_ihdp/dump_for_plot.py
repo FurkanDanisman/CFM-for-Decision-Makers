@@ -186,6 +186,13 @@ def main():
     else:
         cd, y_min, y_rng, p_y0_true, p_y1_true, p_tau_true, Y_CENTERS, TAU_CENTERS = _load_synthetic_case(args)
 
+    # Translate n_context=0 to "use full training set" (matches shard eval).
+    # Otherwise dopfn_densities passes min(0, N)=0 samples to sklearn and dies.
+    from methods_densities import _np as _to_np
+    _y_train_full = _to_np(cd.y_train)
+    n_ctx = args.n_context if args.n_context > 0 else _y_train_full.shape[0]
+    print(f'[cfg] n_context={n_ctx}  (input arg: {args.n_context})', flush=True)
+
     # Load DoPFN-bb model + get p_mats
     model, edges_np, J, bin_width = _load_bb_model(args)
     print(f'[bb] J={J}  running ours_densities (B={args.malc_B}, max_K={args.malc_max_K}) ...', flush=True)
@@ -193,18 +200,18 @@ def main():
         cd, model, edges_np, J, bin_width, -1,
         y_min=y_min, y_rng=y_rng,
         malc_B=args.malc_B, malc_max_K=args.malc_max_K, n_eval=args.n_eval,
-        n_context=args.n_context,
+        n_context=n_ctx,
         fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
         y_scaling=args.y_scaling,
     )
     p_mats = _get_p_mats(model, cd, edges_np, J, bin_width, y_min, y_rng,
-                          args.n_context, args.y_scaling)
+                          n_ctx, args.y_scaling)
 
     # Do-PFN densities
     DoPFNRegressor = load_dopfn(args)
     print(f'[dopfn] running dopfn_densities ...', flush=True)
     d_dopfn = dopfn_densities(cd, DoPFNRegressor, y_min=y_min, y_rng=y_rng,
-                                dopfn_root=args.dopfn, n_context=args.n_context)
+                                dopfn_root=args.dopfn, n_context=n_ctx)
 
     q = args.query
     n_test = p_mats.shape[0]
