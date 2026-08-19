@@ -75,19 +75,27 @@ def main():
         from true_acic import load_acic_truth
         from benchmarks import ACIC2016Dataset
 
-    # ── J=10 grid from checkpoint ────────────────────────────────────
+    # ── J=10 grid (for BB / Do-PFN) from checkpoint ─────────────────
     ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
     edges_Y = ckpt['edges'].cpu().numpy()           # (J+1,) — e.g. [-1.0, -0.8, ..., 1.0]
     J = int(ckpt['config']['J'])
     bin_w_Y = float(edges_Y[1] - edges_Y[0])
     centers_Y = 0.5 * (edges_Y[:-1] + edges_Y[1:])
 
-    # ── τ grid ───────────────────────────────────────────────────────
+    # ── τ grid (for BB / Do-PFN) ─────────────────────────────────────
     tau_min = 2.0 * edges_Y[0]                       # e.g. -2.0
     tau_max = 2.0 * edges_Y[-1]                      # e.g. +2.0
     n_tau_bins = int(round((tau_max - tau_min) / bin_w_Y))
     edges_tau = np.linspace(tau_min, tau_max, n_tau_bins + 1)
     bin_w_tau = float(edges_tau[1] - edges_tau[0])   # = bin_w_Y = 0.2
+
+    # ── J=100 grid (for fn=50 / UWYK) on the SAME [-1, 1] support ────
+    J_100 = 100
+    edges_Y_100 = np.linspace(edges_Y[0], edges_Y[-1], J_100 + 1)
+    bin_w_Y_100 = float(edges_Y_100[1] - edges_Y_100[0])
+    n_tau_bins_100 = int(round((tau_max - tau_min) / bin_w_Y_100))
+    edges_tau_100 = np.linspace(tau_min, tau_max, n_tau_bins_100 + 1)
+    bin_w_tau_100 = float(edges_tau_100[1] - edges_tau_100[0])
 
     # Per-joint-bin offset → τ bin index. τ_center(j0, j1) = centers_Y[j1] - centers_Y[j0].
     tau_bin_for_joint = np.zeros((J, J), dtype=np.int64)
@@ -117,15 +125,15 @@ def main():
         s = p.sum()
         return p / s if s > 0 else p
 
-    def truth_probs_y(mu, sigma):
-        """Exact per-J=10-bin probability for Gaussian(μ, σ)."""
-        cdf_edges = norm.cdf(edges_Y, loc=mu, scale=max(sigma, 1e-8))
-        return np.diff(cdf_edges)
+    def truth_probs_y(mu, sigma, edges=None):
+        e = edges_Y if edges is None else edges
+        cdf = norm.cdf(e, loc=mu, scale=max(sigma, 1e-8))
+        return np.diff(cdf)
 
-    def truth_probs_tau(mu_tau, sigma_tau):
-        """Exact per-τ-bin probability for Gaussian(μ_τ, σ_τ)."""
-        cdf_edges = norm.cdf(edges_tau, loc=mu_tau, scale=max(sigma_tau, 1e-8))
-        return np.diff(cdf_edges)
+    def truth_probs_tau(mu_tau, sigma_tau, edges=None):
+        e = edges_tau if edges is None else edges
+        cdf = norm.cdf(e, loc=mu_tau, scale=max(sigma_tau, 1e-8))
+        return np.diff(cdf)
 
     def l2(p, t, bin_w):
         return float(np.sqrt(np.sum((np.asarray(p) - np.asarray(t))**2) / bin_w))
@@ -308,58 +316,84 @@ def main():
         t_ate_bins = density_to_tau_probs(true_ate_density, TAU_FINE_C, TAU_FINE_BIN)
 
         def _read_reference_method(shard_file, key_prefix, acc_key,
-                                    tau_via='indep_convolve'):
+                                    tau_via='indep_convolve', use_j100=False):
             """Read p_y0/p_y1 (+ p_tau, p_ate) from a shard for one method.
-            tau_via: 'indep_convolve' (marginal convolution) or 'stored_ptau' (integrate stored p_tau)."""
+            use_j100=True → aggregate to J=100 bins on [-1, 1] (native for fn=50/UWYK);
+            False → J=10 bins (default, for BB/Do-PFN).
+            tau_via: 'indep_convolve' or 'stored_ptau'."""
             if shard_file is None: return
+            e_Y  = edges_Y_100 if use_j100 else edges_Y
+            bw_Y = bin_w_Y_100 if use_j100 else bin_w_Y
+            e_τ  = edges_tau_100 if use_j100 else edges_tau
+            bw_τ = bin_w_tau_100 if use_j100 else bin_w_tau
+            n_τ  = n_tau_bins_100 if use_j100 else n_tau_bins
+            J_y  = J_100 if use_j100 else J
+
+            def _y_bin(density_on_Y):
+                p = np.zeros(J_y)
+                for j in range(J_y):
+                    mask = (Y_CENTERS >= e_Y[j]) & (Y_CENTERS < e_Y[j+1])
+                    p[j] = float(density_on_Y[mask].sum() * Y_BIN)
+                s = p.sum()
+                return p / s if s > 0 else p
+
+            def _tau_bin_from_native(density_on_tau_native, tau_grid_native, tau_bw_native):
+                p = np.zeros(n_τ)
+                for k in range(n_τ):
+                    mask = (tau_grid_native >= e_τ[k]) & (tau_grid_native < e_τ[k+1])
+                    p[k] = float(density_on_tau_native[mask].sum() * tau_bw_native)
+                s = p.sum()
+                return p / s if s > 0 else p
+
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
                 if py0k not in z2.files: return
                 for q in range(n_q):
-                    t_y0 = truth_probs_y(mu0[q], sigma_scaled)
-                    t_y1 = truth_probs_y(mu1[q], sigma_scaled)
+                    t_y0 = truth_probs_y(mu0[q], sigma_scaled, edges=e_Y)
+                    t_y1 = truth_probs_y(mu1[q], sigma_scaled, edges=e_Y)
                     mu_tau = float(mu1[q] - mu0[q])
                     sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
-                    t_tau = truth_probs_tau(mu_tau, sigma_tau)
+                    t_tau = truth_probs_tau(mu_tau, sigma_tau, edges=e_τ)
 
-                    p_y0 = y_probs_from_stored(z2[py0k][q])
-                    p_y1 = y_probs_from_stored(z2[py1k][q])
-                    acc[acc_key]['y0'].append(l2(p_y0, t_y0, bin_w_Y))
-                    acc[acc_key]['y1'].append(l2(p_y1, t_y1, bin_w_Y))
+                    p_y0 = _y_bin(z2[py0k][q])
+                    p_y1 = _y_bin(z2[py1k][q])
+                    acc[acc_key]['y0'].append(l2(p_y0, t_y0, bw_Y))
+                    acc[acc_key]['y1'].append(l2(p_y1, t_y1, bw_Y))
 
                     if tau_via == 'stored_ptau' and ptauk in z2.files:
-                        p_tau = density_to_tau_probs(
-                            z2[ptauk][q], TAU_FINE_C, TAU_FINE_BIN)
+                        p_tau = _tau_bin_from_native(z2[ptauk][q], TAU_FINE_C, TAU_FINE_BIN)
                     else:
                         conv = np.convolve(p_y1, p_y0[::-1], mode='full')
-                        offs = np.arange(-(J-1), J) * bin_w_Y
-                        p_tau = np.zeros(n_tau_bins)
+                        offs = np.arange(-(J_y-1), J_y) * bw_Y
+                        p_tau = np.zeros(n_τ)
                         for i, off in enumerate(offs):
-                            k = int(np.clip(np.searchsorted(edges_tau, off, side='right') - 1,
-                                             0, n_tau_bins - 1))
+                            k = int(np.clip(np.searchsorted(e_τ, off, side='right') - 1, 0, n_τ - 1))
                             p_tau[k] += conv[i]
-                    acc[acc_key]['tau'].append(l2(p_tau, t_tau, bin_w_tau))
+                    acc[acc_key]['tau'].append(l2(p_tau, t_tau, bw_τ))
 
-                # ATE
+                # ATE — truth ATE on the appropriate τ grid
                 if patek in z2.files:
-                    p_ate = density_to_tau_probs(z2[patek], TAU_FINE_C, TAU_FINE_BIN)
-                    acc[acc_key]['ate'].append(l2(p_ate, t_ate_bins, bin_w_tau))
+                    # Recompute truth ATE bin-probs for this row's τ grid
+                    true_ate_dens_this = wasserstein_barycenter_1d(true_tau_dens, TAU_FINE_C)
+                    t_ate_this = _tau_bin_from_native(true_ate_dens_this, TAU_FINE_C, TAU_FINE_BIN)
+                    p_ate = _tau_bin_from_native(z2[patek], TAU_FINE_C, TAU_FINE_BIN)
+                    acc[acc_key]['ate'].append(l2(p_ate, t_ate_this, bw_τ))
 
-        # Do-PFN (marginals-only → τ via independence conv)
+        # Do-PFN — J=10 grid (user request 2026-08-19)
         if r in dopfn_by_r:
             _read_reference_method(dopfn_by_r[r], 'dopfn', 'dopfn',
-                                    tau_via='indep_convolve')
-        # fn=50 (has 2D-MALC → use stored p_tau)
+                                    tau_via='indep_convolve', use_j100=False)
+        # fn=50 — J=100 grid (fn=50's native head resolution)
         if r in fn50_by_r:
             _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50',
-                                    tau_via='stored_ptau')
-        # UWYK (marginals-only in per-arm mode → τ via independence conv)
+                                    tau_via='stored_ptau', use_j100=True)
+        # UWYK — J=100 grid
         if r in uwyk_by_r:
             _read_reference_method(uwyk_by_r[r], 'uwyk_noanc', 'uwyk_noanc',
-                                    tau_via='indep_convolve')
+                                    tau_via='indep_convolve', use_j100=True)
             _read_reference_method(uwyk_by_r[r], 'uwyk_anc', 'uwyk_anc',
-                                    tau_via='indep_convolve')
+                                    tau_via='indep_convolve', use_j100=True)
 
         if (si + 1) % 10 == 0:
             print(f'  processed {si+1}/{len(shards)}', flush=True)
@@ -375,13 +409,13 @@ def main():
     print(f'══ {args.dataset.upper()} — per-bin probability L2 (J=10 bins for y0/y1; '
           f'{n_tau_bins} τ bins width {bin_w_tau:.2f}) ══')
     print(f'{"method":18s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
-    for m_key, m_label in [('dopfn',          'Do-PFN'),
-                            ('fn50',           'Ours(fn=50)'),
-                            ('uwyk_noanc',     'UWYK-NoAnc'),
-                            ('uwyk_anc',       'UWYK-FullAnc'),
-                            ('bb_raw',         'Do-PFN-bb raw'),
-                            ('bb_malc',        'Do-PFN-bb MALC (2D-τ)'),
-                            ('bb_malc_indep',  'Do-PFN-bb MALC (indep-τ)')]:
+    for m_key, m_label in [('dopfn',          'Do-PFN [J=10]'),
+                            ('bb_raw',         'Do-PFN-bb raw [J=10]'),
+                            ('bb_malc',        'Do-PFN-bb MALC (2D-τ) [J=10]'),
+                            ('bb_malc_indep',  'Do-PFN-bb MALC (indep-τ) [J=10]'),
+                            ('fn50',           'Ours(fn=50) [J=100]'),
+                            ('uwyk_noanc',     'UWYK-NoAnc [J=100]'),
+                            ('uwyk_anc',       'UWYK-FullAnc [J=100]')]:
         row = f'{m_label:18s}'
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
