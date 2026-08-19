@@ -68,7 +68,7 @@ def main():
 
     METRICS = ['y0_j100','y1_j100','tau_j100','ate_j100',
                'y0_j10','y1_j10','tau_j10','ate_j10']
-    LABELS = ['Do-PFN','BB LOGLIN','BB RAW','BB OLD','BB INDEP-τ']
+    LABELS = ['Do-PFN','BB LOGLIN','BB RAW','BB OLD']
     acc = {lbl: {m: [] for m in METRICS} for lbl in LABELS}
 
     print(f'[cfg] d={args.d} N={args.N} n_test={args.n_test} n_seeds={args.n_seeds}', flush=True)
@@ -135,33 +135,19 @@ def main():
             ('BB LOGLIN', d_bb['p_y0'],    d_bb['p_y1'],    d_bb['p_tau']),
             ('BB RAW',    d_bb['p_y0_raw'], d_bb['p_y1_raw'], d_bb['p_tau']),
             ('BB OLD',    d_bb['p_y0_malc_old'], d_bb['p_y1_malc_old'], d_bb['p_tau']),
-            # INDEP-τ: naive convolution of MALC-LOGLIN marginals — computed inline
         ]
-
-        # For BB INDEP-τ, convolve LOGLIN marginals on Y_GRID → τ on TAU_GRID
-        from methods_densities import naive_p_tau_from_marginals
-        indep_p_tau = np.stack([
-            naive_p_tau_from_marginals(to_ygrid(d_bb['p_y0'][k]), to_ygrid(d_bb['p_y1'][k]))
-            for k in range(args.n_test)
-        ])
-        variants.append(('BB INDEP-τ', d_bb['p_y0'], d_bb['p_y1'], indep_p_tau))
 
         for lbl, m_p_y0, m_p_y1, m_p_tau in variants:
             per_ate = wass_bary_of_grid(
-                np.stack([to_tgrid(m_p_tau[q]) if lbl != 'BB INDEP-τ' else m_p_tau[q]
-                          for q in range(args.n_test)]),
+                np.stack([to_tgrid(m_p_tau[q]) for q in range(args.n_test)]),
                 TAU_grid_np, wasserstein_barycenter_1d)
             acc[lbl]['ate_j100'].append(l2_dx(per_ate, p_ate_true, TAU_DX_np))
             acc[lbl]['ate_j10'].append(l2_dx(to_j10_tau(per_ate)/tau_bin_w_J10_raw,
                                               to_j10_tau(p_ate_true)/tau_bin_w_J10_raw,
                                               tau_bin_w_J10_raw))
             for q in range(args.n_test):
-                if lbl == 'BB INDEP-τ':
-                    py0_raw = to_ygrid(m_p_y0[q]); py1_raw = to_ygrid(m_p_y1[q])
-                    ptau_raw = m_p_tau[q]  # already on TAU_GRID
-                else:
-                    py0_raw = to_ygrid(m_p_y0[q]); py1_raw = to_ygrid(m_p_y1[q])
-                    ptau_raw = to_tgrid(m_p_tau[q])
+                py0_raw = to_ygrid(m_p_y0[q]); py1_raw = to_ygrid(m_p_y1[q])
+                ptau_raw = to_tgrid(m_p_tau[q])
                 # LEFT-edge shift for marginals (raw-Y space)
                 py0_L = shift_y(py0_raw); py1_L = shift_y(py1_raw)
                 acc[lbl]['y0_j100'].append(l2_dx(py0_L, p_y0_true[q], Y_DX_np))
