@@ -78,6 +78,11 @@ def main():
                      help='For J=10 bin edges (edges_np from checkpoint).')
     ap.add_argument('--dataset', choices=['ihdp', 'acic'], default='ihdp')
     ap.add_argument('--acic-cache-dir', default='')
+    ap.add_argument('--fn50-uwyk-j10', action='store_true',
+                     help='Diagnostic: evaluate fn=50 and UWYK rows on the J=10 '
+                          'grid (same as BB) instead of their native J=100 head. '
+                          'Uses Riemann-on-Y_CENTERS for stored density; no re-run '
+                          'needed. Meant for comparing fn=50/UWYK vs BB on identical bins.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -477,27 +482,28 @@ def main():
             _read_reference_method(dopfn_by_r[r], 'dopfn', 'dopfn',
                                     tau_via='indep_convolve', use_j100=False)
         # fn=50 @ B=100, 1D-MALC marginals — J=100 grid, native head resolution
+        _fu_j100 = not args.fn50_uwyk_j10        # diagnostic override
         if r in fn50_by_r:
             _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50_1d_b100',
-                                    tau_via='stored_ptau', use_j100=True)
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
         # fn=50 @ B=100, 2D-MALC marginals (sweep with MARGINALS_FROM_2D=1)
         if r in fn50_2dmarg_by_r:
             _read_reference_method(fn50_2dmarg_by_r[r], 'ours_fn50', 'fn50_2d_b100',
-                                    tau_via='stored_ptau', use_j100=True)
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
         # fn=50 @ B=500, 1D-MALC marginals
         if r in fn50_b500_by_r:
             _read_reference_method(fn50_b500_by_r[r], 'ours_fn50', 'fn50_1d_b500',
-                                    tau_via='stored_ptau', use_j100=True)
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
         # fn=50 @ B=500, 2D-MALC marginals
         if r in fn50_2dmarg_b500_by_r:
             _read_reference_method(fn50_2dmarg_b500_by_r[r], 'ours_fn50', 'fn50_2d_b500',
-                                    tau_via='stored_ptau', use_j100=True)
-        # UWYK — J=100 grid
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
+        # UWYK — J=100 grid (unless diagnostic override forces J=10)
         if r in uwyk_by_r:
             _read_reference_method(uwyk_by_r[r], 'uwyk_noanc', 'uwyk_noanc',
-                                    tau_via='indep_convolve', use_j100=True)
+                                    tau_via='indep_convolve', use_j100=_fu_j100)
             _read_reference_method(uwyk_by_r[r], 'uwyk_anc', 'uwyk_anc',
-                                    tau_via='indep_convolve', use_j100=True)
+                                    tau_via='indep_convolve', use_j100=_fu_j100)
         # BB @ B=100 with 2D-MALC marginals (separate sweep, MARGINALS_FROM_2D=1)
         if r in bb_2dmarg_by_r:
             _read_reference_method(bb_2dmarg_by_r[r], 'ours_dopfn_bb', 'bb_2dmarg_b100',
@@ -521,11 +527,11 @@ def main():
         # fn=50 @ B=1000, 1D-MALC marginals
         if r in fn50_b1000_by_r:
             _read_reference_method(fn50_b1000_by_r[r], 'ours_fn50', 'fn50_1d_b1000',
-                                    tau_via='stored_ptau', use_j100=True)
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
         # fn=50 @ B=1000, 2D-MALC marginals
         if r in fn50_2dmarg_b1000_by_r:
             _read_reference_method(fn50_2dmarg_b1000_by_r[r], 'ours_fn50', 'fn50_2d_b1000',
-                                    tau_via='stored_ptau', use_j100=True)
+                                    tau_via='stored_ptau', use_j100=_fu_j100)
 
         # Update per-method realization coverage: any acc[m][*] that grew this
         # iteration means realization r contributed to method m.
