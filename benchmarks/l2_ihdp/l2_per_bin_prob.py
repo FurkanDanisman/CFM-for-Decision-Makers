@@ -354,6 +354,13 @@ def main():
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
+                # Recipe-strict per-bin probabilities on J=10 edges, if the
+                # sweep stored them (bb_2dmarg with exact-CDF marginals).
+                py0_binsk = f'{key_prefix}__p_y0_bins_j10'
+                py1_binsk = f'{key_prefix}__p_y1_bins_j10'
+                use_stored_bins = (
+                    not use_j100
+                    and py0_binsk in z2.files and py1_binsk in z2.files)
                 if py0k not in z2.files: return
                 for q in range(n_q):
                     t_y0 = truth_probs_y(mu0[q], sigma_scaled, edges=e_Y)
@@ -362,8 +369,12 @@ def main():
                     sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
                     t_tau = truth_probs_tau(mu_tau, sigma_tau, edges=e_τ)
 
-                    p_y0 = _y_bin(z2[py0k][q])
-                    p_y1 = _y_bin(z2[py1k][q])
+                    if use_stored_bins:
+                        p_y0 = np.asarray(z2[py0_binsk][q], dtype=np.float64)
+                        p_y1 = np.asarray(z2[py1_binsk][q], dtype=np.float64)
+                    else:
+                        p_y0 = _y_bin(z2[py0k][q])
+                        p_y1 = _y_bin(z2[py1k][q])
                     acc[acc_key]['y0'].append(l2(p_y0, t_y0, bw_Y))
                     acc[acc_key]['y1'].append(l2(p_y1, t_y1, bw_Y))
 

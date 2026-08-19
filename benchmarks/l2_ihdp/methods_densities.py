@@ -86,6 +86,42 @@ def _get_malc_1d_problem(J: int):
     return entry
 
 
+def _emp_mean_gaussian_em(p_bins, edges, sigma, start=0.0,
+                            max_step=1000, eps1=1e-5, eps2=1e-10):
+    """Python port of R's EMemp (from Algorithms/MALC_Algorithm.R).
+
+    Iteratively refines an empirical mean estimate from binned probabilities
+    under a Gaussian model with fixed sigma. Uses the truncated-normal
+    fixed-point recursion:
+
+        alpha_e = (edges - mu) / sigma
+        temp    = (diff(G2(alpha_e)) + eps2) / (diff(G1(alpha_e)) + eps2)
+        mu_new  = mu - sigma * sum(p_bins * temp)
+
+    where G1(x) = Phi(x) is the standard-normal CDF and G2(x) = -phi(x) is
+    minus the PDF (so diff(G2) gives per-bin negative-PDF differences).
+
+    Returns the converged mu.
+    """
+    from scipy.stats import norm
+    p_bins = np.asarray(p_bins, dtype=np.float64).reshape(-1)
+    edges = np.asarray(edges, dtype=np.float64).reshape(-1)
+    sigma = max(float(sigma), 1e-8)
+    mu = float(start)
+    for _ in range(max_step):
+        mu_old = mu
+        a = (edges - mu) / sigma
+        G1 = norm.cdf(a)             # (J+1,)  matches R's G1(y) = pnorm(y)
+        G2 = norm.pdf(a)             # (J+1,)  matches R's G2(y) = dnorm(y)  (POSITIVE)
+        # per-bin ratios: diff(G2) / diff(G1)
+        num = np.diff(G2) + eps2
+        den = np.diff(G1) + eps2
+        temp = num / den
+        mu = mu_old - sigma * float(np.sum(p_bins * temp))
+        if abs(mu - mu_old) < eps1: break
+    return mu
+
+
 def malc_1d_mean_adjusted(p_marg, src_centers, dst_grid, dst_bin=None,
                             B=10000, alpha=2, seed=20180621):
     """Mean-adjusted 1D MALC — Python port of R's get_fhatn recipe.
@@ -135,8 +171,16 @@ def malc_1d_mean_adjusted(p_marg, src_centers, dst_grid, dst_bin=None,
     # Step 2: empirical mean + Delta
     delta = float(src_centers[1] - src_centers[0])
     left_edges = src_centers - delta / 2.0
-    mu_n = float(np.sum(p_marg * src_centers))         # empirical mean (bin midpoints)
-    mu_low = float(np.sum(p_marg * left_edges))         # left-edge mean
+    right_edges = src_centers + delta / 2.0
+    edges = np.concatenate([[left_edges[0]], right_edges])
+    mu_low = float(np.sum(p_marg * left_edges))
+    # sigma estimator: std of samples all placed at left edges (R's y = rep(grid_left, ...))
+    # var = E[y^2] - E[y]^2 under p_marg on left_edges
+    var_at_left = float(np.sum(p_marg * left_edges ** 2) - mu_low ** 2)
+    sigma_est = float(np.sqrt(max(var_at_left, 1e-8)))
+    # EM-refined Gaussian mean estimate (R's EMemp) — starts at midpoint mean
+    mu_start = float(np.sum(p_marg * src_centers))
+    mu_n = _emp_mean_gaussian_em(p_marg, edges, sigma=sigma_est, start=mu_start)
     Delta = mu_n - mu_low
     # Beta shape param — clamped so alpha ± beta_ > 0 (rbeta requires positive)
     beta_ = 2.0 * alpha * (Delta / delta - 0.5)
@@ -401,6 +445,13 @@ def ours_densities(cd,
     # bias in the vanilla log-concave MLE.
     p_y0_malc_madj = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
     p_y1_malc_madj = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    # 2D-MALC marginals as PER-BIN PROBABILITIES on the J=10 edges (edges_np).
+    # Only populated when marginals_from_2d=True and the 2D fit succeeded.
+    # Computed as F̂(e_{j+1}) − F̂(e_j) where F̂ is the trapezoid CDF of the
+    # marginal density on the fine (xs / ys) grid. Recipe-strict per the
+    # per-bin-probability L2 spec — no Y_CENTERS Riemann.
+    p_y0_bins_j10 = np.zeros((n_test, len(edges_np) - 1), dtype=np.float64)
+    p_y1_bins_j10 = np.zeros((n_test, len(edges_np) - 1), dtype=np.float64)
     # Per-query "raw" CATE = E[Y1] - E[Y0] from raw p_mat marginals (no MALC),
     # in scaled Y units. Reported alongside the MALC-mean CATE so PEHE can be
     # computed both ways (matches Table 3's `ours_mean` variant).
@@ -506,6 +557,22 @@ def ours_densities(cd,
             d_y1_native = density_2d.sum(axis=1) * dxs                     # (n_eval,) on ys
             p_y0[q] = resample_onto(xs, d_y0_native, Y_CENTERS)
             p_y1[q] = resample_onto(ys, d_y1_native, Y_CENTERS)
+            # Exact per-bin probability on J=10 edges: trapezoid CDF of the
+            # marginal density on the fine (xs, ys) grid, then difference at
+            # edges_np. Uses linear interp of the CDF at the exact edges so
+            # the per-bin probs are F̂(e_{j+1}) − F̂(e_j) — the recipe form.
+            _seg_y0 = 0.5 * (d_y0_native[:-1] + d_y0_native[1:]) * dxs
+            _F_y0   = np.concatenate(([0.0], np.cumsum(_seg_y0)))
+            _F_y0_e = np.interp(edges_np, xs, _F_y0)
+            _pbin0  = np.diff(_F_y0_e)
+            _s0 = _pbin0.sum()
+            p_y0_bins_j10[q] = _pbin0 / _s0 if _s0 > 0 else _pbin0
+            _seg_y1 = 0.5 * (d_y1_native[:-1] + d_y1_native[1:]) * dys
+            _F_y1   = np.concatenate(([0.0], np.cumsum(_seg_y1)))
+            _F_y1_e = np.interp(edges_np, ys, _F_y1)
+            _pbin1  = np.diff(_F_y1_e)
+            _s1 = _pbin1.sum()
+            p_y1_bins_j10[q] = _pbin1 / _s1 if _s1 > 0 else _pbin1
         else:
             # p_mat convention: p_mat[j0, j1] (j0 = y0 axis, j1 = y1 axis)
             p_marg_y0_raw = p_mats[q].sum(axis=1)                          # (J,)
@@ -574,6 +641,7 @@ def ours_densities(cd,
                 p_y0_raw=p_y0_raw, p_y1_raw=p_y1_raw,
                 p_y0_malc_old=p_y0_malc_old, p_y1_malc_old=p_y1_malc_old,
                 p_y0_malc_madj=p_y0_malc_madj, p_y1_malc_madj=p_y1_malc_madj,
+                p_y0_bins_j10=p_y0_bins_j10, p_y1_bins_j10=p_y1_bins_j10,
                 cate_raw_scaled=cate_raw_scaled,
                 cate_em_mix_scaled=cate_em_mix_scaled,
                 cate_em_k1_scaled=cate_em_k1_scaled)

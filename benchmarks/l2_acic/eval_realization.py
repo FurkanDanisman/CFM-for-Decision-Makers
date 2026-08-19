@@ -295,6 +295,12 @@ def main() -> int:
         out[f'{name}__p_y1']  = d['p_y1']
         out[f'{name}__p_tau'] = d['p_tau']
         out[f'{name}__p_ate'] = p_ate
+        # Exact per-bin probabilities on J=10 edges (only Ours-DoPFN-bb with
+        # marginals_from_2d=True populates these — recipe-strict form for the
+        # bb_2dmarg row in l2_per_bin_prob.py).
+        if 'p_y0_bins_j10' in d and 'p_y1_bins_j10' in d:
+            out[f'{name}__p_y0_bins_j10'] = d['p_y0_bins_j10'].astype(np.float32)
+            out[f'{name}__p_y1_bins_j10'] = d['p_y1_bins_j10'].astype(np.float32)
         out[f'{name}__l2_y0']  = l2_y0.astype(np.float32)
         out[f'{name}__l2_y1']  = l2_y1.astype(np.float32)
         out[f'{name}__l2_tau'] = l2_tau.astype(np.float32)
