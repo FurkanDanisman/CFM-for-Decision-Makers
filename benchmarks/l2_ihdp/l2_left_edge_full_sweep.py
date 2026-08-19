@@ -55,16 +55,23 @@ def main():
     Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
     TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
     shift_left = -bin_w_J10 / 2.0
-    # τ = Y1 - Y0 → both shift left by same amount → net-zero shift on τ.
-    # Use standard center convention for τ/ATE L2.
     # For J=10 τ resolution: 10 bins covering TAU_CENTERS range.
     tau_edges_J10 = np.linspace(TAU_CENTERS[0] - TAU_BIN/2,
                                  TAU_CENTERS[-1] + TAU_BIN/2, J + 1)
     tau_bin_w_J10 = tau_edges_J10[1] - tau_edges_J10[0]
+    # LEFT-edge for τ / ATE: shift by J=10 τ-bin-width / 2 (applied symmetrically
+    # even though τ = Y1 - Y0 nominally cancels the marginal shifts — user wants
+    # LEFT convention for τ/ATE too).
+    shift_left_tau = -tau_bin_w_J10 / 2.0
 
     def shift_y(d_on_Y):
         p = np.interp(Y_CENTERS, Y_CENTERS - shift_left, d_on_Y, left=0.0, right=0.0)
         s = p.sum() * Y_BIN
+        return p / s if s > 0 else p
+
+    def shift_tau(d_on_tau):
+        p = np.interp(TAU_CENTERS, TAU_CENTERS - shift_left_tau, d_on_tau, left=0.0, right=0.0)
+        s = p.sum() * TAU_BIN
         return p / s if s > 0 else p
 
     def to_j10_y(density_100):
@@ -132,10 +139,11 @@ def main():
                 py0_key = f'{key}__p_y0'; py1_key = f'{key}__p_y1'
                 ptau_key = f'{key}__p_tau'; pate_key = f'{key}__p_ate'
                 if py0_key not in z.files: continue
-                # ATE (single value, not per-query)
+                # ATE (single value, not per-query) — LEFT-edge shift on τ grid
                 if pate_key in z.files:
-                    acc[label]['ate_j100'].append(l2(z[pate_key], p_ate_true, TAU_BIN))
-                    ate_j10   = to_j10_tau(z[pate_key])
+                    ate_L = shift_tau(z[pate_key])
+                    acc[label]['ate_j100'].append(l2(ate_L, p_ate_true, TAU_BIN))
+                    ate_j10   = to_j10_tau(ate_L)
                     t_ate_j10 = to_j10_tau(p_ate_true)
                     acc[label]['ate_j10'].append(l2(ate_j10/tau_bin_w_J10, t_ate_j10/tau_bin_w_J10, tau_bin_w_J10))
                 for q in range(n_q):
@@ -146,11 +154,11 @@ def main():
                     acc[label]['y1_j100'].append(l2(p1_L, p_y1_true[q], Y_BIN))
                     acc[label]['y0_j10'].append(l2(to_j10_y(p0_L)/bin_w_J10, to_j10_y(p_y0_true[q])/bin_w_J10, bin_w_J10))
                     acc[label]['y1_j10'].append(l2(to_j10_y(p1_L)/bin_w_J10, to_j10_y(p_y1_true[q])/bin_w_J10, bin_w_J10))
-                    # τ — no natural LEFT-edge shift (τ = Y1 - Y0 → shifts cancel).
-                    # Use standard center convention.
+                    # τ — LEFT-edge shift (per user request 2026-08-19)
                     if ptau_key in z.files:
-                        acc[label]['tau_j100'].append(l2(z[ptau_key][q], p_tau_true[q], TAU_BIN))
-                        acc[label]['tau_j10'].append(l2(to_j10_tau(z[ptau_key][q])/tau_bin_w_J10,
+                        tau_L = shift_tau(z[ptau_key][q])
+                        acc[label]['tau_j100'].append(l2(tau_L, p_tau_true[q], TAU_BIN))
+                        acc[label]['tau_j10'].append(l2(to_j10_tau(tau_L)/tau_bin_w_J10,
                                                         to_j10_tau(p_tau_true[q])/tau_bin_w_J10,
                                                         tau_bin_w_J10))
         if (si + 1) % 10 == 0:

@@ -117,6 +117,10 @@ def main():
         def shift_y(d):
             p = np.interp(Y_grid_np, Y_grid_np - shift_left, d, left=0., right=0.)
             s = p.sum()*Y_DX_np; return p/s if s>0 else p
+        shift_left_tau = -tau_bin_w_J10_raw / 2.0
+        def shift_tau(d):
+            p = np.interp(TAU_grid_np, TAU_grid_np - shift_left_tau, d, left=0., right=0.)
+            s = p.sum()*TAU_DX_np; return p/s if s>0 else p
         def to_j10_y(d):
             p_bin = np.zeros(J)
             for j in range(J):
@@ -141,15 +145,17 @@ def main():
             per_ate = wass_bary_of_grid(
                 np.stack([to_tgrid(m_p_tau[q]) for q in range(args.n_test)]),
                 TAU_grid_np, wasserstein_barycenter_1d)
-            acc[lbl]['ate_j100'].append(l2_dx(per_ate, p_ate_true, TAU_DX_np))
-            acc[lbl]['ate_j10'].append(l2_dx(to_j10_tau(per_ate)/tau_bin_w_J10_raw,
+            per_ate_L = shift_tau(per_ate)
+            acc[lbl]['ate_j100'].append(l2_dx(per_ate_L, p_ate_true, TAU_DX_np))
+            acc[lbl]['ate_j10'].append(l2_dx(to_j10_tau(per_ate_L)/tau_bin_w_J10_raw,
                                               to_j10_tau(p_ate_true)/tau_bin_w_J10_raw,
                                               tau_bin_w_J10_raw))
             for q in range(args.n_test):
                 py0_raw = to_ygrid(m_p_y0[q]); py1_raw = to_ygrid(m_p_y1[q])
                 ptau_raw = to_tgrid(m_p_tau[q])
-                # LEFT-edge shift for marginals (raw-Y space)
+                # LEFT-edge shift for marginals AND τ (raw-Y space, tau space)
                 py0_L = shift_y(py0_raw); py1_L = shift_y(py1_raw)
+                ptau_L = shift_tau(ptau_raw)
                 acc[lbl]['y0_j100'].append(l2_dx(py0_L, p_y0_true[q], Y_DX_np))
                 acc[lbl]['y1_j100'].append(l2_dx(py1_L, p_y1_true[q], Y_DX_np))
                 acc[lbl]['y0_j10'].append(l2_dx(to_j10_y(py0_L)/bin_w_J10_raw,
@@ -158,8 +164,8 @@ def main():
                 acc[lbl]['y1_j10'].append(l2_dx(to_j10_y(py1_L)/bin_w_J10_raw,
                                                  to_j10_y(p_y1_true[q])/bin_w_J10_raw,
                                                  bin_w_J10_raw))
-                acc[lbl]['tau_j100'].append(l2_dx(ptau_raw, p_tau_true[q], TAU_DX_np))
-                acc[lbl]['tau_j10'].append(l2_dx(to_j10_tau(ptau_raw)/tau_bin_w_J10_raw,
+                acc[lbl]['tau_j100'].append(l2_dx(ptau_L, p_tau_true[q], TAU_DX_np))
+                acc[lbl]['tau_j10'].append(l2_dx(to_j10_tau(ptau_L)/tau_bin_w_J10_raw,
                                                   to_j10_tau(p_tau_true[q])/tau_bin_w_J10_raw,
                                                   tau_bin_w_J10_raw))
         print(f'  seed={seed:2d}  done in {time.time()-t0:.1f}s', flush=True)
