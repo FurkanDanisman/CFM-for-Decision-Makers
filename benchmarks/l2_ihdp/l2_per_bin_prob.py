@@ -443,16 +443,26 @@ def main():
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
-                # Recipe-strict per-bin probabilities on the model's native
-                # head, if the sweep stored them (2dmarg with exact-CDF
-                # marginals). Works for both BB (J=10) and fn=50 (J=100)
-                # so long as the stored width matches the target grid.
+                # Recipe-strict per-bin probabilities. If the sweep stored
+                # them, USE THE STORED WIDTH to pick the grid — overrides
+                # the caller's use_j100 preference. This lets Do-PFN + UWYK
+                # (both stored at J=10) be evaluated at J=10 even when the
+                # caller asked for J=100.
                 py0_binsk = f'{key_prefix}__p_y0_bins_j10'
                 py1_binsk = f'{key_prefix}__p_y1_bins_j10'
-                _tgt_J   = J_100 if use_j100 else J
-                use_stored_bins = (
-                    py0_binsk in z2.files and py1_binsk in z2.files
-                    and int(z2[py0_binsk].shape[-1]) == _tgt_J)
+                use_stored_bins = py0_binsk in z2.files and py1_binsk in z2.files
+                if use_stored_bins:
+                    _stored_J = int(z2[py0_binsk].shape[-1])
+                    if _stored_J == J:
+                        e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
+                            edges_Y, bin_w_Y, edges_tau, bin_w_tau, n_tau_bins, J)
+                    elif _stored_J == J_100:
+                        e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
+                            edges_Y_100, bin_w_Y_100, edges_tau_100, bin_w_tau_100,
+                            n_tau_bins_100, J_100)
+                    else:
+                        use_stored_bins = False    # unknown width; fall back
+                if py0k not in z2.files and not use_stored_bins: return
                 if py0k not in z2.files: return
                 for q in range(n_q):
                     t_y0 = truth_probs_y(mu0[q], sigma_scaled, edges=e_Y)

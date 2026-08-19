@@ -563,11 +563,15 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
 
+    _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
+    _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+
     t0 = time.time()
     d = uwyk_noanc_densities(
         cd, uwyk_model, num_features,
         y_min=truth.y_min, y_rng=truth.y_rng,
         n_context=n_ctx, n_samples=args.uwyk_n_samples,
+        edges_j10_scaled=_edges_j10,
     )
     print(f'[uwyk] done in {time.time() - t0:.1f}s', flush=True)
     return d
@@ -617,11 +621,15 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     torch.load = _orig_load
     num_features = uwyk_model.model.num_features
 
+    _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
+    _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+
     t0 = time.time()
     d = uwyk_anc_densities(
         cd, uwyk_model, num_features,
         y_min=truth.y_min, y_rng=truth.y_rng,
         n_context=n_ctx, n_samples=args.uwyk_n_samples,
+        edges_j10_scaled=_edges_j10,
     )
     print(f'[uwyk-anc] done in {time.time() - t0:.1f}s', flush=True)
     return d
