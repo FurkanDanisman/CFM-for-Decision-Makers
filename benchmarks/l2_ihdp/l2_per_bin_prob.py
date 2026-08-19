@@ -562,10 +562,15 @@ def main():
         return f'{m:.4f}±{sem:.4f}'
 
     print()
+    _fu_grid = 'J=10' if args.fn50_uwyk_j10 else f'J={J_100}'
+    _fu_ntau = n_tau_bins if args.fn50_uwyk_j10 else n_tau_bins_100
+    _fu_bw   = bin_w_tau if args.fn50_uwyk_j10 else bin_w_tau_100
     print(f'══ {args.dataset.upper()} — per-bin probability L2 '
           f'(BB/Do-PFN: J=10 y-bins, {n_tau_bins} τ-bins @{bin_w_tau:.2f}; '
-          f'fn=50/UWYK: J={J_100} y-bins, {n_tau_bins_100} τ-bins @{bin_w_tau_100:.2f}) ══')
+          f'fn=50/UWYK: {_fu_grid} y-bins, {_fu_ntau} τ-bins @{_fu_bw:.2f}'
+          + (' [--fn50-uwyk-j10 override]' if args.fn50_uwyk_j10 else '') + ') ══')
     print(f'{"method":52s}  {"cov":>8s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
+    _fjs = _fu_grid.replace('J=', 'J=')      # display string for fn=50/UWYK grid
     rows = [
         ('dopfn',            'Do-PFN [J=10]'),
         ('__sep__',          '─── BB @ B=100 ──────────────────────────'),
@@ -578,17 +583,17 @@ def main():
         ('bb_malc_b1000',    'Do-PFN-bb MALC (2D-τ) 1D-marg [B=1000, J=10]'),
         ('bb_2dmarg_b1000',  'Do-PFN-bb MALC (2D-τ) 2D-marg [B=1000, J=10]'),
         ('__sep__',          '─── fn=50 @ B=100 ───────────────────────'),
-        ('fn50_1d_b100',     'fn=50 (2D-τ) 1D-marg [B=100, J=100]'),
-        ('fn50_2d_b100',     'fn=50 (2D-τ) 2D-marg [B=100, J=100]'),
+        ('fn50_1d_b100',     f'fn=50 (2D-τ) 1D-marg [B=100, {_fjs}]'),
+        ('fn50_2d_b100',     f'fn=50 (2D-τ) 2D-marg [B=100, {_fjs}]'),
         ('__sep__',          '─── fn=50 @ B=500 ───────────────────────'),
-        ('fn50_1d_b500',     'fn=50 (2D-τ) 1D-marg [B=500, J=100]'),
-        ('fn50_2d_b500',     'fn=50 (2D-τ) 2D-marg [B=500, J=100]'),
+        ('fn50_1d_b500',     f'fn=50 (2D-τ) 1D-marg [B=500, {_fjs}]'),
+        ('fn50_2d_b500',     f'fn=50 (2D-τ) 2D-marg [B=500, {_fjs}]'),
         ('__sep__',          '─── fn=50 @ B=1000 ──────────────────────'),
-        ('fn50_1d_b1000',    'fn=50 (2D-τ) 1D-marg [B=1000, J=100]'),
-        ('fn50_2d_b1000',    'fn=50 (2D-τ) 2D-marg [B=1000, J=100]'),
+        ('fn50_1d_b1000',    f'fn=50 (2D-τ) 1D-marg [B=1000, {_fjs}]'),
+        ('fn50_2d_b1000',    f'fn=50 (2D-τ) 2D-marg [B=1000, {_fjs}]'),
         ('__sep__',          '─── UWYK ────────────────────────────────'),
-        ('uwyk_noanc',       'UWYK-NoAnc [J=100]'),
-        ('uwyk_anc',         'UWYK-FullAnc [J=100]'),
+        ('uwyk_noanc',       f'UWYK-NoAnc [{_fjs}]'),
+        ('uwyk_anc',         f'UWYK-FullAnc [{_fjs}]'),
     ]
     for m_key, m_label in rows:
         if m_key == '__sep__':
