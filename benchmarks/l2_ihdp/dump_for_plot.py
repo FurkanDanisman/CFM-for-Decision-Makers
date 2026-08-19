@@ -275,6 +275,9 @@ def main():
         'py_bb_p_y0': d_bb['p_y0'][q].tolist(),
         'py_bb_p_y1': d_bb['p_y1'][q].tolist(),
         'py_bb_p_tau': d_bb['p_tau'][q].tolist(),
+        # OLD-MALC (linear-in-prob resample of MALC discrete probs) — pre-fix behaviour
+        'py_bb_old_p_y0': d_bb['p_y0_malc_old'][q].tolist() if 'p_y0_malc_old' in d_bb else None,
+        'py_bb_old_p_y1': d_bb['p_y1_malc_old'][q].tolist() if 'p_y1_malc_old' in d_bb else None,
         # Mean-adjusted Python MALC (port of R's get_fhatn recipe)
         'py_bb_madj_p_y0': d_bb['p_y0_malc_madj'][q].tolist() if 'p_y0_malc_madj' in d_bb else None,
         'py_bb_madj_p_y1': d_bb['p_y1_malc_madj'][q].tolist() if 'p_y1_malc_madj' in d_bb else None,
