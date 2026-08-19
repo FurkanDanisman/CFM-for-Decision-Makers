@@ -225,10 +225,9 @@ def main():
                     acc['bb_raw']['y1'].append(l2(p_bb_raw_y1, t_y1, bin_w_Y))
                     acc['bb_raw']['tau'].append(l2(p_bb_raw_tau, t_tau, bin_w_tau))
 
-            # ATE (single per-realization value) — Do-PFN-bb MALC
+            # ATE (single per-realization value)
             if has_ate:
                 # Truth ATE density: barycenter of per-query true τ densities.
-                # Use fine grid, then bin to τ bins.
                 TAU_FINE = np.linspace(-3.0, 3.0, 601); TAU_FINE_C = 0.5*(TAU_FINE[:-1]+TAU_FINE[1:])
                 TAU_FINE_BIN = TAU_FINE[1] - TAU_FINE[0]
                 true_tau_dens = np.stack([
@@ -237,8 +236,33 @@ def main():
                     for q in range(n_q)])
                 true_ate = wasserstein_barycenter_1d(true_tau_dens, TAU_FINE_C)
                 t_ate = density_to_tau_probs(true_ate, TAU_FINE_C, TAU_FINE_BIN)
+
+                # Do-PFN-bb MALC ATE (from stored p_ate)
                 p_bb_malc_ate = density_to_tau_probs(z['ours_dopfn_bb__p_ate'], TAU_FINE_C, TAU_FINE_BIN)
                 acc['bb_malc']['ate'].append(l2(p_bb_malc_ate, t_ate, bin_w_tau))
+
+                # Do-PFN-bb RAW ATE: barycenter of per-query raw τ densities.
+                # Raw τ per query = independence convolution of raw y0/y1 marginals
+                # (on Y_CENTERS grid), yielding a τ density on a natural convolution grid.
+                if has_rawmarg:
+                    raw_tau_dens = []
+                    for q in range(n_q):
+                        d_y0 = z['ours_dopfn_bb_rawmarg__p_y0'][q]  # on Y_CENTERS
+                        d_y1 = z['ours_dopfn_bb_rawmarg__p_y1'][q]
+                        # Convolve → τ density on grid stepped by Y_BIN, spanning
+                        # roughly [Y_CENTERS[0]-Y_CENTERS[-1], Y_CENTERS[-1]-Y_CENTERS[0]]
+                        # Use FFT convolution on Y_CENTERS spacing
+                        conv = np.convolve(d_y1, d_y0[::-1], mode='full') * Y_BIN
+                        tau_grid_conv = np.arange(-(len(Y_CENTERS)-1), len(Y_CENTERS)) * Y_BIN + (Y_CENTERS[0]-Y_CENTERS[-1])
+                        # Interp onto TAU_FINE
+                        d_tau_q = np.interp(TAU_FINE_C, tau_grid_conv, conv, left=0, right=0)
+                        s = d_tau_q.sum() * TAU_FINE_BIN
+                        if s > 0: d_tau_q = d_tau_q / s
+                        raw_tau_dens.append(d_tau_q)
+                    raw_tau_dens = np.stack(raw_tau_dens)
+                    raw_ate = wasserstein_barycenter_1d(raw_tau_dens, TAU_FINE_C)
+                    p_bb_raw_ate = density_to_tau_probs(raw_ate, TAU_FINE_C, TAU_FINE_BIN)
+                    acc['bb_raw']['ate'].append(l2(p_bb_raw_ate, t_ate, bin_w_tau))
 
         # ── Do-PFN reference shard (separate file) ────────────────────
         if r in dopfn_by_r:
