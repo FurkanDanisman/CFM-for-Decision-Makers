@@ -45,6 +45,10 @@ def main():
                      help='Shards for Do-PFN-bb (raw + MALC come from these).')
     ap.add_argument('--dopfn-shards-glob', default='',
                      help='Optional separate shards for Do-PFN (if not in main shards).')
+    ap.add_argument('--fn50-shards-glob', default='',
+                     help='Optional separate shards for Ours(fn=50) — reads ours_fn50__* keys.')
+    ap.add_argument('--uwyk-shards-glob', default='',
+                     help='Optional separate shards for UWYK — reads uwyk_noanc__* and uwyk_anc__* keys.')
     ap.add_argument('--repo', required=True)
     ap.add_argument('--causalpfn', required=True)
     ap.add_argument('--dopfn', default='', help='DoPFN repo path (ACIC only)')
@@ -130,13 +134,19 @@ def main():
     shards = sorted(glob.glob(args.shards_glob))
     dopfn_shards = sorted(glob.glob(args.dopfn_shards_glob)) if args.dopfn_shards_glob else []
     dopfn_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in dopfn_shards}
-    print(f'[load] {len(shards)} main shards, {len(dopfn_shards)} dopfn ref shards', flush=True)
+    fn50_shards = sorted(glob.glob(args.fn50_shards_glob)) if args.fn50_shards_glob else []
+    fn50_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_shards}
+    uwyk_shards = sorted(glob.glob(args.uwyk_shards_glob)) if args.uwyk_shards_glob else []
+    uwyk_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in uwyk_shards}
+    print(f'[load] {len(shards)} main, {len(dopfn_shards)} dopfn, '
+          f'{len(fn50_shards)} fn50, {len(uwyk_shards)} uwyk ref shards', flush=True)
     if not shards:
         sys.exit('no main shards match')
 
     # Accumulators — pool across (realization, query)
     acc = {m: {q: [] for q in ('y0', 'y1', 'tau', 'ate')}
-           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep')}
+           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep',
+                       'fn50', 'uwyk_noanc', 'uwyk_anc')}
 
     for si, shard_path in enumerate(shards):
         r = int(shard_path.split('.r')[-1].split('.')[0])
@@ -286,41 +296,70 @@ def main():
                     p_bb_mi_ate = density_to_tau_probs(malc_conv_ate, TAU_FINE_C, TAU_FINE_BIN)
                     acc['bb_malc_indep']['ate'].append(l2(p_bb_mi_ate, t_ate, bin_w_tau))
 
-        # ── Do-PFN reference shard (separate file) ────────────────────
-        if r in dopfn_by_r:
-            with np.load(dopfn_by_r[r]) as z2:
-                if 'dopfn__p_y0' in z2.files:
-                    for q in range(n_q):
-                        t_y0 = truth_probs_y(mu0[q], sigma_scaled)
-                        t_y1 = truth_probs_y(mu1[q], sigma_scaled)
-                        mu_tau = float(mu1[q] - mu0[q])
-                        sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
-                        t_tau = truth_probs_tau(mu_tau, sigma_tau)
+        # ── Helper: read one method from a shard file, aggregate to J=10 ───
+        TAU_FINE = np.linspace(-3.0, 3.0, 601); TAU_FINE_C = 0.5*(TAU_FINE[:-1]+TAU_FINE[1:])
+        TAU_FINE_BIN = TAU_FINE[1] - TAU_FINE[0]
+        # Precompute truth ATE density once per realization
+        true_tau_dens = np.stack([
+            norm.pdf(TAU_FINE_C, loc=float(mu1[q]-mu0[q]),
+                      scale=float(np.sqrt(2)*sigma_scaled))
+            for q in range(n_q)])
+        true_ate_density = wasserstein_barycenter_1d(true_tau_dens, TAU_FINE_C)
+        t_ate_bins = density_to_tau_probs(true_ate_density, TAU_FINE_C, TAU_FINE_BIN)
 
-                        p_do_y0 = y_probs_from_stored(z2['dopfn__p_y0'][q])
-                        p_do_y1 = y_probs_from_stored(z2['dopfn__p_y1'][q])
-                        # Do-PFN τ via independence convolution of its marginals
-                        p_do_tau_conv = np.convolve(p_do_y1, p_do_y0[::-1], mode='full')
-                        tau_conv_offsets = np.arange(-(J-1), J) * bin_w_Y
-                        p_do_tau = np.zeros(n_tau_bins)
-                        for i, off in enumerate(tau_conv_offsets):
+        def _read_reference_method(shard_file, key_prefix, acc_key,
+                                    tau_via='indep_convolve'):
+            """Read p_y0/p_y1 (+ p_tau, p_ate) from a shard for one method.
+            tau_via: 'indep_convolve' (marginal convolution) or 'stored_ptau' (integrate stored p_tau)."""
+            if shard_file is None: return
+            with np.load(shard_file) as z2:
+                py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
+                ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
+                if py0k not in z2.files: return
+                for q in range(n_q):
+                    t_y0 = truth_probs_y(mu0[q], sigma_scaled)
+                    t_y1 = truth_probs_y(mu1[q], sigma_scaled)
+                    mu_tau = float(mu1[q] - mu0[q])
+                    sigma_tau = float(np.sqrt(2.0) * sigma_scaled)
+                    t_tau = truth_probs_tau(mu_tau, sigma_tau)
+
+                    p_y0 = y_probs_from_stored(z2[py0k][q])
+                    p_y1 = y_probs_from_stored(z2[py1k][q])
+                    acc[acc_key]['y0'].append(l2(p_y0, t_y0, bin_w_Y))
+                    acc[acc_key]['y1'].append(l2(p_y1, t_y1, bin_w_Y))
+
+                    if tau_via == 'stored_ptau' and ptauk in z2.files:
+                        p_tau = density_to_tau_probs(
+                            z2[ptauk][q], TAU_FINE_C, TAU_FINE_BIN)
+                    else:
+                        conv = np.convolve(p_y1, p_y0[::-1], mode='full')
+                        offs = np.arange(-(J-1), J) * bin_w_Y
+                        p_tau = np.zeros(n_tau_bins)
+                        for i, off in enumerate(offs):
                             k = int(np.clip(np.searchsorted(edges_tau, off, side='right') - 1,
                                              0, n_tau_bins - 1))
-                            p_do_tau[k] += p_do_tau_conv[i]
-                        acc['dopfn']['y0'].append(l2(p_do_y0, t_y0, bin_w_Y))
-                        acc['dopfn']['y1'].append(l2(p_do_y1, t_y1, bin_w_Y))
-                        acc['dopfn']['tau'].append(l2(p_do_tau, t_tau, bin_w_tau))
-                if 'dopfn__p_ate' in z2.files:
-                    TAU_FINE = np.linspace(-3.0, 3.0, 601); TAU_FINE_C = 0.5*(TAU_FINE[:-1]+TAU_FINE[1:])
-                    TAU_FINE_BIN = TAU_FINE[1] - TAU_FINE[0]
-                    true_tau_dens = np.stack([
-                        norm.pdf(TAU_FINE_C, loc=float(mu1[q]-mu0[q]),
-                                  scale=float(np.sqrt(2)*sigma_scaled))
-                        for q in range(n_q)])
-                    true_ate = wasserstein_barycenter_1d(true_tau_dens, TAU_FINE_C)
-                    t_ate = density_to_tau_probs(true_ate, TAU_FINE_C, TAU_FINE_BIN)
-                    p_do_ate = density_to_tau_probs(z2['dopfn__p_ate'], TAU_FINE_C, TAU_FINE_BIN)
-                    acc['dopfn']['ate'].append(l2(p_do_ate, t_ate, bin_w_tau))
+                            p_tau[k] += conv[i]
+                    acc[acc_key]['tau'].append(l2(p_tau, t_tau, bin_w_tau))
+
+                # ATE
+                if patek in z2.files:
+                    p_ate = density_to_tau_probs(z2[patek], TAU_FINE_C, TAU_FINE_BIN)
+                    acc[acc_key]['ate'].append(l2(p_ate, t_ate_bins, bin_w_tau))
+
+        # Do-PFN (marginals-only → τ via independence conv)
+        if r in dopfn_by_r:
+            _read_reference_method(dopfn_by_r[r], 'dopfn', 'dopfn',
+                                    tau_via='indep_convolve')
+        # fn=50 (has 2D-MALC → use stored p_tau)
+        if r in fn50_by_r:
+            _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50',
+                                    tau_via='stored_ptau')
+        # UWYK (marginals-only in per-arm mode → τ via independence conv)
+        if r in uwyk_by_r:
+            _read_reference_method(uwyk_by_r[r], 'uwyk_noanc', 'uwyk_noanc',
+                                    tau_via='indep_convolve')
+            _read_reference_method(uwyk_by_r[r], 'uwyk_anc', 'uwyk_anc',
+                                    tau_via='indep_convolve')
 
         if (si + 1) % 10 == 0:
             print(f'  processed {si+1}/{len(shards)}', flush=True)
@@ -336,10 +375,13 @@ def main():
     print(f'══ {args.dataset.upper()} — per-bin probability L2 (J=10 bins for y0/y1; '
           f'{n_tau_bins} τ bins width {bin_w_tau:.2f}) ══')
     print(f'{"method":18s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
-    for m_key, m_label in [('dopfn', 'Do-PFN'),
-                            ('bb_raw', 'Do-PFN-bb raw'),
-                            ('bb_malc', 'Do-PFN-bb MALC (2D-τ)'),
-                            ('bb_malc_indep', 'Do-PFN-bb MALC (indep-τ)')]:
+    for m_key, m_label in [('dopfn',          'Do-PFN'),
+                            ('fn50',           'Ours(fn=50)'),
+                            ('uwyk_noanc',     'UWYK-NoAnc'),
+                            ('uwyk_anc',       'UWYK-FullAnc'),
+                            ('bb_raw',         'Do-PFN-bb raw'),
+                            ('bb_malc',        'Do-PFN-bb MALC (2D-τ)'),
+                            ('bb_malc_indep',  'Do-PFN-bb MALC (indep-τ)')]:
         row = f'{m_label:18s}'
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
