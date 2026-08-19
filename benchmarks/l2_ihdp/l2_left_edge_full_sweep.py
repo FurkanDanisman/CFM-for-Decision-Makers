@@ -22,14 +22,28 @@ def main():
     ap.add_argument('--causalpfn', required=True)
     ap.add_argument('--checkpoint-dopfn-bb', required=True,
                      help='Only needed to read J from checkpoint config; not run.')
+    ap.add_argument('--dataset', choices=['ihdp', 'acic'], default='ihdp')
+    ap.add_argument('--acic-cache-dir', default='')
+    ap.add_argument('--dopfn', default='',
+                     help='dopfn root — needed for ACIC dataset shim.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
+    sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_acic'))
     sys.path.insert(0, args.repo)
     sys.path.insert(0, args.causalpfn)
     import torch
-    from true_ihdp import load_ihdp_truth, true_marginals_per_query, Y_CENTERS
-    from benchmarks import IHDPDataset
+    from ot_barycenter import wasserstein_barycenter_1d
+    if args.dataset == 'ihdp':
+        from true_ihdp import (load_ihdp_truth, true_marginals_per_query,
+                                true_cate_per_query, true_ate_barycenter,
+                                Y_CENTERS, TAU_CENTERS)
+        from benchmarks import IHDPDataset
+    else:
+        from true_acic import (load_acic_truth, true_marginals_per_query,
+                                true_cate_per_query, true_ate_barycenter,
+                                Y_CENTERS, TAU_CENTERS)
+        from benchmarks import ACIC2016Dataset
 
     # J=10 edges from checkpoint
     ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
@@ -37,18 +51,33 @@ def main():
     J = int(ckpt['config']['J'])
     bin_w_J10 = float(edges_J10[1] - edges_J10[0])
     Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
+    TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
     shift_left = -bin_w_J10 / 2.0
+    # τ = Y1 - Y0 → both shift left by same amount → net-zero shift on τ.
+    # Use standard center convention for τ/ATE L2.
+    # For J=10 τ resolution: 10 bins covering TAU_CENTERS range.
+    tau_edges_J10 = np.linspace(TAU_CENTERS[0] - TAU_BIN/2,
+                                 TAU_CENTERS[-1] + TAU_BIN/2, J + 1)
+    tau_bin_w_J10 = tau_edges_J10[1] - tau_edges_J10[0]
 
-    def shift(d_on_Y):
+    def shift_y(d_on_Y):
         p = np.interp(Y_CENTERS, Y_CENTERS - shift_left, d_on_Y, left=0.0, right=0.0)
         s = p.sum() * Y_BIN
         return p / s if s > 0 else p
 
-    def to_j10(density_100):
+    def to_j10_y(density_100):
         p_bin = np.zeros(J)
         for j in range(J):
             mask = (Y_CENTERS >= edges_J10[j]) & (Y_CENTERS < edges_J10[j+1])
             p_bin[j] = np.array(density_100)[mask].sum() * Y_BIN
+        total = p_bin.sum()
+        return p_bin / total if total > 0 else p_bin
+
+    def to_j10_tau(density_on_tau):
+        p_bin = np.zeros(J)
+        for j in range(J):
+            mask = (TAU_CENTERS >= tau_edges_J10[j]) & (TAU_CENTERS < tau_edges_J10[j+1])
+            p_bin[j] = np.array(density_on_tau)[mask].sum() * TAU_BIN
         total = p_bin.sum()
         return p_bin / total if total > 0 else p_bin
 
@@ -59,12 +88,14 @@ def main():
         ('ours_dopfn_bb',         'BB LOGLIN'),
         ('ours_dopfn_bb_old',     'BB OLD'),
         ('ours_dopfn_bb_rawmarg', 'BB RAW'),
+        ('ours_dopfn_bb_indep',   'BB INDEP-τ'),
         ('dopfn',                 'Do-PFN'),
     ]
 
     # Accumulators
-    acc = {label: {'y0_j100': [], 'y1_j100': [], 'y0_j10': [], 'y1_j10': []}
-           for _, label in VARIANTS}
+    METRICS = ['y0_j100', 'y1_j100', 'tau_j100', 'ate_j100',
+               'y0_j10',  'y1_j10',  'tau_j10',  'ate_j10']
+    acc = {label: {m: [] for m in METRICS} for _, label in VARIANTS}
 
     shards = sorted(glob.glob(args.shards_glob))
     if not shards:
@@ -74,30 +105,52 @@ def main():
     for si, shard_path in enumerate(shards):
         r = int(shard_path.split('.r')[-1].split('.')[0])
         # Load truth for this realization
-        cd, _ = IHDPDataset()[r]
-        y_train_full = np.asarray(cd.y_train.detach().cpu()
-                                  if hasattr(cd.y_train, 'detach') else cd.y_train)
-        truth = load_ihdp_truth(r, args.causalpfn, y_train_full)
+        if args.dataset == 'ihdp':
+            cd, _ = IHDPDataset()[r]
+            y_train_full = np.asarray(cd.y_train.detach().cpu()
+                                      if hasattr(cd.y_train, 'detach') else cd.y_train)
+            truth = load_ihdp_truth(r, args.causalpfn, y_train_full)
+        else:
+            # ACIC: mirror l2_acic/eval_realization.py
+            if args.dopfn:
+                from eval_realization import _install_dopfn_datasets_shim  # noqa
+                try: _install_dopfn_datasets_shim(args.dopfn)
+                except Exception: pass
+            cd, _ = ACIC2016Dataset()[r]
+            y_train_full = np.asarray(cd.y_train.detach().cpu()
+                                      if hasattr(cd.y_train, 'detach') else cd.y_train)
+            truth = load_acic_truth(r, y_train_full, cache_dir=(args.acic_cache_dir or None))
         p_y0_true, p_y1_true = true_marginals_per_query(truth)
+        p_tau_true = true_cate_per_query(truth)
+        p_ate_true = true_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
 
         with np.load(shard_path) as z:
             n_q = p_y0_true.shape[0]
             for key, label in VARIANTS:
                 py0_key = f'{key}__p_y0'; py1_key = f'{key}__p_y1'
+                ptau_key = f'{key}__p_tau'; pate_key = f'{key}__p_ate'
                 if py0_key not in z.files: continue
+                # ATE (single value, not per-query)
+                if pate_key in z.files:
+                    acc[label]['ate_j100'].append(l2(z[pate_key], p_ate_true, TAU_BIN))
+                    ate_j10   = to_j10_tau(z[pate_key])
+                    t_ate_j10 = to_j10_tau(p_ate_true)
+                    acc[label]['ate_j10'].append(l2(ate_j10/tau_bin_w_J10, t_ate_j10/tau_bin_w_J10, tau_bin_w_J10))
                 for q in range(n_q):
-                    # J=100 LEFT-edge L2
-                    p0_L = shift(z[py0_key][q])
-                    p1_L = shift(z[py1_key][q])
+                    # y0 / y1 — LEFT-edge convention
+                    p0_L = shift_y(z[py0_key][q])
+                    p1_L = shift_y(z[py1_key][q])
                     acc[label]['y0_j100'].append(l2(p0_L, p_y0_true[q], Y_BIN))
                     acc[label]['y1_j100'].append(l2(p1_L, p_y1_true[q], Y_BIN))
-                    # J=10 L2 (downsample both to J=10 probs, compare density)
-                    p0_j10 = to_j10(p0_L)
-                    p1_j10 = to_j10(p1_L)
-                    t0_j10 = to_j10(p_y0_true[q])
-                    t1_j10 = to_j10(p_y1_true[q])
-                    acc[label]['y0_j10'].append(l2(p0_j10/bin_w_J10, t0_j10/bin_w_J10, bin_w_J10))
-                    acc[label]['y1_j10'].append(l2(p1_j10/bin_w_J10, t1_j10/bin_w_J10, bin_w_J10))
+                    acc[label]['y0_j10'].append(l2(to_j10_y(p0_L)/bin_w_J10, to_j10_y(p_y0_true[q])/bin_w_J10, bin_w_J10))
+                    acc[label]['y1_j10'].append(l2(to_j10_y(p1_L)/bin_w_J10, to_j10_y(p_y1_true[q])/bin_w_J10, bin_w_J10))
+                    # τ — no natural LEFT-edge shift (τ = Y1 - Y0 → shifts cancel).
+                    # Use standard center convention.
+                    if ptau_key in z.files:
+                        acc[label]['tau_j100'].append(l2(z[ptau_key][q], p_tau_true[q], TAU_BIN))
+                        acc[label]['tau_j10'].append(l2(to_j10_tau(z[ptau_key][q])/tau_bin_w_J10,
+                                                        to_j10_tau(p_tau_true[q])/tau_bin_w_J10,
+                                                        tau_bin_w_J10))
         if (si + 1) % 10 == 0:
             print(f'  processed {si+1}/{len(shards)}', flush=True)
 
@@ -108,12 +161,17 @@ def main():
         return f'{m:.4f}±{sem:.4f}'
 
     print()
-    print(f'══ IHDP — LEFT-edge L2 (n_queries pooled across {len(shards)} realizations) ══')
-    print(f'{"variant":18s}  {"y0 J=10":>16s}  {"y0 J=100":>16s}  '
-          f'{"y1 J=10":>16s}  {"y1 J=100":>16s}')
+    print(f'══ {args.dataset.upper()} — LEFT-edge y0/y1, center-conv τ/ATE  '
+          f'(n_queries pooled across {len(shards)} realizations) ══')
+    print(f'{"variant":18s}  '
+          f'{"y0 J=10":>16s}  {"y0 J=100":>16s}  '
+          f'{"y1 J=10":>16s}  {"y1 J=100":>16s}  '
+          f'{"τ J=10":>16s}  {"τ J=100":>16s}  '
+          f'{"ATE J=10":>16s}  {"ATE J=100":>16s}')
     for _, label in VARIANTS:
         row = f'{label:18s}  '
-        for metric in ['y0_j10', 'y0_j100', 'y1_j10', 'y1_j100']:
+        for metric in ['y0_j10','y0_j100','y1_j10','y1_j100',
+                        'tau_j10','tau_j100','ate_j10','ate_j100']:
             row += f'  {_agg(acc[label][metric]):>16s}'
         print(row)
 
