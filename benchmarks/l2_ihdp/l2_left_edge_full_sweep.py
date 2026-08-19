@@ -26,6 +26,10 @@ def main():
     ap.add_argument('--acic-cache-dir', default='')
     ap.add_argument('--dopfn', default='',
                      help='dopfn root — needed for ACIC dataset shim.')
+    ap.add_argument('--convention', choices=['left', 'center'], default='left',
+                     help='left: shift model densities LEFT by bin_w_J10/2 (correct for '
+                          'J=10 head, artificially penalises well-centered baselines like '
+                          'fn=50 / UWYK / Do-PFN). center: no shift (fair for baselines).')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -54,7 +58,7 @@ def main():
     bin_w_J10 = float(edges_J10[1] - edges_J10[0])
     Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
     TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
-    shift_left = -bin_w_J10 / 2.0
+    shift_left = -bin_w_J10 / 2.0 if args.convention == 'left' else 0.0
     # For J=10 τ resolution: 10 bins covering TAU_CENTERS range.
     tau_edges_J10 = np.linspace(TAU_CENTERS[0] - TAU_BIN/2,
                                  TAU_CENTERS[-1] + TAU_BIN/2, J + 1)
