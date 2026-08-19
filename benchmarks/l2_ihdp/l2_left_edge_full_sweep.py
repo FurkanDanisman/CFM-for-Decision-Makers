@@ -26,10 +26,10 @@ def main():
     ap.add_argument('--acic-cache-dir', default='')
     ap.add_argument('--dopfn', default='',
                      help='dopfn root — needed for ACIC dataset shim.')
-    ap.add_argument('--convention', choices=['left', 'center'], default='left',
-                     help='left: shift model densities LEFT by bin_w_J10/2 (correct for '
-                          'J=10 head, artificially penalises well-centered baselines like '
-                          'fn=50 / UWYK / Do-PFN). center: no shift (fair for baselines).')
+    ap.add_argument('--debug-x-shift', type=float, default=0.0,
+                     help='DEBUG ONLY: apply an x-axis shift (in scaled Y units) to model '
+                          'density before computing L2. Default 0.0 (no shift, correct). '
+                          'A non-zero shift is a WRONG diagnostic hack; leave at 0.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -58,7 +58,7 @@ def main():
     bin_w_J10 = float(edges_J10[1] - edges_J10[0])
     Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
     TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
-    shift_left = -bin_w_J10 / 2.0 if args.convention == 'left' else 0.0
+    shift_left = args.debug_x_shift    # 0.0 by default = no shift = correct L2
     # For J=10 τ resolution: 10 bins covering TAU_CENTERS range.
     tau_edges_J10 = np.linspace(TAU_CENTERS[0] - TAU_BIN/2,
                                  TAU_CENTERS[-1] + TAU_BIN/2, J + 1)
