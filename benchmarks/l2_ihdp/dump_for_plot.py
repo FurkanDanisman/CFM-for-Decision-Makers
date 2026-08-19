@@ -264,10 +264,13 @@ def main():
         'p_y0_true': np.asarray(p_y0_true[q]).tolist(),
         'p_y1_true': np.asarray(p_y1_true[q]).tolist(),
         'p_tau_true': np.asarray(p_tau_true[q]).tolist(),
-        # Python-side MALC output (DoPFN-bb)
+        # Python-side MALC output (DoPFN-bb) — MALC-LOGLIN (default)
         'py_bb_p_y0': d_bb['p_y0'][q].tolist(),
         'py_bb_p_y1': d_bb['p_y1'][q].tolist(),
         'py_bb_p_tau': d_bb['p_tau'][q].tolist(),
+        # Mean-adjusted Python MALC (port of R's get_fhatn recipe)
+        'py_bb_madj_p_y0': d_bb['p_y0_malc_madj'][q].tolist() if 'p_y0_malc_madj' in d_bb else None,
+        'py_bb_madj_p_y1': d_bb['p_y1_malc_madj'][q].tolist() if 'p_y1_malc_madj' in d_bb else None,
         # Do-PFN output
         'dopfn_p_y0': d_dopfn['p_y0'][q].tolist(),
         'dopfn_p_y1': d_dopfn['p_y1'][q].tolist(),

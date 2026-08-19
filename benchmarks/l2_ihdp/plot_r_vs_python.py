@@ -32,22 +32,24 @@ def main():
 
     panels = [
         (axes[0,0], Y, 'p(Y|do(0))',
-            b['p_y0_true'], b['dopfn_p_y0'], b['py_bb_p_y0'], b.get('r_bb_p_y0')),
+            b['p_y0_true'], b['dopfn_p_y0'], b['py_bb_p_y0'], b.get('py_bb_madj_p_y0'), b.get('r_bb_p_y0')),
         (axes[0,1], Y, 'p(Y|do(1))',
-            b['p_y1_true'], b['dopfn_p_y1'], b['py_bb_p_y1'], b.get('r_bb_p_y1')),
+            b['p_y1_true'], b['dopfn_p_y1'], b['py_bb_p_y1'], b.get('py_bb_madj_p_y1'), b.get('r_bb_p_y1')),
         (axes[1,0], TAU, 'p(τ)',
-            b['p_tau_true'], b['dopfn_p_tau'], b['py_bb_p_tau'], b.get('r_bb_p_tau')),
+            b['p_tau_true'], b['dopfn_p_tau'], b['py_bb_p_tau'], None, b.get('r_bb_p_tau')),
         (axes[1,1], TAU, 'p(ATE) — same as p(τ) at single query',
-            b['p_tau_true'], b['dopfn_p_tau'], b['py_bb_p_tau'], b.get('r_bb_p_tau')),
+            b['p_tau_true'], b['dopfn_p_tau'], b['py_bb_p_tau'], None, b.get('r_bb_p_tau')),
     ]
 
     r_label = f"DoPFN-bb R ({b.get('r_bb_method', 'unknown')})"
-    for ax, grid, title, truth, dpf, py, r in panels:
+    for ax, grid, title, truth, dpf, py, madj, r in panels:
         ax.plot(grid, _to_array(truth), 'k--', lw=2, label='truth', alpha=0.85)
         if dpf is not None:
             ax.plot(grid, _to_array(dpf), color='#8A4FBE', lw=1.6, label='Do-PFN')
         if py is not None:
-            ax.plot(grid, _to_array(py), color='#0F8A3C', lw=1.6, label='DoPFN-bb Python MALC')
+            ax.plot(grid, _to_array(py), color='#0F8A3C', lw=1.6, label='DoPFN-bb Py MALC-LOGLIN')
+        if madj is not None and not np.all(np.isnan(_to_array(madj))):
+            ax.plot(grid, _to_array(madj), color='#2E6DBF', lw=1.6, ls='-.', label='DoPFN-bb Py MALC-MADJ')
         if r is not None and not np.all(np.isnan(_to_array(r))):
             ax.plot(grid, _to_array(r), color='#B84A2A', lw=1.6, label=r_label)
         ax.set_title(title)
