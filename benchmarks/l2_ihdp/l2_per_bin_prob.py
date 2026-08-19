@@ -42,16 +42,23 @@ import numpy as np
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--shards-glob', required=True,
-                     help='Shards for Do-PFN-bb (raw + MALC come from these).')
-    ap.add_argument('--dopfn-shards-glob', default='',
-                     help='Optional separate shards for Do-PFN (if not in main shards).')
-    ap.add_argument('--fn50-shards-glob', default='',
-                     help='Optional separate shards for Ours(fn=50) — reads ours_fn50__* keys.')
-    ap.add_argument('--uwyk-shards-glob', default='',
-                     help='Optional separate shards for UWYK — reads uwyk_noanc__* and uwyk_anc__* keys.')
+                     help='B=100 BB main sweep (1D-MALC marginals, 2D-MALC τ). '
+                          'Row label: "Do-PFN-bb MALC (2D-τ) 1D-marg [B=100]".')
+    ap.add_argument('--bb-b500-shards-glob', default='',
+                     help='B=500 BB main sweep — same as --shards-glob but B=500.')
     ap.add_argument('--bb-2dmarg-shards-glob', default='',
-                     help='Optional BB sweep run with marginals_from_2d=True — its '
-                          'ours_dopfn_bb__p_y0 / p_y1 are the marginalised 2D-MALC densities.')
+                     help='B=100 BB sweep with marginals_from_2d=True. Row label: '
+                          '"Do-PFN-bb MALC (2D-τ) 2D-marg [B=100]".')
+    ap.add_argument('--bb-2dmarg-b500-shards-glob', default='',
+                     help='B=500 BB sweep with marginals_from_2d=True.')
+    ap.add_argument('--dopfn-shards-glob', default='',
+                     help='Do-PFN shards (any sweep that has dopfn__* keys — B does not apply).')
+    ap.add_argument('--fn50-shards-glob', default='',
+                     help='fn=50 sweep with 1D-MALC marginals (marginals_from_2d=0).')
+    ap.add_argument('--fn50-2dmarg-shards-glob', default='',
+                     help='fn=50 sweep with marginals_from_2d=True — new row.')
+    ap.add_argument('--uwyk-shards-glob', default='',
+                     help='UWYK sweep — reads uwyk_noanc__* and uwyk_anc__* keys.')
     ap.add_argument('--repo', required=True)
     ap.add_argument('--causalpfn', required=True)
     ap.add_argument('--dopfn', default='', help='DoPFN repo path (ACIC only)')
@@ -151,16 +158,28 @@ def main():
     uwyk_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in uwyk_shards}
     bb_2dmarg_shards = sorted(glob.glob(args.bb_2dmarg_shards_glob)) if args.bb_2dmarg_shards_glob else []
     bb_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_shards}
-    print(f'[load] {len(shards)} main, {len(dopfn_shards)} dopfn, '
-          f'{len(fn50_shards)} fn50, {len(uwyk_shards)} uwyk, '
-          f'{len(bb_2dmarg_shards)} bb-2dmarg ref shards', flush=True)
+    bb_b500_shards = sorted(glob.glob(args.bb_b500_shards_glob)) if args.bb_b500_shards_glob else []
+    bb_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_b500_shards}
+    bb_2dmarg_b500_shards = sorted(glob.glob(args.bb_2dmarg_b500_shards_glob)) if args.bb_2dmarg_b500_shards_glob else []
+    bb_2dmarg_b500_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in bb_2dmarg_b500_shards}
+    fn50_2dmarg_shards = sorted(glob.glob(args.fn50_2dmarg_shards_glob)) if args.fn50_2dmarg_shards_glob else []
+    fn50_2dmarg_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in fn50_2dmarg_shards}
+    print(f'[load] {len(shards)} main-B100, {len(bb_b500_shards)} main-B500, '
+          f'{len(bb_2dmarg_shards)} 2dmarg-B100, {len(bb_2dmarg_b500_shards)} 2dmarg-B500, '
+          f'{len(dopfn_shards)} dopfn, {len(fn50_shards)} fn50-1D, '
+          f'{len(fn50_2dmarg_shards)} fn50-2D, {len(uwyk_shards)} uwyk', flush=True)
     if not shards:
-        sys.exit('no main shards match')
+        sys.exit('no main (B=100) shards match')
 
     # Accumulators — pool across (realization, query)
     acc = {m: {q: [] for q in ('y0', 'y1', 'tau', 'ate')}
-           for m in ('dopfn', 'bb_raw', 'bb_malc', 'bb_malc_indep', 'bb_2dmarg',
-                       'fn50', 'uwyk_noanc', 'uwyk_anc')}
+           for m in ('dopfn',
+                       'bb_malc_b100', 'bb_2dmarg_b100',
+                       'bb_malc_b500', 'bb_2dmarg_b500',
+                       'fn50_1d',      'fn50_2d',
+                       'uwyk_noanc',   'uwyk_anc',
+                       # kept for backwards-compat with old sweeps; unused rows
+                       'bb_raw', 'bb_malc_indep')}
 
     for si, shard_path in enumerate(shards):
         r = int(shard_path.split('.r')[-1].split('.')[0])
@@ -228,9 +247,9 @@ def main():
                         z['ours_dopfn_bb__p_tau'][q],
                         np.linspace(-3.0, 3.0, 601)[1:] * 0 + 0.5 * (np.linspace(-3.0, 3.0, 601)[:-1] + np.linspace(-3.0, 3.0, 601)[1:]),
                         float(np.linspace(-3.0, 3.0, 601)[1] - np.linspace(-3.0, 3.0, 601)[0]))
-                    acc['bb_malc']['y0'].append(l2(p_bb_malc_y0, t_y0, bin_w_Y))
-                    acc['bb_malc']['y1'].append(l2(p_bb_malc_y1, t_y1, bin_w_Y))
-                    acc['bb_malc']['tau'].append(l2(p_bb_malc_tau, t_tau, bin_w_tau))
+                    acc['bb_malc_b100']['y0'].append(l2(p_bb_malc_y0, t_y0, bin_w_Y))
+                    acc['bb_malc_b100']['y1'].append(l2(p_bb_malc_y1, t_y1, bin_w_Y))
+                    acc['bb_malc_b100']['tau'].append(l2(p_bb_malc_tau, t_tau, bin_w_tau))
                     # ── DoPFN-bb MALC + INDEPENDENCE τ ────────────────
                     # Same marginals as bb_malc; τ via convolution of MALC marginals
                     # (assumes Y0 ⊥ Y1, ignoring the 2D joint fit).
@@ -276,7 +295,7 @@ def main():
 
                 # Do-PFN-bb MALC ATE (from stored p_ate)
                 p_bb_malc_ate = density_to_tau_probs(z['ours_dopfn_bb__p_ate'], TAU_FINE_C, TAU_FINE_BIN)
-                acc['bb_malc']['ate'].append(l2(p_bb_malc_ate, t_ate, bin_w_tau))
+                acc['bb_malc_b100']['ate'].append(l2(p_bb_malc_ate, t_ate, bin_w_tau))
 
                 # Do-PFN-bb RAW ATE: barycenter of per-query raw τ densities.
                 # Raw τ per query = independence convolution of raw y0/y1 marginals
@@ -354,13 +373,16 @@ def main():
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
-                # Recipe-strict per-bin probabilities on J=10 edges, if the
-                # sweep stored them (bb_2dmarg with exact-CDF marginals).
+                # Recipe-strict per-bin probabilities on the model's native
+                # head, if the sweep stored them (2dmarg with exact-CDF
+                # marginals). Works for both BB (J=10) and fn=50 (J=100)
+                # so long as the stored width matches the target grid.
                 py0_binsk = f'{key_prefix}__p_y0_bins_j10'
                 py1_binsk = f'{key_prefix}__p_y1_bins_j10'
+                _tgt_J   = J_100 if use_j100 else J
                 use_stored_bins = (
-                    not use_j100
-                    and py0_binsk in z2.files and py1_binsk in z2.files)
+                    py0_binsk in z2.files and py1_binsk in z2.files
+                    and int(z2[py0_binsk].shape[-1]) == _tgt_J)
                 if py0k not in z2.files: return
                 for q in range(n_q):
                     t_y0 = truth_probs_y(mu0[q], sigma_scaled, edges=e_Y)
@@ -401,9 +423,13 @@ def main():
         if r in dopfn_by_r:
             _read_reference_method(dopfn_by_r[r], 'dopfn', 'dopfn',
                                     tau_via='indep_convolve', use_j100=False)
-        # fn=50 — J=100 grid (fn=50's native head resolution)
+        # fn=50 (1D-MALC marginals) — J=100 grid, native head resolution
         if r in fn50_by_r:
-            _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50',
+            _read_reference_method(fn50_by_r[r], 'ours_fn50', 'fn50_1d',
+                                    tau_via='stored_ptau', use_j100=True)
+        # fn=50 (2D-MALC marginals — separate sweep with MARGINALS_FROM_2D=1)
+        if r in fn50_2dmarg_by_r:
+            _read_reference_method(fn50_2dmarg_by_r[r], 'ours_fn50', 'fn50_2d',
                                     tau_via='stored_ptau', use_j100=True)
         # UWYK — J=100 grid
         if r in uwyk_by_r:
@@ -411,9 +437,17 @@ def main():
                                     tau_via='indep_convolve', use_j100=True)
             _read_reference_method(uwyk_by_r[r], 'uwyk_anc', 'uwyk_anc',
                                     tau_via='indep_convolve', use_j100=True)
-        # BB with marginals from 2D-MALC (separate sweep run with marginals_from_2d=True)
+        # BB @ B=100 with 2D-MALC marginals (separate sweep, MARGINALS_FROM_2D=1)
         if r in bb_2dmarg_by_r:
-            _read_reference_method(bb_2dmarg_by_r[r], 'ours_dopfn_bb', 'bb_2dmarg',
+            _read_reference_method(bb_2dmarg_by_r[r], 'ours_dopfn_bb', 'bb_2dmarg_b100',
+                                    tau_via='stored_ptau', use_j100=False)
+        # BB @ B=500 with 1D-MALC marginals (main sweep with malc_B=500)
+        if r in bb_b500_by_r:
+            _read_reference_method(bb_b500_by_r[r], 'ours_dopfn_bb', 'bb_malc_b500',
+                                    tau_via='stored_ptau', use_j100=False)
+        # BB @ B=500 with 2D-MALC marginals (2dmarg sweep with malc_B=500)
+        if r in bb_2dmarg_b500_by_r:
+            _read_reference_method(bb_2dmarg_b500_by_r[r], 'ours_dopfn_bb', 'bb_2dmarg_b500',
                                     tau_via='stored_ptau', use_j100=False)
 
         if (si + 1) % 10 == 0:
@@ -427,18 +461,29 @@ def main():
         return f'{m:.4f}±{sem:.4f}'
 
     print()
-    print(f'══ {args.dataset.upper()} — per-bin probability L2 (J=10 bins for y0/y1; '
-          f'{n_tau_bins} τ bins width {bin_w_tau:.2f}) ══')
-    print(f'{"method":18s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
-    for m_key, m_label in [('dopfn',          'Do-PFN [J=10]'),
-                            ('bb_raw',         'Do-PFN-bb raw [J=10]'),
-                            ('bb_malc',        'Do-PFN-bb MALC (2D-τ) [J=10]'),
-                            ('bb_malc_indep',  'Do-PFN-bb MALC (indep-τ) [J=10]'),
-                            ('bb_2dmarg',      'Do-PFN-bb 2D-MALC marginals [J=10]'),
-                            ('fn50',           'Ours(fn=50) [J=100]'),
-                            ('uwyk_noanc',     'UWYK-NoAnc [J=100]'),
-                            ('uwyk_anc',       'UWYK-FullAnc [J=100]')]:
-        row = f'{m_label:18s}'
+    print(f'══ {args.dataset.upper()} — per-bin probability L2 '
+          f'(BB/Do-PFN: J=10 y-bins, {n_tau_bins} τ-bins @{bin_w_tau:.2f}; '
+          f'fn=50/UWYK: J={J_100} y-bins, {n_tau_bins_100} τ-bins @{bin_w_tau_100:.2f}) ══')
+    print(f'{"method":52s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
+    rows = [
+        ('dopfn',          'Do-PFN [J=10]'),
+        ('__sep__',        '─── B=100 ───────────────────────────────'),
+        ('bb_malc_b100',   'Do-PFN-bb MALC (2D-τ) 1D-marg [B=100, J=10]'),
+        ('bb_2dmarg_b100', 'Do-PFN-bb MALC (2D-τ) 2D-marg [B=100, J=10]'),
+        ('__sep__',        '─── B=500 ───────────────────────────────'),
+        ('bb_malc_b500',   'Do-PFN-bb MALC (2D-τ) 1D-marg [B=500, J=10]'),
+        ('bb_2dmarg_b500', 'Do-PFN-bb MALC (2D-τ) 2D-marg [B=500, J=10]'),
+        ('__sep__',        '─── fn=50 (B=100) ───────────────────────'),
+        ('fn50_1d',        'fn=50 (2D-τ) 1D-marg [B=100, J=100]'),
+        ('fn50_2d',        'fn=50 (2D-τ) 2D-marg [B=100, J=100]'),
+        ('__sep__',        '─── UWYK ────────────────────────────────'),
+        ('uwyk_noanc',     'UWYK-NoAnc [J=100]'),
+        ('uwyk_anc',       'UWYK-FullAnc [J=100]'),
+    ]
+    for m_key, m_label in rows:
+        if m_key == '__sep__':
+            print(m_label); continue
+        row = f'{m_label:52s}'
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
         print(row)
