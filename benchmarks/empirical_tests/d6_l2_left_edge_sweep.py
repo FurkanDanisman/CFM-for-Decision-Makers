@@ -30,6 +30,9 @@ def main():
     ap.add_argument('--malc-B', type=int, default=100)
     ap.add_argument('--malc-max-K', type=int, default=1)
     ap.add_argument('--n-eval', type=int, default=200)
+    ap.add_argument('--checkpoint-npz', default='',
+                     help='Optional path to save/resume accumulator arrays. '
+                          'Writes after every seed; on restart, skips already-done seeds.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'empirical_tests'))
@@ -72,7 +75,23 @@ def main():
     acc = {lbl: {m: [] for m in METRICS} for lbl in LABELS}
 
     print(f'[cfg] d={args.d} N={args.N} n_test={args.n_test} n_seeds={args.n_seeds}', flush=True)
+    # Resume from checkpoint if it exists
+    done_seeds = set()
+    if args.checkpoint_npz and os.path.exists(args.checkpoint_npz):
+        with np.load(args.checkpoint_npz, allow_pickle=True) as ckpt:
+            done_seeds = set(int(s) for s in ckpt['done_seeds'].tolist())
+            for lbl in LABELS:
+                for m in METRICS:
+                    key = f'{lbl}__{m}'
+                    if key in ckpt.files:
+                        acc[lbl][m] = ckpt[key].tolist()
+        print(f'[resume] loaded checkpoint with {len(done_seeds)} seeds already done: '
+              f'{sorted(done_seeds)}', flush=True)
+
     for seed in range(args.n_seeds):
+        if seed in done_seeds:
+            print(f'  seed={seed:2d}  SKIP (already in checkpoint)', flush=True)
+            continue
         t0 = time.time()
         cd = make_polynomial_scm(seed=seed, n_context=args.N, n_test=args.n_test,
                                   rho_eff=min(args.rho, 0.99), x_dim=args.d,
@@ -172,6 +191,14 @@ def main():
                                                   to_j10_tau(p_tau_true[q])/tau_bin_w_J10_raw,
                                                   tau_bin_w_J10_raw))
         print(f'  seed={seed:2d}  done in {time.time()-t0:.1f}s', flush=True)
+        done_seeds.add(seed)
+        # Save checkpoint after every seed
+        if args.checkpoint_npz:
+            ckpt_data = {'done_seeds': np.asarray(sorted(done_seeds), dtype=np.int32)}
+            for lbl in LABELS:
+                for m in METRICS:
+                    ckpt_data[f'{lbl}__{m}'] = np.asarray(acc[lbl][m], dtype=np.float64)
+            np.savez(args.checkpoint_npz, **ckpt_data)
 
     def _agg(vs):
         arr = np.asarray(vs, dtype=np.float64); arr = arr[np.isfinite(arr)]
