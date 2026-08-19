@@ -117,8 +117,9 @@ def main():
         def shift_y(d):
             p = np.interp(Y_grid_np, Y_grid_np - shift_left, d, left=0., right=0.)
             s = p.sum()*Y_DX_np; return p/s if s>0 else p
-        # τ = Y1 - Y0: LEFT shifts on Y0/Y1 cancel → no net τ shift. Keep center.
-        shift_left_tau = 0.0
+        # LEFT-edge for τ: use SAME shift magnitude as marginals (bin_w_J10/2)
+        # rather than tau_bin_w_J10/2 (which was 3× too large in earlier version).
+        shift_left_tau = shift_left
         def shift_tau(d):
             if shift_left_tau == 0.0: return d
             p = np.interp(TAU_grid_np, TAU_grid_np - shift_left_tau, d, left=0., right=0.)

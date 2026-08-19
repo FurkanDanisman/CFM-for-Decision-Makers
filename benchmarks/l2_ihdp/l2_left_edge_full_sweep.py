@@ -59,12 +59,12 @@ def main():
     tau_edges_J10 = np.linspace(TAU_CENTERS[0] - TAU_BIN/2,
                                  TAU_CENTERS[-1] + TAU_BIN/2, J + 1)
     tau_bin_w_J10 = tau_edges_J10[1] - tau_edges_J10[0]
-    # LEFT-edge for τ / ATE: τ = Y1 - Y0. If we shift Y0 and Y1 LEFT by the same
-    # amount, τ has ZERO net shift. So the honest LEFT-edge convention for τ is
-    # no shift — center convention IS the LEFT convention. Applying a large
-    # arbitrary shift here previously worsened τ / ATE by 30-40% at J=100 and
-    # was not physically meaningful. Keeping τ/ATE at center convention.
-    shift_left_tau = 0.0
+    # LEFT-edge for τ / ATE: apply the SAME shift magnitude as marginals
+    # (bin_w_J10 / 2) — consistent with the physical scale of Y1 and Y0.
+    # Previously tried tau_bin_w_J10/2 (=0.30), which was 3× too large and
+    # made τ/ATE L2 worse by 30-40% at J=100. This 0.10-shift version treats
+    # τ as living on the same physical scale as Y.
+    shift_left_tau = shift_left
 
     def shift_y(d_on_Y):
         p = np.interp(Y_CENTERS, Y_CENTERS - shift_left, d_on_Y, left=0.0, right=0.0)
