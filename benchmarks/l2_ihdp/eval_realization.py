@@ -233,6 +233,15 @@ def main() -> int:
                 p_tau=_d['p_tau'],
                 cate_raw_scaled=_d.get('cate_raw_scaled'),
             )
+        # OLD-MALC diagnostic: MALC-1D-smoothed marginal but with linear-in-
+        # prob interp (resample_onto) instead of log-linear evaluate.
+        # Reproduces pre-log-linear-fix behaviour. Same p_tau as main.
+        if 'p_y0_malc_old' in _d and 'p_y1_malc_old' in _d:
+            method_out['ours_dopfn_bb_old'] = dict(
+                p_y0=_d['p_y0_malc_old'], p_y1=_d['p_y1_malc_old'],
+                p_tau=_d['p_tau'],
+                cate_raw_scaled=_d.get('cate_raw_scaled'),
+            )
         # MEAN-ADJUSTED MALC diagnostic: R's get_fhatn recipe (Beta jitter
         # to encode empirical-mean shift + refit log-concave). Same p_tau
         # as main; only y0/y1 marginals differ.
