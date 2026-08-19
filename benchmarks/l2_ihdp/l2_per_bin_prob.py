@@ -208,9 +208,26 @@ def main():
                        'uwyk_noanc',        'uwyk_anc',
                        # kept for backwards-compat with old sweeps; unused rows
                        'bb_raw', 'bb_malc_indep')}
+    # Per-method realization coverage — set of realization indices for which
+    # any L2 value was appended. Reported as "X/N" per row where N is the
+    # expected total (IHDP=100, ACIC=10).
+    seen_r = {m: set() for m in acc}
+    n_expected = 100 if args.dataset == 'ihdp' else 10
 
-    for si, shard_path in enumerate(shards):
-        r = int(shard_path.split('.r')[-1].split('.')[0])
+    # Union of all realizations across every input glob so we cover shards
+    # from side sweeps that aren't in the main (--shards-glob) set.
+    all_r = sorted(set(list(dopfn_by_r) + list(fn50_by_r) + list(uwyk_by_r)
+                        + list(bb_2dmarg_by_r) + list(bb_b500_by_r)
+                        + list(bb_2dmarg_b500_by_r) + list(bb_b1000_by_r)
+                        + list(bb_2dmarg_b1000_by_r) + list(fn50_b500_by_r)
+                        + list(fn50_2dmarg_by_r) + list(fn50_b500_by_r)
+                        + list(fn50_2dmarg_b500_by_r) + list(fn50_b1000_by_r)
+                        + list(fn50_2dmarg_b1000_by_r)
+                        + [int(s.split('.r')[-1].split('.')[0]) for s in shards]))
+    main_by_r = {int(s.split('.r')[-1].split('.')[0]): s for s in shards}
+
+    for si, r in enumerate(all_r):
+        shard_path = main_by_r.get(r, None)
         # Load truth for this realization
         if args.dataset == 'ihdp':
             cd, _ = IHDPDataset()[r]
@@ -234,9 +251,17 @@ def main():
             print(f'  [warn] r={r} truth missing mu0/mu1; skipping'); continue
         n_q = mu0.shape[0]
 
-        # Load Do-PFN-bb shard (raw + MALC)
-        with np.load(shard_path) as z:
-            keys = z.files
+        # Snapshot list lengths so we can detect which method rows got fed by
+        # this realization → seen_r[m] accumulation happens at end of loop.
+        _before = {m: len(acc[m]['y0']) for m in acc}
+
+        # Load Do-PFN-bb shard (raw + MALC). If the main sweep is missing
+        # this realization, use an empty stand-in so the block short-circuits
+        # via `has_malc = False` etc. and reference sweeps still run below.
+        import contextlib
+        _mctx = np.load(shard_path) if shard_path is not None else contextlib.nullcontext({})
+        with _mctx as z:
+            keys = list(z.files) if shard_path is not None else []
             # Raw joint p_mat is NOT stored in current shards — we use p_y0_raw as the
             # J=10 raw marginal (stored via ours_dopfn_bb_rawmarg pseudo-method).
             # For CATE we'd need p_mat; fall back to independence-convolution using raw.
@@ -502,8 +527,14 @@ def main():
             _read_reference_method(fn50_2dmarg_b1000_by_r[r], 'ours_fn50', 'fn50_2d_b1000',
                                     tau_via='stored_ptau', use_j100=True)
 
+        # Update per-method realization coverage: any acc[m][*] that grew this
+        # iteration means realization r contributed to method m.
+        for m in acc:
+            if len(acc[m]['y0']) > _before[m] or len(acc[m]['ate']) > _before[m]:
+                seen_r[m].add(r)
+
         if (si + 1) % 10 == 0:
-            print(f'  processed {si+1}/{len(shards)}', flush=True)
+            print(f'  processed {si+1}/{len(all_r)}', flush=True)
 
     # ── Report ───────────────────────────────────────────────────────
     def _stat(vs):
@@ -516,7 +547,7 @@ def main():
     print(f'══ {args.dataset.upper()} — per-bin probability L2 '
           f'(BB/Do-PFN: J=10 y-bins, {n_tau_bins} τ-bins @{bin_w_tau:.2f}; '
           f'fn=50/UWYK: J={J_100} y-bins, {n_tau_bins_100} τ-bins @{bin_w_tau_100:.2f}) ══')
-    print(f'{"method":52s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
+    print(f'{"method":52s}  {"cov":>8s}  {"y0":>16s}  {"y1":>16s}  {"τ (CATE)":>16s}  {"ATE":>16s}')
     rows = [
         ('dopfn',            'Do-PFN [J=10]'),
         ('__sep__',          '─── BB @ B=100 ──────────────────────────'),
@@ -544,7 +575,8 @@ def main():
     for m_key, m_label in rows:
         if m_key == '__sep__':
             print(m_label); continue
-        row = f'{m_label:52s}'
+        cov = f'{len(seen_r[m_key])}/{n_expected}'
+        row = f'{m_label:52s}  {cov:>8s}'
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
         print(row)
