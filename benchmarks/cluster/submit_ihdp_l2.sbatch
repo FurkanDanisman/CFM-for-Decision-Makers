@@ -25,8 +25,8 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoin
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
 CHECKPOINT10="${CHECKPOINT10:-$REPO/checkpoints_dopfn/step_50000_final.pt}"
 N_CONTEXT="${N_CONTEXT:-0}"                    # 0 = use full training set
-MALC_B="${MALC_B:-60}"
-MALC_MAX_K="${MALC_MAX_K:-3}"
+MALC_B="${MALC_B:-100}"
+MALC_MAX_K="${MALC_MAX_K:-1}"
 N_EVAL="${N_EVAL:-200}"
 UWYK_N_SAMPLES="${UWYK_N_SAMPLES:-1024}"
 METHODS="${METHODS:-ours_fn50,ours_fn10,uwyk_noanc,dopfn}"
