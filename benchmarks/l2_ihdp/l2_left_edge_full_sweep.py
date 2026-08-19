@@ -57,11 +57,10 @@ def main():
 
     VARIANTS = [
         ('ours_dopfn_bb',         'BB LOGLIN'),
+        ('ours_dopfn_bb_old',     'BB OLD'),
         ('ours_dopfn_bb_rawmarg', 'BB RAW'),
         ('dopfn',                 'Do-PFN'),
     ]
-    # OLD variant isn't stored in current shards — compute from p_y0 shift
-    # if you want to add it, extend eval_realization.py.
 
     # Accumulators
     acc = {label: {'y0_j100': [], 'y1_j100': [], 'y0_j10': [], 'y1_j10': []}
