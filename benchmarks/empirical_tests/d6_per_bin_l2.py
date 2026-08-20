@@ -38,6 +38,12 @@ def main():
     ap.add_argument('--malc-B', type=int, default=1000)
     ap.add_argument('--malc-max-K', type=int, default=1)
     ap.add_argument('--n-eval', type=int, default=200)
+    ap.add_argument('--flavor', choices=['polynomial', 'ihdp_like'], default='polynomial',
+                     help='polynomial = default zero-mean-effect SCM; '
+                          'ihdp_like = tuned to match IHDP truth density stats')
+    ap.add_argument('--tau-base', type=float, default=5.0)
+    ap.add_argument('--tau-scale', type=float, default=0.5)
+    ap.add_argument('--y-scale', type=float, default=0.5)
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'empirical_tests'))
@@ -50,7 +56,7 @@ def main():
 
     import torch
     from scipy.stats import norm
-    from fig2_pehe_l2 import make_polynomial_scm
+    from fig2_pehe_l2 import make_polynomial_scm, make_ihdp_like_scm
     from ot_barycenter import wasserstein_barycenter_1d
     from dopfn_backbone_head import DoPFNBackboneWith2DHead
     from losses.BarDistribution2D import fit_malc_inner
@@ -120,9 +126,16 @@ def main():
 
     for seed in range(args.n_seeds):
         t0 = time.time()
-        cd = make_polynomial_scm(seed=seed, n_context=args.N, n_test=args.n_test,
-                                  rho_eff=min(args.rho, 0.99), x_dim=args.d,
-                                  degree=args.degree, sigma_eps=args.sigma_eps)
+        if args.flavor == 'polynomial':
+            cd = make_polynomial_scm(seed=seed, n_context=args.N, n_test=args.n_test,
+                                      rho_eff=min(args.rho, 0.99), x_dim=args.d,
+                                      degree=args.degree, sigma_eps=args.sigma_eps)
+        else:
+            cd = make_ihdp_like_scm(seed=seed, n_context=args.N, n_test=args.n_test,
+                                     x_dim=args.d, degree=args.degree,
+                                     sigma_eps=args.sigma_eps,
+                                     y_scale=args.y_scale, tau_base=args.tau_base,
+                                     tau_scale=args.tau_scale)
         y_ctx = cd.y_train.numpy() if hasattr(cd.y_train, 'numpy') else np.asarray(cd.y_train)
         y_min = float(y_ctx.min()); y_rng = max(float(y_ctx.max()) - y_min, 1e-6)
 
