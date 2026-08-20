@@ -41,6 +41,9 @@ def main():
     ap.add_argument('--out', default='/tmp/d6_extremes')
     ap.add_argument('--recompute', action='store_true',
                      help='Ignore any cached densities npz and re-run the sweep.')
+    ap.add_argument('--plot-all', action='store_true',
+                     help='In addition to the two extreme plots, save one 4-panel PNG '
+                          'per (seed, query) pair as <out>_seed{S}_q{Q}.png')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'empirical_tests'))
@@ -262,6 +265,12 @@ def main():
 
     _plot(idx_dopfn_wins[0], idx_dopfn_wins[1], 'Do-PFN wins on τ', f'{args.out}_dopfn_wins.png')
     _plot(idx_bb_wins[0],    idx_bb_wins[1],    'BB wins on τ',     f'{args.out}_bb_wins.png')
+
+    if args.plot_all:
+        for s in range(n_seeds):
+            for q in range(n_test):
+                _plot(s, q, f'seed={s} query={q}',
+                      f'{args.out}_seed{s}_q{q}.png')
 
 
 if __name__ == '__main__':
