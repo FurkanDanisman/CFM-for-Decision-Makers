@@ -28,6 +28,16 @@ def main():
     ap.add_argument('--n-d6-seeds', type=int, default=10, help='d=6 seeds to sample')
     ap.add_argument('--d6-N', type=int, default=200)
     ap.add_argument('--d6-n-test', type=int, default=25)
+    ap.add_argument('--d6-flavor', choices=['polynomial', 'ihdp_like'],
+                     default='polynomial',
+                     help='polynomial = make_polynomial_scm (default); '
+                          'ihdp_like = make_ihdp_like_scm tuned to match IHDP truth')
+    ap.add_argument('--tau-base', type=float, default=5.0,
+                     help='(ihdp_like only) Base treatment effect in raw Y')
+    ap.add_argument('--tau-scale', type=float, default=0.5,
+                     help='(ihdp_like only) Heterogeneity of tau(X)')
+    ap.add_argument('--y-scale', type=float, default=0.5,
+                     help='(ihdp_like only) Polynomial variance scale')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -92,17 +102,25 @@ def main():
     summarize('y_rng (per realization)', ihdp['y_rng'])
 
     # ---- d=6 ----
-    from fig2_pehe_l2 import make_polynomial_scm
+    from fig2_pehe_l2 import make_polynomial_scm, make_ihdp_like_scm
 
     print('\n' + '=' * 90)
-    print(f'd=6 polynomial SCM (first {args.n_d6_seeds} seeds, N={args.d6_N}, n_test={args.d6_n_test})')
+    print(f'd=6 {args.d6_flavor} SCM (first {args.n_d6_seeds} seeds, N={args.d6_N}, n_test={args.d6_n_test})')
+    if args.d6_flavor == 'ihdp_like':
+        print(f'  tau_base={args.tau_base}  tau_scale={args.tau_scale}  y_scale={args.y_scale}')
     print('=' * 90)
     d6 = dict(mu0_raw=[], mu1_raw=[], sigma_raw=[],
               mu0_sc=[], mu1_sc=[], sigma_sc=[],
               mass_in_pm1=[], y_min=[], y_rng=[])
     for seed in range(args.n_d6_seeds):
-        cd = make_polynomial_scm(seed=seed, n_context=args.d6_N, n_test=args.d6_n_test,
-                                  rho_eff=0.0, x_dim=6, degree=3, sigma_eps=1.0)
+        if args.d6_flavor == 'polynomial':
+            cd = make_polynomial_scm(seed=seed, n_context=args.d6_N, n_test=args.d6_n_test,
+                                      rho_eff=0.0, x_dim=6, degree=3, sigma_eps=1.0)
+        else:
+            cd = make_ihdp_like_scm(seed=seed, n_context=args.d6_N, n_test=args.d6_n_test,
+                                     x_dim=6, degree=3, sigma_eps=1.0,
+                                     y_scale=args.y_scale, tau_base=args.tau_base,
+                                     tau_scale=args.tau_scale)
         y_ctx = cd.y_train.numpy() if hasattr(cd.y_train, 'numpy') else np.asarray(cd.y_train)
         y_min = float(y_ctx.min()); y_rng = max(float(y_ctx.max()) - y_min, 1e-6)
         mu0_raw = np.asarray(cd._mu0_test).reshape(-1)

@@ -67,6 +67,54 @@ TAU_DX   = float(TAU_GRID[1] - TAU_GRID[0])
 
 
 # ── Polynomial SCM ────────────────────────────────────────────────────────
+def make_ihdp_like_scm(seed, n_context, n_test, x_dim=6, degree=3,
+                        sigma_eps=1.0, y_scale=0.5, tau_base=5.0, tau_scale=0.5):
+    """d=6 polynomial SCM tuned so truth density statistics match IHDP.
+
+    Differences from make_polynomial_scm:
+      1) Systematic positive treatment effect: mu1 = mu0 + tau(X) + tau_base
+         so E[mu1 - mu0] = tau_base > 0 (IHDP has mean CATE ≈ +5 raw / +0.5 scaled).
+      2) Scaled-down polynomial variance (y_scale) so raw y_rng ≈ 10-15 (matches
+         IHDP), giving scaled σ = 2·sigma_eps/y_rng ≈ 0.13 (matches IHDP).
+      3) tau_scale controls treatment-effect heterogeneity across queries.
+
+    Defaults (y_scale=0.5, tau_base=5, tau_scale=0.5) target IHDP-like stats:
+      scaled μ0 mean ~ -0.3, μ1 mean ~ +0.2, scaled σ ~ 0.13, mass in [-1,1] ~ 1.
+    """
+    rng = np.random.default_rng(seed)
+    N = n_context + n_test
+    X = rng.standard_normal((N, x_dim)).astype(np.float32)
+    feats = np.concatenate([X ** k for k in range(1, degree + 1)], axis=1)
+    F = feats.shape[1]
+    w_T   = rng.standard_normal(F) / np.sqrt(F)
+    w_Y0  = rng.standard_normal(F) / np.sqrt(F)
+    w_tau = rng.standard_normal(F) / np.sqrt(F)
+    mu0 = y_scale * (feats @ w_Y0)
+    mu1 = mu0 + tau_scale * (feats @ w_tau) + tau_base
+    z = rng.standard_normal((N, 2))
+    y0 = (mu0 + sigma_eps * z[:, 0]).astype(np.float32)
+    y1 = (mu1 + sigma_eps * z[:, 1]).astype(np.float32)
+    logits = feats @ w_T
+    logits = (logits - logits.mean()) / (logits.std() + 1e-9)
+    p_T = 1.0 / (1.0 + np.exp(-logits))
+    T = rng.binomial(1, p_T).astype(np.float32)
+    Y_obs = np.where(T > 0.5, y1, y0)
+    idx = rng.permutation(N)
+    ctx = idx[:n_context]; tst = idx[n_context:]
+    class _CD: pass
+    cd = _CD()
+    cd.X_train = torch.from_numpy(X[ctx])
+    cd.t_train = torch.from_numpy(T[ctx])
+    cd.y_train = torch.from_numpy(Y_obs[ctx])
+    cd.X_test  = torch.from_numpy(X[tst])
+    cd.true_cate = torch.from_numpy((mu1[tst] - mu0[tst]).astype(np.float32))
+    cd._mu0_test = mu0[tst].astype(np.float32)
+    cd._mu1_test = mu1[tst].astype(np.float32)
+    cd._sigma_eps = float(sigma_eps)
+    cd._rho_eff = 0.0
+    return cd
+
+
 def make_polynomial_scm(seed, n_context, n_test, rho_eff, x_dim=5, degree=3,
                           sigma_eps=1.0):
     rng = np.random.default_rng(seed)
