@@ -565,6 +565,10 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
 
     _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
     _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+    # K=100 uniform evaluation grid on the same [-1, 1] support — for
+    # UWYK with K=1000 native, this reduces to plain summation of 10
+    # consecutive native bars per K=100 bin.
+    _edges_j100 = np.linspace(_edges_j10[0], _edges_j10[-1], 101)
 
     t0 = time.time()
     d = uwyk_noanc_densities(
@@ -572,6 +576,7 @@ def _run_uwyk_noanc(cd, truth, args, n_ctx):
         y_min=truth.y_min, y_rng=truth.y_rng,
         n_context=n_ctx, n_samples=args.uwyk_n_samples,
         edges_j10_scaled=_edges_j10,
+        edges_j100_scaled=_edges_j100,
     )
     print(f'[uwyk] done in {time.time() - t0:.1f}s', flush=True)
     return d
@@ -623,6 +628,7 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
 
     _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
     _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+    _edges_j100 = np.linspace(_edges_j10[0], _edges_j10[-1], 101)
 
     t0 = time.time()
     d = uwyk_anc_densities(
@@ -630,6 +636,7 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
         y_min=truth.y_min, y_rng=truth.y_rng,
         n_context=n_ctx, n_samples=args.uwyk_n_samples,
         edges_j10_scaled=_edges_j10,
+        edges_j100_scaled=_edges_j100,
     )
     print(f'[uwyk-anc] done in {time.time() - t0:.1f}s', flush=True)
     return d

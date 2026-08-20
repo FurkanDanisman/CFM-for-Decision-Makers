@@ -1,0 +1,237 @@
+%% ============================================================
+%% Appendix: Per-bin probability L2 — density calculation recipes
+%% ============================================================
+%% Standalone-compilable but designed to be \input{...}-ed into a
+%% larger paper's appendix. Requires amsmath, amssymb, mathtools,
+%% and optionally hyperref for cross-refs.
+
+\section{Per-Bin Probability \texorpdfstring{$L^2$}{L2} — Density Calculation for Each Method}
+\label{app:density-l2}
+
+We compare all methods on a common evaluation grid: $K$ uniform bins on
+the scaled response support $[-1, 1]$, with edges
+\(
+e_0 = -1,\ e_1,\ \ldots,\ e_K = +1
+\)
+and bin width $w = 2/K$.  For the marginal densities $p(Y_{do(t)}\mid x)$
+we report results at $K = 10$; for methods with much finer native heads
+(e.g., UWYK with $K_{\text{nat}} = 1000$) we also aggregate to $K = 100$.
+For the CATE density $p(\tau\mid x)$ we use $K_\tau$ bins on
+$[-2, 2]$ with the same bin width $w_\tau = w$.
+
+For a query $q$ with realised scaling parameters $(y_{\min}, y_{\mathrm{rng}})$
+we work throughout in \emph{scaled} $Y$-space: $Y^{\text{sc}} = 2(Y-y_{\min})/y_{\mathrm{rng}} - 1$.
+The per-bin $L^2$ distance between method probabilities
+$\mathbf{p} = (p_1, \ldots, p_K)$ and truth probabilities
+$\mathbf{t} = (t_1, \ldots, t_K)$ is
+\begin{equation}
+\label{eq:l2-def}
+L^2(\mathbf{p}, \mathbf{t}) \;=\; \sqrt{\;\frac{1}{w}\sum_{j=1}^{K} (p_j - t_j)^2\;}.
+\end{equation}
+
+\subsection{Ground Truth (Analytic Gaussian per Query)}
+For semi-synthetic benchmarks (IHDP, ACIC, polynomial-SCM $d{=}6$) the
+per-query outcome distribution is Gaussian in raw $Y$ with mean
+$\mu^{\text{raw}}_{t,q}$ and standard deviation $\sigma$.  Transformed to
+scaled space, $\mu_{t,q} = 2(\mu^{\text{raw}}_{t,q} - y_{\min})/y_{\mathrm{rng}} - 1$
+and $\sigma^{\text{sc}} = 2\sigma / y_{\mathrm{rng}}$.  The truth per-bin
+probability is exact:
+\begin{equation}
+\label{eq:truth-marg}
+t^{(t)}_{q,j} \;=\; \Phi\!\left(\frac{e_{j+1} - \mu_{t,q}}{\sigma^{\text{sc}}}\right)
+                    - \Phi\!\left(\frac{e_{j} - \mu_{t,q}}{\sigma^{\text{sc}}}\right),
+\qquad t \in \{0, 1\},
+\end{equation}
+where $\Phi$ is the standard normal CDF.  For CATE
+$\tau = Y_{do(1)} - Y_{do(0)}$, assuming $Y_{do(0)} \perp Y_{do(1)} \mid X$
+(true for IHDP/ACIC/$d{=}6$),
+$\mu^\tau_q = \mu_{1,q} - \mu_{0,q}$ and $\sigma^\tau = \sqrt{2}\,\sigma^{\text{sc}}$,
+and the truth per $\tau$-bin probability is analogous with
+$\{e^\tau_k\}$.  The truth ATE density is the Wasserstein barycentre
+of $\{p(\tau\mid x_q)\}_{q=1}^{n_{\text{test}}}$, discretised to the
+$K_\tau$ bins.
+
+\subsection{Do-PFN (Adaptive Quantile Bars)}
+\label{app:dopfn}
+Do-PFN's regression head is a \texttt{FullSupportBarDistribution} with
+$K_{\text{nat}} = 100$ \emph{quantile-adaptive} bars.  For each test query the
+model returns per-bar logits over borders
+$b_0 < b_1 < \cdots < b_{K_{\text{nat}}}$ (raw $Y$ units, learned from
+training data — widths span three orders of magnitude, with wide tail
+bars and narrow central bars).  We convert to per-bar probabilities via
+softmax and rescale borders to scaled $Y$:
+\[
+\pi_i \;=\; \frac{\exp(\ell_i)}{\sum_{i'} \exp(\ell_{i'})},
+\qquad
+b^{\text{sc}}_i \;=\; \frac{2(b_i - y_{\min})}{y_{\mathrm{rng}}} - 1.
+\]
+Under the standard piecewise-uniform density-within-a-bar assumption
+implicit in a discrete bar distribution, the exact per-target-bin
+probability is
+\begin{equation}
+\label{eq:dopfn-perbin}
+p^{\mathrm{DoPFN}}_{j}
+   \;=\;
+   \sum_{i=0}^{K_{\text{nat}}-1}
+   \pi_i \cdot
+   \frac{\mathrm{len}\!\bigl([b^{\text{sc}}_i, b^{\text{sc}}_{i+1}) \cap [e_j, e_{j+1})\bigr)}
+        {b^{\text{sc}}_{i+1} - b^{\text{sc}}_i}.
+\end{equation}
+Because bar edges are not aligned with the uniform $\{e_j\}$ grid,
+overlap-fraction weighting is required.  Implementationally,
+\Cref{eq:dopfn-perbin} is equivalent to CDF interpolation:
+\[
+F(y) = \sum_{i:\, b^{\text{sc}}_{i+1} \le y} \pi_i
+       + \pi_{i^*}\, \frac{y - b^{\text{sc}}_{i^*}}{b^{\text{sc}}_{i^*+1} - b^{\text{sc}}_{i^*}}
+       \quad (\text{$i^*$: bar containing $y$}),
+\qquad
+p^{\mathrm{DoPFN}}_{j} \;=\; F(e_{j+1}) - F(e_j),
+\]
+which our code computes via
+\texttt{np.interp(edges, borders\_sc, np.concatenate([[0], np.cumsum($\pi$)]))}
+followed by \texttt{np.diff}, then renormalised to unit mass to absorb
+mass outside $[-1, 1]$.
+
+\subsection{Do-PFN-bb Raw (Native $J{=}10$ 2D Bar Distribution)}
+\label{app:bbraw}
+The backbone head produces a $J \times J$ joint distribution
+$P^{\mathrm{2D}} \in [0,1]^{J\times J}$ on scaled $Y$ with $J = 10$
+uniform bins already coincident with the evaluation grid.  Marginals are
+therefore direct sums:
+\begin{equation}
+p^{\mathrm{bb,raw}}_{Y_{do(0)}, j} = \sum_{j'=0}^{J-1} P^{\mathrm{2D}}_{j, j'},
+\qquad
+p^{\mathrm{bb,raw}}_{Y_{do(1)}, j'} = \sum_{j=0}^{J-1} P^{\mathrm{2D}}_{j, j'}.
+\end{equation}
+The per-bin CATE probability, assuming independence, is the discrete
+convolution of the two raw marginals restricted to the $K_\tau$ diagonal
+strips:
+\[
+p^{\mathrm{bb,raw}}_{\tau, k} \;=\!\!\!\!\!\sum_{(j, j') : e^\tau_k \le (e_{j'} - e_{j}) < e^\tau_{k+1}}\!\!\!\!\!
+   p^{\mathrm{bb,raw}}_{Y_{do(0)}, j}\, p^{\mathrm{bb,raw}}_{Y_{do(1)}, j'}.
+\]
+Under the raw joint (no independence), we instead assign each joint bin
+$(j, j')$'s mass directly to the $\tau$ bin containing
+$w \cdot (j' - j)$.
+
+\subsection{Do-PFN-bb MALC 1D-marginal ($p_{\text{bb-1D}}$)}
+\label{app:bb1d}
+Fit a discrete log-concave MLE independently to each raw marginal via
+CVXPY (\texttt{malc\_1d\_cvxpy}).  The optimiser returns non-negative
+probabilities $\mathbf{q}^{(t)} \in \Delta^{J-1}$ on the same $J = 10$
+bins,
+\[
+\mathbf{q}^{(t)} \;=\; \argmax_{\mathbf{q} \in \mathcal{L}_J}
+\sum_{j=1}^{J} p^{\mathrm{bb,raw}}_{Y_{do(t)}, j}\, \log q_j,
+\qquad
+\mathcal{L}_J \;=\; \{\mathbf{q} \in \Delta^{J-1} : \log q_j\ \text{concave in }j\}.
+\]
+Since $\mathbf{q}^{(t)}$ lives natively on the $K = 10$ evaluation grid,
+$p^{\mathrm{bb,1D}}_{Y_{do(t)}, j} = q^{(t)}_j$ is used directly.
+
+\subsection{Do-PFN-bb MALC 2D-marginal ($p_{\text{bb-2D}}$)}
+\label{app:bb2d}
+Fit a 2D log-concave mixture $\widehat{h}(y_0, y_1)$ to the joint bar
+distribution $P^{\mathrm{2D}}$ (\texttt{fit\_malc\_inner + dmalc\_2d}).
+Evaluate $\widehat{h}$ on a fine $n_{\text{eval}} \times n_{\text{eval}}$
+grid $\{x_a, y_b\}$ with cell area $\Delta x \Delta y$.  For each target
+bin $j$, marginalise and integrate:
+\begin{align}
+\widehat{h}^{Y_{do(0)}}(x_a) &= \sum_b \widehat{h}(x_a, y_b)\, \Delta y, \\
+\label{eq:bb2d-cdf}
+F^{\mathrm{bb,2D}}_{Y_{do(0)}}(y) &= \int_{x_0}^{y} \widehat{h}^{Y_{do(0)}}(x)\, dx
+   \;\approx\; \frac{\Delta x}{2}\sum_{a: x_a \le y}
+       \bigl(\widehat{h}^{Y_{do(0)}}(x_{a-1}) + \widehat{h}^{Y_{do(0)}}(x_a)\bigr), \\
+p^{\mathrm{bb,2D}}_{Y_{do(0)}, j} &=
+   \bigl[F^{\mathrm{bb,2D}}_{Y_{do(0)}}\bigr]\!(e_{j+1})
+   - \bigl[F^{\mathrm{bb,2D}}_{Y_{do(0)}}\bigr]\!(e_{j}),
+\end{align}
+with the CDF linearly interpolated at $e_j$ and $e_{j+1}$
+(equivalent to summing $\widehat{h}$'s per-fine-cell probability over
+cells whose midpoints fall in $[e_j, e_{j+1})$, up to trapezoid quadrature
+error).  $p^{\mathrm{bb,2D}}_{Y_{do(1)}}$ is analogous.  The 2D CATE
+density integrates $\widehat{h}$ over $\tau$-diagonal strips:
+\begin{equation}
+p^{\mathrm{bb,2D}}_{\tau, k} \;=\; \iint_{e^\tau_k \le y - x < e^\tau_{k+1}}
+   \widehat{h}(x, y)\, dx\, dy.
+\end{equation}
+
+\subsection{fn=50 (Same as Do-PFN-bb but $J{=}100$ Head)}
+Identical recipe to \Cref{app:bb1d,app:bb2d} with $J = 100$.  When the
+evaluation grid is $K = 10$, per-bin probabilities are aggregated by
+summing every $J/K = 10$ consecutive native bins (widths align exactly
+since both grids are uniform on $[-1, 1]$).
+
+\subsection{UWYK-NoAnc and UWYK-FullAnc (Uniform $K_{\text{nat}}$ Bars)}
+\label{app:uwyk}
+UWYK's monkey-patched \texttt{BarDistribution} head produces per-bar
+probabilities $\pi_b$ on $K_{\text{nat}}$ \emph{uniform} bars in scaled
+$Y$, with bin width $w_{\text{nat}} = 2/K_{\text{nat}}$.  Bar $b$
+represents mass in $[\beta_b, \beta_{b+1})$ where $\beta_b$ are the
+uniform borders on $[-1, 1]$.  In our setup $K_{\text{nat}} = 1000$.
+
+Aggregation to any coarser uniform grid $\{e_j\}_{j=0}^{K}$ with $K$
+dividing $K_{\text{nat}}$ is exact by \emph{plain summation}:
+\begin{equation}
+\label{eq:uwyk-sum}
+p^{\mathrm{UWYK}}_j \;=\;
+   \sum_{b = j\cdot m}^{(j+1)\cdot m - 1} \pi_b,
+\qquad
+m \;=\; K_{\text{nat}} / K \in \mathbb{N}.
+\end{equation}
+For $K_{\text{nat}} = 1000$ and $K = 100$: $m = 10$ (every ten
+consecutive native probs sum to one target bin).  For $K = 10$:
+$m = 100$.  Both cases require no overlap-fraction weighting because
+the coarser grid's edges are a subset of the native bar borders.
+
+The independence CATE follows from convolving $\mathbf{p}^{\mathrm{UWYK}}_{Y_{do(0)}}$
+and $\mathbf{p}^{\mathrm{UWYK}}_{Y_{do(1)}}$ on the target $K$-grid,
+identical to the Do-PFN-bb raw formula in \Cref{app:bbraw}.
+
+The two UWYK variants differ only in the causal-graph adjacency mask
+supplied to the shared model — see \citet{uwyk} — not in the discretisation
+recipe.
+
+\subsection{Truth and Method ATE via Wasserstein Barycentre}
+\label{app:ate}
+Given per-query CATE densities $\{p(\tau\mid x_q)\}_{q=1}^{n_{\text{test}}}$
+(from any method), we compute the ATE density as their $L^2$-Wasserstein
+barycentre on a shared fine $\tau$ grid $\{\tau_c\}$:
+\[
+p^{\mathrm{ATE}} \;=\; \barycentre_{q=1}^{n_{\text{test}}}
+   p(\tau \mid x_q; \{\tau_c\}),
+\]
+implemented via one-dimensional inverse-CDF averaging
+(\texttt{ot\_barycenter.wasserstein\_barycenter\_1d}).  We then apply
+\Cref{eq:dopfn-perbin}-style bin aggregation to $p^{\mathrm{ATE}}$ and
+$p^{\mathrm{ATE}}_{\text{true}}$ on the same $K_\tau$ bins.  The ATE
+$L^2$ uses \Cref{eq:l2-def} with $w \to w_\tau$.
+
+\subsection{Summary Table}
+\label{app:density-summary}
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+Method & Native head & Aggregation to $K$-bin grid \\
+\midrule
+Do-PFN & $K_{\text{nat}}{=}100$ quantile bars & Overlap-fraction \Cref{eq:dopfn-perbin} \\
+Do-PFN-bb raw & $J{=}10$ 2D bars (aligned) & Direct sum over rows/cols \\
+Do-PFN-bb 1D-MALC & $J{=}10$ log-concave probs & Identity (native grid = target) \\
+Do-PFN-bb 2D-MALC & $J{=}10$ 2D log-concave fit & Fine-grid CDF at $\{e_j\}$ \Cref{eq:bb2d-cdf} \\
+fn=50 (1D / 2D) & $J{=}100$ bars & $\{$identity if $K{=}100$; sum-10 if $K{=}10\}$ \\
+UWYK-NoAnc / FullAnc & $K_{\text{nat}}{=}1000$ uniform bars & Plain summation \Cref{eq:uwyk-sum} \\
+Truth (Gaussian) & Analytic per-query & CDF differences \Cref{eq:truth-marg} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{What we do \emph{not} do.}
+For any method that outputs a density on a fine grid (e.g., 100 midpoints
+on $[-1.5, 1.5]$), we do \emph{not} construct per-target-bin probabilities
+by Riemann-summing midpoint values inside each target bin.  Midpoint
+Riemann sums do not align with target bin edges when the fine and target
+grids are incommensurate, introducing bias of order the fine bin width
+per bin edge.  We instead perform per-bin probability integration
+directly against the model's discrete probability mass function (or
+analytic CDF for Gaussian truth) as spelt out above.
