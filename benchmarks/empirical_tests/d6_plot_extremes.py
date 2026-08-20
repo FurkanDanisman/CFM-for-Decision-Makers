@@ -85,6 +85,13 @@ def main():
         p_ta_bb    = d['p_ta_bb']
         p_ate_dopfn = d['p_ate_dopfn']  # (n_seeds, len(TAU_GRID))
         p_ate_bb    = d['p_ate_bb']
+        # RAW per-J=10-bin probabilities from ours_densities / dopfn_densities
+        # (recipe-strict fields). Backward-compat: older caches don't have
+        # them → mark None and the L2_J10 path will fall back to trapezoid.
+        bins_j10_bb_y0    = d['bins_j10_bb_y0']    if 'bins_j10_bb_y0'    in d.files else None
+        bins_j10_bb_y1    = d['bins_j10_bb_y1']    if 'bins_j10_bb_y1'    in d.files else None
+        bins_j10_dopfn_y0 = d['bins_j10_dopfn_y0'] if 'bins_j10_dopfn_y0' in d.files else None
+        bins_j10_dopfn_y1 = d['bins_j10_dopfn_y1'] if 'bins_j10_dopfn_y1' in d.files else None
     else:
         # Load models
         ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
@@ -115,6 +122,10 @@ def main():
         p_ta_bb    = np.zeros((args.n_seeds, args.n_test, len(TAU_GRID)))
         p_ate_dopfn = np.zeros((args.n_seeds, len(TAU_GRID)))
         p_ate_bb    = np.zeros((args.n_seeds, len(TAU_GRID)))
+        bins_j10_bb_y0    = np.zeros((args.n_seeds, args.n_test, J))
+        bins_j10_bb_y1    = np.zeros((args.n_seeds, args.n_test, J))
+        bins_j10_dopfn_y0 = np.zeros((args.n_seeds, args.n_test, J))
+        bins_j10_dopfn_y1 = np.zeros((args.n_seeds, args.n_test, J))
 
         for seed in range(args.n_seeds):
             t0 = time.time()
@@ -157,6 +168,11 @@ def main():
                 p_y0_bb[seed, q]    = _to_Y(d_bb['p_y0'][q])
                 p_y1_bb[seed, q]    = _to_Y(d_bb['p_y1'][q])
                 p_ta_bb[seed, q]    = _to_TAU(d_bb['p_tau'][q])
+                # Raw per-J=10-bin probs (IHDP-recipe form)
+                bins_j10_bb_y0[seed, q]    = d_bb['p_y0_bins_j10'][q]
+                bins_j10_bb_y1[seed, q]    = d_bb['p_y1_bins_j10'][q]
+                bins_j10_dopfn_y0[seed, q] = d_dopfn['p_y0_bins_j10'][q]
+                bins_j10_dopfn_y1[seed, q] = d_dopfn['p_y1_bins_j10'][q]
             # Per-seed ATE via Wasserstein barycentre of query-CATE densities
             dopfn_ta = np.stack([p_ta_dopfn[seed, q] for q in range(args.n_test)])
             bb_ta    = np.stack([p_ta_bb[seed, q]    for q in range(args.n_test)])
@@ -168,7 +184,11 @@ def main():
                               mu0_all=mu0_all, mu1_all=mu1_all, sig_all=sig_all,
                               p_y0_dopfn=p_y0_dopfn, p_y1_dopfn=p_y1_dopfn, p_ta_dopfn=p_ta_dopfn,
                               p_y0_bb=p_y0_bb,       p_y1_bb=p_y1_bb,       p_ta_bb=p_ta_bb,
-                              p_ate_dopfn=p_ate_dopfn, p_ate_bb=p_ate_bb)
+                              p_ate_dopfn=p_ate_dopfn, p_ate_bb=p_ate_bb,
+                              bins_j10_bb_y0=bins_j10_bb_y0,
+                              bins_j10_bb_y1=bins_j10_bb_y1,
+                              bins_j10_dopfn_y0=bins_j10_dopfn_y0,
+                              bins_j10_dopfn_y1=bins_j10_dopfn_y1)
         print(f'\n[cache] saved {cache}', flush=True)
 
     # ─── Compute per-(seed, query) truth densities on the shared grid ───
@@ -260,6 +280,13 @@ def main():
                        for who in ('dopfn', 'bb')}
                  for name in ('L2_J10', 'L1', 'L2', 'W1', 'W2')}
 
+    _strict = bins_j10_bb_y0 is not None    # raw fields present in cache
+    if _strict:
+        print('[L2_J10] using RAW per-bin probs from ours/dopfn_densities '
+              '(recipe-strict, IHDP-identical)', flush=True)
+    else:
+        print('[L2_J10] falling back to trapezoid-CDF from fine-grid density '
+              '(old cache; re-sweep to get raw bins_j10 fields)', flush=True)
     for s in range(n_seeds):
         sigma_sc = float(sig_all[s])
         sigma_tau = float(np.sqrt(2.0)) * sigma_sc
@@ -269,11 +296,22 @@ def main():
             t_y1_bin  = _truth_bin_probs_gauss(mu1_all[s, q], sigma_sc, edges_Y10)
             t_tau_bin = _truth_bin_probs_gauss(mu1_all[s, q] - mu0_all[s, q],
                                                 sigma_tau, edges_TAU10)
-            for who, pY0, pY1, pTa in [('dopfn', p_y0_dopfn, p_y1_dopfn, p_ta_dopfn),
-                                          ('bb',    p_y0_bb,    p_y1_bb,    p_ta_bb)]:
-                # J=10 per-bin L2 — target grid same as IHDP recipe
-                y0_bin  = _bin_probs_from_fine_density(pY0[s, q], Y_GRID,   edges_Y10)
-                y1_bin  = _bin_probs_from_fine_density(pY1[s, q], Y_GRID,   edges_Y10)
+            for who, pY0, pY1, pTa, raw_y0, raw_y1 in [
+                ('dopfn', p_y0_dopfn, p_y1_dopfn, p_ta_dopfn,
+                    bins_j10_dopfn_y0, bins_j10_dopfn_y1),
+                ('bb',    p_y0_bb,    p_y1_bb,    p_ta_bb,
+                    bins_j10_bb_y0,    bins_j10_bb_y1),
+            ]:
+                # Marginals: use RAW bins if available (matches IHDP recipe exactly);
+                # else fall back to trapezoid-CDF from fine grid.
+                if _strict:
+                    y0_bin  = np.asarray(raw_y0[s, q], dtype=np.float64)
+                    y1_bin  = np.asarray(raw_y1[s, q], dtype=np.float64)
+                else:
+                    y0_bin  = _bin_probs_from_fine_density(pY0[s, q], Y_GRID, edges_Y10)
+                    y1_bin  = _bin_probs_from_fine_density(pY1[s, q], Y_GRID, edges_Y10)
+                # τ: keep the trapezoid-CDF from fine grid (same as IHDP's
+                # _tau_bin_from_native — no separate raw-bin field for τ).
                 tau_bin = _bin_probs_from_fine_density(pTa[s, q], TAU_GRID, edges_TAU10)
                 metrics['L2_J10'][who]['y0'][s, q]  = _l2_perbin(y0_bin,  t_y0_bin,  bin_wY10)
                 metrics['L2_J10'][who]['y1'][s, q]  = _l2_perbin(y1_bin,  t_y1_bin,  bin_wY10)
@@ -304,6 +342,30 @@ def main():
     # Keep legacy tau_L2_* names for the "who wins" gap below
     tau_L2_dopfn = metrics['L2']['dopfn']['tau']
     tau_L2_bb    = metrics['L2']['bb']['tau']
+
+    # ─── Aggregate mean ± SEM across seeds (headline table) ───
+    import math as _math
+    def _fmt_pool(arr):
+        flat = np.asarray(arr, dtype=np.float64).ravel()
+        flat = flat[np.isfinite(flat)]
+        if flat.size == 0: return 'na'
+        m = float(flat.mean())
+        sem = float(flat.std(ddof=1) / _math.sqrt(flat.size)) if flat.size > 1 else 0.0
+        return f'{m:.4f}±{sem:.4f}'
+
+    print('\n══ AGGREGATE mean ± SEM  (pooled across seeds × queries; ATE per seed) ══')
+    print(f'{"metric":<8s}  '
+          f'{"y0 Do-PFN":>14s} {"y0 BB":>14s}   '
+          f'{"y1 Do-PFN":>14s} {"y1 BB":>14s}   '
+          f'{"τ Do-PFN":>14s} {"τ BB":>14s}   '
+          f'{"ATE Do-PFN":>14s} {"ATE BB":>14s}')
+    for mname in ('L2_J10', 'L1', 'L2', 'W1', 'W2'):
+        d = metrics[mname]
+        print(f'{mname:<8s}  '
+              f'{_fmt_pool(d["dopfn"]["y0"]):>14s} {_fmt_pool(d["bb"]["y0"]):>14s}   '
+              f'{_fmt_pool(d["dopfn"]["y1"]):>14s} {_fmt_pool(d["bb"]["y1"]):>14s}   '
+              f'{_fmt_pool(d["dopfn"]["tau"]):>14s} {_fmt_pool(d["bb"]["tau"]):>14s}   '
+              f'{_fmt_pool(d["dopfn"]["ate"]):>14s} {_fmt_pool(d["bb"]["ate"]):>14s}')
 
     # ─── Per-seed summary tables (one per metric) ───
     for mname in ('L2_J10', 'L1', 'L2', 'W1', 'W2'):
