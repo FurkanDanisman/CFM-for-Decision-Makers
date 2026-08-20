@@ -86,22 +86,22 @@ def _draw(ax, methods, ihdp, acic, metric):
                     ha='center', va='bottom', fontsize=7, color='#ff7f0e')
 
 
-def _make_fig(methods, ihdp, acic, title, outpng):
+def _make_fig(methods, ihdp, acic, group_name, out_prefix):
+    """One PNG per metric — 4 files per method group (8 total across groups)."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8))
-    for ax, (mkey, mlabel) in zip(axes.ravel(), METRICS):
+    for mkey, mlabel in METRICS:
+        fig, ax = plt.subplots(figsize=(6.5, 4.5))
         _draw(ax, methods, ihdp, acic, mkey)
-        ax.set_title(mlabel, fontsize=11)
-    # single legend at top
-    handles, lbls = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, lbls, loc='upper right', ncol=2, frameon=False,
-               bbox_to_anchor=(0.98, 0.98))
-    fig.suptitle(title, fontsize=12, y=1.00)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig(outpng, dpi=150, bbox_inches='tight')
-    print(f'[saved] {outpng}')
+        ax.set_title(f'{group_name} — {mlabel}  (per-bin $L^2$, mean ± SEM)',
+                     fontsize=11)
+        ax.legend(loc='upper right', frameon=False)
+        fig.tight_layout()
+        outpng = f'{out_prefix}_{mkey}.png'
+        fig.savefig(outpng, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f'[saved] {outpng}')
 
 
 def main():
@@ -116,12 +116,10 @@ def main():
     print(f'[ihdp] dataset={ihdp["dataset"]}  n_expected={int(ihdp["n_expected"])}')
     print(f'[acic] dataset={acic["dataset"]}  n_expected={int(acic["n_expected"])}')
 
-    _make_fig(OURS_METHODS, ihdp, acic,
-              'Our methods — per-bin $L^2$ on J=10 (mean ± SEM)',
-              f'{args.out}_ours.png')
-    _make_fig(BASELINE_METHODS, ihdp, acic,
-              'Baselines — per-bin $L^2$ on J=10 (mean ± SEM)',
-              f'{args.out}_baselines.png')
+    _make_fig(OURS_METHODS,      ihdp, acic, 'Our methods',
+              f'{args.out}_ours')
+    _make_fig(BASELINE_METHODS,  ihdp, acic, 'Baselines',
+              f'{args.out}_baselines')
 
 
 if __name__ == '__main__':
