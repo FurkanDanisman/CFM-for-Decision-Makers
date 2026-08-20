@@ -692,6 +692,7 @@ def _uwyk_densities_from_raw_probs(cd,
                                      n_context: int | None,
                                      adjacency_kind: str,
                                      edges_j10_scaled: np.ndarray | None = None,
+                                     edges_j100_scaled: np.ndarray | None = None,
                                      ) -> dict[str, np.ndarray]:
     """Shared UWYK density computation. adjacency_kind ∈ {'noanc', 'anc'}."""
     X_train_full = _np(cd.X_train)
@@ -755,29 +756,44 @@ def _uwyk_densities_from_raw_probs(cd,
         p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
     out = dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
 
-    # Recipe-strict per-J=10-bin probability: piecewise-uniform CDF of the
-    # native bar distribution (K uniform bars in scaled Y) interpolated at
-    # the J=10 edges. UWYK's centers are uniform so borders are exactly
-    # centers ± bin_w/2.
-    if edges_j10_scaled is not None:
-        borders_scaled = np.concatenate([
-            centers_scaled - bin_w / 2.0,
-            [centers_scaled[-1] + bin_w / 2.0]
-        ])                                                            # (K+1,)
-        J10 = int(len(edges_j10_scaled) - 1)
-        y0_bins_j10 = np.zeros((n_test, J10), dtype=np.float64)
-        y1_bins_j10 = np.zeros((n_test, J10), dtype=np.float64)
+    # UWYK's grid: K uniform bars in scaled Y. Bar b covers
+    # [borders[b], borders[b+1]) with width bin_w. `.centers` returned by
+    # bar_distribution is assumed to correspond to bar b such that the
+    # interval borders can be reconstructed as [centers, centers[-1] +
+    # bin_w] (bar[b] = [centers[b], centers[b]+bin_w)). Under this "left-
+    # edge" convention, borders align with any coarser uniform grid that
+    # is a divisor of the K=1000 native bars.
+    borders_scaled = np.concatenate([centers_scaled,
+                                       [centers_scaled[-1] + bin_w]])   # (K+1,)
+
+    def _bins_at_edges(edges):
+        n = int(len(edges) - 1)
+        y0b = np.zeros((n_test, n), dtype=np.float64)
+        y1b = np.zeros((n_test, n), dtype=np.float64)
         for q in range(n_test):
-            cdf0 = np.concatenate(([0.0], np.cumsum(pBars_0[q])))     # (K+1,)
+            cdf0 = np.concatenate(([0.0], np.cumsum(pBars_0[q])))    # (K+1,)
             cdf1 = np.concatenate(([0.0], np.cumsum(pBars_1[q])))
-            F0 = np.interp(edges_j10_scaled, borders_scaled, cdf0, left=0.0, right=1.0)
-            F1 = np.interp(edges_j10_scaled, borders_scaled, cdf1, left=0.0, right=1.0)
+            F0 = np.interp(edges, borders_scaled, cdf0, left=0.0, right=1.0)
+            F1 = np.interp(edges, borders_scaled, cdf1, left=0.0, right=1.0)
             p0 = np.diff(F0); s0 = p0.sum()
             p1 = np.diff(F1); s1 = p1.sum()
-            y0_bins_j10[q] = p0 / s0 if s0 > 0 else p0
-            y1_bins_j10[q] = p1 / s1 if s1 > 0 else p1
+            y0b[q] = p0 / s0 if s0 > 0 else p0
+            y1b[q] = p1 / s1 if s1 > 0 else p1
+        return y0b, y1b
+
+    # J=10 evaluation grid (matches BB/Do-PFN). When native borders align
+    # with the coarser grid (K native % J_target == 0 and same support),
+    # np.interp reduces to plain summation of every (K/J) consecutive
+    # native probs — exactly what the recipe prescribes.
+    if edges_j10_scaled is not None:
+        y0_bins_j10, y1_bins_j10 = _bins_at_edges(edges_j10_scaled)
         out['p_y0_bins_j10'] = y0_bins_j10
         out['p_y1_bins_j10'] = y1_bins_j10
+    # J=100 evaluation grid for K=1000 native → K=100 via plain summation.
+    if edges_j100_scaled is not None:
+        y0_bins_j100, y1_bins_j100 = _bins_at_edges(edges_j100_scaled)
+        out['p_y0_bins_j100'] = y0_bins_j100
+        out['p_y1_bins_j100'] = y1_bins_j100
     return out
 
 
@@ -792,13 +808,15 @@ def uwyk_noanc_densities(cd,
                           n_context: int | None = None,
                           n_samples: int | None = None,   # kept for backward-compat, unused
                           edges_j10_scaled: np.ndarray | None = None,
+                          edges_j100_scaled: np.ndarray | None = None,
                           ) -> dict[str, np.ndarray]:
     """UWYK-NoAnc raw bar probabilities via BarDist monkey-patch, then
     resample to Y_CENTERS; CATE under independence."""
     return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
                                             y_min, y_rng, n_context,
                                             adjacency_kind='noanc',
-                                            edges_j10_scaled=edges_j10_scaled)
+                                            edges_j10_scaled=edges_j10_scaled,
+                                            edges_j100_scaled=edges_j100_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -812,13 +830,15 @@ def uwyk_anc_densities(cd,
                         n_context: int | None = None,
                         n_samples: int | None = None,   # kept for backward-compat, unused
                         edges_j10_scaled: np.ndarray | None = None,
+                        edges_j100_scaled: np.ndarray | None = None,
                         ) -> dict[str, np.ndarray]:
     """UWYK Full-Ancestral: raw bar probabilities via BarDist monkey-patch,
     full-graph adjacency, resample to Y_CENTERS, independence convolution."""
     return _uwyk_densities_from_raw_probs(cd, uwyk_model, num_features,
                                             y_min, y_rng, n_context,
                                             adjacency_kind='anc',
-                                            edges_j10_scaled=edges_j10_scaled)
+                                            edges_j10_scaled=edges_j10_scaled,
+                                            edges_j100_scaled=edges_j100_scaled)
 
 
 # ─────────────────────────────────────────────────────────────────────────

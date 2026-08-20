@@ -443,15 +443,26 @@ def main():
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
-                # Recipe-strict per-bin probabilities. If the sweep stored
-                # them, USE THE STORED WIDTH to pick the grid — overrides
-                # the caller's use_j100 preference. This lets Do-PFN + UWYK
-                # (both stored at J=10) be evaluated at J=10 even when the
-                # caller asked for J=100.
+                # Recipe-strict per-bin probabilities. Try J=100 stored
+                # bins first (UWYK K=1000 → K=100 summation form), then
+                # J=10 stored bins (BB / Do-PFN / UWYK K=10). Uses the
+                # stored width to pick the evaluation grid, overriding
+                # the caller's use_j100 preference.
+                py0k100 = f'{key_prefix}__p_y0_bins_j100'
+                py1k100 = f'{key_prefix}__p_y1_bins_j100'
                 py0_binsk = f'{key_prefix}__p_y0_bins_j10'
                 py1_binsk = f'{key_prefix}__p_y1_bins_j10'
-                use_stored_bins = py0_binsk in z2.files and py1_binsk in z2.files
-                if use_stored_bins:
+                use_stored_bins = False
+                # Prefer J=100 if aggregator's default target is J=100 and
+                # the shard has the K=100 bins field.
+                if use_j100 and py0k100 in z2.files and py1k100 in z2.files:
+                    py0_binsk, py1_binsk = py0k100, py1k100
+                    use_stored_bins = True
+                    e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
+                        edges_Y_100, bin_w_Y_100, edges_tau_100, bin_w_tau_100,
+                        n_tau_bins_100, J_100)
+                elif py0_binsk in z2.files and py1_binsk in z2.files:
+                    use_stored_bins = True
                     _stored_J = int(z2[py0_binsk].shape[-1])
                     if _stored_J == J:
                         e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
@@ -461,7 +472,7 @@ def main():
                             edges_Y_100, bin_w_Y_100, edges_tau_100, bin_w_tau_100,
                             n_tau_bins_100, J_100)
                     else:
-                        use_stored_bins = False    # unknown width; fall back
+                        use_stored_bins = False
                 if py0k not in z2.files and not use_stored_bins: return
                 if py0k not in z2.files: return
                 for q in range(n_q):
