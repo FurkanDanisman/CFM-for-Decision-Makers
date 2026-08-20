@@ -196,6 +196,12 @@ def main():
         s = p.sum() * dx
         return (p / s) if s > 0 else p
 
+    def _l1(p, t, dx):
+        """L1 density distance = ∫|p - t| dy  (bounded [0, 2] for densities;
+        equals 2·TotalVariation)."""
+        pn, tn = _normalize(p, dx), _normalize(t, dx)
+        return float(np.sum(np.abs(pn - tn)) * dx)
+
     def _l2(p, t, dx):
         pn, tn = _normalize(p, dx), _normalize(t, dx)
         return float(np.sqrt(np.sum((pn - tn)**2) * dx))
@@ -225,12 +231,15 @@ def main():
                               'tau': np.zeros((n_seeds, n_test)),
                               'ate': np.zeros(n_seeds)}
                        for who in ('dopfn', 'bb')}
-                 for name in ('L2', 'W1', 'W2')}
+                 for name in ('L1', 'L2', 'W1', 'W2')}
 
     for s in range(n_seeds):
         for q in range(n_test):
             for who, pY0, pY1, pTa in [('dopfn', p_y0_dopfn, p_y1_dopfn, p_ta_dopfn),
                                           ('bb',    p_y0_bb,    p_y1_bb,    p_ta_bb)]:
+                metrics['L1'][who]['y0'][s, q]  = _l1(pY0[s, q], truth_y0[s, q], dy)
+                metrics['L1'][who]['y1'][s, q]  = _l1(pY1[s, q], truth_y1[s, q], dy)
+                metrics['L1'][who]['tau'][s, q] = _l1(pTa[s, q], truth_ta[s, q], dt)
                 metrics['L2'][who]['y0'][s, q]  = _l2(pY0[s, q], truth_y0[s, q], dy)
                 metrics['L2'][who]['y1'][s, q]  = _l2(pY1[s, q], truth_y1[s, q], dy)
                 metrics['L2'][who]['tau'][s, q] = _l2(pTa[s, q], truth_ta[s, q], dt)
@@ -241,6 +250,7 @@ def main():
                 metrics['W2'][who]['y1'][s, q]  = _w2(pY1[s, q], truth_y1[s, q], Y_GRID)
                 metrics['W2'][who]['tau'][s, q] = _w2(pTa[s, q], truth_ta[s, q], TAU_GRID)
         for who, pAte in [('dopfn', p_ate_dopfn), ('bb', p_ate_bb)]:
+            metrics['L1'][who]['ate'][s] = _l1(pAte[s], truth_ate[s], dt)
             metrics['L2'][who]['ate'][s] = _l2(pAte[s], truth_ate[s], dt)
             metrics['W1'][who]['ate'][s] = _w1(pAte[s], truth_ate[s], TAU_GRID)
             metrics['W2'][who]['ate'][s] = _w2(pAte[s], truth_ate[s], TAU_GRID)
@@ -250,7 +260,7 @@ def main():
     tau_L2_bb    = metrics['L2']['bb']['tau']
 
     # ─── Per-seed summary tables (one per metric) ───
-    for mname in ('L2', 'W1', 'W2'):
+    for mname in ('L1', 'L2', 'W1', 'W2'):
         print(f'\nper-seed mean {mname} — Do-PFN | Do-PFN-bb (2D-marg, B=1000)')
         print(f'  {"seed":>4s}  '
               f'{"y0 Do-PFN":>10s} {"y0 BB":>10s}   '
