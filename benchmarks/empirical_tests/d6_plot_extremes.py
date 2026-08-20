@@ -188,19 +188,45 @@ def main():
             per_q_ta.append(truth_ta[s, q])
         truth_ate[s] = wasserstein_barycenter_1d(np.stack(per_q_ta), TAU_GRID)
 
-    # ─── Per-query τ L2 for both methods (used to rank extremes) ───
+    # ─── Per-query L2 for all four metrics (marginals + τ + ATE) ───
     def _l2(p, t, dx):
         p = np.asarray(p); t = np.asarray(t)
         s_p = p.sum() * dx; s_t = t.sum() * dx
         pn = p / s_p if s_p > 0 else p
         tn = t / s_t if s_t > 0 else t
         return float(np.sqrt(np.sum((pn - tn)**2) * dx))
+    y0_L2_dopfn  = np.zeros((n_seeds, n_test))
+    y1_L2_dopfn  = np.zeros((n_seeds, n_test))
     tau_L2_dopfn = np.zeros((n_seeds, n_test))
+    y0_L2_bb     = np.zeros((n_seeds, n_test))
+    y1_L2_bb     = np.zeros((n_seeds, n_test))
     tau_L2_bb    = np.zeros((n_seeds, n_test))
+    ate_L2_dopfn = np.zeros(n_seeds)
+    ate_L2_bb    = np.zeros(n_seeds)
     for s in range(n_seeds):
         for q in range(n_test):
+            y0_L2_dopfn[s, q]  = _l2(p_y0_dopfn[s, q], truth_y0[s, q], dy)
+            y1_L2_dopfn[s, q]  = _l2(p_y1_dopfn[s, q], truth_y1[s, q], dy)
             tau_L2_dopfn[s, q] = _l2(p_ta_dopfn[s, q], truth_ta[s, q], dt)
+            y0_L2_bb[s, q]     = _l2(p_y0_bb[s, q],    truth_y0[s, q], dy)
+            y1_L2_bb[s, q]     = _l2(p_y1_bb[s, q],    truth_y1[s, q], dy)
             tau_L2_bb[s, q]    = _l2(p_ta_bb[s, q],    truth_ta[s, q], dt)
+        ate_L2_dopfn[s] = _l2(p_ate_dopfn[s], truth_ate[s], dt)
+        ate_L2_bb[s]    = _l2(p_ate_bb[s],    truth_ate[s], dt)
+
+    # ─── Per-seed summary table (all four metrics) ───
+    print('\nper-seed mean L2 — Do-PFN | Do-PFN-bb (2D-marg, B=1000)')
+    print(f'  {"seed":>4s}  '
+          f'{"y0 Do-PFN":>10s} {"y0 BB":>10s}   '
+          f'{"y1 Do-PFN":>10s} {"y1 BB":>10s}   '
+          f'{"τ  Do-PFN":>10s} {"τ  BB":>10s}   '
+          f'{"ATE Do-PFN":>10s} {"ATE BB":>10s}')
+    for s in range(n_seeds):
+        print(f'  {s:>4d}  '
+              f'{y0_L2_dopfn[s].mean():>10.4f} {y0_L2_bb[s].mean():>10.4f}   '
+              f'{y1_L2_dopfn[s].mean():>10.4f} {y1_L2_bb[s].mean():>10.4f}   '
+              f'{tau_L2_dopfn[s].mean():>10.4f} {tau_L2_bb[s].mean():>10.4f}   '
+              f'{ate_L2_dopfn[s]:>10.4f} {ate_L2_bb[s]:>10.4f}')
 
     # ─── Pick extremes on τ ────────────────────────────────────
     gap = tau_L2_bb - tau_L2_dopfn      # >0 means Do-PFN wins on τ
@@ -210,11 +236,6 @@ def main():
           f'τ_L2: Do-PFN={tau_L2_dopfn[idx_dopfn_wins]:.4f}  BB={tau_L2_bb[idx_dopfn_wins]:.4f}')
     print(f'[BB wins]      seed={idx_bb_wins[0]}  query={idx_bb_wins[1]}  '
           f'τ_L2: Do-PFN={tau_L2_dopfn[idx_bb_wins]:.4f}  BB={tau_L2_bb[idx_bb_wins]:.4f}')
-
-    # Print small per-seed summary
-    print('\nper-seed mean τ L2 (Do-PFN | BB):')
-    for s in range(n_seeds):
-        print(f'  seed={s:2d}   {tau_L2_dopfn[s].mean():.4f}  |  {tau_L2_bb[s].mean():.4f}')
 
     # ─── Plot ───
     def _plot(seed, q, tag, outpng):
