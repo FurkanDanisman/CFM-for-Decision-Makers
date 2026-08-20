@@ -191,45 +191,79 @@ def main():
             per_q_ta.append(truth_ta[s, q])
         truth_ate[s] = wasserstein_barycenter_1d(np.stack(per_q_ta), TAU_GRID)
 
-    # ─── Per-query L2 for all four metrics (marginals + τ + ATE) ───
+    # ─── Distance functions: L2, W1, W2 ───────────────────────
+    def _normalize(p, dx):
+        s = p.sum() * dx
+        return (p / s) if s > 0 else p
+
     def _l2(p, t, dx):
-        p = np.asarray(p); t = np.asarray(t)
-        s_p = p.sum() * dx; s_t = t.sum() * dx
-        pn = p / s_p if s_p > 0 else p
-        tn = t / s_t if s_t > 0 else t
+        pn, tn = _normalize(p, dx), _normalize(t, dx)
         return float(np.sqrt(np.sum((pn - tn)**2) * dx))
-    y0_L2_dopfn  = np.zeros((n_seeds, n_test))
-    y1_L2_dopfn  = np.zeros((n_seeds, n_test))
-    tau_L2_dopfn = np.zeros((n_seeds, n_test))
-    y0_L2_bb     = np.zeros((n_seeds, n_test))
-    y1_L2_bb     = np.zeros((n_seeds, n_test))
-    tau_L2_bb    = np.zeros((n_seeds, n_test))
-    ate_L2_dopfn = np.zeros(n_seeds)
-    ate_L2_bb    = np.zeros(n_seeds)
+
+    def _w1(p, t, grid):
+        """W1 = ∫ |CDF_p(y) - CDF_t(y)| dy  (earth-mover on 1D)."""
+        dx = float(grid[1] - grid[0])
+        pn, tn = _normalize(p, dx), _normalize(t, dx)
+        Fp = np.cumsum(pn) * dx
+        Ft = np.cumsum(tn) * dx
+        return float(np.sum(np.abs(Fp - Ft)) * dx)
+
+    _U = np.linspace(1e-4, 1 - 1e-4, 2000)
+    def _w2(p, t, grid):
+        """W2 = L2 of inverse CDFs (quantile functions)."""
+        dx = float(grid[1] - grid[0])
+        pn, tn = _normalize(p, dx), _normalize(t, dx)
+        Fp = np.cumsum(pn) * dx; Fp = np.clip(Fp / max(Fp[-1], 1e-12), 0, 1)
+        Ft = np.cumsum(tn) * dx; Ft = np.clip(Ft / max(Ft[-1], 1e-12), 0, 1)
+        Fp_inv = np.interp(_U, Fp, grid)
+        Ft_inv = np.interp(_U, Ft, grid)
+        return float(np.sqrt(np.mean((Fp_inv - Ft_inv) ** 2)))
+
+    # ─── Per-query metrics for all four density families ───
+    metrics = {name: {who: {'y0': np.zeros((n_seeds, n_test)),
+                              'y1': np.zeros((n_seeds, n_test)),
+                              'tau': np.zeros((n_seeds, n_test)),
+                              'ate': np.zeros(n_seeds)}
+                       for who in ('dopfn', 'bb')}
+                 for name in ('L2', 'W1', 'W2')}
+
     for s in range(n_seeds):
         for q in range(n_test):
-            y0_L2_dopfn[s, q]  = _l2(p_y0_dopfn[s, q], truth_y0[s, q], dy)
-            y1_L2_dopfn[s, q]  = _l2(p_y1_dopfn[s, q], truth_y1[s, q], dy)
-            tau_L2_dopfn[s, q] = _l2(p_ta_dopfn[s, q], truth_ta[s, q], dt)
-            y0_L2_bb[s, q]     = _l2(p_y0_bb[s, q],    truth_y0[s, q], dy)
-            y1_L2_bb[s, q]     = _l2(p_y1_bb[s, q],    truth_y1[s, q], dy)
-            tau_L2_bb[s, q]    = _l2(p_ta_bb[s, q],    truth_ta[s, q], dt)
-        ate_L2_dopfn[s] = _l2(p_ate_dopfn[s], truth_ate[s], dt)
-        ate_L2_bb[s]    = _l2(p_ate_bb[s],    truth_ate[s], dt)
+            for who, pY0, pY1, pTa in [('dopfn', p_y0_dopfn, p_y1_dopfn, p_ta_dopfn),
+                                          ('bb',    p_y0_bb,    p_y1_bb,    p_ta_bb)]:
+                metrics['L2'][who]['y0'][s, q]  = _l2(pY0[s, q], truth_y0[s, q], dy)
+                metrics['L2'][who]['y1'][s, q]  = _l2(pY1[s, q], truth_y1[s, q], dy)
+                metrics['L2'][who]['tau'][s, q] = _l2(pTa[s, q], truth_ta[s, q], dt)
+                metrics['W1'][who]['y0'][s, q]  = _w1(pY0[s, q], truth_y0[s, q], Y_GRID)
+                metrics['W1'][who]['y1'][s, q]  = _w1(pY1[s, q], truth_y1[s, q], Y_GRID)
+                metrics['W1'][who]['tau'][s, q] = _w1(pTa[s, q], truth_ta[s, q], TAU_GRID)
+                metrics['W2'][who]['y0'][s, q]  = _w2(pY0[s, q], truth_y0[s, q], Y_GRID)
+                metrics['W2'][who]['y1'][s, q]  = _w2(pY1[s, q], truth_y1[s, q], Y_GRID)
+                metrics['W2'][who]['tau'][s, q] = _w2(pTa[s, q], truth_ta[s, q], TAU_GRID)
+        for who, pAte in [('dopfn', p_ate_dopfn), ('bb', p_ate_bb)]:
+            metrics['L2'][who]['ate'][s] = _l2(pAte[s], truth_ate[s], dt)
+            metrics['W1'][who]['ate'][s] = _w1(pAte[s], truth_ate[s], TAU_GRID)
+            metrics['W2'][who]['ate'][s] = _w2(pAte[s], truth_ate[s], TAU_GRID)
 
-    # ─── Per-seed summary table (all four metrics) ───
-    print('\nper-seed mean L2 — Do-PFN | Do-PFN-bb (2D-marg, B=1000)')
-    print(f'  {"seed":>4s}  '
-          f'{"y0 Do-PFN":>10s} {"y0 BB":>10s}   '
-          f'{"y1 Do-PFN":>10s} {"y1 BB":>10s}   '
-          f'{"τ  Do-PFN":>10s} {"τ  BB":>10s}   '
-          f'{"ATE Do-PFN":>10s} {"ATE BB":>10s}')
-    for s in range(n_seeds):
-        print(f'  {s:>4d}  '
-              f'{y0_L2_dopfn[s].mean():>10.4f} {y0_L2_bb[s].mean():>10.4f}   '
-              f'{y1_L2_dopfn[s].mean():>10.4f} {y1_L2_bb[s].mean():>10.4f}   '
-              f'{tau_L2_dopfn[s].mean():>10.4f} {tau_L2_bb[s].mean():>10.4f}   '
-              f'{ate_L2_dopfn[s]:>10.4f} {ate_L2_bb[s]:>10.4f}')
+    # Keep legacy tau_L2_* names for the "who wins" gap below
+    tau_L2_dopfn = metrics['L2']['dopfn']['tau']
+    tau_L2_bb    = metrics['L2']['bb']['tau']
+
+    # ─── Per-seed summary tables (one per metric) ───
+    for mname in ('L2', 'W1', 'W2'):
+        print(f'\nper-seed mean {mname} — Do-PFN | Do-PFN-bb (2D-marg, B=1000)')
+        print(f'  {"seed":>4s}  '
+              f'{"y0 Do-PFN":>10s} {"y0 BB":>10s}   '
+              f'{"y1 Do-PFN":>10s} {"y1 BB":>10s}   '
+              f'{"τ  Do-PFN":>10s} {"τ  BB":>10s}   '
+              f'{"ATE Do-PFN":>10s} {"ATE BB":>10s}')
+        d = metrics[mname]
+        for s in range(n_seeds):
+            print(f'  {s:>4d}  '
+                  f'{d["dopfn"]["y0"][s].mean():>10.4f} {d["bb"]["y0"][s].mean():>10.4f}   '
+                  f'{d["dopfn"]["y1"][s].mean():>10.4f} {d["bb"]["y1"][s].mean():>10.4f}   '
+                  f'{d["dopfn"]["tau"][s].mean():>10.4f} {d["bb"]["tau"][s].mean():>10.4f}   '
+                  f'{d["dopfn"]["ate"][s]:>10.4f} {d["bb"]["ate"][s]:>10.4f}')
 
     # ─── Pick extremes on τ ────────────────────────────────────
     gap = tau_L2_bb - tau_L2_dopfn      # >0 means Do-PFN wins on τ
