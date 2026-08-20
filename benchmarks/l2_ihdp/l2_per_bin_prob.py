@@ -443,36 +443,39 @@ def main():
             with np.load(shard_file) as z2:
                 py0k = f'{key_prefix}__p_y0'; py1k = f'{key_prefix}__p_y1'
                 ptauk = f'{key_prefix}__p_tau'; patek = f'{key_prefix}__p_ate'
-                # Recipe-strict per-bin probabilities. Try J=100 stored
-                # bins first (UWYK K=1000 → K=100 summation form), then
-                # J=10 stored bins (BB / Do-PFN / UWYK K=10). Uses the
-                # stored width to pick the evaluation grid, overriding
-                # the caller's use_j100 preference.
+                # Recipe-strict per-bin probabilities. Prefer J=100 stored
+                # bins for use_j100=True targets, else J=10. When stored
+                # width and target width both uniform on [-1,1] and stored
+                # is a refinement (native % target == 0), aggregate by
+                # plain summation of consecutive native probs. Also honors
+                # the caller's use_j100 preference so it correctly picks
+                # the target grid.
                 py0k100 = f'{key_prefix}__p_y0_bins_j100'
                 py1k100 = f'{key_prefix}__p_y1_bins_j100'
-                py0_binsk = f'{key_prefix}__p_y0_bins_j10'
-                py1_binsk = f'{key_prefix}__p_y1_bins_j10'
+                py0_binsk_10 = f'{key_prefix}__p_y0_bins_j10'
+                py1_binsk_10 = f'{key_prefix}__p_y1_bins_j10'
+                py0_binsk = py1_binsk = None
                 use_stored_bins = False
-                # Prefer J=100 if aggregator's default target is J=100 and
-                # the shard has the K=100 bins field.
-                if use_j100 and py0k100 in z2.files and py1k100 in z2.files:
-                    py0_binsk, py1_binsk = py0k100, py1k100
-                    use_stored_bins = True
+                # Set target grid from caller preference.
+                if use_j100:
                     e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
                         edges_Y_100, bin_w_Y_100, edges_tau_100, bin_w_tau_100,
                         n_tau_bins_100, J_100)
-                elif py0_binsk in z2.files and py1_binsk in z2.files:
-                    use_stored_bins = True
-                    _stored_J = int(z2[py0_binsk].shape[-1])
-                    if _stored_J == J:
-                        e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
-                            edges_Y, bin_w_Y, edges_tau, bin_w_tau, n_tau_bins, J)
-                    elif _stored_J == J_100:
-                        e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
-                            edges_Y_100, bin_w_Y_100, edges_tau_100, bin_w_tau_100,
-                            n_tau_bins_100, J_100)
-                    else:
-                        use_stored_bins = False
+                    _tgt_J = J_100
+                else:
+                    e_Y, bw_Y, e_τ, bw_τ, n_τ, J_y = (
+                        edges_Y, bin_w_Y, edges_tau, bin_w_tau, n_tau_bins, J)
+                    _tgt_J = J
+                # Prefer stored bins whose width == target OR is a multiple
+                # of target (plain-sum aggregation).
+                for _key0, _key1 in [(py0k100, py1k100),
+                                       (py0_binsk_10, py1_binsk_10)]:
+                    if _key0 in z2.files and _key1 in z2.files:
+                        w = int(z2[_key0].shape[-1])
+                        if w == _tgt_J or (w > _tgt_J and w % _tgt_J == 0):
+                            py0_binsk, py1_binsk = _key0, _key1
+                            use_stored_bins = True
+                            break
                 if py0k not in z2.files and not use_stored_bins: return
                 if py0k not in z2.files: return
                 for q in range(n_q):
@@ -483,8 +486,15 @@ def main():
                     t_tau = truth_probs_tau(mu_tau, sigma_tau, edges=e_τ)
 
                     if use_stored_bins:
-                        p_y0 = np.asarray(z2[py0_binsk][q], dtype=np.float64)
-                        p_y1 = np.asarray(z2[py1_binsk][q], dtype=np.float64)
+                        _sy0 = np.asarray(z2[py0_binsk][q], dtype=np.float64)
+                        _sy1 = np.asarray(z2[py1_binsk][q], dtype=np.float64)
+                        if len(_sy0) == J_y:
+                            p_y0, p_y1 = _sy0, _sy1
+                        else:
+                            # Plain summation: len(_sy0) is a multiple of J_y.
+                            m = len(_sy0) // J_y
+                            p_y0 = _sy0.reshape(J_y, m).sum(axis=1)
+                            p_y1 = _sy1.reshape(J_y, m).sum(axis=1)
                     else:
                         p_y0 = _y_bin(z2[py0k][q])
                         p_y1 = _y_bin(z2[py1k][q])
