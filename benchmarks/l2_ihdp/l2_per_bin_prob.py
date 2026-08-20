@@ -83,6 +83,10 @@ def main():
                           'grid (same as BB) instead of their native J=100 head. '
                           'Uses Riemann-on-Y_CENTERS for stored density; no re-run '
                           'needed. Meant for comparing fn=50/UWYK vs BB on identical bins.')
+    ap.add_argument('--save-l2-npz', default='',
+                     help='If set, dump per-method L2 arrays + coverage to this .npz '
+                          'file. Consumed by benchmarks/plots/plot_l2_bars.py to '
+                          'generate cross-dataset bar plots.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -634,6 +638,17 @@ def main():
         for metric in ['y0', 'y1', 'tau', 'ate']:
             row += f'  {_stat(acc[m_key][metric]):>16s}'
         print(row)
+
+    # ── Optional npz dump for cross-dataset bar plotting ───────────────
+    if args.save_l2_npz:
+        _out = {'dataset': args.dataset, 'n_expected': n_expected}
+        for m_key in acc:
+            for metric in ('y0', 'y1', 'tau', 'ate'):
+                _out[f'{m_key}__{metric}'] = np.asarray(acc[m_key][metric], dtype=np.float64)
+            _out[f'{m_key}__cov'] = np.int32(len(seen_r[m_key]))
+        os.makedirs(os.path.dirname(args.save_l2_npz) or '.', exist_ok=True)
+        np.savez_compressed(args.save_l2_npz, **_out)
+        print(f'\n[l2-npz] saved {args.save_l2_npz}')
 
 
 if __name__ == '__main__':
