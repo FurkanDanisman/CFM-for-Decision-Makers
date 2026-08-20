@@ -28,6 +28,10 @@ D="${D:-6}"
 DEGREE="${DEGREE:-3}"
 SIGMA_EPS="${SIGMA_EPS:-1.0}"
 RHO="${RHO:-0.0}"
+FLAVOR="${FLAVOR:-polynomial}"
+TAU_BASE="${TAU_BASE:-5.0}"
+TAU_SCALE="${TAU_SCALE:-0.5}"
+Y_SCALE="${Y_SCALE:-0.5}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] d=$D N=$N_CONTEXT n_test=$N_TEST n_seeds=$N_SEEDS"
 echo "  REPO=$REPO  DOPFN=$DOPFN  CKPT=$CHECKPOINT_DOPFN_BB"
@@ -52,6 +56,10 @@ python "$REPO/benchmarks/empirical_tests/d6_per_bin_l2.py" \
     --degree             "$DEGREE" \
     --malc-B             "$MALC_B" \
     --malc-max-K         "$MALC_MAX_K" \
-    --n-eval             "$N_EVAL"
+    --n-eval             "$N_EVAL" \
+    --flavor             "$FLAVOR" \
+    --tau-base           "$TAU_BASE" \
+    --tau-scale          "$TAU_SCALE" \
+    --y-scale            "$Y_SCALE"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
