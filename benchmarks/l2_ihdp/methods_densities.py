@@ -579,8 +579,14 @@ def ours_densities(cd,
             p_marg_y1_raw = p_mats[q].sum(axis=0)                          # (J,)
             p_marg_y0_malc = malc_1d_cvxpy(p_marg_y0_raw)
             p_marg_y1_malc = malc_1d_cvxpy(p_marg_y1_raw)
-            # LOGLIN (default main output): evaluate the continuous log-
-            # concave MLE directly on Y_CENTERS via log-linear interpolation.
+            # RECIPE-STRICT per-native-bin probs (J-wide, on the model's
+            # own uniform head grid): identity for BB (J=10) and fn=50
+            # (J=100). Downstream aggregation to any target grid that
+            # is a divisor of J is exact plain summation.
+            p_y0_bins_j10[q] = np.asarray(p_marg_y0_malc, dtype=np.float64)
+            p_y1_bins_j10[q] = np.asarray(p_marg_y1_malc, dtype=np.float64)
+            # LOGLIN (main output kept for backward-compat visualisation):
+            # continuous log-concave MLE on Y_CENTERS via log-linear interp.
             p_y0[q] = evaluate_malc_1d_on_grid(p_marg_y0_malc,
                                                 centers_raw_scaled, Y_CENTERS,
                                                 dst_bin=Y_BIN)
