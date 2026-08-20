@@ -51,6 +51,10 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--top-k', type=int, default=1,
                      help='Save up to K examples ranked by score (default 1).')
+    ap.add_argument('--mode', choices=['winner', 'bb_worst'], default='winner',
+                     help='winner: (r,q) where BB beats DoPFN AND fn=50 beats UWYK '
+                          '(plots all 5 methods). bb_worst: (r,q) where BB has the '
+                          'largest τ L2 (plots only Do-PFN and Do-PFN-bb).')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -187,10 +191,13 @@ def main():
                 L2_ua    = _l2(ua_p_tau,  t_tau_bin, bin_wtau)
                 L2_best_uwyk = min(L2_un, L2_ua)
 
-                bb_beats  = L2_dop > L2_bb
-                fn_beats  = L2_best_uwyk > L2_fn
-                if not (bb_beats and fn_beats): continue
-                score = (L2_dop - L2_bb) + (L2_best_uwyk - L2_fn)
+                if args.mode == 'winner':
+                    bb_beats  = L2_dop > L2_bb
+                    fn_beats  = L2_best_uwyk > L2_fn
+                    if not (bb_beats and fn_beats): continue
+                    score = (L2_dop - L2_bb) + (L2_best_uwyk - L2_fn)
+                else:                           # bb_worst
+                    score = L2_bb               # rank by BB τ L2, largest first
                 candidates.append((score, r, q,
                     dict(L2_bb=L2_bb, L2_dopfn=L2_dop, L2_fn50=L2_fn,
                          L2_uwyk_noanc=L2_un, L2_uwyk_anc=L2_ua),
@@ -275,12 +282,16 @@ def main():
             ax.plot(xg, tr, color='k', lw=2.2, label='truth')
             ax.plot(xg, bb, color='#d62728', lw=1.8, label='Do-PFN-bb (B=1000 2D-marg)')
             ax.plot(xg, dop, color='#1f77b4', lw=1.6, label='Do-PFN')
-            ax.plot(xg, fn50, color='#2ca02c', lw=1.6, label='fn=50 (2D-marg B=1000)')
-            ax.plot(xg, un, color='#ff7f0e', lw=1.2, ls='--', label='UWYK-NoAnc')
-            ax.plot(xg, ua, color='#9467bd', lw=1.2, ls='--', label='UWYK-FullAnc')
-            ax.set_title(f'{args.dataset.upper()} — {title}   r={r} q={q}   '
-                          f'(BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f} '
-                          f'fn50={l2s["L2_fn50"]:.2f} UWYK={min(l2s["L2_uwyk_noanc"], l2s["L2_uwyk_anc"]):.2f})',
+            if args.mode == 'winner':
+                ax.plot(xg, fn50, color='#2ca02c', lw=1.6, label='fn=50 (2D-marg B=1000)')
+                ax.plot(xg, un, color='#ff7f0e', lw=1.2, ls='--', label='UWYK-NoAnc')
+                ax.plot(xg, ua, color='#9467bd', lw=1.2, ls='--', label='UWYK-FullAnc')
+                sub = (f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f} '
+                       f'fn50={l2s["L2_fn50"]:.2f} '
+                       f'UWYK={min(l2s["L2_uwyk_noanc"], l2s["L2_uwyk_anc"]):.2f}')
+            else:
+                sub = f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f}'
+            ax.set_title(f'{args.dataset.upper()} — {title}   r={r} q={q}   ({sub})',
                           fontsize=9)
             ax.set_xlabel('scaled Y' if tag in ('y0','y1') else 'scaled τ')
             ax.set_ylabel('density')
