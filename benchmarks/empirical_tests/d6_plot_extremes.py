@@ -191,7 +191,34 @@ def main():
             per_q_ta.append(truth_ta[s, q])
         truth_ate[s] = wasserstein_barycenter_1d(np.stack(per_q_ta), TAU_GRID)
 
-    # ─── Distance functions: L2, W1, W2 ───────────────────────
+    # ─── J=10 per-bin grid (matches IHDP l2_per_bin_prob recipe) ───
+    edges_Y10  = np.linspace(-1.0, 1.0, 11)              # 10 uniform bins on [-1,1]
+    edges_TAU10 = np.linspace(-2.0, 2.0, 21)             # 20 uniform τ bins width 0.2
+    bin_wY10   = float(edges_Y10[1] - edges_Y10[0])      # 0.2
+    bin_wTAU10 = float(edges_TAU10[1] - edges_TAU10[0])  # 0.2
+
+    def _bin_probs_from_fine_density(p_fine, grid, edges):
+        """Aggregate a fine-grid density into per-bin probability via
+        trapezoid CDF, then difference at target edges. Renormalises."""
+        dx = float(grid[1] - grid[0])
+        seg = 0.5 * (p_fine[:-1] + p_fine[1:]) * dx     # trapezoid per fine cell
+        F = np.concatenate(([0.0], np.cumsum(seg)))     # CDF at grid points
+        F_at = np.interp(edges, grid, F, left=0.0, right=F[-1])
+        pb = np.diff(F_at)
+        s = pb.sum()
+        return pb / s if s > 0 else pb
+
+    def _truth_bin_probs_gauss(mu, sigma, edges):
+        cdf = norm.cdf(edges, loc=mu, scale=max(sigma, 1e-12))
+        pb = np.diff(cdf)
+        s = pb.sum()
+        return pb / s if s > 0 else pb
+
+    def _l2_perbin(p_bin, t_bin, bw):
+        """IHDP-recipe per-bin L2: sqrt(Σ (p_j - t_j)² / bin_w)."""
+        return float(np.sqrt(np.sum((np.asarray(p_bin) - np.asarray(t_bin))**2) / bw))
+
+    # ─── Distance functions: L2, W1, W2 (fine grid, kept for comparison) ───
     def _normalize(p, dx):
         s = p.sum() * dx
         return (p / s) if s > 0 else p
@@ -231,12 +258,27 @@ def main():
                               'tau': np.zeros((n_seeds, n_test)),
                               'ate': np.zeros(n_seeds)}
                        for who in ('dopfn', 'bb')}
-                 for name in ('L1', 'L2', 'W1', 'W2')}
+                 for name in ('L2_J10', 'L1', 'L2', 'W1', 'W2')}
 
     for s in range(n_seeds):
+        sigma_sc = float(sig_all[s])
+        sigma_tau = float(np.sqrt(2.0)) * sigma_sc
         for q in range(n_test):
+            # Truth per J=10 bin — exact analytic Gaussian CDF differences
+            t_y0_bin  = _truth_bin_probs_gauss(mu0_all[s, q], sigma_sc, edges_Y10)
+            t_y1_bin  = _truth_bin_probs_gauss(mu1_all[s, q], sigma_sc, edges_Y10)
+            t_tau_bin = _truth_bin_probs_gauss(mu1_all[s, q] - mu0_all[s, q],
+                                                sigma_tau, edges_TAU10)
             for who, pY0, pY1, pTa in [('dopfn', p_y0_dopfn, p_y1_dopfn, p_ta_dopfn),
                                           ('bb',    p_y0_bb,    p_y1_bb,    p_ta_bb)]:
+                # J=10 per-bin L2 — target grid same as IHDP recipe
+                y0_bin  = _bin_probs_from_fine_density(pY0[s, q], Y_GRID,   edges_Y10)
+                y1_bin  = _bin_probs_from_fine_density(pY1[s, q], Y_GRID,   edges_Y10)
+                tau_bin = _bin_probs_from_fine_density(pTa[s, q], TAU_GRID, edges_TAU10)
+                metrics['L2_J10'][who]['y0'][s, q]  = _l2_perbin(y0_bin,  t_y0_bin,  bin_wY10)
+                metrics['L2_J10'][who]['y1'][s, q]  = _l2_perbin(y1_bin,  t_y1_bin,  bin_wY10)
+                metrics['L2_J10'][who]['tau'][s, q] = _l2_perbin(tau_bin, t_tau_bin, bin_wTAU10)
+                # Fine-grid distances (kept for cross-check)
                 metrics['L1'][who]['y0'][s, q]  = _l1(pY0[s, q], truth_y0[s, q], dy)
                 metrics['L1'][who]['y1'][s, q]  = _l1(pY1[s, q], truth_y1[s, q], dy)
                 metrics['L1'][who]['tau'][s, q] = _l1(pTa[s, q], truth_ta[s, q], dt)
@@ -249,7 +291,11 @@ def main():
                 metrics['W2'][who]['y0'][s, q]  = _w2(pY0[s, q], truth_y0[s, q], Y_GRID)
                 metrics['W2'][who]['y1'][s, q]  = _w2(pY1[s, q], truth_y1[s, q], Y_GRID)
                 metrics['W2'][who]['tau'][s, q] = _w2(pTa[s, q], truth_ta[s, q], TAU_GRID)
+        # ATE (per seed) — Wasserstein barycentre truth and same recipe
+        t_ate_bin = _bin_probs_from_fine_density(truth_ate[s], TAU_GRID, edges_TAU10)
         for who, pAte in [('dopfn', p_ate_dopfn), ('bb', p_ate_bb)]:
+            ate_bin = _bin_probs_from_fine_density(pAte[s], TAU_GRID, edges_TAU10)
+            metrics['L2_J10'][who]['ate'][s] = _l2_perbin(ate_bin, t_ate_bin, bin_wTAU10)
             metrics['L1'][who]['ate'][s] = _l1(pAte[s], truth_ate[s], dt)
             metrics['L2'][who]['ate'][s] = _l2(pAte[s], truth_ate[s], dt)
             metrics['W1'][who]['ate'][s] = _w1(pAte[s], truth_ate[s], TAU_GRID)
@@ -260,7 +306,7 @@ def main():
     tau_L2_bb    = metrics['L2']['bb']['tau']
 
     # ─── Per-seed summary tables (one per metric) ───
-    for mname in ('L1', 'L2', 'W1', 'W2'):
+    for mname in ('L2_J10', 'L1', 'L2', 'W1', 'W2'):
         print(f'\nper-seed mean {mname} — Do-PFN | Do-PFN-bb (2D-marg, B=1000)')
         print(f'  {"seed":>4s}  '
               f'{"y0 Do-PFN":>10s} {"y0 BB":>10s}   '
