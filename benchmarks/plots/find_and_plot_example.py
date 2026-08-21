@@ -334,19 +334,19 @@ def main():
         n = len(method_list)
         n_cols = n if n <= 3 else 3
         n_rows = (n + n_cols - 1) // n_cols
+
+        # ─── Panel 1: Marginals ────────────────────────────────────────
         fig, axes = plt.subplots(n_rows, n_cols,
                                    figsize=(5.4 * n_cols, 3.6 * n_rows),
                                    squeeze=False)
         for k, (label, key) in enumerate(method_list):
             ax = axes[k // n_cols][k % n_cols]
-            # Truth — red dotted, both arms + red dots at true means
             ax.plot(Y_PLOT, truth_y0, color='red', ls=':', lw=1.7)
             ax.plot(Y_PLOT, truth_y1, color='red', ls=':', lw=1.7)
             for mu in (dens['mu0'], dens['mu1']):
                 px, py = _pt_on(Y_PLOT, truth_y0 if mu == dens['mu0'] else truth_y1, mu)
                 ax.plot(px, py, 'o', color='red', markersize=9,
                          markeredgecolor='white', markeredgewidth=1.0, zorder=6)
-            # Method — blue Y_do0, purple Y_do1
             p0 = method_y0[key]; p1 = method_y1[key]
             ax.plot(Y_PLOT, p0, color=PALETTE['do0'], lw=1.9,
                      label=r'$p(Y_{do0})$' if k == 0 else None)
@@ -374,6 +374,134 @@ def main():
         fig.tight_layout(rect=[0, 0, 1, 0.985])
         suffix = f'_top{rank}' if args.top_k > 1 else ''
         outpng = f'{args.out}{suffix}_marginals.png'
+        fig.savefig(outpng, dpi=140, bbox_inches='tight')
+        plt.close(fig)
+        print(f'[saved] {outpng}')
+
+        # ─── Panel 2: CATE (per query, single r/q) ─────────────────────
+        # Orange fill for method, red dotted truth, dot at both means.
+        ORANGE = '#C1420F'
+        TAU_C_PLOT = np.linspace(-1.5, 1.5, 601)
+        sigma_tau  = float(np.sqrt(2.0) * dens['sigma'])
+        mu_tau     = float(dens['mu1'] - dens['mu0'])
+        truth_tau_c = norm.pdf(TAU_C_PLOT, mu_tau, sigma_tau)
+
+        # Method CATE densities on TAU_C_PLOT
+        def _to_TAUC(d_native):
+            out = np.interp(TAU_C_PLOT, TAU_FINE_C, d_native, left=0, right=0)
+            s = out.sum() * (TAU_C_PLOT[1] - TAU_C_PLOT[0])
+            return out / s if s > 0 else out
+        def _conv_tau_c(y0_YC, y1_YC):
+            conv = np.convolve(y1_YC, y0_YC[::-1], mode='full') * Y_BIN
+            tau_conv_grid = np.arange(-(len(Y_CENTERS)-1), len(Y_CENTERS)) * Y_BIN
+            out = np.interp(TAU_C_PLOT, tau_conv_grid, conv, left=0, right=0)
+            s = out.sum() * (TAU_C_PLOT[1] - TAU_C_PLOT[0])
+            return out / s if s > 0 else out
+        method_tau = {
+            'bb':  _to_TAUC(dens['bb_tau']),
+            'dop': _conv_tau_c(dens['dop_y0'], dens['dop_y1']),
+            'fn':  _to_TAUC(dens['fn_tau']),
+            'un':  _conv_tau_c(dens['un_y0'],  dens['un_y1']),
+            'ua':  _conv_tau_c(dens['ua_y0'],  dens['ua_y1']),
+        }
+        fig, axes = plt.subplots(n_rows, n_cols,
+                                   figsize=(5.4 * n_cols, 3.6 * n_rows),
+                                   squeeze=False)
+        for k, (label, key) in enumerate(method_list):
+            ax = axes[k // n_cols][k % n_cols]
+            p_tau = method_tau[key]
+            ax.fill_between(TAU_C_PLOT, p_tau, alpha=0.25, color=ORANGE)
+            ax.plot(TAU_C_PLOT, p_tau, color=ORANGE, lw=2.0,
+                     label=r'method $p(\tau)$' if k == 0 else None)
+            ax.plot(TAU_C_PLOT, truth_tau_c, color='red', ls=':', lw=1.7,
+                     label=r'true $p(\tau)$' if k == 0 else None)
+            E_tau = _est_mean(TAU_C_PLOT, p_tau)
+            ax.plot(E_tau, float(np.interp(E_tau, TAU_C_PLOT, p_tau)),
+                     'o', color=ORANGE, markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=5)
+            ax.plot(mu_tau, float(np.interp(mu_tau, TAU_C_PLOT, truth_tau_c)),
+                     'o', color='red', markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=6)
+            ax.set_title(f'{label}   $E={E_tau:+.2f}$   '
+                          f'$\\tau_{{true}}={mu_tau:+.2f}$', fontsize=10)
+            ax.set_xlim(-1.5, 1.5)
+            if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+            if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau)$')
+            ax.grid(alpha=0.25)
+            if k == 0: ax.legend(fontsize=9, loc='upper right')
+        for k in range(n, n_rows * n_cols):
+            axes[k // n_cols][k % n_cols].set_visible(False)
+        fig.suptitle(f'{args.dataset.upper()} r={r} q={q}   '
+                      f'$\\tau_{{true}}$={mu_tau:+.2f}   —   CATE vs TRUE',
+                      fontsize=12, y=1.0)
+        fig.tight_layout(rect=[0, 0, 1, 0.985])
+        outpng = f'{args.out}{suffix}_cate.png'
+        fig.savefig(outpng, dpi=140, bbox_inches='tight')
+        plt.close(fig)
+        print(f'[saved] {outpng}')
+
+        # ─── Panel 3: ATE (aggregated over ALL queries in realization r) ─
+        # Load per-realization p_ate stored in each shard, plus compute the
+        # truth ATE as the barycentre of per-query truth CATE Gaussians.
+        with np.load(bb_by_r[r]) as zb, np.load(du_by_r[r]) as zd, np.load(fn_by_r[r]) as zf:
+            method_ate = {}
+            method_ate['bb']  = _to_TAUC(zb['ours_dopfn_bb__p_ate'])
+            method_ate['dop'] = _to_TAUC(zd['dopfn__p_ate'])
+            method_ate['un']  = _to_TAUC(zd['uwyk_noanc__p_ate'])
+            method_ate['ua']  = _to_TAUC(zd['uwyk_anc__p_ate'])
+            method_ate['fn']  = _to_TAUC(zf['ours_fn50__p_ate'])
+        # Truth ATE: barycentre of per-query truth CATE densities
+        if args.dataset == 'ihdp':
+            cd_full, _ = IHDPDataset()[r]
+            y_full = np.asarray(cd_full.y_train.detach().cpu()
+                                if hasattr(cd_full.y_train, 'detach') else cd_full.y_train).reshape(-1)
+            tr_full = load_ihdp_truth(r, args.causalpfn, y_full)
+        else:
+            cd_full, _ = ACIC2016Dataset()[r]
+            y_full = np.asarray(cd_full.y_train.detach().cpu()
+                                if hasattr(cd_full.y_train, 'detach') else cd_full.y_train).reshape(-1)
+            tr_full = load_acic_truth(r, y_full, cache_dir=(args.acic_cache_dir or None))
+        mu_taus = np.asarray(tr_full.mu1_test_scaled).reshape(-1) - \
+                  np.asarray(tr_full.mu0_test_scaled).reshape(-1)
+        sigma_tau_r = float(np.sqrt(2.0) * tr_full.sigma_scaled)
+        truth_cate_stack = np.stack([norm.pdf(TAU_C_PLOT, mt, sigma_tau_r) for mt in mu_taus])
+        truth_ate = wasserstein_barycenter_1d(truth_cate_stack, TAU_C_PLOT)
+        truth_ate /= max(truth_ate.sum() * (TAU_C_PLOT[1]-TAU_C_PLOT[0]), 1e-12)
+        mu_ate_true = float(mu_taus.mean())
+
+        fig, axes = plt.subplots(n_rows, n_cols,
+                                   figsize=(5.4 * n_cols, 3.6 * n_rows),
+                                   squeeze=False)
+        for k, (label, key) in enumerate(method_list):
+            ax = axes[k // n_cols][k % n_cols]
+            p_ate = method_ate[key]
+            ax.fill_between(TAU_C_PLOT, p_ate, alpha=0.25, color=ORANGE)
+            ax.plot(TAU_C_PLOT, p_ate, color=ORANGE, lw=2.0,
+                     label=r'method $p(\tau_{ATE})$' if k == 0 else None)
+            ax.plot(TAU_C_PLOT, truth_ate, color='red', ls=':', lw=1.7,
+                     label=r'true $p(\tau_{ATE})$' if k == 0 else None)
+            E_ate = _est_mean(TAU_C_PLOT, p_ate)
+            ax.plot(E_ate, float(np.interp(E_ate, TAU_C_PLOT, p_ate)),
+                     'o', color=ORANGE, markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=5)
+            ax.plot(mu_ate_true, float(np.interp(mu_ate_true, TAU_C_PLOT, truth_ate)),
+                     'o', color='red', markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=6)
+            ax.set_title(f'{label}   $E={E_ate:+.2f}$   '
+                          f'$\\tau_{{ATE,true}}={mu_ate_true:+.2f}$', fontsize=10)
+            ax.set_xlim(-1.5, 1.5)
+            if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
+            if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau_{ATE})$')
+            ax.grid(alpha=0.25)
+            if k == 0: ax.legend(fontsize=9, loc='upper right')
+        for k in range(n, n_rows * n_cols):
+            axes[k // n_cols][k % n_cols].set_visible(False)
+        fig.suptitle(f'{args.dataset.upper()} r={r}   '
+                      f'$\\tau_{{ATE,true}}$={mu_ate_true:+.2f}   —   ATE vs TRUE '
+                      f'(barycentre over all queries)',
+                      fontsize=12, y=1.0)
+        fig.tight_layout(rect=[0, 0, 1, 0.985])
+        outpng = f'{args.out}{suffix}_ate.png'
         fig.savefig(outpng, dpi=140, bbox_inches='tight')
         plt.close(fig)
         print(f'[saved] {outpng}')
