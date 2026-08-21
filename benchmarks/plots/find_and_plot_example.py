@@ -378,56 +378,70 @@ def main():
         plt.close(fig)
         print(f'[saved] {outpng}')
 
-        # ─── Joint 2D contours (optional) ────────────────────────────
+        # ─── Joint 2D heatmaps (matches ihdp_n10 UWYK-2DMALC/joint.png) ──
         if args.plot_joint:
             xs = np.linspace(-1.0, 1.0, 201)
             ys = xs
             XX, YY = np.meshgrid(xs, ys)
-            # Truth: independent Gaussians in scaled Y
             sigma_sc = dens['sigma']
-            joint_truth = (norm.pdf(XX, dens['mu0'], sigma_sc) *
-                            norm.pdf(YY, dens['mu1'], sigma_sc))
-            # Methods: independence product from stored marginals
             def _marg_on(x, d):
                 return np.interp(x, Y_CENTERS, d, left=0, right=0)
-            joints = {}
-            joints['truth']       = ('red',      joint_truth)
-            joints['Do-PFN-bb']   = ('#d62728',  np.outer(_marg_on(ys, dens['bb_y1']),
-                                                            _marg_on(xs, dens['bb_y0'])))
-            joints['Do-PFN']      = ('#1f77b4',  np.outer(_marg_on(ys, dens['dop_y1']),
-                                                            _marg_on(xs, dens['dop_y0'])))
+
+            # Truth = independent Gaussians in scaled Y (holds for IHDP/ACIC)
+            joint_truth = (norm.pdf(XX, dens['mu0'], sigma_sc) *
+                            norm.pdf(YY, dens['mu1'], sigma_sc))
+            joint_truth /= max(joint_truth.sum() * (xs[1]-xs[0]) * (ys[1]-ys[0]), 1e-12)
+            joints = [('Truth', joint_truth)]
+            joints.append(('Do-PFN-bb',
+                            np.outer(_marg_on(ys, dens['bb_y1']),
+                                      _marg_on(xs, dens['bb_y0']))))
+            joints.append(('Do-PFN',
+                            np.outer(_marg_on(ys, dens['dop_y1']),
+                                      _marg_on(xs, dens['dop_y0']))))
             if args.mode == 'winner':
-                joints['fn=50']         = ('#2ca02c',  np.outer(_marg_on(ys, dens['fn_y1']),
-                                                                  _marg_on(xs, dens['fn_y0'])))
-                joints['UWYK-NoAnc']    = ('#ff7f0e',  np.outer(_marg_on(ys, dens['un_y1']),
-                                                                  _marg_on(xs, dens['un_y0'])))
-                joints['UWYK-FullAnc']  = ('#9467bd',  np.outer(_marg_on(ys, dens['ua_y1']),
-                                                                  _marg_on(xs, dens['ua_y0'])))
-            # One figure, contours overlaid
-            fig, ax = plt.subplots(figsize=(6.5, 6))
-            for label, (color, J) in joints.items():
-                s = J.max() if J.max() > 0 else 1.0
-                levels = [0.15 * s, 0.45 * s, 0.80 * s]
-                lw = 2.0 if label == 'truth' else 1.4
-                ls = ':' if label == 'truth' else '-'
-                cs = ax.contour(XX, YY, J, levels=levels, colors=color,
-                                 linestyles=ls, linewidths=lw, alpha=0.9)
-                # Legend proxy
-                ax.plot([], [], color=color, ls=ls, lw=lw, label=label)
-            ax.plot([dens['mu0']], [dens['mu1']], marker='o', color='red',
-                     markersize=8, markeredgecolor='k', markeredgewidth=0.7,
-                     label='truth mean', zorder=6)
-            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1)
-            ax.set_xlabel(r'$Y_{do(0)}$ (scaled)')
-            ax.set_ylabel(r'$Y_{do(1)}$ (scaled)')
-            ax.set_aspect('equal')
-            ax.set_title(f'{args.dataset.upper()} — Joint $p(Y_{{do(0)}}, Y_{{do(1)}})$   '
-                          f'r={r} q={q}', fontsize=10)
-            ax.grid(alpha=0.2, linestyle='--')
-            ax.legend(fontsize=8, frameon=False, loc='upper left')
-            fig.tight_layout()
+                joints.append(('fn=50',
+                                np.outer(_marg_on(ys, dens['fn_y1']),
+                                          _marg_on(xs, dens['fn_y0']))))
+                joints.append(('UWYK-NoAnc',
+                                np.outer(_marg_on(ys, dens['un_y1']),
+                                          _marg_on(xs, dens['un_y0']))))
+                joints.append(('UWYK-FullAnc',
+                                np.outer(_marg_on(ys, dens['ua_y1']),
+                                          _marg_on(xs, dens['ua_y0']))))
+
+            n = len(joints)
+            n_cols = n if n <= 3 else 3
+            n_rows = (n + n_cols - 1) // n_cols
+            fig, axes = plt.subplots(n_rows, n_cols,
+                                       figsize=(4.6 * n_cols, 4.2 * n_rows),
+                                       squeeze=False)
+            extent = [-1.0, 1.0, -1.0, 1.0]
+            for k, (label, J) in enumerate(joints):
+                ax = axes[k // n_cols][k % n_cols]
+                # Normalise to per-unit-area density for visual comparability
+                dxdy = (xs[1] - xs[0]) * (ys[1] - ys[0])
+                s = J.sum() * dxdy
+                Jn = J / s if s > 0 else J
+                im = ax.imshow(Jn, origin='lower', extent=extent,
+                                aspect='equal', cmap='viridis')
+                ax.plot([-1, 1], [-1, 1], color='red', ls=':', lw=1.0)
+                ax.plot([dens['mu0']], [dens['mu1']], marker='o', color='red',
+                         markersize=8, markeredgecolor='white', markeredgewidth=1.0,
+                         zorder=6)
+                ax.set_title(label, fontsize=11)
+                if k // n_cols == n_rows - 1: ax.set_xlabel(r'$Y_{do0}$  (scaled)')
+                if k %  n_cols == 0:          ax.set_ylabel(r'$Y_{do1}$  (scaled)')
+                plt.colorbar(im, ax=ax, fraction=0.045, pad=0.02)
+            for k in range(n, n_rows * n_cols):
+                axes[k // n_cols][k % n_cols].set_visible(False)
+            tau_true = dens['mu1'] - dens['mu0']
+            fig.suptitle(f'{args.dataset.upper()} r={r} q={q}   '
+                          f'$\\tau_{{true}}$={tau_true:+.2f}   joint '
+                          f'$p(Y_{{do0}}, Y_{{do1}})$',
+                          fontsize=12, y=0.999)
+            fig.tight_layout(rect=[0, 0, 1, 0.985])
             outpng = f'{args.out}{suffix}_joint.png'
-            fig.savefig(outpng, dpi=150, bbox_inches='tight')
+            fig.savefig(outpng, dpi=140, bbox_inches='tight')
             plt.close(fig)
             print(f'[saved] {outpng}')
 
