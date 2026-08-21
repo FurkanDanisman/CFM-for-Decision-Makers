@@ -507,11 +507,11 @@ def main():
             E_ate = _est_mean(TAU_C_PLOT, p_ate)
             # Truth OT (red dotted)
             ax.plot(TAU_C_PLOT, truth_ate, color='red', ls=':', lw=2.2,
-                     label=f'true $p(\\tau_{{ATE}})$  E={mu_ate_true:+.2f}')
+                     label=r'true $p(\tau_{ATE})$' if k == 0 else None)
             # Method OT (green solid + fill)
             ax.fill_between(TAU_C_PLOT, p_ate, alpha=0.20, color=GREEN)
             ax.plot(TAU_C_PLOT, p_ate, color=GREEN, lw=2.6,
-                     label=f'Ours $p(\\tau_{{ATE}})$  E={E_ate:+.2f}')
+                     label=r'method $p(\tau_{ATE})$' if k == 0 else None)
             # Mean dots (no legend entries — the E values are already in the line labels)
             ax.plot(E_ate, float(np.interp(E_ate, TAU_C_PLOT, p_ate)),
                      'o', color=GREEN, markersize=10,
