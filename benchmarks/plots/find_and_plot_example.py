@@ -280,106 +280,85 @@ def main():
         un_tau_plt  = _conv_tau_fine(dens['un_y0'],  dens['un_y1'])
         ua_tau_plt  = _conv_tau_fine(dens['ua_y0'],  dens['ua_y1'])
 
-        panels = [
-            ('y0',  '$p(Y_{do(0)})$',       Y_PLOT, truth_y0,
-             bb_y0_plt, dop_y0_plt, fn_y0_plt, un_y0_plt, ua_y0_plt),
-            ('y1',  '$p(Y_{do(1)})$',       Y_PLOT, truth_y1,
-             bb_y1_plt, dop_y1_plt, fn_y1_plt, un_y1_plt, ua_y1_plt),
-            ('tau', r'$p(\tau|x)$  (CATE)', TAU_PLOT, truth_tau,
-             bb_tau_plt, dop_tau_plt, fn_tau_plt, un_tau_plt, ua_tau_plt),
-            ('ate', r'$p(\tau_{ATE})$  (single query = CATE)', TAU_PLOT, truth_tau,
-             bb_tau_plt, dop_tau_plt, fn_tau_plt, un_tau_plt, ua_tau_plt),
-        ]
+        # ═══ REFERENCE STYLE (matches benchmarks/plots/ihdp_n10/UWYK-2DMALC-VS-TRUE) ═══
+        # One figure, one panel per method. Each panel:
+        #   truth p(Y_do0), p(Y_do1) as red dotted bells + red dots at μ_true
+        #   method p(Y_do0) solid blue + blue dot at method's E[Y_do0]
+        #   method p(Y_do1) solid purple + purple dot at method's E[Y_do1]
 
-        # per-panel true mean and reference X-range
-        panel_meta = {
-            'y0':  {'mu_true': dens['mu0'],               'xlim': (-1.0, 1.0)},
-            'y1':  {'mu_true': dens['mu1'],               'xlim': (-1.0, 1.0)},
-            'tau': {'mu_true': dens['mu1'] - dens['mu0'], 'xlim': (-2.0, 2.0)},
-            'ate': {'mu_true': dens['mu1'] - dens['mu0'], 'xlim': (-2.0, 2.0)},
-        }
+        PALETTE = {'do0': '#2E7DAF', 'do1': '#7B3E9E'}   # reference blue / purple
+
+        if args.mode == 'winner':
+            method_list = [
+                ('Do-PFN-bb', 'bb'),
+                ('Do-PFN',    'dop'),
+                ('fn=50',     'fn'),
+                ('UWYK-NoAnc','un'),
+                ('UWYK-FullAnc','ua'),
+            ]
+        else:  # bb_worst
+            method_list = [
+                ('Do-PFN-bb', 'bb'),
+                ('Do-PFN',    'dop'),
+            ]
+        method_y0 = {'bb': bb_y0_plt, 'dop': dop_y0_plt, 'fn': fn_y0_plt,
+                     'un': un_y0_plt, 'ua': ua_y0_plt}
+        method_y1 = {'bb': bb_y1_plt, 'dop': dop_y1_plt, 'fn': fn_y1_plt,
+                     'un': un_y1_plt, 'ua': ua_y1_plt}
+
         def _est_mean(x, p):
-            """Expectation ∫ x·p(x) dx on the given grid."""
             dx = float(x[1] - x[0])
             s = p.sum() * dx
             return float((x * p).sum() * dx / s) if s > 0 else float('nan')
         def _pt_on(x, p, mu):
-            """Return (mu, density(mu)) for placing a dot on the curve."""
             return mu, float(np.interp(mu, x, p))
 
-        if args.mode == 'winner':
-            method_list = [
-                ('Do-PFN-bb', 'bb',   '#d62728'),
-                ('Do-PFN',    'dop',  '#1f77b4'),
-                ('fn=50',     'fn',   '#2ca02c'),
-                ('UWYK-NoAnc','un',   '#ff7f0e'),
-                ('UWYK-FullAnc','ua', '#9467bd'),
-            ]
-        else:  # bb_worst: only Do-PFN and Do-PFN-bb
-            method_list = [
-                ('Do-PFN-bb', 'bb',   '#d62728'),
-                ('Do-PFN',    'dop',  '#1f77b4'),
-            ]
-
-        method_curves = {
-            'bb':  {'y0': bb_y0_plt,  'y1': bb_y1_plt,  'tau': bb_tau_plt,  'ate': bb_tau_plt},
-            'dop': {'y0': dop_y0_plt, 'y1': dop_y1_plt, 'tau': dop_tau_plt, 'ate': dop_tau_plt},
-            'fn':  {'y0': fn_y0_plt,  'y1': fn_y1_plt,  'tau': fn_tau_plt,  'ate': fn_tau_plt},
-            'un':  {'y0': un_y0_plt,  'y1': un_y1_plt,  'tau': un_tau_plt,  'ate': un_tau_plt},
-            'ua':  {'y0': ua_y0_plt,  'y1': ua_y1_plt,  'tau': ua_tau_plt,  'ate': ua_tau_plt},
-        }
-
-        for tag, title, xg, tr, *_rest in panels:
-            fig, ax = plt.subplots(figsize=(7.5, 4.5))
-            xlim = panel_meta[tag]['xlim']
-            mu_true = panel_meta[tag]['mu_true']
-            is_tau = tag in ('tau', 'ate')
-
-            # --- Truth: red dotted line + big red dot at true mean ---
-            ax.plot(xg, tr, color='red', ls=':', lw=2.2, label='truth')
-            tx, ty = _pt_on(xg, tr, mu_true)
-            ax.plot([tx], [ty], marker='o', color='red', markersize=10,
-                     markeredgecolor='white', markeredgewidth=1.2,
-                     zorder=6, clip_on=False)
-            if is_tau:
-                ax.axvline(mu_true, color='red', ls=':', lw=1.0, alpha=0.55)
-
-            # --- Each method: solid colored line + mean-dot on the curve ---
-            for label, key, color in method_list:
-                p = method_curves[key][tag]
-                if is_tau:
-                    ax.fill_between(xg, p, color=color, alpha=0.10)
-                ax.plot(xg, p, color=color, lw=2.0, label=label)
-                mu_hat = _est_mean(xg, p)
-                if np.isfinite(mu_hat) and xlim[0] <= mu_hat <= xlim[1]:
-                    hx, hy = _pt_on(xg, p, mu_hat)
-                    ax.plot([hx], [hy], marker='o', color=color, markersize=9,
-                             markeredgecolor='white', markeredgewidth=1.0,
-                             zorder=5)
-
-            # y-limit — leave some headroom above the tallest curve
-            ymax = float(max(tr.max(),
-                              *[method_curves[k][tag].max() for _, k, _ in method_list]))
-            ax.set_ylim(0, ymax * 1.15)
-            ax.set_xlim(*xlim)
-            ax.set_xlabel(r'$Y$  (scaled)' if tag in ('y0','y1') else r'$\tau$  (scaled)')
-            ax.set_ylabel('density')
-            if args.mode == 'winner':
-                sub = (f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f} '
-                       f'fn50={l2s["L2_fn50"]:.2f} '
-                       f'UWYK={min(l2s["L2_uwyk_noanc"], l2s["L2_uwyk_anc"]):.2f}')
-            else:
-                sub = f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f}'
-            ax.set_title(f'{args.dataset.upper()}  —  {title}   r={r} q={q}\n'
-                          f'per-bin $L^2$ (τ): {sub}', fontsize=10)
+        n = len(method_list)
+        n_cols = n if n <= 3 else 3
+        n_rows = (n + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols,
+                                   figsize=(5.4 * n_cols, 3.6 * n_rows),
+                                   squeeze=False)
+        for k, (label, key) in enumerate(method_list):
+            ax = axes[k // n_cols][k % n_cols]
+            # Truth — red dotted, both arms + red dots at true means
+            ax.plot(Y_PLOT, truth_y0, color='red', ls=':', lw=1.7)
+            ax.plot(Y_PLOT, truth_y1, color='red', ls=':', lw=1.7)
+            for mu in (dens['mu0'], dens['mu1']):
+                px, py = _pt_on(Y_PLOT, truth_y0 if mu == dens['mu0'] else truth_y1, mu)
+                ax.plot(px, py, 'o', color='red', markersize=9,
+                         markeredgecolor='white', markeredgewidth=1.0, zorder=6)
+            # Method — blue Y_do0, purple Y_do1
+            p0 = method_y0[key]; p1 = method_y1[key]
+            ax.plot(Y_PLOT, p0, color=PALETTE['do0'], lw=1.9,
+                     label=r'$p(Y_{do0})$' if k == 0 else None)
+            ax.plot(Y_PLOT, p1, color=PALETTE['do1'], lw=1.9,
+                     label=r'$p(Y_{do1})$' if k == 0 else None)
+            E0 = _est_mean(Y_PLOT, p0); E1 = _est_mean(Y_PLOT, p1)
+            ax.plot(E0, float(np.interp(E0, Y_PLOT, p0)), 'o',
+                     color=PALETTE['do0'], markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=5)
+            ax.plot(E1, float(np.interp(E1, Y_PLOT, p1)), 'o',
+                     color=PALETTE['do1'], markersize=9,
+                     markeredgecolor='white', markeredgewidth=1.0, zorder=5)
+            ax.set_title(label, fontsize=11)
+            if k // n_cols == n_rows - 1: ax.set_xlabel(r'$Y$  (scaled)')
+            if k %  n_cols == 0:          ax.set_ylabel('density')
+            ax.set_xlim(-1.0, 1.0)
             ax.grid(alpha=0.25)
-            ax.legend(fontsize=9, loc='upper right', framealpha=0.9)
-            fig.tight_layout()
-            suffix = f'_top{rank}' if args.top_k > 1 else ''
-            outpng = f'{args.out}{suffix}_{tag}.png'
-            fig.savefig(outpng, dpi=150, bbox_inches='tight')
-            plt.close(fig)
-            print(f'[saved] {outpng}')
+            if k == 0: ax.legend(fontsize=9, loc='upper right')
+        for k in range(n, n_rows * n_cols):
+            axes[k // n_cols][k % n_cols].set_visible(False)
+        tau_true = dens['mu1'] - dens['mu0']
+        fig.suptitle(f'{args.dataset.upper()} r={r} q={q}   '
+                      f'$\\tau_{{true}}$={tau_true:+.2f}   —   marginals vs TRUE',
+                      fontsize=12, y=1.0)
+        fig.tight_layout(rect=[0, 0, 1, 0.985])
+        suffix = f'_top{rank}' if args.top_k > 1 else ''
+        outpng = f'{args.out}{suffix}_marginals.png'
+        fig.savefig(outpng, dpi=140, bbox_inches='tight')
+        plt.close(fig)
+        print(f'[saved] {outpng}')
 
         # ─── Joint 2D contours (optional) ────────────────────────────
         if args.plot_joint:
