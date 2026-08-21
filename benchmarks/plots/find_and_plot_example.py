@@ -55,6 +55,9 @@ def main():
                      help='winner: (r,q) where BB beats DoPFN AND fn=50 beats UWYK '
                           '(plots all 5 methods). bb_worst: (r,q) where BB has the '
                           'largest τ L2 (plots only Do-PFN and Do-PFN-bb).')
+    ap.add_argument('--plot-joint', action='store_true',
+                     help='Additionally plot joint p(Y_do0, Y_do1) contours for each '
+                          'method + truth (independence for methods without a joint).')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -277,29 +280,134 @@ def main():
              bb_tau_plt, dop_tau_plt, fn_tau_plt, un_tau_plt, ua_tau_plt),
         ]
 
-        for tag, title, xg, tr, bb, dop, fn50, un, ua in panels:
-            fig, ax = plt.subplots(figsize=(7, 4.5))
-            ax.plot(xg, tr, color='k', lw=2.2, label='truth')
-            ax.plot(xg, bb, color='#d62728', lw=1.8, label='Do-PFN-bb (B=1000 2D-marg)')
-            ax.plot(xg, dop, color='#1f77b4', lw=1.6, label='Do-PFN')
+        # per-panel true mean and reference X-range
+        panel_meta = {
+            'y0':  {'mu_true': dens['mu0'],               'xlim': (-1.0, 1.0)},
+            'y1':  {'mu_true': dens['mu1'],               'xlim': (-1.0, 1.0)},
+            'tau': {'mu_true': dens['mu1'] - dens['mu0'], 'xlim': (-2.0, 2.0)},
+            'ate': {'mu_true': dens['mu1'] - dens['mu0'], 'xlim': (-2.0, 2.0)},
+        }
+        def _est_mean(x, p):
+            """Expectation ∫ x·p(x) dx on the given grid."""
+            dx = float(x[1] - x[0])
+            s = p.sum() * dx
+            return float((x * p).sum() * dx / s) if s > 0 else float('nan')
+        def _pt_on(x, p, mu):
+            """Return (mu, density(mu)) for placing a dot on the curve."""
+            return mu, float(np.interp(mu, x, p))
+
+        if args.mode == 'winner':
+            method_list = [
+                ('Do-PFN-bb', 'bb',   '#d62728'),
+                ('Do-PFN',    'dop',  '#1f77b4'),
+                ('fn=50',     'fn',   '#2ca02c'),
+                ('UWYK-NoAnc','un',   '#ff7f0e'),
+                ('UWYK-FullAnc','ua', '#9467bd'),
+            ]
+        else:  # bb_worst: only Do-PFN and Do-PFN-bb
+            method_list = [
+                ('Do-PFN-bb', 'bb',   '#d62728'),
+                ('Do-PFN',    'dop',  '#1f77b4'),
+            ]
+
+        method_curves = {
+            'bb':  {'y0': bb_y0_plt,  'y1': bb_y1_plt,  'tau': bb_tau_plt,  'ate': bb_tau_plt},
+            'dop': {'y0': dop_y0_plt, 'y1': dop_y1_plt, 'tau': dop_tau_plt, 'ate': dop_tau_plt},
+            'fn':  {'y0': fn_y0_plt,  'y1': fn_y1_plt,  'tau': fn_tau_plt,  'ate': fn_tau_plt},
+            'un':  {'y0': un_y0_plt,  'y1': un_y1_plt,  'tau': un_tau_plt,  'ate': un_tau_plt},
+            'ua':  {'y0': ua_y0_plt,  'y1': ua_y1_plt,  'tau': ua_tau_plt,  'ate': ua_tau_plt},
+        }
+
+        for tag, title, xg, tr, *_rest in panels:
+            fig, ax = plt.subplots(figsize=(7, 4.2))
+            xlim = panel_meta[tag]['xlim']
+            mu_true = panel_meta[tag]['mu_true']
+
+            # Truth — dotted red, dot at true mean
+            ax.plot(xg, tr, color='red', ls=':', lw=1.8, label='truth')
+            tx, ty = _pt_on(xg, tr, mu_true)
+            ax.plot([tx], [ty], marker='o', color='red', markersize=7,
+                     markeredgecolor='k', markeredgewidth=0.6, zorder=5)
+
+            # Each method — solid line + dot at estimated mean
+            for label, key, color in method_list:
+                p = method_curves[key][tag]
+                ax.plot(xg, p, color=color, lw=1.7, label=label)
+                mu_hat = _est_mean(xg, p)
+                if np.isfinite(mu_hat) and xlim[0] <= mu_hat <= xlim[1]:
+                    hx, hy = _pt_on(xg, p, mu_hat)
+                    ax.plot([hx], [hy], marker='o', color=color, markersize=6,
+                             markeredgecolor='k', markeredgewidth=0.5, zorder=5)
+
             if args.mode == 'winner':
-                ax.plot(xg, fn50, color='#2ca02c', lw=1.6, label='fn=50 (2D-marg B=1000)')
-                ax.plot(xg, un, color='#ff7f0e', lw=1.2, ls='--', label='UWYK-NoAnc')
-                ax.plot(xg, ua, color='#9467bd', lw=1.2, ls='--', label='UWYK-FullAnc')
                 sub = (f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f} '
                        f'fn50={l2s["L2_fn50"]:.2f} '
                        f'UWYK={min(l2s["L2_uwyk_noanc"], l2s["L2_uwyk_anc"]):.2f}')
             else:
                 sub = f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f}'
             ax.set_title(f'{args.dataset.upper()} — {title}   r={r} q={q}   ({sub})',
-                          fontsize=9)
-            ax.set_xlabel('scaled Y' if tag in ('y0','y1') else 'scaled τ')
+                          fontsize=10)
+            ax.set_xlabel('scaled Y' if tag in ('y0','y1') else r'scaled $\tau$')
             ax.set_ylabel('density')
+            ax.set_xlim(*xlim)
             ax.legend(fontsize=8, frameon=False, loc='upper right')
-            ax.axvline(0.0, color='k', lw=0.4, alpha=0.3)
+            ax.grid(alpha=0.2, linestyle='--')
             fig.tight_layout()
             suffix = f'_top{rank}' if args.top_k > 1 else ''
             outpng = f'{args.out}{suffix}_{tag}.png'
+            fig.savefig(outpng, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            print(f'[saved] {outpng}')
+
+        # ─── Joint 2D contours (optional) ────────────────────────────
+        if args.plot_joint:
+            xs = np.linspace(-1.0, 1.0, 201)
+            ys = xs
+            XX, YY = np.meshgrid(xs, ys)
+            # Truth: independent Gaussians in scaled Y
+            sigma_sc = dens['sigma']
+            joint_truth = (norm.pdf(XX, dens['mu0'], sigma_sc) *
+                            norm.pdf(YY, dens['mu1'], sigma_sc))
+            # Methods: independence product from stored marginals
+            def _marg_on(x, d):
+                return np.interp(x, Y_CENTERS, d, left=0, right=0)
+            joints = {}
+            joints['truth']       = ('red',      joint_truth)
+            joints['Do-PFN-bb']   = ('#d62728',  np.outer(_marg_on(ys, dens['bb_y1']),
+                                                            _marg_on(xs, dens['bb_y0'])))
+            joints['Do-PFN']      = ('#1f77b4',  np.outer(_marg_on(ys, dens['dop_y1']),
+                                                            _marg_on(xs, dens['dop_y0'])))
+            if args.mode == 'winner':
+                joints['fn=50']         = ('#2ca02c',  np.outer(_marg_on(ys, dens['fn_y1']),
+                                                                  _marg_on(xs, dens['fn_y0'])))
+                joints['UWYK-NoAnc']    = ('#ff7f0e',  np.outer(_marg_on(ys, dens['un_y1']),
+                                                                  _marg_on(xs, dens['un_y0'])))
+                joints['UWYK-FullAnc']  = ('#9467bd',  np.outer(_marg_on(ys, dens['ua_y1']),
+                                                                  _marg_on(xs, dens['ua_y0'])))
+            # One figure, contours overlaid
+            fig, ax = plt.subplots(figsize=(6.5, 6))
+            for label, (color, J) in joints.items():
+                s = J.max() if J.max() > 0 else 1.0
+                levels = [0.15 * s, 0.45 * s, 0.80 * s]
+                lw = 2.0 if label == 'truth' else 1.4
+                ls = ':' if label == 'truth' else '-'
+                cs = ax.contour(XX, YY, J, levels=levels, colors=color,
+                                 linestyles=ls, linewidths=lw, alpha=0.9)
+                # Legend proxy
+                ax.plot([], [], color=color, ls=ls, lw=lw, label=label)
+            ax.plot([dens['mu0']], [dens['mu1']], marker='o', color='red',
+                     markersize=8, markeredgecolor='k', markeredgewidth=0.7,
+                     label='truth mean', zorder=6)
+            ax.set_xlim(-1, 1); ax.set_ylim(-1, 1)
+            ax.set_xlabel(r'$Y_{do(0)}$ (scaled)')
+            ax.set_ylabel(r'$Y_{do(1)}$ (scaled)')
+            ax.set_aspect('equal')
+            ax.set_title(f'{args.dataset.upper()} — Joint $p(Y_{{do(0)}}, Y_{{do(1)}})$   '
+                          f'r={r} q={q}', fontsize=10)
+            ax.grid(alpha=0.2, linestyle='--')
+            ax.legend(fontsize=8, frameon=False, loc='upper left')
+            fig.tight_layout()
+            outpng = f'{args.out}{suffix}_joint.png'
             fig.savefig(outpng, dpi=150, bbox_inches='tight')
             plt.close(fig)
             print(f'[saved] {outpng}')
