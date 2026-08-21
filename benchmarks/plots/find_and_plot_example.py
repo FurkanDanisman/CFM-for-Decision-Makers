@@ -51,10 +51,11 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--top-k', type=int, default=1,
                      help='Save up to K examples ranked by score (default 1).')
-    ap.add_argument('--mode', choices=['winner', 'bb_worst'], default='winner',
-                     help='winner: (r,q) where BB beats DoPFN AND fn=50 beats UWYK '
-                          '(plots all 5 methods). bb_worst: (r,q) where BB has the '
-                          'largest τ L2 (plots only Do-PFN and Do-PFN-bb).')
+    ap.add_argument('--mode', choices=['winner', 'bb_worst', 'fn50_wins'],
+                     default='winner',
+                     help='winner: BB beats DoPFN AND fn=50 beats UWYK. '
+                          'bb_worst: BB has the largest τ L2 (only DoPFN + BB plotted). '
+                          'fn50_wins: fn=50 has largest margin over the better UWYK arm.')
     ap.add_argument('--plot-joint', action='store_true',
                      help='Additionally plot joint p(Y_do0, Y_do1) contours for each '
                           'method + truth (independence for methods without a joint).')
@@ -217,6 +218,10 @@ def main():
                     fn_beats  = L2_best_uwyk > L2_fn
                     if not (bb_beats and fn_beats): continue
                     score = (L2_dop - L2_bb) + (L2_best_uwyk - L2_fn)
+                elif args.mode == 'fn50_wins':
+                    # fn=50 beats the BETTER UWYK arm by the largest margin
+                    if L2_fn >= L2_best_uwyk: continue
+                    score = L2_best_uwyk - L2_fn
                 else:                           # bb_worst
                     score = L2_bb               # rank by BB τ L2, largest first
                 # MEMORY-LITE: only keep score + (r, q, sigma, mu0, mu1) + L2s.
@@ -306,18 +311,18 @@ def main():
 
         PALETTE = {'do0': '#2E7DAF', 'do1': '#7B3E9E'}   # reference blue / purple
 
-        if args.mode == 'winner':
+        if args.mode == 'bb_worst':
+            method_list = [
+                ('Do-PFN-bb', 'bb'),
+                ('Do-PFN',    'dop'),
+            ]
+        else:  # winner or fn50_wins → all 5 methods
             method_list = [
                 ('Do-PFN-bb', 'bb'),
                 ('Do-PFN',    'dop'),
                 ('fn=50',     'fn'),
                 ('UWYK-NoAnc','un'),
                 ('UWYK-FullAnc','ua'),
-            ]
-        else:  # bb_worst
-            method_list = [
-                ('Do-PFN-bb', 'bb'),
-                ('Do-PFN',    'dop'),
             ]
         method_y0 = {'bb': bb_y0_plt, 'dop': dop_y0_plt, 'fn': fn_y0_plt,
                      'un': un_y0_plt, 'ua': ua_y0_plt}
