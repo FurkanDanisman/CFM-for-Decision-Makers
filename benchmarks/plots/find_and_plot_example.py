@@ -556,22 +556,17 @@ def main():
                             norm.pdf(YY, dens['mu1'], sigma_sc))
             joint_truth /= max(joint_truth.sum() * (xs[1]-xs[0]) * (ys[1]-ys[0]), 1e-12)
             joints = [('Truth', joint_truth)]
-            joints.append(('Do-PFN-bb',
-                            np.outer(_marg_on(ys, dens['bb_y1']),
-                                      _marg_on(xs, dens['bb_y0']))))
-            joints.append(('Do-PFN',
-                            np.outer(_marg_on(ys, dens['dop_y1']),
-                                      _marg_on(xs, dens['dop_y0']))))
-            if args.mode == 'winner':
-                joints.append(('fn=50',
-                                np.outer(_marg_on(ys, dens['fn_y1']),
-                                          _marg_on(xs, dens['fn_y0']))))
-                joints.append(('UWYK-NoAnc',
-                                np.outer(_marg_on(ys, dens['un_y1']),
-                                          _marg_on(xs, dens['un_y0']))))
-                joints.append(('UWYK-FullAnc',
-                                np.outer(_marg_on(ys, dens['ua_y1']),
-                                          _marg_on(xs, dens['ua_y0']))))
+            joint_map = {
+                'bb':  ('Do-PFN-bb',   dens['bb_y0'],  dens['bb_y1']),
+                'dop': ('Do-PFN',      dens['dop_y0'], dens['dop_y1']),
+                'fn':  ('fn=50',       dens['fn_y0'],  dens['fn_y1']),
+                'un':  ('UWYK-NoAnc',  dens['un_y0'],  dens['un_y1']),
+                'ua':  ('UWYK-FullAnc',dens['ua_y0'],  dens['ua_y1']),
+            }
+            for _lab, key in method_list:
+                lab, m0, m1 = joint_map[key]
+                joints.append((lab, np.outer(_marg_on(ys, m1),
+                                                _marg_on(xs, m0))))
 
             n = len(joints)
             n_cols = n if n <= 3 else 3
