@@ -330,39 +330,50 @@ def main():
         }
 
         for tag, title, xg, tr, *_rest in panels:
-            fig, ax = plt.subplots(figsize=(7, 4.2))
+            fig, ax = plt.subplots(figsize=(7.5, 4.5))
             xlim = panel_meta[tag]['xlim']
             mu_true = panel_meta[tag]['mu_true']
+            is_tau = tag in ('tau', 'ate')
 
-            # Truth — dotted red, dot at true mean
-            ax.plot(xg, tr, color='red', ls=':', lw=1.8, label='truth')
+            # --- Truth: red dotted line + big red dot at true mean ---
+            ax.plot(xg, tr, color='red', ls=':', lw=2.2, label='truth')
             tx, ty = _pt_on(xg, tr, mu_true)
-            ax.plot([tx], [ty], marker='o', color='red', markersize=7,
-                     markeredgecolor='k', markeredgewidth=0.6, zorder=5)
+            ax.plot([tx], [ty], marker='o', color='red', markersize=10,
+                     markeredgecolor='white', markeredgewidth=1.2,
+                     zorder=6, clip_on=False)
+            if is_tau:
+                ax.axvline(mu_true, color='red', ls=':', lw=1.0, alpha=0.55)
 
-            # Each method — solid line + dot at estimated mean
+            # --- Each method: solid colored line + mean-dot on the curve ---
             for label, key, color in method_list:
                 p = method_curves[key][tag]
-                ax.plot(xg, p, color=color, lw=1.7, label=label)
+                if is_tau:
+                    ax.fill_between(xg, p, color=color, alpha=0.10)
+                ax.plot(xg, p, color=color, lw=2.0, label=label)
                 mu_hat = _est_mean(xg, p)
                 if np.isfinite(mu_hat) and xlim[0] <= mu_hat <= xlim[1]:
                     hx, hy = _pt_on(xg, p, mu_hat)
-                    ax.plot([hx], [hy], marker='o', color=color, markersize=6,
-                             markeredgecolor='k', markeredgewidth=0.5, zorder=5)
+                    ax.plot([hx], [hy], marker='o', color=color, markersize=9,
+                             markeredgecolor='white', markeredgewidth=1.0,
+                             zorder=5)
 
+            # y-limit — leave some headroom above the tallest curve
+            ymax = float(max(tr.max(),
+                              *[method_curves[k][tag].max() for _, k, _ in method_list]))
+            ax.set_ylim(0, ymax * 1.15)
+            ax.set_xlim(*xlim)
+            ax.set_xlabel(r'$Y$  (scaled)' if tag in ('y0','y1') else r'$\tau$  (scaled)')
+            ax.set_ylabel('density')
             if args.mode == 'winner':
                 sub = (f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f} '
                        f'fn50={l2s["L2_fn50"]:.2f} '
                        f'UWYK={min(l2s["L2_uwyk_noanc"], l2s["L2_uwyk_anc"]):.2f}')
             else:
                 sub = f'BB={l2s["L2_bb"]:.2f} DoPFN={l2s["L2_dopfn"]:.2f}'
-            ax.set_title(f'{args.dataset.upper()} — {title}   r={r} q={q}   ({sub})',
-                          fontsize=10)
-            ax.set_xlabel('scaled Y' if tag in ('y0','y1') else r'scaled $\tau$')
-            ax.set_ylabel('density')
-            ax.set_xlim(*xlim)
-            ax.legend(fontsize=8, frameon=False, loc='upper right')
-            ax.grid(alpha=0.2, linestyle='--')
+            ax.set_title(f'{args.dataset.upper()}  —  {title}   r={r} q={q}\n'
+                          f'per-bin $L^2$ (τ): {sub}', fontsize=10)
+            ax.grid(alpha=0.25)
+            ax.legend(fontsize=9, loc='upper right', framealpha=0.9)
             fig.tight_layout()
             suffix = f'_top{rank}' if args.top_k > 1 else ''
             outpng = f'{args.out}{suffix}_{tag}.png'
