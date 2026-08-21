@@ -58,6 +58,12 @@ def main():
     ap.add_argument('--plot-joint', action='store_true',
                      help='Additionally plot joint p(Y_do0, Y_do1) contours for each '
                           'method + truth (independence for methods without a joint).')
+    ap.add_argument('--r', type=int, default=None,
+                     help='Skip candidate search and plot this realization directly. '
+                          'Requires --q too.')
+    ap.add_argument('--q', type=int, default=None,
+                     help='Skip candidate search and plot this query directly. '
+                          'Requires --r too.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -133,6 +139,14 @@ def main():
     print(f'[load] BB={len(bb_by_r)}  dopfn+uwyk={len(du_by_r)}  '
           f'fn50={len(fn_by_r)}  common r={len(rs)}', flush=True)
 
+    # ── Fast path: skip candidate search if (r, q) explicitly given ──────
+    if args.r is not None and args.q is not None:
+        rs = [args.r] if args.r in rs else []
+        if not rs:
+            print(f'ERROR: --r {args.r} not in common realizations'); return
+        print(f'[fast-path] plotting r={args.r} q={args.q} directly (skipping search)',
+              flush=True)
+
     candidates = []   # (score, r, q, L2s dict, densities dict)
     for r in rs:
         # truth
@@ -148,7 +162,9 @@ def main():
         n_q = mu0.shape[0]
 
         with np.load(bb_by_r[r]) as zb, np.load(du_by_r[r]) as zd, np.load(fn_by_r[r]) as zf:
-            for q in range(n_q):
+            q_range = ([args.q] if args.q is not None
+                        else range(n_q))
+            for q in q_range:
                 # per-method densities (Y_CENTERS / TAU_FINE_C for tau)
                 bb_y0 = zb['ours_dopfn_bb__p_y0'][q]; bb_y1 = zb['ours_dopfn_bb__p_y1'][q]
                 bb_tau = zb['ours_dopfn_bb__p_tau'][q]
@@ -194,7 +210,9 @@ def main():
                 L2_ua    = _l2(ua_p_tau,  t_tau_bin, bin_wtau)
                 L2_best_uwyk = min(L2_un, L2_ua)
 
-                if args.mode == 'winner':
+                if args.r is not None and args.q is not None:
+                    score = 0.0                  # fast path: don't filter, don't rank
+                elif args.mode == 'winner':
                     bb_beats  = L2_dop > L2_bb
                     fn_beats  = L2_best_uwyk > L2_fn
                     if not (bb_beats and fn_beats): continue
