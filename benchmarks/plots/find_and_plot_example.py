@@ -201,16 +201,12 @@ def main():
                     score = (L2_dop - L2_bb) + (L2_best_uwyk - L2_fn)
                 else:                           # bb_worst
                     score = L2_bb               # rank by BB τ L2, largest first
+                # MEMORY-LITE: only keep score + (r, q, sigma, mu0, mu1) + L2s.
+                # Densities are re-loaded on demand for the top-k winners.
                 candidates.append((score, r, q,
                     dict(L2_bb=L2_bb, L2_dopfn=L2_dop, L2_fn50=L2_fn,
                          L2_uwyk_noanc=L2_un, L2_uwyk_anc=L2_ua),
-                    dict(mu0=float(mu0[q]), mu1=float(mu1[q]), sigma=sigma,
-                         bb_y0=np.asarray(bb_y0), bb_y1=np.asarray(bb_y1), bb_tau=np.asarray(bb_tau),
-                         dop_y0=np.asarray(dop_y0), dop_y1=np.asarray(dop_y1),
-                         un_y0=np.asarray(un_y0), un_y1=np.asarray(un_y1),
-                         ua_y0=np.asarray(ua_y0), ua_y1=np.asarray(ua_y1),
-                         fn_y0=np.asarray(fn_y0), fn_y1=np.asarray(fn_y1),
-                         fn_tau=np.asarray(fn_tau))))
+                    dict(mu0=float(mu0[q]), mu1=float(mu1[q]), sigma=sigma)))
         print(f'  r={r}: total candidates so far = {len(candidates)}', flush=True)
 
     if not candidates:
@@ -231,6 +227,21 @@ def main():
     import matplotlib.pyplot as plt
 
     for rank, (sc, r, q, l2s, dens) in enumerate(candidates[:args.top_k], start=1):
+        # Re-load only THIS realization's shards to get densities for the winner
+        with np.load(bb_by_r[r]) as zb, np.load(du_by_r[r]) as zd, np.load(fn_by_r[r]) as zf:
+            dens['bb_y0']  = np.asarray(zb['ours_dopfn_bb__p_y0'][q])
+            dens['bb_y1']  = np.asarray(zb['ours_dopfn_bb__p_y1'][q])
+            dens['bb_tau'] = np.asarray(zb['ours_dopfn_bb__p_tau'][q])
+            dens['dop_y0'] = np.asarray(zd['dopfn__p_y0'][q])
+            dens['dop_y1'] = np.asarray(zd['dopfn__p_y1'][q])
+            dens['un_y0']  = np.asarray(zd['uwyk_noanc__p_y0'][q])
+            dens['un_y1']  = np.asarray(zd['uwyk_noanc__p_y1'][q])
+            dens['ua_y0']  = np.asarray(zd['uwyk_anc__p_y0'][q])
+            dens['ua_y1']  = np.asarray(zd['uwyk_anc__p_y1'][q])
+            dens['fn_y0']  = np.asarray(zf['ours_fn50__p_y0'][q])
+            dens['fn_y1']  = np.asarray(zf['ours_fn50__p_y1'][q])
+            dens['fn_tau'] = np.asarray(zf['ours_fn50__p_tau'][q])
+
         def _interp_Y(d):
             out = np.interp(Y_PLOT, Y_CENTERS, d, left=0, right=0)
             s = out.sum() * (Y_PLOT[1] - Y_PLOT[0])
