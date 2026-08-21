@@ -504,30 +504,28 @@ def main():
             for qi in range(n_q_r):
                 col = palette_Q[qi % 10]
                 ax.plot(TAU_C_PLOT, per_q[qi], color=col, lw=1.1, alpha=0.35)
+            E_ate = _est_mean(TAU_C_PLOT, p_ate)
             # Truth OT (red dotted)
             ax.plot(TAU_C_PLOT, truth_ate, color='red', ls=':', lw=2.2,
-                     label='true OT')
+                     label=f'true $p(\\tau_{{ATE}})$  E={mu_ate_true:+.2f}')
             # Method OT (green solid + fill)
             ax.fill_between(TAU_C_PLOT, p_ate, alpha=0.20, color=GREEN)
             ax.plot(TAU_C_PLOT, p_ate, color=GREEN, lw=2.6,
-                     label=f'Ours OT  E={_est_mean(TAU_C_PLOT, p_ate):+.2f}')
-            # Mean dots (no dashed verticals, no mode)
-            E_ate = _est_mean(TAU_C_PLOT, p_ate)
+                     label=f'Ours $p(\\tau_{{ATE}})$  E={E_ate:+.2f}')
+            # Mean dots (no legend entries — the E values are already in the line labels)
             ax.plot(E_ate, float(np.interp(E_ate, TAU_C_PLOT, p_ate)),
                      'o', color=GREEN, markersize=10,
-                     markeredgecolor='white', markeredgewidth=1.2, zorder=6,
-                     label=f'Ours mean = {E_ate:+.2f}')
+                     markeredgecolor='white', markeredgewidth=1.2, zorder=6)
             ax.plot(mu_ate_true, float(np.interp(mu_ate_true, TAU_C_PLOT, truth_ate)),
                      'o', color='red', markersize=10,
-                     markeredgecolor='white', markeredgewidth=1.2, zorder=7,
-                     label=f'true ATE = {mu_ate_true:+.2f}')
+                     markeredgecolor='white', markeredgewidth=1.2, zorder=7)
 
             ax.set_title(f'{label}', fontsize=11)
             ax.set_xlim(-1.0, 1.0)
             if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
             if k %  n_cols == 0:          ax.set_ylabel('density')
             ax.grid(alpha=0.25)
-            ax.legend(fontsize=8, loc='upper left', framealpha=0.9)
+            if k == 0: ax.legend(fontsize=9, loc='upper left', framealpha=0.9)
         for k in range(n, n_rows * n_cols):
             axes[k // n_cols][k % n_cols].set_visible(False)
         fig.suptitle(f'{args.dataset.upper()} r={r}   OT vs TRUE   '
