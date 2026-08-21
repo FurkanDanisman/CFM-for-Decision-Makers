@@ -440,9 +440,16 @@ def main():
         plt.close(fig)
         print(f'[saved] {outpng}')
 
-        # ─── Panel 3: ATE (aggregated over ALL queries in realization r) ─
-        # Load per-realization p_ate stored in each shard, plus compute the
-        # truth ATE as the barycentre of per-query truth CATE Gaussians.
+        # ─── Panel 3: ATE (barycentre over all queries) ────────────────
+        # Matches ihdp_n10/UWYK-2DMALC-VS-TRUE/ihdp_n10_ot.png style:
+        #   - Faint per-query CATE traces in background (tab10 alpha=0.35)
+        #   - Green: method OT (barycentre)  — solid line + light fill
+        #   - Red dotted: true OT (barycentre of truth Gaussians)
+        #   - GREEN dot at method's mean-of-means (was orange dashed line)
+        #   - RED dot at true population ATE  (was red dashed line)
+        #   - Mode line REMOVED entirely  (per user)
+        GREEN = '#2e7d32'
+        # Load per-method per-query CATE + per-realization p_ate
         with np.load(bb_by_r[r]) as zb, np.load(du_by_r[r]) as zd, np.load(fn_by_r[r]) as zf:
             method_ate = {}
             method_ate['bb']  = _to_TAUC(zb['ours_dopfn_bb__p_ate'])
@@ -450,7 +457,22 @@ def main():
             method_ate['un']  = _to_TAUC(zd['uwyk_noanc__p_ate'])
             method_ate['ua']  = _to_TAUC(zd['uwyk_anc__p_ate'])
             method_ate['fn']  = _to_TAUC(zf['ours_fn50__p_ate'])
-        # Truth ATE: barycentre of per-query truth CATE densities
+            per_q_tau = {
+                'bb':  np.stack([_to_TAUC(zb['ours_dopfn_bb__p_tau'][qi])
+                                   for qi in range(zb['ours_dopfn_bb__p_tau'].shape[0])]),
+                'fn':  np.stack([_to_TAUC(zf['ours_fn50__p_tau'][qi])
+                                   for qi in range(zf['ours_fn50__p_tau'].shape[0])]),
+                'dop': np.stack([_conv_tau_c(zd['dopfn__p_y0'][qi], zd['dopfn__p_y1'][qi])
+                                   for qi in range(zd['dopfn__p_y0'].shape[0])]),
+                'un':  np.stack([_conv_tau_c(zd['uwyk_noanc__p_y0'][qi],
+                                                zd['uwyk_noanc__p_y1'][qi])
+                                   for qi in range(zd['uwyk_noanc__p_y0'].shape[0])]),
+                'ua':  np.stack([_conv_tau_c(zd['uwyk_anc__p_y0'][qi],
+                                                zd['uwyk_anc__p_y1'][qi])
+                                   for qi in range(zd['uwyk_anc__p_y0'].shape[0])]),
+            }
+
+        # Truth ATE: barycentre of per-query truth CATE Gaussians
         if args.dataset == 'ihdp':
             cd_full, _ = IHDPDataset()[r]
             y_full = np.asarray(cd_full.y_train.detach().cpu()
@@ -475,30 +497,41 @@ def main():
         for k, (label, key) in enumerate(method_list):
             ax = axes[k // n_cols][k % n_cols]
             p_ate = method_ate[key]
-            ax.fill_between(TAU_C_PLOT, p_ate, alpha=0.25, color=ORANGE)
-            ax.plot(TAU_C_PLOT, p_ate, color=ORANGE, lw=2.0,
-                     label=r'method $p(\tau_{ATE})$' if k == 0 else None)
-            ax.plot(TAU_C_PLOT, truth_ate, color='red', ls=':', lw=1.7,
-                     label=r'true $p(\tau_{ATE})$' if k == 0 else None)
+            per_q = per_q_tau[key]      # (n_test, len(TAU_C_PLOT))
+            n_q_r = per_q.shape[0]
+            palette_Q = plt.cm.tab10(np.linspace(0, 0.9, min(n_q_r, 10)))
+            # Faint per-query CATE traces in background
+            for qi in range(n_q_r):
+                col = palette_Q[qi % 10]
+                ax.plot(TAU_C_PLOT, per_q[qi], color=col, lw=1.1, alpha=0.35)
+            # Truth OT (red dotted)
+            ax.plot(TAU_C_PLOT, truth_ate, color='red', ls=':', lw=2.2,
+                     label='true OT')
+            # Method OT (green solid + fill)
+            ax.fill_between(TAU_C_PLOT, p_ate, alpha=0.20, color=GREEN)
+            ax.plot(TAU_C_PLOT, p_ate, color=GREEN, lw=2.6,
+                     label=f'Ours OT  E={_est_mean(TAU_C_PLOT, p_ate):+.2f}')
+            # Mean dots (no dashed verticals, no mode)
             E_ate = _est_mean(TAU_C_PLOT, p_ate)
             ax.plot(E_ate, float(np.interp(E_ate, TAU_C_PLOT, p_ate)),
-                     'o', color=ORANGE, markersize=9,
-                     markeredgecolor='white', markeredgewidth=1.0, zorder=5)
+                     'o', color=GREEN, markersize=10,
+                     markeredgecolor='white', markeredgewidth=1.2, zorder=6,
+                     label=f'Ours mean = {E_ate:+.2f}')
             ax.plot(mu_ate_true, float(np.interp(mu_ate_true, TAU_C_PLOT, truth_ate)),
-                     'o', color='red', markersize=9,
-                     markeredgecolor='white', markeredgewidth=1.0, zorder=6)
-            ax.set_title(f'{label}   $E={E_ate:+.2f}$   '
-                          f'$\\tau_{{ATE,true}}={mu_ate_true:+.2f}$', fontsize=10)
-            ax.set_xlim(-1.5, 1.5)
+                     'o', color='red', markersize=10,
+                     markeredgecolor='white', markeredgewidth=1.2, zorder=7,
+                     label=f'true ATE = {mu_ate_true:+.2f}')
+
+            ax.set_title(f'{label}', fontsize=11)
+            ax.set_xlim(-1.0, 1.0)
             if k // n_cols == n_rows - 1: ax.set_xlabel(r'$\tau = Y_{do1} - Y_{do0}$  (scaled)')
-            if k %  n_cols == 0:          ax.set_ylabel(r'$p(\tau_{ATE})$')
+            if k %  n_cols == 0:          ax.set_ylabel('density')
             ax.grid(alpha=0.25)
-            if k == 0: ax.legend(fontsize=9, loc='upper right')
+            ax.legend(fontsize=8, loc='upper left', framealpha=0.9)
         for k in range(n, n_rows * n_cols):
             axes[k // n_cols][k % n_cols].set_visible(False)
-        fig.suptitle(f'{args.dataset.upper()} r={r}   '
-                      f'$\\tau_{{ATE,true}}$={mu_ate_true:+.2f}   —   ATE vs TRUE '
-                      f'(barycentre over all queries)',
+        fig.suptitle(f'{args.dataset.upper()} r={r}   OT vs TRUE   '
+                      f'(barycentre over {n_q_r} queries)',
                       fontsize=12, y=1.0)
         fig.tight_layout(rect=[0, 0, 1, 0.985])
         outpng = f'{args.out}{suffix}_ate.png'
