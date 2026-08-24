@@ -330,17 +330,20 @@ def malc_1d_cvxpy(p_marg, solver=None):
     return result
 
 
-def _rescale_and_pad(X: np.ndarray, num_features: int) -> np.ndarray:
-    """Pad X with NaN columns up to num_features (matches sibling scripts).
+def _rescale_and_pad(X: np.ndarray, num_features: int, pad_value=np.nan) -> np.ndarray:
+    """Pad X to num_features columns with `pad_value` (default NaN).
 
-    If num_features is -1 (or 0) the backbone accepts any feature count
-    (e.g., DoPFN's PerFeatureTransformer): return X unchanged.
+    - num_features=-1 (or 0): backbone accepts any feature count → return X unchanged.
+    - pad_value=NaN: works for UWYK graph wrapper (masks padded cols internally).
+    - pad_value=0.0: needed for InterventionalPFNSklearn which runs
+      sklearn's check_array (rejects NaN).
     """
     if num_features is None or num_features <= 0:
         return X.astype(np.float32)
     d = X.shape[1]
     if d < num_features:
-        pad = np.full((X.shape[0], num_features - d), np.nan, dtype=np.float32)
+        pad = np.full((X.shape[0], num_features - d),
+                       float(pad_value), dtype=np.float32)
         return np.concatenate([X.astype(np.float32), pad], axis=1)
     return X.astype(np.float32)[:, :num_features]
 
@@ -861,8 +864,10 @@ def uwyk_predictive_densities(cd,
     t_train_orig = t_train_full[:N].astype(np.float32).reshape(-1, 1)
     y_train_ctx = y_train_full[:N].astype(np.float32).reshape(-1, 1)
 
-    X_train_p = _rescale_and_pad(X_context, num_features)
-    X_test_p  = _rescale_and_pad(X_test,   num_features)
+    # Zero-pad (not NaN) — InterventionalPFNSklearn preprocessing calls
+    # sklearn.check_array which rejects NaN.
+    X_train_p = _rescale_and_pad(X_context, num_features, pad_value=0.0)
+    X_test_p  = _rescale_and_pad(X_test,   num_features, pad_value=0.0)
 
     mean_y_t0 = float(y_train_ctx[t_train_orig == 0].mean())
     mean_y_t1 = float(y_train_ctx[t_train_orig == 1].mean())
