@@ -6,18 +6,22 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --gres=gpu:1
-#SBATCH --array=0-5
+#SBATCH --array=0-8
 
-# Reproduce UWYK's Table 1 — three rows × two RealCause datasets:
+# Reproduce UWYK's Table 1 — three rows × three datasets, run as a Slurm
+# array (all 9 tasks execute in parallel, one GPU each):
 #
 #   task 0  predictive  × CPS
 #   task 1  predictive  × PSID
-#   task 2  noanc       × CPS
-#   task 3  noanc       × PSID
-#   task 4  anc         × CPS
-#   task 5  anc         × PSID
+#   task 2  predictive  × IHDP
+#   task 3  noanc       × CPS
+#   task 4  noanc       × PSID
+#   task 5  noanc       × IHDP
+#   task 6  anc         × CPS
+#   task 7  anc         × PSID
+#   task 8  anc         × IHDP
 #
-# Add IHDP/ACIC by expanding --array=0-11 and appending to the CASES array.
+# Add ACIC by expanding --array=0-11 and appending to CASES.
 #
 # Submit:  sbatch benchmarks/cluster/submit_uwyk_table1.sbatch
 
@@ -32,10 +36,13 @@ UWYK_ROOT="${UWYK_ROOT:-$DEPLOY_ROOT/external/uwyk}"
 CASES=(
     "predictive CPS"
     "predictive PSID"
+    "predictive IHDP"
     "noanc      CPS"
     "noanc      PSID"
+    "noanc      IHDP"
     "anc        CPS"
     "anc        PSID"
+    "anc        IHDP"
 )
 CASE="${CASES[$SLURM_ARRAY_TASK_ID]}"
 MODE=$(echo    "$CASE" | awk '{print $1}')
