@@ -705,6 +705,9 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
         uwyk_model = interv_mod.InterventionalPFNSklearn(
             config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
             random_state=42,
+            n_estimators=1,            # disable feature-shuffle ensemble (default 10
+                                          # batches into a single forward pass and clashes
+                                          # with our single-shot label tensor)
         ).load()
     finally:
         torch.load = _orig_load
