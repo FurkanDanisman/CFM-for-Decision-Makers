@@ -708,6 +708,11 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
             n_estimators=1,            # disable feature-shuffle ensemble (default 10
                                           # batches into a single forward pass and clashes
                                           # with our single-shot label tensor)
+            max_n_train=None,          # disable adaptive clustering — otherwise the wrapper
+                                          # splits test into chunks and calls bar_distribution.mode
+                                          # once per chunk, and our monkey-patch only captures
+                                          # the LAST call (55/75 queries lost for IHDP r=0)
+            max_n_test=None,
         ).load()
     finally:
         torch.load = _orig_load
