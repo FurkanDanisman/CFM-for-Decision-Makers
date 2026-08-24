@@ -690,6 +690,38 @@ def _uwyk_raw_bar_probs(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv, adj, n_t
     return pBars / np.maximum(s, 1e-12)
 
 
+def _uwyk_predictive_capture_raw_preds(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv):
+    """Predictive-mode UWYK — same monkey-patch trick as _uwyk_capture_raw_preds
+    but goes through InterventionalPFNSklearn.predict which takes NO adjacency
+    argument. The graph_encoder branch of the model is never fired."""
+    captured = {'raw': None}
+    orig_mode = uwyk_model.bar_distribution.mode
+    def _mode_capture(raw_preds):
+        captured['raw'] = raw_preds.detach().cpu()
+        return orig_mode(raw_preds)
+    uwyk_model.bar_distribution.mode = _mode_capture
+    try:
+        _ = uwyk_model.predict(
+            X_obs=X_ctx, T_obs=T_ctx, Y_obs=Y_ctx,
+            X_intv=X_qry, T_intv=T_intv,
+            prediction_type='mode',
+        )
+    finally:
+        uwyk_model.bar_distribution.mode = orig_mode
+    return captured['raw']
+
+
+def _uwyk_predictive_raw_bar_probs(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv, n_test):
+    """Predictive-mode analogue of _uwyk_raw_bar_probs (no graph)."""
+    raw = _uwyk_predictive_capture_raw_preds(uwyk_model, X_ctx, T_ctx, Y_ctx, X_qry, T_intv)
+    w_logits = raw[..., :-2]
+    probs = torch.softmax(w_logits, dim=-1)
+    pBars = probs[..., 1:-1].squeeze(0).numpy()
+    pBars = pBars[:n_test]
+    s = pBars.sum(axis=1, keepdims=True)
+    return pBars / np.maximum(s, 1e-12)
+
+
 def _uwyk_densities_from_raw_probs(cd,
                                      uwyk_model,
                                      num_features: int,
@@ -806,6 +838,85 @@ def _uwyk_densities_from_raw_probs(cd,
 # ─────────────────────────────────────────────────────────────────────────
 # UWYK No-Ancestral — raw BarDist probs + independence convolution
 # ─────────────────────────────────────────────────────────────────────────
+def uwyk_predictive_densities(cd,
+                                uwyk_model,
+                                num_features: int,
+                                y_min: float,
+                                y_rng: float,
+                                n_context: int | None = None,
+                                n_samples: int | None = None,
+                                edges_j10_scaled: np.ndarray | None = None,
+                                edges_j100_scaled: np.ndarray | None = None,
+                                ) -> dict[str, np.ndarray]:
+    """UWYK-Predictive: model has no graph_encoder call — loaded via
+    InterventionalPFNSklearn.predict(X_obs, T_obs, Y_obs, X_intv, T_intv)
+    with no adjacency argument. Same downstream density processing as noanc."""
+    X_train_full = _np(cd.X_train)
+    t_train_full = _np(cd.t_train)
+    y_train_full = _np(cd.y_train)
+    X_test = _np(cd.X_test).astype(np.float32)
+
+    N = X_train_full.shape[0] if n_context is None else min(n_context, X_train_full.shape[0])
+    X_context = X_train_full[:N].astype(np.float32)
+    t_train_orig = t_train_full[:N].astype(np.float32).reshape(-1, 1)
+    y_train_ctx = y_train_full[:N].astype(np.float32).reshape(-1, 1)
+
+    X_train_p = _rescale_and_pad(X_context, num_features)
+    X_test_p  = _rescale_and_pad(X_test,   num_features)
+
+    mean_y_t0 = float(y_train_ctx[t_train_orig == 0].mean())
+    mean_y_t1 = float(y_train_ctx[t_train_orig == 1].mean())
+    t_train_enc = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
+    uwyk_model.fit(X_train_p, t_train_enc, y_train_ctx)
+
+    n_test = X_test_p.shape[0]
+    T_intv_0 = np.full((n_test, 1), mean_y_t0, dtype=np.float32)
+    T_intv_1 = np.full((n_test, 1), mean_y_t1, dtype=np.float32)
+
+    pBars_0 = _uwyk_predictive_raw_bar_probs(uwyk_model, X_train_p, t_train_enc,
+                                                y_train_ctx, X_test_p, T_intv_0, n_test)
+    pBars_1 = _uwyk_predictive_raw_bar_probs(uwyk_model, X_train_p, t_train_enc,
+                                                y_train_ctx, X_test_p, T_intv_1, n_test)
+    centers_scaled = uwyk_model.bar_distribution.centers.detach().cpu().numpy().astype(np.float64)
+    bin_w = float(centers_scaled[1] - centers_scaled[0])
+
+    density_0_native = pBars_0 / bin_w
+    density_1_native = pBars_1 / bin_w
+    p_y0 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    p_y1 = np.zeros((n_test, len(Y_CENTERS)), dtype=np.float64)
+    for q in range(n_test):
+        p_y0[q] = resample_onto(centers_scaled, density_0_native[q], Y_CENTERS)
+        p_y1[q] = resample_onto(centers_scaled, density_1_native[q], Y_CENTERS)
+    p_tau = np.zeros((n_test, len(TAU_CENTERS)), dtype=np.float64)
+    for q in range(n_test):
+        p_tau[q] = naive_p_tau_from_marginals(p_y0[q], p_y1[q])
+    out = dict(p_y0=p_y0, p_y1=p_y1, p_tau=p_tau)
+
+    borders_scaled = np.concatenate([centers_scaled,
+                                       [centers_scaled[-1] + bin_w]])
+    def _bins_at_edges(edges):
+        n = int(len(edges) - 1)
+        y0b = np.zeros((n_test, n), dtype=np.float64)
+        y1b = np.zeros((n_test, n), dtype=np.float64)
+        for q in range(n_test):
+            cdf0 = np.concatenate(([0.0], np.cumsum(pBars_0[q])))
+            cdf1 = np.concatenate(([0.0], np.cumsum(pBars_1[q])))
+            F0 = np.interp(edges, borders_scaled, cdf0, left=0.0, right=1.0)
+            F1 = np.interp(edges, borders_scaled, cdf1, left=0.0, right=1.0)
+            p0 = np.diff(F0); s0 = p0.sum()
+            p1 = np.diff(F1); s1 = p1.sum()
+            y0b[q] = p0 / s0 if s0 > 0 else p0
+            y1b[q] = p1 / s1 if s1 > 0 else p1
+        return y0b, y1b
+    if edges_j10_scaled is not None:
+        y0b, y1b = _bins_at_edges(edges_j10_scaled)
+        out['p_y0_bins_j10'] = y0b; out['p_y1_bins_j10'] = y1b
+    if edges_j100_scaled is not None:
+        y0b, y1b = _bins_at_edges(edges_j100_scaled)
+        out['p_y0_bins_j100'] = y0b; out['p_y1_bins_j100'] = y1b
+    return out
+
+
 def uwyk_noanc_densities(cd,
                           uwyk_model,
                           num_features: int,
