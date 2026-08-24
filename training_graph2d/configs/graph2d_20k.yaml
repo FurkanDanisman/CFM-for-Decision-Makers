@@ -1,0 +1,48 @@
+# Graph-conditioned 2D-head training — 20k steps, ~20h wall on 1×L40S.
+#
+# The trainer reads env vars, not this file directly. This is a manifest for
+# the sbatch script (submit_train_graph2d.sbatch) which exports each key as
+# an env var. Keep the two in sync when you edit either.
+
+# ── Grid / output head ────────────────────────────────────────────────────
+J: 100                    # 2D bar grid side; output_dim = J**2 + 9 + 4 = 10013
+NUM_FEATURES: 50          # padded max features (UWYK convention)
+
+# ── Model (UWYK Appendix G) ───────────────────────────────────────────────
+D_MODEL: 256
+DEPTH: 8
+HEADS: 8
+DROPOUT: 0.0
+HIDDEN_MULT: 4
+
+# ── Optimiser ─────────────────────────────────────────────────────────────
+LR: 1.0e-4
+WEIGHT_DECAY: 1.0e-5
+WARMUP_FRAC: 0.1
+MIN_LR_RATIO: 0.1
+GRAD_CLIP: 1.0
+
+# ── Training length ───────────────────────────────────────────────────────
+N_STEPS: 20000
+MICROBATCH: 8
+GRAD_ACCUM: 4            # → effective batch 32
+N_CONTEXT_TRAIN: 1000
+N_QUERY_TRAIN: 250
+
+# ── Precision / memory ────────────────────────────────────────────────────
+USE_BF16: 1
+USE_CHECKPOINT: 1        # activation checkpointing
+
+# ── Streaming data ────────────────────────────────────────────────────────
+STREAM_WORKERS: 8
+STREAM_SEED: 42
+STREAM_WARMUP: 4
+
+# ── Checkpoints ───────────────────────────────────────────────────────────
+CHECKPOINT_DIR: ./checkpoints_graph2d
+CHECKPOINT_EVERY: 2000
+RESUME: 1
+
+# ── Logging ───────────────────────────────────────────────────────────────
+LOG_EVERY: 100
+LOSS_WARN_THRESH: 1.0e3
