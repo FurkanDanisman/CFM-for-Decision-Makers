@@ -3,7 +3,7 @@
 #SBATCH --output=logs_graph2d/train_%j.out
 #SBATCH --error=logs_graph2d/train_%j.err
 #SBATCH --time=20:00:00
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --requeue
