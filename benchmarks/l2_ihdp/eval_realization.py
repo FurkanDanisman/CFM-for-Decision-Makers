@@ -703,7 +703,7 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
     try:
         uwyk_model = interv_mod.InterventionalPFNSklearn(
             config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
-            random_state=42, use_clustering=False,
+            random_state=42,
         ).load()
     finally:
         torch.load = _orig_load
