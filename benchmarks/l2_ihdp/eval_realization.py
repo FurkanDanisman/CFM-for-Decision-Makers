@@ -668,16 +668,17 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
     _saved = {}
     for name in list(sys.modules):
         if (name == 'models' or name.startswith('models.') or
-                name == 'utils' or name.startswith('utils.')):
+                name == 'utils' or name.startswith('utils.')
+                or name == 'src' or name.startswith('src.')):
             _saved[name] = sys.modules.pop(name)
+    # BOTH paths must remain on sys.path for the *entire* predictive call:
+    #   - args.uwyk_src (== $UWYK/src)         → 'models.*' imports
+    #   - dirname(args.uwyk_src) (== $UWYK)    → 'src.models.*' imports
+    #     (InterventionalPFNSklearn.fit uses the src.models.* form internally)
+    _uwyk_root = os.path.dirname(args.uwyk_src)
     sys.path.insert(0, args.uwyk_src)
+    sys.path.insert(0, _uwyk_root)
     interv_mod = importlib.import_module('models.InterventionalPFN_sklearn')
-    sys.path.remove(args.uwyk_src)
-    for name in list(sys.modules):
-        if (name == 'models' or name.startswith('models.') or
-                name == 'utils' or name.startswith('utils.')):
-            del sys.modules[name]
-    sys.modules.update(_saved)
 
     print('[uwyk-predictive] loading checkpoint via InterventionalPFNSklearn', flush=True)
     _orig_load = torch.load
