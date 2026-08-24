@@ -652,12 +652,13 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
 
 
 def _run_uwyk_predictive(cd, truth, args, n_ctx):
-    """UWYK Predictive — trained on complex prior without graph conditioning.
-    Same architecture as noanc/anc, but the checkpoint learned no graph
-    signal. Loaded via PreprocessingGraphConditionedPFN and run with empty
-    adjacency (same forward path as _run_uwyk_noanc). Reproduces the
-    Predictive row of Reuter et al. Table 1."""
-    from methods_densities import uwyk_noanc_densities
+    """UWYK Predictive — trained on complex prior WITHOUT graph conditioning.
+    Loaded via InterventionalPFNSklearn, which has NO graph_encoder in its
+    forward path (predict signature has no adj argument). state_dict is
+    loaded with strict=False so residual graph_encoder tensors from the
+    checkpoint are ignored. Reproduces the Predictive row of Reuter et al
+    Table 1."""
+    from methods_densities import uwyk_predictive_densities
 
     if not args.uwyk_predictive_ckpt_dir:
         raise ValueError('uwyk_predictive requested but --uwyk-predictive-ckpt-dir / '
@@ -670,7 +671,7 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
                 name == 'utils' or name.startswith('utils.')):
             _saved[name] = sys.modules.pop(name)
     sys.path.insert(0, args.uwyk_src)
-    pre_mod = importlib.import_module('models.PreprocessingGraphConditionedPFN')
+    interv_mod = importlib.import_module('models.InterventionalPFN_sklearn')
     sys.path.remove(args.uwyk_src)
     for name in list(sys.modules):
         if (name == 'models' or name.startswith('models.') or
@@ -678,10 +679,17 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
             del sys.modules[name]
     sys.modules.update(_saved)
 
-    print('[uwyk-predictive] loading checkpoint', flush=True)
+    print('[uwyk-predictive] loading checkpoint via InterventionalPFNSklearn', flush=True)
     _orig_load = torch.load
     def _p_load(*a, **kw):
         kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
+    # Also monkey-patch load_state_dict to be strict=False so the residual
+    # graph_encoder tensors in the unconditional checkpoint don't fail load.
+    import torch.nn as _nn
+    _orig_load_sd = _nn.Module.load_state_dict
+    def _lsd(self, state_dict, strict=True, assign=False):
+        return _orig_load_sd(self, state_dict, strict=False, assign=assign)
+    _nn.Module.load_state_dict = _lsd
     torch.load = _p_load
     _ckdir = args.uwyk_predictive_ckpt_dir
     _final_ck  = os.path.join(_ckdir, 'final_model_with_bardist.pt')
@@ -692,11 +700,14 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
         _cfg_p = os.path.join(_ckdir, 'best_model_config.yaml')
         _ck_p  = os.path.join(_ckdir, 'best_model.pt')
         print(f'[uwyk-predictive] falling back to best_model.pt (no final_model_with_bardist)', flush=True)
-    uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
-        config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
-        random_state=42, use_clustering=False,
-    ).load()
-    torch.load = _orig_load
+    try:
+        uwyk_model = interv_mod.InterventionalPFNSklearn(
+            config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
+            random_state=42, use_clustering=False,
+        ).load()
+    finally:
+        torch.load = _orig_load
+        _nn.Module.load_state_dict = _orig_load_sd
     num_features = uwyk_model.model.num_features
 
     _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
@@ -704,7 +715,7 @@ def _run_uwyk_predictive(cd, truth, args, n_ctx):
     _edges_j100 = np.linspace(_edges_j10[0], _edges_j10[-1], 101)
 
     t0 = time.time()
-    d = uwyk_noanc_densities(
+    d = uwyk_predictive_densities(
         cd, uwyk_model, num_features,
         y_min=truth.y_min, y_rng=truth.y_rng,
         n_context=n_ctx, n_samples=args.uwyk_n_samples,
