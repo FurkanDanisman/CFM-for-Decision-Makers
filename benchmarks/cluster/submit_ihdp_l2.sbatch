@@ -22,6 +22,7 @@ DOPFN="${DOPFN:-$DEPLOY_ROOT/external/dopfn}"
 CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+UWYK_PREDICTIVE_CKPT_DIR="${UWYK_PREDICTIVE_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional}"
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
 CHECKPOINT10="${CHECKPOINT10:-$REPO/checkpoints_dopfn/step_50000_final.pt}"
 N_CONTEXT="${N_CONTEXT:-0}"                    # 0 = use full training set
@@ -53,6 +54,7 @@ python "$REPO/benchmarks/l2_ihdp/eval_realization.py" \
     --dopfn          "$DOPFN" \
     --uwyk-src       "$UWYK_SRC" \
     --uwyk-ckpt-dir  "$UWYK_CKPT_DIR" \
+    --uwyk-predictive-ckpt-dir "$UWYK_PREDICTIVE_CKPT_DIR" \
     --checkpoint50   "$CHECKPOINT50" \
     --checkpoint10   "$CHECKPOINT10" \
     --n-context      "$N_CONTEXT" \

@@ -74,6 +74,12 @@ def main() -> int:
     ap.add_argument('--dopfn', default=os.environ.get('DOPFN', ''))
     ap.add_argument('--uwyk-src', default=os.environ.get('UWYK_SRC', ''))
     ap.add_argument('--uwyk-ckpt-dir', default=os.environ.get('UWYK_CKPT_DIR', ''))
+    ap.add_argument('--uwyk-predictive-ckpt-dir',
+                     default=os.environ.get('UWYK_PREDICTIVE_CKPT_DIR', ''),
+                     help='UWYK "Predictive" checkpoint dir — the model trained '
+                          'without graph conditioning on the complex prior. '
+                          'Loaded with empty adjacency (same forward path as noanc). '
+                          'For IHDP: reproduces Reuter et al. Table 1 Predictive row.')
     ap.add_argument('--checkpoint50', default=os.environ.get('CHECKPOINT50', ''))
     ap.add_argument('--checkpoint10', default=os.environ.get('CHECKPOINT10', ''))
     ap.add_argument('--checkpoint-dopfn-bb',
@@ -95,7 +101,7 @@ def main() -> int:
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb'}
+    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'uwyk_anc', 'uwyk_predictive', 'dopfn', 'ours_dopfn_bb'}
                 for m in methods), f'bad methods: {methods}'
     if args.restrict_features > 0:
         allowed = {'dopfn', 'ours_fn10', 'ours_dopfn_bb'}
@@ -186,7 +192,8 @@ def main() -> int:
     # imports of Do-PFN (which has its own `utils` package with different
     # symbols). Run UWYK last so downstream imports never encounter its
     # cruft.
-    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
+    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn',
+                  'uwyk_noanc', 'uwyk_anc', 'uwyk_predictive']
     method_out: dict[str, dict[str, np.ndarray]] = {}
     for m in RUN_ORDER:
         if m not in methods:
@@ -204,6 +211,8 @@ def main() -> int:
             method_out[m] = _run_uwyk_noanc(cd, truth, args, n_ctx)
         elif m == 'uwyk_anc':
             method_out[m] = _run_uwyk_anc(cd, truth, args, n_ctx)
+        elif m == 'uwyk_predictive':
+            method_out[m] = _run_uwyk_predictive(cd, truth, args, n_ctx)
 
     # ── Independence-assumption variant for Ours-DoPFN-bb ──────────────
     # Same p_y0/p_y1 marginals from the 2D joint, but re-derive p(τ) under
@@ -642,6 +651,70 @@ def _run_uwyk_anc(cd, truth, args, n_ctx):
     return d
 
 
+def _run_uwyk_predictive(cd, truth, args, n_ctx):
+    """UWYK Predictive — trained on complex prior without graph conditioning.
+    Same architecture as noanc/anc, but the checkpoint learned no graph
+    signal. Loaded via PreprocessingGraphConditionedPFN and run with empty
+    adjacency (same forward path as _run_uwyk_noanc). Reproduces the
+    Predictive row of Reuter et al. Table 1."""
+    from methods_densities import uwyk_noanc_densities
+
+    if not args.uwyk_predictive_ckpt_dir:
+        raise ValueError('uwyk_predictive requested but --uwyk-predictive-ckpt-dir / '
+                         'UWYK_PREDICTIVE_CKPT_DIR is empty. Point it at '
+                         '$UWYK_ROOT/experiments/checkpoints/no_graph_conditioning/unconditional/')
+
+    _saved = {}
+    for name in list(sys.modules):
+        if (name == 'models' or name.startswith('models.') or
+                name == 'utils' or name.startswith('utils.')):
+            _saved[name] = sys.modules.pop(name)
+    sys.path.insert(0, args.uwyk_src)
+    pre_mod = importlib.import_module('models.PreprocessingGraphConditionedPFN')
+    sys.path.remove(args.uwyk_src)
+    for name in list(sys.modules):
+        if (name == 'models' or name.startswith('models.') or
+                name == 'utils' or name.startswith('utils.')):
+            del sys.modules[name]
+    sys.modules.update(_saved)
+
+    print('[uwyk-predictive] loading checkpoint', flush=True)
+    _orig_load = torch.load
+    def _p_load(*a, **kw):
+        kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
+    torch.load = _p_load
+    _ckdir = args.uwyk_predictive_ckpt_dir
+    _final_ck  = os.path.join(_ckdir, 'final_model_with_bardist.pt')
+    _final_cfg = os.path.join(_ckdir, 'final_model_with_bardist_config.yaml')
+    if os.path.isfile(_final_ck) and os.path.isfile(_final_cfg):
+        _cfg_p, _ck_p = _final_cfg, _final_ck
+    else:
+        _cfg_p = os.path.join(_ckdir, 'best_model_config.yaml')
+        _ck_p  = os.path.join(_ckdir, 'best_model.pt')
+        print(f'[uwyk-predictive] falling back to best_model.pt (no final_model_with_bardist)', flush=True)
+    uwyk_model = pre_mod.PreprocessingGraphConditionedPFN(
+        config_path=_cfg_p, checkpoint_path=_ck_p, device='cpu', verbose=False,
+        random_state=42, use_clustering=False,
+    ).load()
+    torch.load = _orig_load
+    num_features = uwyk_model.model.num_features
+
+    _bb_ckpt = torch.load(args.checkpoint_dopfn_bb, map_location='cpu', weights_only=False)
+    _edges_j10 = _bb_ckpt['edges'].cpu().numpy()
+    _edges_j100 = np.linspace(_edges_j10[0], _edges_j10[-1], 101)
+
+    t0 = time.time()
+    d = uwyk_noanc_densities(
+        cd, uwyk_model, num_features,
+        y_min=truth.y_min, y_rng=truth.y_rng,
+        n_context=n_ctx, n_samples=args.uwyk_n_samples,
+        edges_j10_scaled=_edges_j10,
+        edges_j100_scaled=_edges_j100,
+    )
+    print(f'[uwyk-predictive] done in {time.time() - t0:.1f}s', flush=True)
+    return d
+
+
 def _run_dopfn(cd, truth, args, n_ctx):
     # dopfn.py installs an sklearn check_array shim on import — pull it in
     # under a temporary sys.path since we can't `from benchmarks.methods...`
@@ -715,7 +788,10 @@ def _install_dopfn_datasets_shim(dopfn_dir: str) -> None:
 
 def _require_paths(args, methods) -> None:
     need_ours = any(m.startswith('ours_') for m in methods)
-    need_uwyk = 'uwyk_noanc' in methods or 'uwyk_anc' in methods
+    need_uwyk = ('uwyk_noanc' in methods or 'uwyk_anc' in methods
+                  or 'uwyk_predictive' in methods)
+    need_uwyk_ck = 'uwyk_noanc' in methods or 'uwyk_anc' in methods
+    need_uwyk_pred = 'uwyk_predictive' in methods
     need_dopfn = 'dopfn' in methods
 
     for label, path, cond in [
@@ -724,7 +800,8 @@ def _require_paths(args, methods) -> None:
         ('CHECKPOINT50', args.checkpoint50, 'ours_fn50' in methods),
         ('CHECKPOINT10', args.checkpoint10, 'ours_fn10' in methods),
         ('UWYK_SRC',      args.uwyk_src,      need_uwyk),
-        ('UWYK_CKPT_DIR', args.uwyk_ckpt_dir, need_uwyk),
+        ('UWYK_CKPT_DIR', args.uwyk_ckpt_dir, need_uwyk_ck),
+        ('UWYK_PREDICTIVE_CKPT_DIR', args.uwyk_predictive_ckpt_dir, need_uwyk_pred),
     ]:
         if not cond:
             continue
