@@ -71,15 +71,26 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export PYTHONUNBUFFERED=1
 
-# Restart on preemption / walltime — resubmit ourselves before SIGKILL, then
-# exec the trainer. The trainer's own SIGTERM handler already saves a
-# checkpoint on the way out.
-trap 'scontrol requeue $SLURM_JOB_ID' SIGTERM
+# On wall-clock timeout SLURM sends SIGTERM to this batch shell 120s before
+# SIGKILL (--signal=B:SIGTERM@120 above). We forward SIGTERM to the trainer
+# so its Python handler saves step_{step}_interrupt.pt, wait for it to flush,
+# then requeue the job. RESUME=1 picks the latest checkpoint on the next run.
+CHILD=""
+_on_term() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SIGTERM — forwarding to trainer pid=$CHILD"
+    [ -n "$CHILD" ] && kill -TERM "$CHILD" 2>/dev/null || true
+    wait "$CHILD" 2>/dev/null || true
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] requeueing $SLURM_JOB_ID"
+    scontrol requeue "$SLURM_JOB_ID"
+    exit 0
+}
+trap _on_term SIGTERM
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] job=$SLURM_JOB_ID  repo=$REPO  uwyk=$UWYK_ROOT"
 echo "  CHECKPOINT_DIR=$CHECKPOINT_DIR   N_STEPS=$N_STEPS"
 
 cd "$REPO"
 python -u -m training_graph2d.train_graph_2d &
-wait $!
+CHILD=$!
+wait "$CHILD"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
