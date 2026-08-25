@@ -48,7 +48,13 @@ export WARMUP_FRAC=0.1
 export MIN_LR_RATIO=0.1
 export GRAD_CLIP=1.0
 
-export N_STEPS=20000
+# N_STEPS is intentionally huge so the trainer never hits the loop bound:
+# the job stops only when SLURM sends SIGTERM 120s before wall-clock, at
+# which point the trainer saves step_{step}_interrupt.pt and exits. On the
+# next submit RESUME=1 picks up from the latest checkpoint (either the
+# periodic step_{step}.pt or the interrupt one, whichever is newer) and
+# continues from step+1. Effectively unbounded for our budget.
+export N_STEPS=1000000
 # Effective batch = MICROBATCH × GRAD_ACCUM = 32 (unchanged vs UWYK config).
 # Microbatch was 8 in the smoke setup but OOMs at full scale (J=100, depth=8,
 # N_context=1000) on 80GB H100: the graph-conditioned parent doesn't honour
