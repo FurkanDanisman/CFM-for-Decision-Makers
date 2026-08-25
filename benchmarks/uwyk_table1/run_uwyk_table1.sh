@@ -1,41 +1,24 @@
 #!/usr/bin/env bash
 # Run one row × one dataset of UWYK's Table 1.
 #
-# Three rows (all from ArikReuter/Graphs4CausalFoundationModels, RealCauseEval/):
-#
+# Rows:
 #   predictive  — S-learner on an unconditional model
 #                 script: run_baselines/predmodel_Slearner_full_context.py
-#                 ckpt:   simple_pfn_16691166.0_tabpfn_benchmark/step_55000.pt
-#                         (upstream default; NOT in the public release — we
-#                         instead point this at no_graph_conditioning/unconditional/
-#                         best_model.pt if it can be loaded by SimplePFNSklearn.
-#                         If the load fails, use MODE=noanc as a fallback for
-#                         the "unconditional" row — same underlying idea.)
-#
-#   noanc       — full-conditioning model with adjacency all-zero (--all_unknown)
+#   noanc       — full-conditioning model with adjacency zeroed (--all_unknown)
 #                 script: run_baselines/dofm_full_conditioning.py --all_unknown
-#                 ckpt:   full_conditioned_model/…16773252.0/best_model.pt
-#
 #   anc         — full-conditioning model with the true adjacency
 #                 script: run_baselines/dofm_full_conditioning.py
-#                 ckpt:   full_conditioned_model/…16773252.0/best_model.pt
 #
 # Both dofm rows share ONE checkpoint; only the --all_unknown flag differs.
 #
 # Usage:
 #   ./run_uwyk_table1.sh <DATASET> <MODE> [<CKPT_TAG>]
-#     DATASET   IHDP | ACIC | CPS | PSID | all
-#     MODE      predictive | noanc | anc
-#     CKPT_TAG  optional label added to exp_name (default: yyyymmdd_HHMMSS)
 #
 # Env overrides:
-#   DEPLOY_ROOT / UWYK_ROOT
-#   UWYK_CKPT_DIR        graph-conditioned ckpt dir (default full_conditioning_16773252.0)
-#   CKPT_FILE            default: best_model.pt
-#   CONFIG_FILE          default: config.yaml
-#   PRED_CKPT_DIR        Predictive-row ckpt dir (default no_graph_conditioning/unconditional)
-#   PRED_CKPT_FILE       default: best_model.pt
-#   PRED_CONFIG_FILE     default: config.yaml
+#   DEPLOY_ROOT / UWYK_ROOT / CAUSALPFN_ROOT
+#   UWYK_CKPT_DIR / CKPT_FILE / CONFIG_FILE
+#   PRED_CKPT_DIR / PRED_CKPT_FILE / PRED_CONFIG_FILE
+#   TASK_ID    unique suffix for patched files (default: SLURM_ARRAY_TASK_ID or $$)
 
 set -euo pipefail
 
@@ -45,45 +28,57 @@ CKPT_TAG="${3:-$(date +%Y%m%d_%H%M%S)}"
 
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
 UWYK_ROOT="${UWYK_ROOT:-$DEPLOY_ROOT/external/uwyk}"
+CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$DEPLOY_ROOT/external/causalpfn}"
 
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 CKPT_FILE="${CKPT_FILE:-best_model.pt}"
-CONFIG_FILE="${CONFIG_FILE:-config.yaml}"
+CONFIG_FILE="${CONFIG_FILE:-best_model_config.yaml}"
 
 PRED_CKPT_DIR="${PRED_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/no_graph_conditioning/unconditional}"
 PRED_CKPT_FILE="${PRED_CKPT_FILE:-best_model.pt}"
-PRED_CONFIG_FILE="${PRED_CONFIG_FILE:-config.yaml}"
+PRED_CONFIG_FILE="${PRED_CONFIG_FILE:-best_model_config.yaml}"
 
-# Patch <REPO_ROOT> placeholders in the two upstream scripts and stage
-# alongside their real siblings so relative imports still resolve.
+# ── Per-task uniqueness (avoid clobbering when tasks run in parallel) ────
+TASK_ID="${TASK_ID:-${SLURM_ARRAY_TASK_ID:-$$}}"
+TAG="__patched_t${TASK_ID}"
 INSTALL_DIR="$UWYK_ROOT/RealCauseEval/run_baselines"
+
+# Escape UWYK_ROOT for sed
 ESC_ROOT=$(printf '%s' "$UWYK_ROOT" | sed 's|/|\\/|g')
 
 patch_and_stage() {
-    local src="$1"; local dst="$2"
+    local src_basename="$1"; local dst_basename="$2"
+    local src="$INSTALL_DIR/$src_basename"
+    local dst="$INSTALL_DIR/$dst_basename"
     cp "$src" "$dst"
-    sed -i.bak "s/<REPO_ROOT>/$ESC_ROOT/g" "$dst"
+    sed -i "s/<REPO_ROOT>/$ESC_ROOT/g" "$dst"
 }
 
-patch_and_stage "$INSTALL_DIR/eval.py"                        "$INSTALL_DIR/eval__patched.py"
-patch_and_stage "$INSTALL_DIR/dofm_full_conditioning.py"      "$INSTALL_DIR/dofm_full_conditioning__patched.py"
-patch_and_stage "$INSTALL_DIR/predmodel_Slearner_full_context.py" "$INSTALL_DIR/predmodel_Slearner__patched.py"
+EVAL_PATCHED="eval${TAG}.py"
+DOFM_PATCHED="dofm_full_conditioning${TAG}.py"
+PRED_PATCHED="predmodel_Slearner${TAG}.py"
 
-# Rewrite eval import in the patched scripts so they see the patched eval
-sed -i.bak 's/from run_baselines.eval import/from run_baselines.eval__patched import/g' \
-    "$INSTALL_DIR/dofm_full_conditioning__patched.py" \
-    "$INSTALL_DIR/predmodel_Slearner__patched.py"
+patch_and_stage "eval.py"                             "$EVAL_PATCHED"
+patch_and_stage "dofm_full_conditioning.py"           "$DOFM_PATCHED"
+patch_and_stage "predmodel_Slearner_full_context.py"  "$PRED_PATCHED"
+
+# Point the two entry scripts at OUR patched eval instead of run_baselines.eval
+EVAL_MOD="run_baselines.${EVAL_PATCHED%.py}"
+sed -i "s/from run_baselines.eval import/from $EVAL_MOD import/g" \
+    "$INSTALL_DIR/$DOFM_PATCHED" "$INSTALL_DIR/$PRED_PATCHED"
+
+# ── PYTHONPATH so upstream imports resolve ─────────────────────────────
+# - $UWYK_ROOT              → 'src.models.*' and 'run_baselines.*'
+# - $UWYK_ROOT/RealCauseEval → 'run_baselines.eval__patched_*'
+# - $CAUSALPFN_ROOT         → 'CausalPFN.benchmarks' (upstream eval.py)
+export PYTHONPATH="$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 MODEL_NAME="uwyk_table1_${MODE}"
 EXP_NAME="table1_${MODE}_${CKPT_TAG}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching Table 1 row"
-echo "  dataset=$DATASET  mode=$MODE  ckpt_tag=$CKPT_TAG"
-
-# Upstream scripts import as `from src.models…` and `from run_baselines.eval…`,
-# so BOTH $UWYK_ROOT (parent of src/) and $UWYK_ROOT/RealCauseEval (parent of
-# run_baselines/) must be on PYTHONPATH.
-export PYTHONPATH="$UWYK_ROOT:$UWYK_ROOT/RealCauseEval${PYTHONPATH:+:$PYTHONPATH}"
+echo "  dataset=$DATASET  mode=$MODE  ckpt_tag=$CKPT_TAG  task_id=$TASK_ID"
+echo "  PYTHONPATH=$PYTHONPATH"
 
 cd "$UWYK_ROOT/RealCauseEval"
 
@@ -95,17 +90,19 @@ case "$MODE" in
         [ -f "$CFG"  ] || { echo "ERROR: $CFG missing"  >&2; ls "$PRED_CKPT_DIR" >&2 || true; exit 1; }
         echo "  checkpoint: $CKPT"
         echo "  config:     $CFG"
-        # The upstream S-learner script HARDCODES checkpoint/config paths (no
-        # CLI). We monkeypatch by exporting env vars the patched sed captures.
-        # Simplest: sed-substitute the two paths in the patched script.
-        ESC_CKPT=$(printf '%s' "$CKPT" | sed 's|/|\\/|g')
-        ESC_CFG=$( printf '%s' "$CFG"  | sed 's|/|\\/|g')
-        sed -i.bak2 "s|\"$ESC_ROOT/experiments/FirstTests/checkpoints/simple_pfn_16691166.0_tabpfn_benchmark/step_55000.pt\"|\"$CKPT\"|" \
-            "$INSTALL_DIR/predmodel_Slearner__patched.py"
-        sed -i.bak3 "s|\"$ESC_ROOT/experiments/FirstTests/checkpoints/simple_pfn_16691166.0_tabpfn_benchmark/basic_16691166.0.yaml\"|\"$CFG\"|" \
-            "$INSTALL_DIR/predmodel_Slearner__patched.py"
 
-        python -u run_baselines/predmodel_Slearner__patched.py \
+        # Replace the two hardcoded upstream paths inside the patched Predictive
+        # script with our real ones (no ordering / race on shared files).
+        ESC_CKPT=$(printf '%s' "$CKPT" | sed 's|[\/&]|\\&|g')
+        ESC_CFG=$( printf '%s' "$CFG"  | sed 's|[\/&]|\\&|g')
+        sed -i "s|<REPO_ROOT_REPLACED>/experiments/FirstTests/checkpoints/simple_pfn_16691166.0_tabpfn_benchmark/step_55000.pt|$ESC_CKPT|" \
+            "$INSTALL_DIR/$PRED_PATCHED" 2>/dev/null || true
+        sed -i "s|$ESC_ROOT/experiments/FirstTests/checkpoints/simple_pfn_16691166.0_tabpfn_benchmark/step_55000.pt|$ESC_CKPT|" \
+            "$INSTALL_DIR/$PRED_PATCHED"
+        sed -i "s|$ESC_ROOT/experiments/FirstTests/checkpoints/simple_pfn_16691166.0_tabpfn_benchmark/basic_16691166.0.yaml|$ESC_CFG|" \
+            "$INSTALL_DIR/$PRED_PATCHED"
+
+        python -u "run_baselines/$PRED_PATCHED" \
             --dataset "$DATASET" --model "$MODEL_NAME" --exp_name "$EXP_NAME"
         ;;
 
@@ -120,7 +117,7 @@ case "$MODE" in
         FLAG=""
         [ "$MODE" = "noanc" ] && FLAG="--all_unknown"
 
-        python -u run_baselines/dofm_full_conditioning__patched.py \
+        python -u "run_baselines/$DOFM_PATCHED" \
             --dataset         "$DATASET" \
             --model           "$MODEL_NAME" \
             --exp_name        "$EXP_NAME" \
@@ -134,5 +131,8 @@ case "$MODE" in
         exit 2
         ;;
 esac
+
+# Best-effort cleanup so we don't leave patched siblings lying around forever.
+rm -f "$INSTALL_DIR/$EVAL_PATCHED" "$INSTALL_DIR/$DOFM_PATCHED" "$INSTALL_DIR/$PRED_PATCHED"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done — results in $UWYK_ROOT/RealCauseEval/results/$EXP_NAME"

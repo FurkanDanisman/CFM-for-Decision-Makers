@@ -64,6 +64,7 @@ export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export PYTHONUNBUFFERED=1
 
 export DEPLOY_ROOT UWYK_ROOT
+export CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$DEPLOY_ROOT/external/causalpfn}"
 # Full-conditioning (anc/noanc) checkpoint
 export UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 export CKPT_FILE="${CKPT_FILE:-best_model.pt}"
