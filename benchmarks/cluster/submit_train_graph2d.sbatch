@@ -19,6 +19,13 @@ mkdir -p logs_graph2d
 
 # ── Cluster paths ─────────────────────────────────────────────────────────
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
+# If we were submitted from inside R-PFN, DEPLOY_ROOT will point at R-PFN
+# but the venv/external siblings live one level up. Climb up until we find
+# the venv, capping at 3 hops so a genuinely missing venv still errors out.
+for _ in 1 2 3; do
+    [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && break
+    DEPLOY_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+done
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 [ ! -d "$REPO/training_graph2d" ] && REPO="$DEPLOY_ROOT"
 UWYK_ROOT="${UWYK_ROOT:-$DEPLOY_ROOT/external/uwyk}"
