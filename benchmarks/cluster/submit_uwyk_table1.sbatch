@@ -60,11 +60,11 @@ export DEPLOY_ROOT UWYK_ROOT
 # Full-conditioning (anc/noanc) checkpoint
 export UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 export CKPT_FILE="${CKPT_FILE:-best_model.pt}"
-export CONFIG_FILE="${CONFIG_FILE:-config.yaml}"
+export CONFIG_FILE="${CONFIG_FILE:-best_model_config.yaml}"
 # Predictive (S-learner) checkpoint — falls back to the unconditional model we have
 export PRED_CKPT_DIR="${PRED_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/no_graph_conditioning/unconditional}"
 export PRED_CKPT_FILE="${PRED_CKPT_FILE:-best_model.pt}"
-export PRED_CONFIG_FILE="${PRED_CONFIG_FILE:-config.yaml}"
+export PRED_CONFIG_FILE="${PRED_CONFIG_FILE:-best_model_config.yaml}"
 
 bash "$REPO/benchmarks/uwyk_table1/run_uwyk_table1.sh" \
     "$DATASET" "$MODE" "arr${SLURM_ARRAY_JOB_ID}"

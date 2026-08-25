@@ -228,6 +228,9 @@ def main():
             warmup_samples.append({k: v[i] for k, v in b.items()})
     edges = fit_edges_2d(warmup_samples, J).to(DEVICE)
 
+    # NOTE: UWYK's GraphConditionedInterventionalPFN.__init__ does not accept
+    # `normalize_treatment` or `use_checkpoint` — the only knobs it exposes are
+    # the ones listed in GraphConditionedInterventionalPFN.py:302-315.
     model = GraphConditioned2DHead(
         num_features=NUM_FEATURES,
         d_model=D_MODEL,
@@ -237,8 +240,6 @@ def main():
         dropout=DROPOUT,
         hidden_mult=HIDDEN_MULT,
         normalize_features=True,
-        normalize_treatment=False,
-        use_checkpoint=USE_CHECKPOINT,
         J=J,
     ).to(DEVICE)
 
