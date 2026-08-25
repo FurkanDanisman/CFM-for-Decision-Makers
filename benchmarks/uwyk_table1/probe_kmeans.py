@@ -1,27 +1,22 @@
-"""Diagnostic: is UWYK's PSID-unbalanced PEHE dominated by the KMeans seed?
+"""Diagnostic: which context-handling change reproduces paper's PSID PEHE?
 
-Background:
-  - PSIDbal (~685 rows) sits below the 1000-clustering threshold → single
-    forward pass → matches paper.
-  - PSID unbal (2675 rows) triggers clustering into 3 chunks of ~900. Only
-    ~185 treated total, so per-chunk treated count is small and highly seed-
-    dependent. Small clusters with too-few treated can't estimate CATE →
-    predictions collapse.
+Observation:
+  - n_train < 1000  (IHDP=672, PSIDbal=685) → single forward pass → MATCHES paper
+  - n_train > 1000  (PSID=2675, CPS=14559) → clustering kicks in → DIVERGES
 
-This probe runs `PreprocessingGraphConditionedPFN` on realization 0 of PSID
-(unbalanced) with several `random_state` values and prints the resulting
-PEHE + prediction mean/std.
+The clustering path is where the fix must go. This probe runs realization 0
+of PSID under four modes and prints the PEHE for each:
 
-Interpretation:
-  - Wide spread (12k-25k)  → KMeans seed dominates. Paper's 13k is one draw
-                             from a wide distribution. Fix by matching their
-                             seed OR by rebalancing before clustering.
-  - All ~22k               → seed doesn't matter; something else is wrong
-                             (e.g. our adjacency semantics differ).
-  - All ~13k               → we accidentally reproduce paper — Table 1/3
-                             wrappers have an ADDITIONAL bug on top.
+  A. baseline                — use_clustering=True (default), no subsample
+                                → what we get today (~22k, wrong)
+  B. subsample n=1000, strat  — pick 1000 rows stratified by T, use_clustering=False
+                                → mirrors PSIDbal but keeps unbalanced ratio
+  C. subsample n=1000, random — pick 1000 rows uniformly, use_clustering=False
+                                → weaker than B; tests whether stratification matters
+  D. clustering + pinned seed — use_clustering=True, random_state=42
+                                → tests whether the divergence is KMeans nondeterminism
 
-Also runs CPS realization 0 as a control (should give ~13k regardless).
+Whichever lands near paper's 13096 is the fix — we bake that into run_one.py.
 """
 import os
 import sys
@@ -38,70 +33,122 @@ shim = os.path.join(os.path.dirname(__file__), 'shims')
 if os.path.isdir(shim):
     sys.path.insert(0, shim)
 
-from benchmarks import RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset  # noqa
+from benchmarks import RealCauseLalondePSIDDataset  # noqa
 from src.models.PreprocessingGraphConditionedPFN import (  # noqa
     PreprocessingGraphConditionedPFN,
 )
 
 
-def probe(ds_name, ds, seeds):
-    print(f'\n══ {ds_name} ══')
-    cate_ds = ds[0][0]
-    X_train = cate_ds.X_train
-    t_train = cate_ds.t_train.reshape(-1, 1)
-    y_train = cate_ds.y_train.reshape(-1, 1)
-    X_test  = cate_ds.X_test
-    true    = cate_ds.true_cate
-    n_treated = int((t_train == 1).sum())
-    print(f'  n_train={len(X_train)}  n_test={len(X_test)}  '
-          f'n_features={X_train.shape[1]}  n_treated={n_treated}  '
-          f'p_treated={n_treated/len(X_train):.3f}')
+def _pad(X, F=50):
+    if X.shape[1] < F:
+        return np.hstack([X, np.zeros((len(X), F - X.shape[1]), dtype=X.dtype)])
+    return X[:, :F]
 
-    F = 50
-    if X_train.shape[1] < F:
-        X_train = np.hstack([X_train, np.zeros((len(X_train), F - X_train.shape[1]))])
-        X_test  = np.hstack([X_test,  np.zeros((len(X_test),  F - X_test.shape[1]))])
-    else:
-        X_train = X_train[:, :F]
-        X_test  = X_test[:,  :F]
 
-    y_range = float(y_train.max() - y_train.min())
-    n_test_probe = min(500, len(X_test))
-    T1 = np.ones((n_test_probe, 1), dtype=np.float32)
+def _pehe(model, X_train, t_train, y_train, X_test, true_cate, y_range,
+          n_test_probe=500):
+    n = min(n_test_probe, len(X_test))
+    F = X_train.shape[1]
+    T1 = np.ones((n, 1), dtype=np.float32)
     T0 = np.zeros_like(T1)
     adj = np.zeros((F + 2, F + 2), dtype=np.float32)
+    y1 = model.predict(
+        X_obs=X_train, T_obs=t_train.reshape(-1, 1), Y_obs=y_train.reshape(-1, 1),
+        X_intv=X_test[:n], T_intv=T1, adjacency_matrix=adj, prediction_type='mean',
+    )
+    y0 = model.predict(
+        X_obs=X_train, T_obs=t_train.reshape(-1, 1), Y_obs=y_train.reshape(-1, 1),
+        X_intv=X_test[:n], T_intv=T0, adjacency_matrix=adj, prediction_type='mean',
+    )
+    cate = (np.asarray(y1).flatten() - np.asarray(y0).flatten()) * y_range / 2.0
+    pehe = float(np.sqrt(np.mean((cate - true_cate[:n]) ** 2)))
+    return pehe, cate
 
-    for seed in seeds:
-        m = PreprocessingGraphConditionedPFN(
-            config_path=os.path.join(CKPT, 'best_model_config.yaml'),
-            checkpoint_path=os.path.join(CKPT, 'best_model.pt'),
-            random_state=seed,
-            verbose=False,
-        )
-        m.load()
-        y1 = m.predict(
-            X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-            X_intv=X_test[:n_test_probe], T_intv=T1,
-            adjacency_matrix=adj, prediction_type='mean',
-        )
-        y0 = m.predict(
-            X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-            X_intv=X_test[:n_test_probe], T_intv=T0,
-            adjacency_matrix=adj, prediction_type='mean',
-        )
-        cate = (np.asarray(y1).flatten() - np.asarray(y0).flatten()) * y_range / 2.0
-        pehe = float(np.sqrt(np.mean((cate - true[:n_test_probe]) ** 2)))
-        print(f'  seed={seed:>7}   PEHE={pehe:>10.2f}   '
-              f'CATE mean={cate.mean():>10.1f}  std={cate.std():>10.1f}')
+
+def stratified_subsample(X, t, y, n_keep, rng):
+    """Sample `n_keep` rows, preserving the treated-fraction of the input."""
+    t_flat = t.flatten()
+    n_treat_total = int((t_flat == 1).sum())
+    n_ctrl_total  = int((t_flat == 0).sum())
+    p_treat = n_treat_total / len(t_flat)
+    n_treat_keep = int(round(n_keep * p_treat))
+    n_ctrl_keep  = n_keep - n_treat_keep
+    n_treat_keep = min(n_treat_keep, n_treat_total)
+    n_ctrl_keep  = min(n_ctrl_keep,  n_ctrl_total)
+
+    idx_treat = np.where(t_flat == 1)[0]
+    idx_ctrl  = np.where(t_flat == 0)[0]
+    keep_treat = rng.choice(idx_treat, size=n_treat_keep, replace=False)
+    keep_ctrl  = rng.choice(idx_ctrl,  size=n_ctrl_keep,  replace=False)
+    keep = np.concatenate([keep_treat, keep_ctrl])
+    rng.shuffle(keep)
+    return X[keep], t[keep], y[keep], n_treat_keep, n_ctrl_keep
+
+
+def random_subsample(X, t, y, n_keep, rng):
+    idx = rng.choice(len(X), size=n_keep, replace=False)
+    return X[idx], t[idx], y[idx]
+
+
+def build_model(use_clustering, random_state):
+    m = PreprocessingGraphConditionedPFN(
+        config_path=os.path.join(CKPT, 'best_model_config.yaml'),
+        checkpoint_path=os.path.join(CKPT, 'best_model.pt'),
+        use_clustering=use_clustering,
+        random_state=random_state,
+        verbose=False,
+    )
+    m.load()
+    return m
 
 
 def main():
-    SEEDS = (0, 7, 42, 100, 12345, 999999)
-    # PSID is the main event
-    probe('PSID (unbalanced)', RealCauseLalondePSIDDataset(), SEEDS)
-    # CPS as a control — should give ~13k regardless of seed
-    probe('CPS (control — should be seed-stable ~13k)',
-          RealCauseLalondeCPSDataset(), SEEDS[:3])
+    ds = RealCauseLalondePSIDDataset()
+    cate_ds = ds[0][0]
+    X_train = _pad(cate_ds.X_train)
+    t_train = cate_ds.t_train.astype(np.float32)
+    y_train = cate_ds.y_train.astype(np.float32)
+    X_test  = _pad(cate_ds.X_test)
+    true    = cate_ds.true_cate
+    y_range = float(cate_ds.y_train.max() - cate_ds.y_train.min())
+
+    n_treated = int((t_train == 1).sum())
+    print(f'\nPSID r=0: n_train={len(X_train)}  n_treated={n_treated}  '
+          f'p_treated={n_treated/len(X_train):.3f}')
+    print(f'paper target PEHE ≈ 13096 (noanc) / 12975 (anc, adj matters but adj=0 here)')
+    print('─' * 72)
+
+    print('\nA. baseline (use_clustering=True, random_state=None)')
+    m = build_model(use_clustering=True, random_state=None)
+    pehe, _ = _pehe(m, X_train, t_train, y_train, X_test, true, y_range)
+    print(f'   PEHE = {pehe:.2f}')
+
+    print('\nB. subsample to 1000 stratified by T + use_clustering=False')
+    for seed in (0, 42, 12345):
+        rng = np.random.default_rng(seed)
+        Xs, ts, ys, nT, nC = stratified_subsample(X_train, t_train, y_train, 1000, rng)
+        m = build_model(use_clustering=False, random_state=None)
+        pehe, _ = _pehe(m, Xs, ts, ys, X_test, true, y_range)
+        print(f'   subsample seed={seed:>5}  (nT={nT}, nC={nC})  PEHE = {pehe:.2f}')
+
+    print('\nC. subsample to 1000 random + use_clustering=False')
+    for seed in (0, 42, 12345):
+        rng = np.random.default_rng(seed)
+        Xs, ts, ys = random_subsample(X_train, t_train, y_train, 1000, rng)
+        m = build_model(use_clustering=False, random_state=None)
+        pehe, _ = _pehe(m, Xs, ts, ys, X_test, true, y_range)
+        print(f'   subsample seed={seed:>5}  PEHE = {pehe:.2f}')
+
+    print('\nD. use_clustering=True + pinned random_state=42')
+    m = build_model(use_clustering=True, random_state=42)
+    pehe, _ = _pehe(m, X_train, t_train, y_train, X_test, true, y_range)
+    print(f'   PEHE = {pehe:.2f}')
+
+    print('\nInterpretation:')
+    print('  B near 13k → fix is subsample-1000-stratified, no clustering.')
+    print('  C near 13k → random subsample also works; stratification not required.')
+    print('  D near 13k → the entire divergence is KMeans nondeterminism.')
+    print('  A ≈ 22k, others also ≈ 22k → clustering itself is broken; deeper dig needed.')
 
 
 if __name__ == '__main__':
