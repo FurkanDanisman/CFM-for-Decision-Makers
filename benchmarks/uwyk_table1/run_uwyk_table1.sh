@@ -80,6 +80,11 @@ EXP_NAME="table1_${MODE}_${CKPT_TAG}"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching Table 1 row"
 echo "  dataset=$DATASET  mode=$MODE  ckpt_tag=$CKPT_TAG"
 
+# Upstream scripts import as `from src.models…` and `from run_baselines.eval…`,
+# so BOTH $UWYK_ROOT (parent of src/) and $UWYK_ROOT/RealCauseEval (parent of
+# run_baselines/) must be on PYTHONPATH.
+export PYTHONPATH="$UWYK_ROOT:$UWYK_ROOT/RealCauseEval${PYTHONPATH:+:$PYTHONPATH}"
+
 cd "$UWYK_ROOT/RealCauseEval"
 
 case "$MODE" in
