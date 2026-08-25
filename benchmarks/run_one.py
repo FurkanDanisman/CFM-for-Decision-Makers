@@ -709,29 +709,39 @@ def main():
     if uwyk_baseline_cate is not None:
         _record('uwyk_baseline',  uwyk_baseline_cate)
     _record('ours_mean',          ours['ours_mean'])
-    _record('ours_malc_mean',     ours['ours_malc_mean'])
-    _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
-    _record('ours_malc_mode',     ours['ours_malc_mode'])
-    _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
+    # MALC variants are all NaN under --skip-malc; recording them would blow up
+    # sklearn's mean_squared_error. Only record if the pool actually ran.
+    if not args.skip_malc:
+        _record('ours_malc_mean',     ours['ours_malc_mean'])
+        _record('ours_malc_mean_msk', ours['ours_malc_mean_msk'])
+        _record('ours_malc_mode',     ours['ours_malc_mode'])
+        _record('ours_malc_mode_msk', ours['ours_malc_mode_msk'])
 
-    # OT-mode + OT-mean: single population ATE each, not per-query cate
-    ot_mode_ate = ours['ours_ot_mode_ate']
-    ot_mean_ate = ours['ours_ot_mean_ate']
-    out['ate_ours_ot_mode'] = ot_mode_ate
-    out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
-    out['ate_ours_ot_mean'] = ot_mean_ate
-    out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
-    # Raw-OT-mean: barycenter of per-query p(τ) from raw p_mat marginals (no MALC).
-    ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
-    out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
-    out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
+    # OT-mode + OT-mean depend on the MALC pool. Under --skip-malc they're NaN.
+    if not args.skip_malc:
+        ot_mode_ate = ours['ours_ot_mode_ate']
+        ot_mean_ate = ours['ours_ot_mean_ate']
+        out['ate_ours_ot_mode'] = ot_mode_ate
+        out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+        out['ate_ours_ot_mean'] = ot_mean_ate
+        out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
+        # Raw-OT-mean: barycenter of per-query p(τ) from raw p_mat marginals (no MALC).
+        ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
+        out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
+        out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
 
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
     _log(f"saved {out_file}  ({out['runtime_s']:.1f}s)", t0)
-    print(f"SUMMARY dopfn PEHE={out['pehe_dopfn']:.3f} ATE={out['err_dopfn']:.3f} | "
-          f"uwyk_anc PEHE={out['pehe_uwyk_anc']:.3f} ATE={out['err_uwyk_anc']:.3f} | "
-          f"ours_mode_msk PEHE={out['pehe_ours_malc_mode_msk']:.3f} ATE={out['err_ours_malc_mode_msk']:.3f}",
-          flush=True)
+    if args.skip_malc:
+        print(f"SUMMARY dopfn PEHE={out['pehe_dopfn']:.3f} ATE={out['err_dopfn']:.3f} | "
+              f"uwyk_anc PEHE={out['pehe_uwyk_anc']:.3f} ATE={out['err_uwyk_anc']:.3f} | "
+              f"ours_mean PEHE={out['pehe_ours_mean']:.3f} ATE={out['err_ours_mean']:.3f}",
+              flush=True)
+    else:
+        print(f"SUMMARY dopfn PEHE={out['pehe_dopfn']:.3f} ATE={out['err_dopfn']:.3f} | "
+              f"uwyk_anc PEHE={out['pehe_uwyk_anc']:.3f} ATE={out['err_uwyk_anc']:.3f} | "
+              f"ours_mode_msk PEHE={out['pehe_ours_malc_mode_msk']:.3f} ATE={out['err_ours_malc_mode_msk']:.3f}",
+              flush=True)
 
 
 if __name__ == '__main__':
