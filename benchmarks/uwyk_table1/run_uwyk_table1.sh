@@ -67,21 +67,25 @@ EVAL_MOD="run_baselines.${EVAL_PATCHED%.py}"
 sed -i "s/from run_baselines.eval import/from $EVAL_MOD import/g" \
     "$INSTALL_DIR/$DOFM_PATCHED" "$INSTALL_DIR/$PRED_PATCHED"
 
-# On our cluster the package is named `causalpfn` (lower-case) at
-# external/causalpfn/src/causalpfn. UWYK's eval.py imports it as CausalPFN
-# (mixed case). Rewrite the imports in the patched eval file.
-sed -i 's/from CausalPFN\./from causalpfn./g; s/import CausalPFN\b/import causalpfn as CausalPFN/g' \
+# UWYK's eval.py imports `from CausalPFN.benchmarks import …`, treating
+# CausalPFN as the repo dir with `benchmarks/` as a top-level submodule.
+# On our cluster that layout is:
+#   $CAUSALPFN_ROOT/benchmarks/{ihdp.py, realcause.py, ...}
+#   $CAUSALPFN_ROOT/src/causalpfn/…       (the pip package — NOT what upstream wants)
+# We rewrite the import to grab `benchmarks` directly from the repo root.
+sed -i 's/from CausalPFN\.benchmarks import/from benchmarks import/g' \
     "$INSTALL_DIR/$EVAL_PATCHED"
 
 # ── PYTHONPATH so upstream imports resolve ─────────────────────────────
-# - shims/                   → stub `faiss` module (causalpfn/__init__.py needs
-#                              it at import time; Table 1 rows don't call any
-#                              faiss ops so the stub is safe)
-# - $UWYK_ROOT               → 'src.models.*' and 'run_baselines.*'
-# - $UWYK_ROOT/RealCauseEval → 'run_baselines.eval__patched_*'
-# - $CAUSALPFN_ROOT/src      → 'causalpfn.benchmarks' (upstream eval.py, rewritten)
+# - shims/                     → sitecustomize denylist (safety; not required
+#                                once we bypass causalpfn/__init__.py, but
+#                                harmless and future-proofs against causalpfn
+#                                deps sneaking into `benchmarks/`)
+# - $UWYK_ROOT                 → 'src.models.*' and 'run_baselines.*'
+# - $UWYK_ROOT/RealCauseEval   → 'run_baselines.eval__patched_*'
+# - $CAUSALPFN_ROOT            → top-level `benchmarks` package
 SHIM_DIR="$(dirname "$(readlink -f "$0")")/shims"
-export PYTHONPATH="$SHIM_DIR:$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$SHIM_DIR:$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 MODEL_NAME="uwyk_table1_${MODE}"
 EXP_NAME="table1_${MODE}_${CKPT_TAG}"
