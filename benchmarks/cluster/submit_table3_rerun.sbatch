@@ -27,6 +27,11 @@ set -euo pipefail
 mkdir -p logs_t3_rerun
 
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
+# Auto-climb if submitted from inside R-PFN (venv/external live one level up).
+for _ in 1 2 3; do
+    [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && break
+    DEPLOY_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+done
 REPO="$DEPLOY_ROOT/R-PFN"
 DOPFN="$DEPLOY_ROOT/external/dopfn"
 UWYK="$DEPLOY_ROOT/external/uwyk"
