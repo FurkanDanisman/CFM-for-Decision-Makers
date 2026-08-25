@@ -49,13 +49,22 @@ export MIN_LR_RATIO=0.1
 export GRAD_CLIP=1.0
 
 export N_STEPS=20000
-export MICROBATCH=8
-export GRAD_ACCUM=4
+# Effective batch = MICROBATCH × GRAD_ACCUM = 32 (unchanged vs UWYK config).
+# Microbatch was 8 in the smoke setup but OOMs at full scale (J=100, depth=8,
+# N_context=1000) on 80GB H100: the graph-conditioned parent doesn't honour
+# activation checkpointing, so per-microbatch attention memory scales linearly.
+# Drop to microbatch=2 with grad_accum=16 to keep the same effective batch.
+export MICROBATCH=2
+export GRAD_ACCUM=16
 export N_CONTEXT_TRAIN=1000
 export N_QUERY_TRAIN=250
 
 export USE_BF16=1
-export USE_CHECKPOINT=1
+# Activation checkpointing is a no-op here — UWYK's GraphConditionedInterventionalPFN
+# doesn't accept use_checkpoint (we stripped that kwarg to fix an earlier
+# TypeError). Keep the env var so the trainer's config log stays sensible; it
+# just doesn't do anything on the model side.
+export USE_CHECKPOINT=0
 
 export STREAM_WORKERS=8
 export STREAM_SEED=42
