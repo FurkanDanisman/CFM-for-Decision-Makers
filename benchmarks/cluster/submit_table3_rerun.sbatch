@@ -27,11 +27,19 @@ set -euo pipefail
 mkdir -p logs_t3_rerun
 
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
-# Auto-climb if submitted from inside R-PFN (venv/external live one level up).
-for _ in 1 2 3; do
-    [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && break
-    DEPLOY_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
-done
+# Bulletproof: if venv isn't next to $DEPLOY_ROOT, try one and two levels up.
+if [ ! -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
+    if [ -f "$(dirname "$DEPLOY_ROOT")/venv/bin/activate" ]; then
+        DEPLOY_ROOT="$(dirname "$DEPLOY_ROOT")"
+    elif [ -f "$(dirname "$(dirname "$DEPLOY_ROOT")")/venv/bin/activate" ]; then
+        DEPLOY_ROOT="$(dirname "$(dirname "$DEPLOY_ROOT")")"
+    fi
+fi
+echo "[bootstrap] DEPLOY_ROOT=$DEPLOY_ROOT  PWD=$PWD"
+if [ ! -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
+    echo "[bootstrap] FATAL: venv/bin/activate not found under $DEPLOY_ROOT. Set DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit and re-submit." >&2
+    exit 1
+fi
 REPO="$DEPLOY_ROOT/R-PFN"
 DOPFN="$DEPLOY_ROOT/external/dopfn"
 UWYK="$DEPLOY_ROOT/external/uwyk"
