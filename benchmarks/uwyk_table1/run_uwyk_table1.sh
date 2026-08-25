@@ -74,10 +74,14 @@ sed -i 's/from CausalPFN\./from causalpfn./g; s/import CausalPFN\b/import causal
     "$INSTALL_DIR/$EVAL_PATCHED"
 
 # ── PYTHONPATH so upstream imports resolve ─────────────────────────────
+# - shims/                   → stub `faiss` module (causalpfn/__init__.py needs
+#                              it at import time; Table 1 rows don't call any
+#                              faiss ops so the stub is safe)
 # - $UWYK_ROOT               → 'src.models.*' and 'run_baselines.*'
 # - $UWYK_ROOT/RealCauseEval → 'run_baselines.eval__patched_*'
 # - $CAUSALPFN_ROOT/src      → 'causalpfn.benchmarks' (upstream eval.py, rewritten)
-export PYTHONPATH="$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+SHIM_DIR="$(dirname "$(readlink -f "$0")")/shims"
+export PYTHONPATH="$SHIM_DIR:$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 MODEL_NAME="uwyk_table1_${MODE}"
 EXP_NAME="table1_${MODE}_${CKPT_TAG}"
