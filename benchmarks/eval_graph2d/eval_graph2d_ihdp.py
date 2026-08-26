@@ -53,16 +53,12 @@ def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
     return np.hstack([X, pad])
 
 
-def _standardize(X_train: np.ndarray, X_test: np.ndarray, q: float = 0.99):
-    """Same feature preprocessing UWYK's dofm pipeline uses: outlier clip at
-    ``q``-quantile, then z-score. Fitted on train, applied to test."""
-    lo = np.quantile(X_train, 1.0 - q, axis=0)
-    hi = np.quantile(X_train, q,       axis=0)
-    Xtr = np.clip(X_train, lo, hi)
-    Xte = np.clip(X_test,  lo, hi)
-    mu = Xtr.mean(axis=0, keepdims=True)
-    sd = Xtr.std(axis=0,  keepdims=True) + 1e-6
-    return (Xtr - mu) / sd, (Xte - mu) / sd
+# NOTE: no caller-side X standardization here.
+# GraphConditioned2DHead was constructed with normalize_features=True, so the
+# parent's forward computes per-batch feature normalization internally --
+# mirroring how our PairedInterventionalDataset -> InterventionalPFN training
+# path was fed (raw padded X in, model normalises). Adding a manual z-score
+# here would double-normalise the features and produce OOD activations.
 
 
 def _scale_y(y: np.ndarray):
@@ -75,7 +71,7 @@ def _scale_y(y: np.ndarray):
     return y_scaled.astype(np.float32), ymin, yrange
 
 
-def build_adj_full(F: int, n_real: int) -> np.ndarray:
+def build_anc_full(F: int, n_real: int) -> np.ndarray:
     """True-graph adjacency in UWYK's convention:
        positions [T, Y, feat_0, ..., feat_{F-1}].
        T -> Y; every real feature -> T; every real feature -> Y.
@@ -95,7 +91,7 @@ def build_adj_full(F: int, n_real: int) -> np.ndarray:
     return A
 
 
-def build_adj_zero(F: int, n_real: int) -> np.ndarray:
+def build_anc_none(F: int, n_real: int) -> np.ndarray:
     """No-ancestral-information adjacency: every real edge zeroed; only
     padded slots keep the -1 mask so the model ignores them."""
     A = np.zeros((F + 2, F + 2), dtype=np.float32)
@@ -169,15 +165,14 @@ def evaluate(realization: int, model: GraphConditioned2DHead, J: int, F: int):
     true_ate  = float(true_cate.mean())
 
     n_real = X_tr_raw.shape[1]
-    X_tr_std, X_te_std = _standardize(X_tr_raw, X_te_raw)
-    X_tr = _pad_features(X_tr_std, F)
-    X_te = _pad_features(X_te_std, F)
+    X_tr = _pad_features(X_tr_raw, F)
+    X_te = _pad_features(X_te_raw, F)
     y_scaled, ymin, yrange = _scale_y(y_tr_raw)
     Y_obs = y_scaled.reshape(-1, 1)
 
     results = {}
-    for mode, adj in (('anc', build_adj_full(F, n_real)),
-                       ('noanc', build_adj_zero(F, n_real))):
+    for mode, adj in (('anc', build_anc_full(F, n_real)),
+                       ('noanc', build_anc_none(F, n_real))):
         cate_scaled = cate_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate = cate_scaled * yrange / 2.0
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
