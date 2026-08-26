@@ -18,6 +18,7 @@ import numpy as np
 
 
 DATASET_UWYK = {
+    'ACIC':       'ACIC',
     'IHDP':       'IHDP',
     'CPS':        'CPS',
     'PSID_unbal': 'PSID',
@@ -26,6 +27,7 @@ DATASET_UWYK = {
 
 # Column keys are (dataset-label-for-print, DATASET_LOG-used-in-exp-name)
 DATASETS = [
+    ('ACIC',       'ACIC'),
     ('IHDP',       'IHDP'),
     ('CPS',        'CPS'),
     ('PSID_unbal', 'PSID_unbal'),
@@ -41,8 +43,12 @@ METHODS = [
 ]
 
 # Paper Table 1 targets. PSID_bal numbers come from the reproduce branch's
-# own README (paper §F.3).
+# own README (paper §F.3). ACIC paper eps_ATE isn't in Table 1 of the
+# UWYK paper (only PEHE is reported); mark as None so _fmt_paper skips it.
 PAPER = {
+    ('ACIC', 'predictive'):       (3.14, None),
+    ('ACIC', 'noanc'):            (3.47, None),
+    ('ACIC', 'anc'):              (2.79, None),
     ('IHDP', 'predictive'):       (6.79, 0.81),
     ('IHDP', 'noanc'):            (6.28, 0.67),
     ('IHDP', 'anc'):              (5.49, 0.49),
@@ -86,20 +92,25 @@ def _fmt(x):
 def _fmt_paper(v):
     if v is None: return '---'
     p, a = v
+    a_str = '---' if a is None else f'{a:<5.3f}'
     if abs(p) >= 100:
-        return f'{p:>5.0f} / {a:<5.3f}'
-    return f'{p:>5.2f} / {a:<5.3f}'
+        return f'{p:>5.0f} / {a_str}'
+    return f'{p:>5.2f} / {a_str}'
 
 
 def main():
-    # Three env vars supported so an addendum pred-mirror job can be merged
-    # with the main all-datasets job's other four rows:
-    #   JOB_ID              - covers all methods
+    # Env vars supported so different jobs' pkls can be merged into one table:
+    #   JOB_ID              - covers all methods on all datasets
     #   JOB_ID_MAIN         - overrides JOB_ID for {predictive, noanc, anc, fn50}
     #   JOB_ID_PREDSTYLE    - overrides JOB_ID for {fn50p} (the addendum)
+    #   JOB_ID_ACIC         - overrides all above for the ACIC dataset only
+    #                         (ACIC was reproduced in its own job before the
+    #                         all-datasets rerun). Falls back to newest-match
+    #                         on disk if unset.
     job_id      = os.environ.get('JOB_ID')
     job_id_main = os.environ.get('JOB_ID_MAIN', job_id)
     job_id_pred = os.environ.get('JOB_ID_PREDSTYLE', job_id)
+    job_id_acic = os.environ.get('JOB_ID_ACIC')
     UWYK_REPRO = os.environ.get(
         'UWYK_REPRO', '/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce')
     OURS_ROOT = os.environ.get(
@@ -111,7 +122,13 @@ def main():
             root = OURS_ROOT
         else:
             root = f'{UWYK_REPRO}/RealCauseEval/results'
-        this_job = job_id_pred if method == 'fn50p' else job_id_main
+        # ACIC has its own job override (was reproduced separately).
+        if ds_log == 'ACIC' and job_id_acic is not None:
+            this_job = job_id_acic
+        elif method == 'fn50p':
+            this_job = job_id_pred
+        else:
+            this_job = job_id_main
         if this_job is not None:
             return f'{root}/table1_all_{ds_log}_{method}_{this_job}/*'
         # newest-match fallback
@@ -135,8 +152,9 @@ def main():
             pehes, ates, n = _load(pat)
             paper_key = ds_log if ds_log in ('PSID_unbal', 'PSID_bal') else ds_log
             # rewrite key mapping to match PAPER dict
-            if ds_log == 'IHDP':       paper_key = 'IHDP'
-            elif ds_log == 'CPS':      paper_key = 'CPS'
+            if   ds_log == 'ACIC':       paper_key = 'ACIC'
+            elif ds_log == 'IHDP':       paper_key = 'IHDP'
+            elif ds_log == 'CPS':        paper_key = 'CPS'
             elif ds_log == 'PSID_unbal': paper_key = 'PSID_unbal'
             elif ds_log == 'PSID_bal':   paper_key = 'PSID_bal'
             paper_v = PAPER.get((paper_key, m_key))
