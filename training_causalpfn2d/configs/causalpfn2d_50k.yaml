@@ -1,0 +1,48 @@
+# CausalPFN 2D-head training — 50k steps (LR-schedule horizon).
+# Mirrors fn=50 / graph2d config; only differences are the backbone
+# family (CausalPFN's TabDPTLongContextModel) and the corresponding
+# hyperparameter names (ninp / nhid / nlayers / nhead instead of
+# d_model / depth / heads / hidden_mult).
+
+# ── Grid / output head ────────────────────────────────────────────────────
+J: 100                    # output_dim = J**2 + 9 + 4 = 10013
+NUM_FEATURES: 50          # padded max features (excluding the T column, which is added inside)
+
+# ── Backbone (CausalPFN TabDPTLongContext defaults from codex branch) ────
+NINP: 256                 # embed dim
+NHID_FACTOR: 4            # hidden ff dim = NINP * NHID_FACTOR
+NHEAD: 8
+NLAYERS: 8
+DROPOUT: 0.0
+N_OUT: 10                 # classification head width; unused for regression
+
+# ── Optimiser ─────────────────────────────────────────────────────────────
+LR: 1.0e-4
+WEIGHT_DECAY: 1.0e-5
+WARMUP_FRAC: 0.1
+MIN_LR_RATIO: 0.1
+GRAD_CLIP: 1.0
+
+# ── Training length ───────────────────────────────────────────────────────
+N_STEPS: 50000
+MICROBATCH: 2             # matches graph2d config after H100 OOM tuning
+GRAD_ACCUM: 16            # → effective batch 32
+N_CONTEXT_TRAIN: 1000
+N_QUERY_TRAIN: 250
+
+# ── Precision ─────────────────────────────────────────────────────────────
+USE_BF16: 1
+
+# ── Streaming data ────────────────────────────────────────────────────────
+STREAM_WORKERS: 8
+STREAM_SEED: 42
+STREAM_WARMUP: 4
+
+# ── Checkpoints ───────────────────────────────────────────────────────────
+CHECKPOINT_DIR: ./checkpoints_causalpfn2d
+CHECKPOINT_EVERY: 2000
+RESUME: 1
+
+# ── Logging ───────────────────────────────────────────────────────────────
+LOG_EVERY: 100
+LOSS_WARN_THRESH: 1.0e3
