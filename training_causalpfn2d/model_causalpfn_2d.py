@@ -55,6 +55,31 @@ def _wire_causalpfn_paths(causalpfn_root: Optional[str] = None):
 
 _wire_causalpfn_paths()
 
+# ── Monkey-patch: CausalPFN's clip_outliers mutates the `mask` bool tensor
+# in-place (`mask &= ...`) after it's already been consumed by maskmean and
+# maskstd, which retain references to the pre-mutation version for autograd.
+# That triggers a "modified by an inplace operation" RuntimeError on
+# backward. Replace with a version that rebinds `mask` out-of-place. Same
+# numerical result, autograd-safe.
+import causalpfn.models.model as _cpm  # noqa: E402
+
+_maskmean = _cpm.maskmean
+_maskstd  = _cpm.maskstd
+
+
+def _clip_outliers_safe(data, eval_pos, n_sigma=4):
+    assert data.dim() == 3, 'X must be T,B,H'
+    X = data[:eval_pos] if eval_pos > 0 else data
+    mask = ~torch.isnan(X)
+    mean = _maskmean(X, mask, dim=0)
+    cutoff = n_sigma * _maskstd(X, mask, dim=0)
+    mask = mask & (cutoff >= torch.abs(X - mean))          # ← out-of-place
+    cutoff = n_sigma * _maskstd(X, mask, dim=0)
+    return torch.clip(data, mean - cutoff, mean + cutoff)
+
+
+_cpm.clip_outliers = _clip_outliers_safe
+
 from causalpfn.models.model import TabDPTLongContextModel  # noqa: E402
 
 _REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
