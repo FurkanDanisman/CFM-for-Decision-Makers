@@ -137,6 +137,43 @@ def _cate_from_joint(model, X_train, T_train, Y_train_scaled, X_test, J):
     return (e_y1 - e_y0).squeeze(0).cpu().numpy()
 
 
+@torch.no_grad()
+def _cluster_and_average_cate(
+    model, X_train, T_train, Y_train_scaled, X_test, J,
+    max_n_train: int = 1000, random_state: int = 0,
+):
+    """Mirror UWYK's cluster-and-average inference (SimplePFNSklearn's
+    hierarchical clustering path, simplified): partition X_train with
+    KMeans into k = ceil(n_train / max_n_train) clusters, run one forward
+    per cluster (each cluster's context stays within our model's trained
+    ~1000-row regime), average per-query CATE across clusters.
+
+    Used for CPS (n_train ≈ 14 559) where a single forward on the full
+    context is far out-of-distribution for our fn=50 checkpoint.
+    """
+    from sklearn.cluster import KMeans
+    n = X_train.shape[0]
+    k = max(1, (n + max_n_train - 1) // max_n_train)
+    if k == 1:
+        return _cate_from_joint(model, X_train, T_train, Y_train_scaled, X_test, J)
+    km = KMeans(n_clusters=k, n_init=10, random_state=random_state)
+    labels = km.fit_predict(X_train)
+    per_cluster_cate = []
+    for c in range(k):
+        m = (labels == c)
+        if m.sum() < 8:                            # skip degenerate clusters
+            continue
+        cate_c = _cate_from_joint(
+            model,
+            X_train[m], T_train[m], Y_train_scaled[m],
+            X_test, J,
+        )
+        per_cluster_cate.append(cate_c)
+    if not per_cluster_cate:
+        return _cate_from_joint(model, X_train, T_train, Y_train_scaled, X_test, J)
+    return np.mean(np.stack(per_cluster_cate, axis=0), axis=0)
+
+
 def _psid_balanced_subsample(X, T, Y, n_controls: int = 500, seed: int = 42):
     """Mirror `dofm_psid_balanced.py`: keep every treated unit, subsample
     up to n_controls control units. Returns (X, T, Y) shuffled."""
@@ -151,7 +188,10 @@ def _psid_balanced_subsample(X, T, Y, n_controls: int = 500, seed: int = 42):
     return X[keep], T[keep], Y[keep]
 
 
-def evaluate_realization(model, cfg, dataset_cls, r: int, psid_balanced: bool = False):
+def evaluate_realization(model, cfg, dataset_cls, r: int,
+                          psid_balanced: bool = False,
+                          cluster: bool = False,
+                          max_n_train: int = 1000):
     ds = dataset_cls()
     cate_ds = ds[r][0]
     X_tr_raw = cate_ds.X_train.astype(np.float32)
@@ -176,7 +216,12 @@ def evaluate_realization(model, cfg, dataset_cls, r: int, psid_balanced: bool = 
     y_scaled, ymin, yrange = _scale_y(y_tr_raw)
     Y_obs = y_scaled.reshape(-1, 1)
 
-    cate_scaled = _cate_from_joint(model, X_tr, T_tr, Y_obs, X_te, J)
+    if cluster:
+        cate_scaled = _cluster_and_average_cate(
+            model, X_tr, T_tr, Y_obs, X_te, J, max_n_train=max_n_train,
+        )
+    else:
+        cate_scaled = _cate_from_joint(model, X_tr, T_tr, Y_obs, X_te, J)
     cate = cate_scaled * yrange / 2.0                         # inverse-scale
 
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
@@ -204,6 +249,13 @@ def main():
     ap.add_argument('--psid-balanced', action='store_true',
                      help='Mirror dofm_psid_balanced.py subsampling: keep all T=1 '
                           '+ 500 random T=0 per realization.')
+    ap.add_argument('--cluster', action='store_true',
+                     help='Cluster train context via KMeans and average per-query '
+                          'CATE across clusters (mirrors UWYK SimplePFN SKlearn '
+                          'inference for large-context datasets like CPS).')
+    ap.add_argument('--max-n-train', type=int, default=1000,
+                     help='Per-cluster max context size (default 1000, matches '
+                          'CausalPFN training-time context bound).')
     args = ap.parse_args()
 
     assert os.path.isfile(args.ckpt), f'checkpoint not found: {args.ckpt}'
@@ -224,7 +276,12 @@ def main():
         pehes, atrerrs = [], []
         t0 = time.time()
         for r in range(n_tables):
-            res = evaluate_realization(model, cfg, ds_cls, r, psid_balanced=args.psid_balanced)
+            res = evaluate_realization(
+                model, cfg, ds_cls, r,
+                psid_balanced=args.psid_balanced,
+                cluster=args.cluster,
+                max_n_train=args.max_n_train,
+            )
             pehes.append(res['pehe']); atrerrs.append(res['ate_rel_err'])
             with open(os.path.join(exp_dir, f'{args.model}_{ds_name}_{r}'), 'wb') as f:
                 pickle.dump(dict(model=args.model, dataset=ds_name, realization=r,
