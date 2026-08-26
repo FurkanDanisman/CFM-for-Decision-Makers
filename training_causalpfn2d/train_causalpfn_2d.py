@@ -340,6 +340,15 @@ def main():
             if not os.path.isfile(ckpt_path):
                 raise RuntimeError(f'warmstart ckpt path does not exist: {ckpt_path}')
             sd = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+            # Filter shape-mismatched keys BEFORE load_state_dict, else it
+            # aborts wholesale and we lose the entire warmstart. Job 5037909
+            # showed encoder.weight is [384, 100] vs our [384, 101] (we
+            # prepend T) and head.2.weight is [1034, 768] vs [1047, 768]
+            # (our 2D joint head has more output bins). Both are architectural
+            # differences we chose; they must stay random-init. Every other
+            # layer (the 20 transformer blocks, LNs, y_encoder) loads cleanly.
+            _model_sd_ref = model.backbone.state_dict()
+            _skipped_shape = []
             # CausalPFN's tabdpt_long_context.ckpt wraps the real state_dict
             # under the key 'model' (top-level = {'model', 'opt', 'cfg',
             # 'stats'}). Also handle the other common wrappers. Verified via
@@ -364,10 +373,26 @@ def main():
                       '(torch.compile wrapping)')
             # Load into backbone only. Head keys (BarDist.borders / last-K logits)
             # are ours and stay at their random init.
-            missing, unexpected = model.backbone.load_state_dict(sd, strict=False)
+            # Filter out any key whose shape doesn't match ours — otherwise
+            # load_state_dict raises and we lose the entire warmstart.
+            _filtered_sd = {}
+            for _k, _v in sd.items():
+                if _k in _model_sd_ref and _model_sd_ref[_k].shape != _v.shape:
+                    _skipped_shape.append(
+                        (_k, tuple(_v.shape), tuple(_model_sd_ref[_k].shape))
+                    )
+                    continue
+                _filtered_sd[_k] = _v
+            if _skipped_shape:
+                print(f'[warmstart] skipped {len(_skipped_shape)} shape-mismatched key(s) '
+                      f'(kept random init on these — architectural difference vs CausalPFN):')
+                for _k, _ck, _my in _skipped_shape:
+                    print(f'  {_k}: ckpt {_ck} vs ours {_my}')
+            missing, unexpected = model.backbone.load_state_dict(_filtered_sd, strict=False)
             print(f'[warmstart] backbone loaded  '
-                  f'missing={len(missing)}  unexpected={len(unexpected)}')
-            if len(missing) > 20 or len(unexpected) > 20:
+                  f'missing={len(missing)}  unexpected={len(unexpected)}  '
+                  f'(missing includes the {len(_skipped_shape)} skipped mismatches above)')
+            if len(missing) - len(_skipped_shape) > 20 or len(unexpected) > 20:
                 print(f'[warmstart]   first missing:    {list(missing)[:5]}')
                 print(f'[warmstart]   first unexpected: {list(unexpected)[:5]}')
                 print(f'[warmstart] NOTE: many mismatches suggests key-prefix issue; '
