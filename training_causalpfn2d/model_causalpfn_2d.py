@@ -38,12 +38,17 @@ import torch.nn as nn
 
 def _wire_causalpfn_paths(causalpfn_root: Optional[str] = None):
     """Prepend the CausalPFN repo's ``src/`` to sys.path so
-    ``from causalpfn.models.model import TabDPTLongContextModel`` resolves."""
+    ``from causalpfn.models.model import TabDPTLongContextModel`` resolves.
+    Also prepends the shims dir so ``causalpfn/__init__.py`` can import
+    ``faiss`` / ``huggingface_hub`` / ... without those packages actually
+    being installed (Table 1 runner uses the same trick)."""
     causalpfn_root = causalpfn_root or os.environ.get(
         'CAUSALPFN_ROOT',
         '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn',
     )
-    for p in (os.path.join(causalpfn_root, 'src'), causalpfn_root):
+    shims = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                          '..', 'benchmarks', 'uwyk_table1', 'shims'))
+    for p in (shims, os.path.join(causalpfn_root, 'src'), causalpfn_root):
         if os.path.isdir(p) and p not in sys.path:
             sys.path.insert(0, p)
 
