@@ -1,24 +1,31 @@
 """CausalPFN transformer body with our 2D BarDistribution joint head.
 
 Wraps `causalpfn.models.model.TabDPTLongContextModel` (from the
-``codex/add-training-code`` branch of vdblm/CausalPFN) and:
+``codex/add-training-code`` branch of vdblm/CausalPFN) and reproduces
+`InContextModel`'s interface as closely as possible so it drops into
+CausalPFN's own `trainer._train_step` — the only difference is that the
+loss is our 2D joint-density loss instead of their single-arm HL-Gauss
+cross-entropy.
 
-  1. Sets the model's ``nbins = total_params(J) = J**2 + 9 + 4`` so the
-     final linear projection emits our joint-head parameter budget. We
-     read only the last ``nbins`` output dims — same slicing pattern
-     CausalPFN itself uses (``logits[:, :, -nbins:]``).
-  2. Adds a learned ``null_t_intv`` scalar that fills the T-column of
-     ``X_intv`` at every query, since we predict BOTH potential
-     outcomes per query rather than one arm conditional on T.
+Design:
+  - Backbone constructed with ``nbins = total_params(J) = J**2 + 9 + 4``,
+    so the head's last-nbins slice is exactly our 2D joint parameter
+    vector. At J=25, nbins = 638, matching CausalPFN's default (500) in
+    parameter budget.
+  - Per-task pooled y-standardisation (mean & std of ``y_context``),
+    applied to both ``E_y0_query`` and ``E_y1_query``. Bar-distribution
+    edges are fitted globally at training start from a few warmup
+    batches (see trainer). The pooled standardisation makes the target
+    distribution stationary enough that fixed edges are sufficient.
+  - The T column is filled with a learned ``null_t_intv`` scalar at
+    query positions since we predict BOTH arms per query.
 
-Forward:
-    logits = model(X_obs, T_obs, Y_obs, X_intv)
-    # logits: (B, M, J**2 + 9 + 4)   -- the joint-head parameter vector
-    # per query, ready to be scored with losses.BarDistribution2D.neg_log_prob_2d.
-
-CausalPFN's model applies its own X-standardisation and outlier clipping
-inside its ``forward`` (see model.py:normalize_data / clip_outliers), so
-the caller passes raw X here.
+Forward signature matches `causalpfn.models.icl_model.InContextModel`:
+    losses = model(X_context, t_context, y_context,
+                   X_query, E_y0_query, E_y1_query, J, edges)
+    # losses: (B,) per-task NLL, ready for valid_mask filtering in the
+    # trainer. edges are external so trainer can fit them once from
+    # warmup samples and share across steps.
 """
 from __future__ import annotations
 import os
@@ -48,36 +55,16 @@ from causalpfn.models.model import TabDPTLongContextModel  # noqa: E402
 _REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _REPO_SRC not in sys.path:
     sys.path.insert(0, _REPO_SRC)
-from losses.BarDistribution2D import total_params  # noqa: E402
+from losses.BarDistribution2D import total_params, neg_log_prob_2d  # noqa: E402
 
 
 class CausalPFN2DHead(nn.Module):
-    """CausalPFN backbone + 2D joint head.
-
-    Constructs a `TabDPTLongContextModel` with ``nbins = total_params(J)``
-    so the head's last-nbins slice is exactly our joint-head parameter
-    vector. Also owns a learned ``null_t_intv`` scalar that fills the
-    T-column at query positions.
-
-    Parameters
-    ----------
-    J : int
-        Grid side length for the 2D bar distribution.
-        `total_params(J) = J**2 + 9 + 4`.
-    num_features : int
-        Padded feature count seen by the model (X only; the T-column is
-        concatenated internally, so the model's ``num_features`` is
-        ``num_features + 1``).
-    ninp, nhid, nhead, nlayers, dropout : passthrough to TabDPTLongContextModel.
-    n_out : int
-        CausalPFN's classification-head width; unused for us. Kept for
-        compatibility with the base head layout ``n_out + nbins``.
-    """
+    """CausalPFN backbone + 2D joint head. Same interface as InContextModel."""
 
     def __init__(
         self,
         *,
-        J: int = 100,
+        J: int = 25,
         num_features: int = 50,
         ninp: int = 256,
         nhid: int = 1024,
@@ -88,11 +75,11 @@ class CausalPFN2DHead(nn.Module):
     ):
         super().__init__()
         self.J = J
-        self.num_features = num_features       # X features only (excluding T column)
+        self.num_features = num_features       # X features only (T column added inside)
         self.n_out = n_out
-        self.nbins_2d = total_params(J)        # K**2 + 9 + 4
+        self.nbins_2d = total_params(J)        # K**2 + 9 + 4 ; at J=25 this is 638
 
-        # Model sees (T | X) as one flat vector, so backbone's num_features = X + 1.
+        # Backbone sees (T | X) as one flat vector, so its num_features = X + 1.
         self.backbone = TabDPTLongContextModel(
             dropout=dropout,
             n_out=n_out,
@@ -104,45 +91,99 @@ class CausalPFN2DHead(nn.Module):
             nbins=self.nbins_2d,
         )
 
-        # Learned null token that fills the T-column at query positions.
-        # Init near zero so at step 0 it looks like T=0 (in the raw
-        # {0,1} T-value scale); backprop is free to move it.
+        # Learned null token filling the T-column at query positions. Init near
+        # zero (below the {0,1} training T-values); backprop is free to move it.
         self.null_t_intv = nn.Parameter(torch.zeros(1, 1, 1))
         nn.init.normal_(self.null_t_intv, std=0.02)
 
         print(
             f'[CausalPFN2DHead] backbone.head out_features = '
-            f'{n_out + self.nbins_2d}   (using last {self.nbins_2d} as 2D-head logits, J={J})'
+            f'{n_out + self.nbins_2d}  (using last {self.nbins_2d} as 2D-head logits, J={J})'
         )
+
+    def _forward_logits(
+        self,
+        X_context: torch.Tensor,   # (B, N_ctx, F)
+        t_context: torch.Tensor,   # (B, N_ctx)     in {0,1}
+        y_context: torch.Tensor,   # (B, N_ctx)     standardised outside
+        X_query:   torch.Tensor,   # (B, N_q,   F)
+    ) -> torch.Tensor:
+        """Returns joint-head logits at query positions, shape (B, N_q, nbins_2d)."""
+        B, N_ctx, F = X_context.shape
+        N_q = X_query.shape[1]
+        assert F == self.num_features, (
+            f'X_context has {F} features, model constructed for {self.num_features}'
+        )
+
+        if t_context.dim() == 3:
+            t_context = t_context.squeeze(-1)
+        t_ctx = t_context.unsqueeze(-1).float()                # (B, N_ctx, 1)
+        t_null = self.null_t_intv.expand(B, N_q, 1).to(X_query.dtype)  # (B, N_q, 1)
+
+        xt_ctx = torch.cat([t_ctx,  X_context], dim=-1)        # (B, N_ctx, F+1)
+        xt_q   = torch.cat([t_null, X_query],   dim=-1)        # (B, N_q,   F+1)
+        x_all  = torch.cat([xt_ctx, xt_q], dim=1)              # (B, N_ctx+N_q, F+1)
+
+        # Backbone expects (S, B, F+1); y_src is context-only (N_ctx, B).
+        x_src = x_all.transpose(0, 1).contiguous()             # (N_ctx+N_q, B, F+1)
+        y_src = y_context.transpose(0, 1).contiguous()         # (N_ctx,      B)
+
+        pred = self.backbone(x_src, y_src)                     # (N_q, B, n_out + nbins_2d)
+        pred = pred.transpose(0, 1).contiguous()               # (B, N_q, n_out + nbins_2d)
+        return pred[..., -self.nbins_2d:]                      # (B, N_q, nbins_2d)
+
+    @staticmethod
+    def _pooled_y_stats(y_context: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-task (mean, std) of the pooled y_context across both arms.
+
+        Pooling both treated and control units (as opposed to CausalPFN's
+        per-arm shift/scale) puts E_y0 and E_y1 on the SAME scale, which is
+        what our joint head requires: CATE only makes sense when the two
+        marginals live in a common outcome space.
+        """
+        mean = y_context.mean(dim=1, keepdim=True)             # (B, 1)
+        std  = y_context.std(dim=1, keepdim=True).clamp(min=1e-6)  # (B, 1)
+        return mean, std
 
     def forward(
         self,
-        X_obs: torch.Tensor,   # (B, N, F)
-        T_obs: torch.Tensor,   # (B, N, 1) or (B, N)  in {0,1}
-        Y_obs: torch.Tensor,   # (B, N)     scaled to [-1, 1]
-        X_intv: torch.Tensor,  # (B, M, F)
+        X_context: torch.Tensor,   # (B, N_ctx, F)
+        t_context: torch.Tensor,   # (B, N_ctx)
+        y_context: torch.Tensor,   # (B, N_ctx)  raw (unstandardised)
+        X_query:   torch.Tensor,   # (B, N_q,   F)
+        E_y0_query: torch.Tensor,  # (B, N_q)
+        E_y1_query: torch.Tensor,  # (B, N_q)
+        edges: torch.Tensor,       # (J+1,)  fitted once by the trainer
     ) -> torch.Tensor:
-        """Returns joint-head logits (B, M, J**2 + 9 + 4) at every query."""
-        B, N, F = X_obs.shape
-        M       = X_intv.shape[1]
-        assert F == self.num_features, (
-            f'X_obs has {F} features, model constructed for {self.num_features}'
-        )
+        """Returns per-task loss vector (B,) — trainer applies valid_mask + mean."""
+        # Per-task pooled standardisation.
+        y_mean, y_std = self._pooled_y_stats(y_context)
+        y_context_std = (y_context - y_mean) / y_std           # (B, N_ctx)
+        E_y0_std      = (E_y0_query - y_mean) / y_std          # (B, N_q)
+        E_y1_std      = (E_y1_query - y_mean) / y_std
 
-        if T_obs.dim() == 2:
-            T_obs = T_obs.unsqueeze(-1)          # (B, N, 1)
-        T_null = self.null_t_intv.expand(B, M, 1).to(X_intv.dtype)  # (B, M, 1)
+        logits = self._forward_logits(
+            X_context, t_context, y_context_std, X_query,
+        )                                                       # (B, N_q, nbins_2d)
 
-        # CausalPFN convention: T is the FIRST column of the joint (T | X) tensor.
-        xt_obs  = torch.cat([T_obs,  X_obs],  dim=-1)   # (B, N, F+1)
-        xt_intv = torch.cat([T_null, X_intv], dim=-1)   # (B, M, F+1)
-        x_all   = torch.cat([xt_obs, xt_intv], dim=1)   # (B, N+M, F+1)
-
-        # Backbone expects seq-first (S, B, F+1) and returns (M, B, n_out+nbins).
-        x_src = x_all.transpose(0, 1).contiguous()      # (N+M, B, F+1)
-        y_src = Y_obs.transpose(0, 1).contiguous()      # (N,    B)   context only
-
-        pred = self.backbone(x_src, y_src)              # (M, B, n_out + nbins_2d)
-        pred = pred.transpose(0, 1).contiguous()        # (B, M, n_out + nbins_2d)
-        logits = pred[..., -self.nbins_2d:]             # (B, M, nbins_2d)
-        return logits
+        # neg_log_prob_2d takes (B, M, nbins) + edges. It internally averages
+        # over M queries per task; returned as scalar. To get per-task
+        # losses, unroll one task at a time via per-task masking would be
+        # expensive — instead compute the raw per-(b, m) log-prob and reduce
+        # over M only. We call the helper with a fake batch dim by unfolding.
+        #
+        # Simpler: neg_log_prob_2d returns .mean() over its input; call it
+        # per task in a loop only if the trainer needs per-task losses
+        # (which it does, for valid_mask). Batched call gives the SUM/N
+        # average, not per-task. So we loop.
+        B = logits.shape[0]
+        losses = logits.new_zeros((B,))
+        for b in range(B):
+            losses[b] = neg_log_prob_2d(
+                logits[b:b+1].float(),
+                E_y0_std[b:b+1],
+                E_y1_std[b:b+1],
+                self.J,
+                edges,
+            )
+        return losses
