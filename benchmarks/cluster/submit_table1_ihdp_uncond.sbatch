@@ -46,7 +46,12 @@ export CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$UWYK_REPRO/RealCauseEval/CausalPFN}"
 # unconditional/best_model.pt) but the actual weight file may not be pulled
 # on the cluster yet.
 CKPT="$UWYK_REPRO/experiments/checkpoints/no_graph_conditioning/unconditional/best_model.pt"
-CFG="$UWYK_REPRO/experiments/checkpoints/no_graph_conditioning/unconditional/best_model_config.yaml"
+# CFG defaults to the shipped config, but the shipped one has
+# test_feature_mask_fraction: 1.0 which zeros out ALL X_intv features at
+# inference — making the model predict near-zero CATE (eps_ATE ≈ 1.0).
+# Override with PATCHED_CFG (a copy of the config with the mask set to
+# 0.0) to get meaningful predictions.
+CFG="${PATCHED_CFG:-$UWYK_REPRO/experiments/checkpoints/no_graph_conditioning/unconditional/best_model_config.yaml}"
 if [ ! -f "$CKPT" ] || [ "$(wc -c < "$CKPT" 2>/dev/null || echo 0)" -lt 1000 ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Fetching LFS weight for no_graph_conditioning/unconditional/…"
     (cd "$UWYK_REPRO" && git lfs pull --include="experiments/checkpoints/no_graph_conditioning/**/*.pt")
