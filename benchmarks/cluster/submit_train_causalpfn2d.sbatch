@@ -93,6 +93,10 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export PYTHONUNBUFFERED=1
+# Shims for faiss / huggingface_hub / ... that causalpfn/__init__.py
+# tries to import unconditionally. Must be on PYTHONPATH BEFORE python
+# starts so sitecustomize.py auto-loads.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 # Forward SIGTERM to python so the trainer's interrupt-checkpoint handler
 # fires, then requeue for the next 20h window.
