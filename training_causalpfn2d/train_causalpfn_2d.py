@@ -15,6 +15,7 @@ import faulthandler
 faulthandler.enable()
 
 import contextlib
+import datetime
 import glob
 import math
 import os
@@ -23,6 +24,7 @@ import sys
 import time
 
 import torch
+import torch.distributed as dist
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
@@ -235,8 +237,39 @@ def _valid_mask(t_full, split_pos, overlap_thr):
 
 
 def main():
-    print_config()
-    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    # ── OPTIONAL: DDP init (torchrun sets LOCAL_RANK/RANK/WORLD_SIZE) ─────
+    # Follows CausalPFN's own src/causalpfn/training/distributed.py pattern
+    # verbatim. When these env vars aren't set (plain `python -m ...`), we
+    # fall through to single-GPU as before — no behaviour change.
+    global DEVICE
+    using_dist = 'LOCAL_RANK' in os.environ and 'WORLD_SIZE' in os.environ
+    if using_dist:
+        local_rank = int(os.environ['LOCAL_RANK'])
+        rank = int(os.environ['RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        torch.cuda.set_device(local_rank)
+        DEVICE = torch.device(f'cuda:{local_rank}')
+        dist.init_process_group(
+            backend='nccl',
+            init_method='env://',
+            timeout=datetime.timedelta(seconds=1800),   # 30 min for NCCL init
+            world_size=world_size, rank=rank,
+        )
+        dist.barrier(device_ids=[local_rank])
+    else:
+        local_rank = 0
+        rank = 0
+        world_size = 1
+    is_main = (rank == 0)
+
+    def _log(msg):
+        if is_main: print(msg, flush=True)
+
+    if is_main:
+        print_config()
+        if using_dist:
+            print(f'[dist] using DDP: rank {rank}/{world_size}  device {DEVICE}', flush=True)
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
     # ── H100 perf knobs. All are free wins on any modern GPU ─────────────
     # TF32 on matmul: ~2x on H100 for fp32 matmuls (bf16 autocast skips
@@ -288,7 +321,8 @@ def main():
         ninp=NINP, nhid=NHID, nhead=NHEAD, nlayers=NLAYERS,
         dropout=DROPOUT, n_out=N_OUT,
     ).to(DEVICE)
-    print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
+    if is_main:
+        print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
 
     # ── OPTIONAL: warm-start the backbone from CausalPFN's pretrained TabDPT ──
     # CausalPFN's REPRODUCE.md explicitly says: "We specifically warm-start the
@@ -415,6 +449,15 @@ def main():
     # compile just that. Loss stays eager, no compile-hostile patterns
     # in the compiled subgraph.
     #
+    # Wrap model with DDP after warmstart so state_dict loading works cleanly
+    # (DDP-wrapped state_dict has `.module.` prefix which would complicate the
+    # shape-filter code above).
+    if using_dist:
+        from torch.nn.parallel import DistributedDataParallel as DDP
+        model = DDP(model, device_ids=[local_rank], output_device=local_rank,
+                    find_unused_parameters=False)
+        _log(f'[dist] model wrapped in DDP  device_ids={[local_rank]}')
+
     # COMPILE_MODE: 'backbone' (default) | 'full' | 'off'
     compile_mode = os.environ.get('COMPILE_MODE', 'backbone' if os.environ.get('COMPILE', '1') == '1' else 'off')
     if compile_mode != 'off' and DEVICE.type == 'cuda':
@@ -422,34 +465,44 @@ def main():
             import torch._dynamo as _dynamo
             _dynamo.config.suppress_errors = True
             if compile_mode == 'backbone':
-                # Wrap only the transformer. Same shared parameters, so
-                # the optimizer still sees the raw params.
+                # Reach through DDP.module -> CausalPFN2DHead -> backbone.
                 inner = model.module if hasattr(model, 'module') else model
                 inner.backbone = torch.compile(inner.backbone, dynamic=True)
-                print('[compile] torch.compile(model.backbone, dynamic=True) enabled '
-                      '(compile_mode=backbone — loss stays eager)')
+                _log('[compile] torch.compile(model.backbone, dynamic=True) enabled '
+                     '(compile_mode=backbone — loss stays eager)')
             elif compile_mode == 'full':
                 model = torch.compile(model, dynamic=True)
-                print('[compile] torch.compile(model, dynamic=True) enabled '
-                      '(compile_mode=full — may hit Inductor tiling bug in loss)')
+                _log('[compile] torch.compile(model, dynamic=True) enabled '
+                     '(compile_mode=full — may hit Inductor tiling bug in loss)')
         except Exception as e:
-            print(f'[compile] torch.compile failed ({e}); running eager')
+            _log(f'[compile] torch.compile failed ({e}); running eager')
     else:
-        print(f'[compile] disabled (compile_mode={compile_mode})')
+        _log(f'[compile] disabled (compile_mode={compile_mode})')
 
-    opt = build_optimizer(model.parameters())
+    # For the optimizer: pass the unwrapped model's params. DDP wraps
+    # `model` but `model.parameters()` still returns the underlying params,
+    # so this works either way. `.module` unwrap keeps things clearer for
+    # future readers.
+    _params_owner = model.module if using_dist and hasattr(model, 'module') else model
+    opt = build_optimizer(_params_owner.parameters())
     sched = None                       # schedulefree handles its own LR
 
     start = 0
     if RESUME:
         cp = latest_checkpoint(CHECKPOINT_DIR)
         if cp:
-            print(f'Resuming from {cp}')
+            _log(f'Resuming from {cp}')
             ck = torch.load(cp, map_location=DEVICE, weights_only=False)
-            model.load_state_dict(ck['model_state_dict'])
+            # Checkpoints are saved as the UNWRAPPED model state (see
+            # save_checkpoint below), so load into the unwrapped model
+            # regardless of DDP-wrapping.
+            _load_target = model.module if using_dist and hasattr(model, 'module') else model
+            _load_target.load_state_dict(ck['model_state_dict'])
             opt.load_state_dict(ck['optimizer_state'])
             edges = ck['edges'].to(DEVICE)
             start = ck['step']
+            if using_dist:
+                dist.barrier(device_ids=[local_rank])
 
     # schedulefree's AdamWScheduleFree needs .train() before training loops
     # and .eval() before checkpoint saves / eval. Guard both.
@@ -459,8 +512,9 @@ def main():
     use_amp = USE_BF16 and DEVICE.type == 'cuda'
     ac = (lambda: torch.autocast('cuda', dtype=torch.bfloat16)) if use_amp else (lambda: contextlib.nullcontext())
 
-    print(f'\n{"step":>7}  {"loss":>10}  {"lr":>10}  {"wall":>8}')
-    print('─' * 42)
+    if is_main:
+        print(f'\n{"step":>7}  {"loss":>10}  {"lr":>10}  {"wall":>8}')
+        print('─' * 42)
     model.train()
     t0 = time.time()
 
@@ -515,32 +569,54 @@ def main():
             _cuda_sync()
             opt_dt = time.time() - t_opt
             total = prof['data'] + prof['fwd'] + prof['bwd'] + opt_dt
-            print(f'[profile step={step}]  data={prof["data"]:.2f}s  '
-                  f'fwd={prof["fwd"]:.2f}s  bwd={prof["bwd"]:.2f}s  '
-                  f'opt={opt_dt:.2f}s  total={total:.2f}s  '
-                  f'(per microbatch: fwd={prof["fwd"]/GRAD_ACCUM*1000:.0f}ms  '
-                  f'bwd={prof["bwd"]/GRAD_ACCUM*1000:.0f}ms)', flush=True)
+            if is_main:
+                print(f'[profile step={step}]  data={prof["data"]:.2f}s  '
+                      f'fwd={prof["fwd"]:.2f}s  bwd={prof["bwd"]:.2f}s  '
+                      f'opt={opt_dt:.2f}s  total={total:.2f}s  '
+                      f'(per microbatch: fwd={prof["fwd"]/GRAD_ACCUM*1000:.0f}ms  '
+                      f'bwd={prof["bwd"]/GRAD_ACCUM*1000:.0f}ms)', flush=True)
 
         if step % LOG_EVERY == 0 or step == 1:
-            avg_loss = (accum_loss_t / GRAD_ACCUM).item()
-            print(f'{step:>7}  {avg_loss:>10.4f}  '
-                  f'{opt.param_groups[0]["lr"]:>10.2e}  {time.time()-t0:>7.1f}s', flush=True)
+            avg_loss_t = (accum_loss_t / GRAD_ACCUM)
+            # In DDP, average loss across ranks for the printed value.
+            if using_dist:
+                dist.all_reduce(avg_loss_t, op=dist.ReduceOp.SUM)
+                avg_loss_t = avg_loss_t / world_size
+            avg_loss = avg_loss_t.item()
+            if is_main:
+                print(f'{step:>7}  {avg_loss:>10.4f}  '
+                      f'{opt.param_groups[0]["lr"]:>10.2e}  {time.time()-t0:>7.1f}s', flush=True)
 
+        # Checkpointing: only rank 0 saves. All ranks read on resume.
         if step % CHECKPOINT_EVERY == 0:
-            if hasattr(opt, 'eval'): opt.eval()
-            save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}.pt'),
-                            step, model, opt, edges)
-            if hasattr(opt, 'train'): opt.train()
+            if is_main:
+                if hasattr(opt, 'eval'): opt.eval()
+                _save_model = model.module if using_dist and hasattr(model, 'module') else model
+                save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}.pt'),
+                                step, _save_model, opt, edges)
+                if hasattr(opt, 'train'): opt.train()
+            if using_dist:
+                dist.barrier(device_ids=[local_rank])
 
         if interrupted['flag']:
-            if hasattr(opt, 'eval'): opt.eval()
-            save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt'),
-                            step, model, opt, edges)
+            if is_main:
+                if hasattr(opt, 'eval'): opt.eval()
+                _save_model = model.module if using_dist and hasattr(model, 'module') else model
+                save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt'),
+                                step, _save_model, opt, edges)
+            if using_dist:
+                dist.barrier(device_ids=[local_rank])
+                dist.destroy_process_group()
             sys.exit(0)
 
-    if hasattr(opt, 'eval'): opt.eval()
-    save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt'),
-                    N_STEPS, model, opt, edges)
+    if is_main:
+        if hasattr(opt, 'eval'): opt.eval()
+        _save_model = model.module if using_dist and hasattr(model, 'module') else model
+        save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt'),
+                        N_STEPS, _save_model, opt, edges)
+    if using_dist:
+        dist.barrier(device_ids=[local_rank])
+        dist.destroy_process_group()
 
 
 if __name__ == '__main__':
