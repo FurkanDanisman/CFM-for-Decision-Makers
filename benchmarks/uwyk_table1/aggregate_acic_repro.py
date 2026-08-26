@@ -53,8 +53,10 @@ def main():
              f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_noanc_{job_id}/*ACIC*'),
             ('UWYK Anc',
              f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_anc_{job_id}/*ACIC*'),
-            ('ours fn=50',
-             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_{job_id}/*ACIC*'),
+            ('ours fn=50 (null-t)',
+             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_nullt_{job_id}/*ACIC*'),
+            ('ours fn=50 (pred-mirror)',
+             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_predstyle_{job_id}/*ACIC*'),
         ]
     else:
         def _latest(prefix, root):
@@ -67,14 +69,16 @@ def main():
                                          f'{UWYK_REPRO}/RealCauseEval/results')),
             ('UWYK Anc',        _latest('table1_repro_anc_',
                                          f'{UWYK_REPRO}/RealCauseEval/results')),
-            ('ours fn=50',      _latest('table1_repro_ours_fn50_', TABLE1_OUT_ROOT)),
+            ('ours fn=50 (null-t)',      _latest('table1_repro_ours_fn50_nullt_', TABLE1_OUT_ROOT)),
+            ('ours fn=50 (pred-mirror)', _latest('table1_repro_ours_fn50_predstyle_', TABLE1_OUT_ROOT)),
         ]
 
     paper = {
-        'UWYK Predictive':  ('3.14 ± 0.47', '0.38 ± 0.06'),
-        'UWYK No-Anc':      ('3.47 ± 0.47', '0.46 ± 0.09'),
-        'UWYK Anc':         ('2.79 ± 0.45', '0.17 ± 0.08'),
-        'ours fn=50':       ('n/a',         'n/a'),
+        'UWYK Predictive':          ('3.14 ± 0.47', '0.38 ± 0.06'),
+        'UWYK No-Anc':              ('3.47 ± 0.47', '0.46 ± 0.09'),
+        'UWYK Anc':                 ('2.79 ± 0.45', '0.17 ± 0.08'),
+        'ours fn=50 (null-t)':      ('n/a',         'n/a'),
+        'ours fn=50 (pred-mirror)': ('n/a',         'n/a'),
     }
 
     print(f'\n══ ACIC Table 1 reproduction (their scripts, their branch) ══')
