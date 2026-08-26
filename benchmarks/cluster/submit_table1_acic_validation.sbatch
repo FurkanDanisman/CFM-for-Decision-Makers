@@ -6,13 +6,14 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --array=0-2
+#SBATCH --array=0-3
 
 # Table-1 ACIC validation:
 #
-#   task 0 : UWYK  no-anc   -- dofm_no_clustering, adjacency all-zero
-#   task 1 : UWYK  anc      -- dofm_no_clustering, full graph
-#   task 2 : ours  fn=50    -- ours_fn50_no_clustering.py
+#   task 0 : UWYK  predictive -- predmodel_Slearner_full_context.py
+#   task 1 : UWYK  no-anc     -- dofm_no_clustering, adjacency all-zero
+#   task 2 : UWYK  anc        -- dofm_no_clustering, full graph
+#   task 3 : ours  fn=50      -- ours_fn50_no_clustering.py
 #
 # All three tasks use the SAME inference protocol:
 #   - single forward pass over the full training context (no clustering)
@@ -58,19 +59,24 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] task=$SLURM_ARRAY_TASK_ID"
 
 case "$SLURM_ARRAY_TASK_ID" in
     0)
+        echo "== UWYK predictive on ACIC =="
+        bash "$REPO/benchmarks/uwyk_table1/run_uwyk_table1.sh" \
+            ACIC predictive "acic_valid_${SLURM_ARRAY_JOB_ID}"
+        ;;
+    1)
         echo "== UWYK no-anc on ACIC =="
         bash "$REPO/benchmarks/uwyk_table1/run_uwyk_table1.sh" \
             ACIC noanc "acic_valid_${SLURM_ARRAY_JOB_ID}"
         ;;
-    1)
+    2)
         echo "== UWYK anc on ACIC =="
         bash "$REPO/benchmarks/uwyk_table1/run_uwyk_table1.sh" \
             ACIC anc "acic_valid_${SLURM_ARRAY_JOB_ID}"
         ;;
-    2)
-        echo "== ours fn=50 on ACIC =="
+    3)
+        echo "== ours fn=50 on ACIC (predictive-mirror) =="
         [ -f "$OURS_CKPT" ] || { echo "FATAL: fn=50 ckpt not at $OURS_CKPT" >&2; exit 1; }
-        python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_no_clustering.py" \
+        python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_predictive_style.py" \
             --dataset ACIC --model ours_fn50 \
             --exp_name "table1_ours_fn50_acic_${SLURM_ARRAY_JOB_ID}"
         ;;
