@@ -92,8 +92,13 @@ export STREAM_WARMUP=4
 # leaves the loss eager — no compile-hostile patterns in the compiled
 # graph.  Set COMPILE_MODE=full to retry full compile, COMPILE_MODE=off
 # to disable.
-export COMPILE=1
-export COMPILE_MODE=backbone
+export COMPILE="${COMPILE:-1}"
+# Honor COMPILE_MODE passed via --export= if set; else default to backbone.
+# Options: 'backbone' (safe, compiles only the transformer body),
+#          'full' (compiles model + loss end-to-end — now safe after the
+#                  scatter/.item() rewrite of neg_log_prob_2d),
+#          'off' (no compile at all).
+export COMPILE_MODE="${COMPILE_MODE:-backbone}"
 
 # One-time diagnostic: profile per-microbatch fwd/bwd/data-load timings
 # for the first N steps so we can see where wall-clock actually goes.
