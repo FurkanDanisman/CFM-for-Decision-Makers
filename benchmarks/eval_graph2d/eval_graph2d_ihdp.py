@@ -36,6 +36,11 @@ sys.path.insert(0, REPO_SRC)
 sys.path.insert(0, UWYK)
 sys.path.insert(0, UWYK + '/src')
 sys.path.insert(0, CAUSALPFN)
+# CausalPFN's benchmarks/*.py transitively import `from causalpfn.synthetic
+# import ...`, so the causalpfn package (which lives at external/causalpfn/src/
+# causalpfn/) needs to be importable too. Without this line the eval crashes
+# at "ModuleNotFoundError: No module named 'causalpfn'" (job 5035359).
+sys.path.insert(0, CAUSALPFN + '/src')
 
 from benchmarks import IHDPDataset  # noqa: E402
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
