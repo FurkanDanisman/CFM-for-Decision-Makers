@@ -102,33 +102,78 @@ def main():
     # Env vars supported so different jobs' pkls can be merged into one table:
     #   JOB_ID              - covers all methods on all datasets
     #   JOB_ID_MAIN         - overrides JOB_ID for {predictive, noanc, anc, fn50}
-    #   JOB_ID_PREDSTYLE    - overrides JOB_ID for {fn50p} (the addendum)
-    #   JOB_ID_ACIC         - overrides all above for the ACIC dataset only
-    #                         (ACIC was reproduced in its own job before the
-    #                         all-datasets rerun). Falls back to newest-match
-    #                         on disk if unset.
-    job_id      = os.environ.get('JOB_ID')
-    job_id_main = os.environ.get('JOB_ID_MAIN', job_id)
-    job_id_pred = os.environ.get('JOB_ID_PREDSTYLE', job_id)
-    job_id_acic = os.environ.get('JOB_ID_ACIC')
+    #                         on IHDP/CPS/PSID_unbal/PSID_bal
+    #   JOB_ID_PREDSTYLE    - overrides JOB_ID for {fn50p} on the same
+    #
+    # ACIC was reproduced separately (submit_table1_acic_repro.sbatch) and
+    # uses a completely different exp_name convention (table1_repro_*
+    # instead of table1_all_ACIC_*), plus a different fn50 output root
+    # (results_table1_ours_fn50/ instead of results_table1_all/). Three
+    # separate jobs produced the ACIC table, so we need three env vars:
+    #   JOB_ID_ACIC_UWYK    - UWYK rows (predictive/noanc/anc)
+    #                         → external/uwyk_reproduce/RealCauseEval/results/
+    #                           table1_repro_{method}_<JOB>/
+    #   JOB_ID_ACIC_FN50    - ours fn=50 (null-t) row
+    #                         → results_table1_ours_fn50/
+    #                           table1_repro_ours_fn50_nullt_<JOB>/
+    #   JOB_ID_ACIC_FN50P   - ours fn=50 (pred-mirror) row
+    #                         → results_table1_ours_fn50/
+    #                           table1_repro_ours_fn50_predstyle_<JOB>/
+    job_id       = os.environ.get('JOB_ID')
+    job_id_main  = os.environ.get('JOB_ID_MAIN', job_id)
+    job_id_pred  = os.environ.get('JOB_ID_PREDSTYLE', job_id)
+    job_id_acic_uwyk  = os.environ.get('JOB_ID_ACIC_UWYK')
+    job_id_acic_fn50  = os.environ.get('JOB_ID_ACIC_FN50')
+    job_id_acic_fn50p = os.environ.get('JOB_ID_ACIC_FN50P')
+
+    ACIC_FN50_ROOT = os.environ.get(
+        'ACIC_FN50_ROOT',
+        '/scratch/furkanbd/rpfn_bench_kit/results_table1_ours_fn50')
     UWYK_REPRO = os.environ.get(
         'UWYK_REPRO', '/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce')
     OURS_ROOT = os.environ.get(
         'TABLE1_OUT_ROOT', '/scratch/furkanbd/rpfn_bench_kit/results_table1_all')
 
     def pattern(ds_log, method):
+        # ACIC uses the original acic_repro naming convention, not the
+        # all-datasets naming. Different exp_name prefix ("table1_repro_"
+        # instead of "table1_all_ACIC_") and the fn50 rows live in
+        # results_table1_ours_fn50/ rather than results_table1_all/.
+        if ds_log == 'ACIC':
+            if method == 'predictive':
+                root = f'{UWYK_REPRO}/RealCauseEval/results'
+                stem = 'table1_repro_predictive'
+                this_job = job_id_acic_uwyk
+            elif method == 'noanc':
+                root = f'{UWYK_REPRO}/RealCauseEval/results'
+                stem = 'table1_repro_noanc'
+                this_job = job_id_acic_uwyk
+            elif method == 'anc':
+                root = f'{UWYK_REPRO}/RealCauseEval/results'
+                stem = 'table1_repro_anc'
+                this_job = job_id_acic_uwyk
+            elif method == 'fn50':
+                root = ACIC_FN50_ROOT
+                stem = 'table1_repro_ours_fn50_nullt'
+                this_job = job_id_acic_fn50
+            elif method == 'fn50p':
+                root = ACIC_FN50_ROOT
+                stem = 'table1_repro_ours_fn50_predstyle'
+                this_job = job_id_acic_fn50p
+            else:
+                return f'/NOT_FOUND/*'
+            if this_job is not None:
+                return f'{root}/{stem}_{this_job}/*'
+            cands = sorted(glob.glob(f'{root}/{stem}_*'), key=os.path.getmtime)
+            return f'{cands[-1]}/*' if cands else f'{root}/{stem}_NOT_FOUND/*'
+
+        # Non-ACIC: standard all-datasets naming.
         # each task's exp_name is table1_all_<DATASET_LOG>_<METHOD>_<JOB>
         if method in ('fn50', 'fn50p'):
             root = OURS_ROOT
         else:
             root = f'{UWYK_REPRO}/RealCauseEval/results'
-        # ACIC has its own job override (was reproduced separately).
-        if ds_log == 'ACIC' and job_id_acic is not None:
-            this_job = job_id_acic
-        elif method == 'fn50p':
-            this_job = job_id_pred
-        else:
-            this_job = job_id_main
+        this_job = job_id_pred if method == 'fn50p' else job_id_main
         if this_job is not None:
             return f'{root}/table1_all_{ds_log}_{method}_{this_job}/*'
         # newest-match fallback
