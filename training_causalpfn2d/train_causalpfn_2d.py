@@ -41,44 +41,43 @@ from losses.BarDistribution2D import fit_edges_2d, total_params  # noqa: E402
 
 # ── CONFIG (env-overridable) ──────────────────────────────────────────────────
 
-# Grid / output. J=25 matches CausalPFN's default nbins=500 in param budget
-# (25^2 + 13 = 638 vs 500).
-J             = int(os.environ.get('J', 25))
+# Grid / output. K=32 matches CausalPFN's default nbins=1024 in parameter
+# budget (32^2 + 13 = 1037 ≈ 1024).
+J             = int(os.environ.get('J', 32))
 OUTPUT_DIM    = total_params(J)
 NUM_FEATURES  = int(os.environ.get('NUM_FEATURES', 100))
 
-# Backbone
-NINP          = int(os.environ.get('NINP', 256))
-NHID_FACTOR   = int(os.environ.get('NHID_FACTOR', 4))
-NHID          = NINP * NHID_FACTOR
-NHEAD         = int(os.environ.get('NHEAD', 8))
-NLAYERS       = int(os.environ.get('NLAYERS', 8))
+# Backbone -- matches conf/model/tabdpt_long_context.yaml exactly.
+NINP          = int(os.environ.get('NINP', 384))
+NHID          = int(os.environ.get('NHID', 768))
+NHEAD         = int(os.environ.get('NHEAD', 6))
+NLAYERS       = int(os.environ.get('NLAYERS', 20))
 DROPOUT       = float(os.environ.get('DROPOUT', 0.0))
 N_OUT         = int(os.environ.get('N_OUT', 10))
 
-# Optimizer
-LR            = float(os.environ.get('LR', 1e-4))
-WEIGHT_DECAY  = float(os.environ.get('WEIGHT_DECAY', 1e-5))
-WARMUP_FRAC   = float(os.environ.get('WARMUP_FRAC', 0.1))
-MIN_LR_RATIO  = float(os.environ.get('MIN_LR_RATIO', 0.1))
+# Optimizer -- matches conf/optimizer/schedulefree_adamw.yaml.
+LR            = float(os.environ.get('LR', 5e-4))
+WEIGHT_DECAY  = float(os.environ.get('WEIGHT_DECAY', 0.05))
+WARMUP_STEPS  = int(os.environ.get('WARMUP_STEPS', 1000))   # absolute, not fraction
+BETA1         = float(os.environ.get('BETA1', 0.98))
+BETA2         = float(os.environ.get('BETA2', 0.999))
 GRAD_CLIP     = float(os.environ.get('GRAD_CLIP', 1.0))
 
-# Training length + batching. Default matches graph2d/fn=50 (50k steps).
-N_STEPS       = int(os.environ.get('N_STEPS', 50000))
-MICROBATCH    = int(os.environ.get('MICROBATCH', 2))
-GRAD_ACCUM    = int(os.environ.get('GRAD_ACCUM', 16))
+# Training length + batching. Matches CausalPFN's max_epochs=2048 x
+# num_model_updates=128 = 262 144 optimizer steps, with effective batch
+# size batch_size x num_agg = 32 x 8 = 256.
+N_STEPS       = int(os.environ.get('N_STEPS', 262144))
+MICROBATCH    = int(os.environ.get('MICROBATCH', 32))
+GRAD_ACCUM    = int(os.environ.get('GRAD_ACCUM', 8))
 
-# CausalPFN train-step config
-MIN_TRAIN_SPLIT   = float(os.environ.get('MIN_TRAIN_SPLIT', 0.3))
-MAX_TRAIN_SPLIT   = float(os.environ.get('MAX_TRAIN_SPLIT', 0.9))
-OVERLAP_THRESHOLD = float(os.environ.get('OVERLAP_THRESHOLD', 0.05))
+# CausalPFN train-step config -- matches conf/trainer/default.yaml.
+MIN_TRAIN_SPLIT   = float(os.environ.get('MIN_TRAIN_SPLIT', 0.333))
+MAX_TRAIN_SPLIT   = float(os.environ.get('MAX_TRAIN_SPLIT', 0.666))
+OVERLAP_THRESHOLD = float(os.environ.get('OVERLAP_THRESHOLD', 0.01))
 
-# CausalPFN meta-dataset config (BackdoorDGPMetaDataset defaults are set
-# via its hydra config; we pass a minimum set here and let the class
-# fill any remaining defaults). Override individual knobs with env vars
-# if you need to.
-N_SAMPLES_PER_TASK = int(os.environ.get('N_SAMPLES_PER_TASK', 1024))
-MAX_N_COVARIATES   = int(os.environ.get('MAX_N_COVARIATES', 50))
+# CausalPFN meta-dataset config -- matches conf/meta_dataset/synthetic_backdoor.yaml.
+N_SAMPLES_PER_TASK = int(os.environ.get('N_SAMPLES_PER_TASK', 2048))
+MAX_N_COVARIATES   = int(os.environ.get('MAX_N_COVARIATES', 98))
 
 USE_BF16          = os.environ.get('USE_BF16', '1') == '1'
 
@@ -112,8 +111,8 @@ def print_config():
     print(f'J:             {J}  (output_dim = {OUTPUT_DIM})')
     print(f'Backbone:      TabDPTLongContext  ninp={NINP}  nhid={NHID}  '
           f'nlayers={NLAYERS}  nhead={NHEAD}')
-    print(f'Optimizer:     Adam(lr={LR:.0e}, wd={WEIGHT_DECAY:.0e})  grad_clip={GRAD_CLIP}')
-    print(f'Schedule:      cosine  warmup_frac={WARMUP_FRAC}  min_lr_ratio={MIN_LR_RATIO}')
+    print(f'Optimizer:     AdamWScheduleFree(lr={LR:.2e}, wd={WEIGHT_DECAY:.2e}, '
+          f'betas=({BETA1}, {BETA2}), warmup_steps={WARMUP_STEPS})  grad_clip={GRAD_CLIP}')
     print(f'Training:      steps={N_STEPS}  microbatch={MICROBATCH}  grad_accum={GRAD_ACCUM}')
     print(f'                effective_batch = {MICROBATCH * GRAD_ACCUM}')
     print(f'Data:          BackdoorDGPMetaDataset  n_samples={N_SAMPLES_PER_TASK}  '
@@ -126,27 +125,29 @@ def print_config():
     print('─' * 72)
 
 
-def make_scheduler(optimizer, n_steps, warmup_frac, min_lr_ratio):
-    warmup_steps = max(1, int(warmup_frac * n_steps))
-    decay_steps  = max(1, n_steps - warmup_steps)
+def build_optimizer(params):
+    """CausalPFN's optimizer: schedulefree.AdamWScheduleFree with an
+    absolute warmup. Fall back to plain AdamW if the package isn't
+    installed (so smoke tests still pass on machines without it)."""
+    try:
+        from schedulefree import AdamWScheduleFree
+    except ImportError:
+        print('[optimizer] schedulefree not installed; falling back to torch.AdamW')
+        return torch.optim.AdamW(
+            params, lr=LR, betas=(BETA1, BETA2), weight_decay=WEIGHT_DECAY,
+        )
+    return AdamWScheduleFree(
+        params, lr=LR, betas=(BETA1, BETA2), weight_decay=WEIGHT_DECAY,
+        warmup_steps=WARMUP_STEPS,
+    )
 
-    def lr_lambda(step):
-        if step < warmup_steps:
-            return step / warmup_steps
-        progress = (step - warmup_steps) / decay_steps
-        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
-        return min_lr_ratio + (1.0 - min_lr_ratio) * cosine
 
-    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
-
-def save_checkpoint(path, step, model, optimizer, scheduler, edges):
+def save_checkpoint(path, step, model, optimizer, edges):
     tmp = path + '.tmp'
     torch.save({
         'step':             step,
         'model_state_dict': model.state_dict(),
         'optimizer_state':  optimizer.state_dict(),
-        'scheduler_state':  scheduler.state_dict(),
         'edges':            edges.cpu(),
         'config': {
             'J': J, 'ninp': NINP, 'nhid': NHID, 'nlayers': NLAYERS, 'nhead': NHEAD,
@@ -251,8 +252,8 @@ def main():
     ).to(DEVICE)
     print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
 
-    opt = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    sched = make_scheduler(opt, N_STEPS, WARMUP_FRAC, MIN_LR_RATIO)
+    opt = build_optimizer(model.parameters())
+    sched = None                       # schedulefree handles its own LR
 
     start = 0
     if RESUME:
@@ -262,9 +263,13 @@ def main():
             ck = torch.load(cp, map_location=DEVICE, weights_only=False)
             model.load_state_dict(ck['model_state_dict'])
             opt.load_state_dict(ck['optimizer_state'])
-            sched.load_state_dict(ck['scheduler_state'])
             edges = ck['edges'].to(DEVICE)
             start = ck['step']
+
+    # schedulefree's AdamWScheduleFree needs .train() before training loops
+    # and .eval() before checkpoint saves / eval. Guard both.
+    if hasattr(opt, 'train'):
+        opt.train()
 
     use_amp = USE_BF16 and DEVICE.type == 'cuda'
     ac = (lambda: torch.autocast('cuda', dtype=torch.bfloat16)) if use_amp else (lambda: contextlib.nullcontext())
@@ -308,23 +313,27 @@ def main():
             accum_loss += loss.item()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-        opt.step(); sched.step()
+        opt.step()
 
         if step % LOG_EVERY == 0 or step == 1:
             print(f'{step:>7}  {accum_loss/GRAD_ACCUM:>10.4f}  '
-                  f'{sched.get_last_lr()[0]:>10.2e}  {time.time()-t0:>7.1f}s')
+                  f'{opt.param_groups[0]["lr"]:>10.2e}  {time.time()-t0:>7.1f}s')
 
         if step % CHECKPOINT_EVERY == 0:
+            if hasattr(opt, 'eval'): opt.eval()
             save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}.pt'),
-                            step, model, opt, sched, edges)
+                            step, model, opt, edges)
+            if hasattr(opt, 'train'): opt.train()
 
         if interrupted['flag']:
+            if hasattr(opt, 'eval'): opt.eval()
             save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt'),
-                            step, model, opt, sched, edges)
+                            step, model, opt, edges)
             sys.exit(0)
 
+    if hasattr(opt, 'eval'): opt.eval()
     save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt'),
-                    N_STEPS, model, opt, sched, edges)
+                    N_STEPS, model, opt, edges)
 
 
 if __name__ == '__main__':

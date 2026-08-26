@@ -39,32 +39,46 @@ export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"     # PairedInterv
 
 # LR-schedule horizon (see comment in submit_train_graph2d.sbatch about the
 # 1M mistake — never decouple this from the intended training length).
-export J=25                          # J**2 + 13 = 638 ≈ CausalPFN's nbins=500
-export NUM_FEATURES=100               # matches CausalPFN's default max_n_covariates budget
+# Every knob mirrors conf/{trainer,optimizer,meta_dataset,model}/*.yaml on
+# CausalPFN's codex/add-training-code branch. Only difference from their
+# published run: the head is our 2D joint (K**2 + 13 = 1037 ≈ their
+# nbins=1024) and the loss is neg_log_prob_2d instead of HL-Gauss CE.
+export J=32                          # K^2 + 13 = 1037 ≈ CausalPFN's nbins=1024
+export NUM_FEATURES=100
 
-export NINP=256
-export NHID_FACTOR=4
-export NHEAD=8
-export NLAYERS=8
+# Model: conf/model/tabdpt_long_context.yaml
+export NINP=384
+export NHID=768
+export NHEAD=6
+export NLAYERS=20
 export DROPOUT=0.0
 export N_OUT=10
 
-export LR=1e-4
-export WEIGHT_DECAY=1e-5
-export WARMUP_FRAC=0.1
-export MIN_LR_RATIO=0.1
+# Optimizer: conf/optimizer/schedulefree_adamw.yaml
+export LR=5e-4
+export WEIGHT_DECAY=0.05
+export WARMUP_STEPS=1000              # absolute steps, not fraction
+export BETA1=0.98
+export BETA2=0.999
 export GRAD_CLIP=1.0
 
-export N_STEPS=50000
-export MICROBATCH=2
-export GRAD_ACCUM=16
-export N_CONTEXT_TRAIN=1000
-export N_QUERY_TRAIN=250
+# Trainer: conf/trainer/default.yaml   (2048 epochs × 128 updates = 262144 steps;
+# effective batch = batch_size × num_agg = 32 × 8 = 256)
+export N_STEPS=262144
+export MICROBATCH=32
+export GRAD_ACCUM=8
+export MIN_TRAIN_SPLIT=0.333
+export MAX_TRAIN_SPLIT=0.666
+export OVERLAP_THRESHOLD=0.01
+
+# Meta-dataset: conf/meta_dataset/synthetic_backdoor.yaml
+export N_SAMPLES_PER_TASK=2048
+export MAX_N_COVARIATES=98
 
 export USE_BF16=1
 
+# CausalPFN uses num_workers=32; scale to our sbatch CPU allocation.
 export STREAM_WORKERS=8
-export STREAM_SEED=42
 export STREAM_WARMUP=4
 
 export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO/checkpoints_causalpfn2d}"
