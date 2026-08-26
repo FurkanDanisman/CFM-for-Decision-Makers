@@ -130,6 +130,7 @@ def neg_log_prob_2d(
     y1:    Tensor,
     J:     int,
     edges: Tensor,
+    reduce: str = 'mean',
 ) -> Tensor:
     """
     2D log-density loss (negative mean).
@@ -251,7 +252,13 @@ def neg_log_prob_2d(
 
     log_prob = all_lp.gather(-1, region_idx.unsqueeze(-1)).squeeze(-1)  # (B, M)
 
-    return -log_prob.mean()
+    if reduce == 'mean':
+        return -log_prob.mean()
+    if reduce == 'per_task':
+        return -log_prob.mean(dim=-1)   # (B,)
+    if reduce == 'none':
+        return -log_prob                # (B, M)
+    raise ValueError(f'reduce must be mean|per_task|none, got {reduce}')
 
 
 # ── Inference helpers ─────────────────────────────────────────────────────────

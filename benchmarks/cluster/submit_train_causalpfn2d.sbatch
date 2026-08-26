@@ -4,8 +4,12 @@
 #SBATCH --error=logs_causalpfn2d/train_%j.err
 #SBATCH --time=20:00:00
 #SBATCH --gres=gpu:h100:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+# Paper trainer uses num_workers=32; we match. BackdoorDGPMetaDataset does
+# CPU-bound SCM sampling per task, so an under-provisioned CPU quota
+# starves the GPU. Prior run at cpus=8 was ~4x slower than paper on data
+# loading alone.
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=128G
 #SBATCH --requeue
 #SBATCH --signal=B:SIGTERM@120
 
@@ -77,9 +81,11 @@ export MAX_N_COVARIATES=98
 
 export USE_BF16=1
 
-# CausalPFN uses num_workers=32; scale to our sbatch CPU allocation.
-export STREAM_WORKERS=8
+# Match CausalPFN's num_workers=32 exactly. Requires cpus-per-task=32
+# above; if you reduce the CPU quota, drop this in lockstep.
+export STREAM_WORKERS=32
 export STREAM_WARMUP=4
+export COMPILE=1                       # torch.compile(model, dynamic=True)
 
 export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO/checkpoints_causalpfn2d}"
 export CHECKPOINT_EVERY=2000

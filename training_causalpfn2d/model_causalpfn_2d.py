@@ -196,24 +196,12 @@ class CausalPFN2DHead(nn.Module):
             X_context, t_context, y_context_std, X_query,
         )                                                       # (B, N_q, nbins_2d)
 
-        # neg_log_prob_2d takes (B, M, nbins) + edges. It internally averages
-        # over M queries per task; returned as scalar. To get per-task
-        # losses, unroll one task at a time via per-task masking would be
-        # expensive — instead compute the raw per-(b, m) log-prob and reduce
-        # over M only. We call the helper with a fake batch dim by unfolding.
-        #
-        # Simpler: neg_log_prob_2d returns .mean() over its input; call it
-        # per task in a loop only if the trainer needs per-task losses
-        # (which it does, for valid_mask). Batched call gives the SUM/N
-        # average, not per-task. So we loop.
-        B = logits.shape[0]
-        losses = logits.new_zeros((B,))
-        for b in range(B):
-            losses[b] = neg_log_prob_2d(
-                logits[b:b+1].float(),
-                E_y0_std[b:b+1],
-                E_y1_std[b:b+1],
-                self.J,
-                edges,
-            )
-        return losses
+        # Single vectorised call over the full (B, N_q, nbins) tensor. The
+        # loss returns per-task NLL via reduce='per_task', so the trainer's
+        # valid_mask still gets a (B,) tensor to filter. Prior version
+        # looped in Python — 32 sequential CUDA launches per step, ~5-10x
+        # slower on H100.
+        return neg_log_prob_2d(
+            logits.float(), E_y0_std, E_y1_std, self.J, edges,
+            reduce='per_task',
+        )

@@ -271,6 +271,19 @@ def main():
     ).to(DEVICE)
     print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
 
+    # torch.compile matches the CausalPFN trainer (their conf/model/*.yaml
+    # sets compile: true and their trainer wraps model = torch.compile(model,
+    # dynamic=True)). On a 20-layer transformer at bf16 this fuses
+    # attention + MLP kernels and picks the Flash-Attention path where
+    # available — typically 2-3x per-step on H100. `dynamic=True` because
+    # our context/query split varies per batch.
+    if os.environ.get('COMPILE', '1') == '1' and DEVICE.type == 'cuda':
+        try:
+            model = torch.compile(model, dynamic=True)
+            print('[compile] torch.compile(model, dynamic=True) enabled')
+        except Exception as e:
+            print(f'[compile] torch.compile failed ({e}); running eager')
+
     opt = build_optimizer(model.parameters())
     sched = None                       # schedulefree handles its own LR
 

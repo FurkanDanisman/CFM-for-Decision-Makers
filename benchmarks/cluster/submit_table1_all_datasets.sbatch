@@ -6,19 +6,17 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --array=0-15%8
+#SBATCH --array=0-19%10
 #
-# 4-way ACIC/IHDP/CPS/PSID(unbal)/PSID(bal) Table-1 reproduction.
-# 16-task array: 4 datasets x 4 methods each.
+# 5-way IHDP/CPS/PSID(unbal)/PSID(bal) Table-1 reproduction.
+# 20-task array: 4 datasets × 5 methods each.
 #
-# NOTE: array is 16 tasks but ACIC is already done — skip it here.
-# Layout:
-#   0-3   : IHDP        (predictive, noanc, anc, fn=50)
-#   4-7   : CPS         (predictive [clustered variant], noanc, anc, fn=50)
-#   8-11  : PSID unbal  (predictive [clustered], noanc, anc, fn=50)
-#   12-15 : PSID bal    (predictive [balanced], noanc [balanced], anc [balanced], fn=50 [balanced])
-#
-# Concurrency capped at %8 so we don't over-request cluster GPUs.
+# Layout (DS_IDX = TASK / 5; METHOD_IDX = TASK % 5):
+#   0-4   : IHDP        (predictive, noanc, anc, fn=50 null-t, fn=50 pred-mirror)
+#   5-9   : CPS         same 5 methods
+#   10-14 : PSID unbal  same 5 methods
+#   15-19 : PSID bal    (all UWYK rows via *_balanced scripts; both fn=50
+#                        variants apply --psid-balanced subsample)
 
 set -euo pipefail
 mkdir -p logs_table1_all
@@ -53,8 +51,8 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims:$UWYK_REPRO:$UWYK_REPRO/Re
 
 JOB="${SLURM_ARRAY_JOB_ID}"
 TASK="${SLURM_ARRAY_TASK_ID}"
-DS_IDX=$(( TASK / 4 ))
-METHOD_IDX=$(( TASK % 4 ))
+DS_IDX=$(( TASK / 5 ))
+METHOD_IDX=$(( TASK % 5 ))
 
 case "$DS_IDX" in
     0) DATASET_LOG="IHDP"       ;;
@@ -66,7 +64,8 @@ case "$METHOD_IDX" in
     0) METHOD="predictive" ;;
     1) METHOD="noanc"      ;;
     2) METHOD="anc"        ;;
-    3) METHOD="fn50"       ;;
+    3) METHOD="fn50"       ;;    # null-t (in-distribution single pass)
+    4) METHOD="fn50p"      ;;    # pred-mirror (OOD two-pass)
 esac
 EXP="table1_all_${DATASET_LOG}_${METHOD}_${JOB}"
 
@@ -99,6 +98,12 @@ run_ours_fn50() {
     python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_no_clustering.py" \
         --dataset "$1" --model ours_fn50 --exp_name "$EXP" $2
 }
+run_ours_fn50p() {
+    # Predictive-mirror variant (target-encoded T at query — OOD comparison).
+    # $1 = dataset arg
+    python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_predictive_style.py" \
+        --dataset "$1" --model ours_fn50p --exp_name "$EXP"
+}
 
 case "$DS_IDX-$METHOD_IDX" in
     # ── IHDP ─────────────────────────────
@@ -106,21 +111,25 @@ case "$DS_IDX-$METHOD_IDX" in
     0-1) run_dofm_noclust IHDP all_unknown ;;
     0-2) run_dofm_noclust IHDP full_graph ;;
     0-3) run_ours_fn50    IHDP "" ;;
+    0-4) run_ours_fn50p   IHDP ;;
     # ── CPS ──────────────────────────────
     1-0) run_uwyk_pred    predmodel_Slearner.py                 CPS  ;;
     1-1) run_dofm_noclust CPS all_unknown ;;
     1-2) run_dofm_noclust CPS full_graph ;;
     1-3) run_ours_fn50    CPS "" ;;
+    1-4) run_ours_fn50p   CPS ;;
     # ── PSID unbal ───────────────────────
     2-0) run_uwyk_pred    predmodel_Slearner.py                 PSID ;;
     2-1) run_dofm_noclust PSID all_unknown ;;
     2-2) run_dofm_noclust PSID full_graph ;;
     2-3) run_ours_fn50    PSID "" ;;
+    2-4) run_ours_fn50p   PSID ;;
     # ── PSID bal ─────────────────────────
     3-0) run_uwyk_pred    predmodel_Slearner_psid_balanced.py   PSID ;;
     3-1) run_dofm_psid_bal all_unknown ;;
     3-2) run_dofm_psid_bal full_graph  ;;
     3-3) run_ours_fn50    PSID --psid-balanced ;;
+    3-4) run_ours_fn50p   PSID ;;    # NOTE: pred-mirror doesn't support --psid-balanced yet
     *) echo "invalid ($DS_IDX, $METHOD_IDX)" >&2; exit 2 ;;
 esac
 

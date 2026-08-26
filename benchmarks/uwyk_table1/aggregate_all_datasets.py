@@ -33,10 +33,11 @@ DATASETS = [
 ]
 
 METHODS = [
-    ('UWYK Predictive', 'predictive'),
-    ('UWYK No-Anc',     'noanc'),
-    ('UWYK Anc',        'anc'),
-    ('ours fn=50',      'fn50'),
+    ('UWYK Predictive',          'predictive'),
+    ('UWYK No-Anc',              'noanc'),
+    ('UWYK Anc',                 'anc'),
+    ('ours fn=50 (null-t)',      'fn50'),
+    ('ours fn=50 (pred-mirror)', 'fn50p'),
 ]
 
 # Paper Table 1 targets. PSID_bal numbers come from the reproduce branch's
