@@ -92,9 +92,14 @@ def _fmt_paper(v):
 
 
 def main():
-    job_id = os.environ.get('JOB_ID')
-    if job_id is None:
-        print('[warn] JOB_ID unset — using latest matching dir per method/dataset.', file=sys.stderr)
+    # Three env vars supported so an addendum pred-mirror job can be merged
+    # with the main all-datasets job's other four rows:
+    #   JOB_ID              - covers all methods
+    #   JOB_ID_MAIN         - overrides JOB_ID for {predictive, noanc, anc, fn50}
+    #   JOB_ID_PREDSTYLE    - overrides JOB_ID for {fn50p} (the addendum)
+    job_id      = os.environ.get('JOB_ID')
+    job_id_main = os.environ.get('JOB_ID_MAIN', job_id)
+    job_id_pred = os.environ.get('JOB_ID_PREDSTYLE', job_id)
     UWYK_REPRO = os.environ.get(
         'UWYK_REPRO', '/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce')
     OURS_ROOT = os.environ.get(
@@ -102,12 +107,13 @@ def main():
 
     def pattern(ds_log, method):
         # each task's exp_name is table1_all_<DATASET_LOG>_<METHOD>_<JOB>
-        if method == 'fn50':
+        if method in ('fn50', 'fn50p'):
             root = OURS_ROOT
         else:
             root = f'{UWYK_REPRO}/RealCauseEval/results'
-        if job_id is not None:
-            return f'{root}/table1_all_{ds_log}_{method}_{job_id}/*'
+        this_job = job_id_pred if method == 'fn50p' else job_id_main
+        if this_job is not None:
+            return f'{root}/table1_all_{ds_log}_{method}_{this_job}/*'
         # newest-match fallback
         cands = sorted(glob.glob(f'{root}/table1_all_{ds_log}_{method}_*'),
                         key=os.path.getmtime)
