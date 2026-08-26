@@ -325,8 +325,20 @@ def main():
                 ckpt_path = hf_hub_download(
                     repo_id=hf_repo, filename=hf_file, revision=hf_rev,
                 )
+                # Defensive: our shim for huggingface_hub returns a MagicMock,
+                # not a path. Reject non-string returns loudly instead of
+                # letting torch.load crash with a cryptic OSError.
+                if not isinstance(ckpt_path, str):
+                    raise RuntimeError(
+                        f'hf_hub_download returned a {type(ckpt_path).__name__} '
+                        f'({ckpt_path!r}), not a path — huggingface_hub is likely '
+                        f'shimmed on this env. Set WARMSTART_LOCAL to a locally-'
+                        f'downloaded copy of {hf_repo}/{hf_file} instead.'
+                    )
                 print(f'[warmstart] downloaded pretrained TabDPT ckpt from '
                       f'{hf_repo}/{hf_file}@{hf_rev[:8]}: {ckpt_path}')
+            if not os.path.isfile(ckpt_path):
+                raise RuntimeError(f'warmstart ckpt path does not exist: {ckpt_path}')
             sd = torch.load(ckpt_path, map_location='cpu', weights_only=False)
             if isinstance(sd, dict) and 'model_state_dict' in sd: sd = sd['model_state_dict']
             elif isinstance(sd, dict) and 'state_dict' in sd:    sd = sd['state_dict']
