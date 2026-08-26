@@ -137,7 +137,21 @@ def _cate_from_joint(model, X_train, T_train, Y_train_scaled, X_test, J):
     return (e_y1 - e_y0).squeeze(0).cpu().numpy()
 
 
-def evaluate_realization(model, cfg, dataset_cls, r: int):
+def _psid_balanced_subsample(X, T, Y, n_controls: int = 500, seed: int = 42):
+    """Mirror `dofm_psid_balanced.py`: keep every treated unit, subsample
+    up to n_controls control units. Returns (X, T, Y) shuffled."""
+    T_flat = T.flatten()
+    idx_t = np.where(T_flat == 1)[0]
+    idx_c = np.where(T_flat == 0)[0]
+    rng = np.random.default_rng(seed)
+    n_keep = min(n_controls, idx_c.size)
+    idx_c_keep = rng.choice(idx_c, size=n_keep, replace=False) if n_keep < idx_c.size else idx_c
+    keep = np.concatenate([idx_t, idx_c_keep])
+    rng.shuffle(keep)
+    return X[keep], T[keep], Y[keep]
+
+
+def evaluate_realization(model, cfg, dataset_cls, r: int, psid_balanced: bool = False):
     ds = dataset_cls()
     cate_ds = ds[r][0]
     X_tr_raw = cate_ds.X_train.astype(np.float32)
@@ -146,6 +160,9 @@ def evaluate_realization(model, cfg, dataset_cls, r: int):
     X_te_raw = cate_ds.X_test.astype(np.float32)
     true_cate = cate_ds.true_cate.astype(np.float32)
     true_ate  = float(true_cate.mean())
+
+    if psid_balanced:
+        X_tr_raw, T_tr, y_tr_raw = _psid_balanced_subsample(X_tr_raw, T_tr, y_tr_raw)
 
     F = cfg['num_features']
     J = cfg['J']
@@ -184,6 +201,9 @@ def main():
         'OURS_CKPT', '/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt'))
     ap.add_argument('--out',      default=os.environ.get(
         'TABLE1_OUT_ROOT', '/scratch/furkanbd/rpfn_bench_kit/results_table1_ours_fn50'))
+    ap.add_argument('--psid-balanced', action='store_true',
+                     help='Mirror dofm_psid_balanced.py subsampling: keep all T=1 '
+                          '+ 500 random T=0 per realization.')
     args = ap.parse_args()
 
     assert os.path.isfile(args.ckpt), f'checkpoint not found: {args.ckpt}'
@@ -204,7 +224,7 @@ def main():
         pehes, atrerrs = [], []
         t0 = time.time()
         for r in range(n_tables):
-            res = evaluate_realization(model, cfg, ds_cls, r)
+            res = evaluate_realization(model, cfg, ds_cls, r, psid_balanced=args.psid_balanced)
             pehes.append(res['pehe']); atrerrs.append(res['ate_rel_err'])
             with open(os.path.join(exp_dir, f'{args.model}_{ds_name}_{r}'), 'wb') as f:
                 pickle.dump(dict(model=args.model, dataset=ds_name, realization=r,
