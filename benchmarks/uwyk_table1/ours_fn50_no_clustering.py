@@ -142,14 +142,15 @@ def _cluster_and_average_cate(
     model, X_train, T_train, Y_train_scaled, X_test, J,
     max_n_train: int = 1000, random_state: int = 0,
 ):
-    """Mirror UWYK's cluster-and-average inference (SimplePFNSklearn's
-    hierarchical clustering path, simplified): partition X_train with
-    KMeans into k = ceil(n_train / max_n_train) clusters, run one forward
-    per cluster (each cluster's context stays within our model's trained
-    ~1000-row regime), average per-query CATE across clusters.
-
-    Used for CPS (n_train ≈ 14 559) where a single forward on the full
-    context is far out-of-distribution for our fn=50 checkpoint.
+    """KMeans-partition-and-average inference. Kept for reference / A-B
+    comparison. Empirically WORSE than _subsample_and_average_cate on CPS
+    (12727 vs single-pass 12688 — no gain) because KMeans forces each
+    cluster to have a narrow, homogeneous X range: per-cluster CATE(x_te)
+    is unreliable for test queries outside that cluster's X domain, and
+    averaging 15 mostly-unreliable local-expert predictions doesn't
+    approximate the true full-data CATE. Use `_subsample_and_average_cate`
+    instead for large datasets — random subsets preserve the marginal X
+    distribution so every subset's CATE is unbiased.
     """
     from sklearn.cluster import KMeans
     n = X_train.shape[0]
@@ -174,6 +175,63 @@ def _cluster_and_average_cate(
     return np.mean(np.stack(per_cluster_cate, axis=0), axis=0)
 
 
+@torch.no_grad()
+def _subsample_and_average_cate(
+    model, X_train, T_train, Y_train_scaled, X_test, J,
+    max_n_train: int = 1000, n_repeats: int = 20,
+    stratify_by_t: bool = True, random_state: int = 0,
+):
+    """Bagged in-context inference: draw n_repeats random subsets of size
+    ≤ max_n_train from the training set, run one forward per subset, and
+    average per-query CATE.
+
+    Unlike _cluster_and_average_cate this KEEPS the marginal X distribution
+    intact in every subset (up to sampling noise), so each per-subset CATE
+    is a valid unbiased estimator of the full-data CATE. The average
+    reduces variance without introducing the "local expert" bias that KMeans
+    partitioning creates.
+
+    When `stratify_by_t=True`, each subset preserves the T=0/T=1 ratio of
+    the full training set — matters when T is imbalanced (e.g. PSID has
+    ~85 controls per treated), where a raw random subset can end up with
+    almost no treated units and give a degenerate CATE.
+    """
+    rng = np.random.default_rng(random_state)
+    n = X_train.shape[0]
+    if n <= max_n_train:
+        return _cate_from_joint(model, X_train, T_train, Y_train_scaled, X_test, J)
+
+    T_flat = T_train.reshape(-1)
+    if stratify_by_t:
+        idx_t = np.where(T_flat == 1)[0]
+        idx_c = np.where(T_flat == 0)[0]
+        # Preserve empirical p(T=1); cap total at max_n_train.
+        frac_t = idx_t.size / n
+        n_t = max(1, int(round(max_n_train * frac_t)))
+        n_c = max(1, max_n_train - n_t)
+        # Guard against under-population on tiny arms.
+        n_t = min(n_t, idx_t.size)
+        n_c = min(n_c, idx_c.size)
+
+    per_run_cate = []
+    for r in range(n_repeats):
+        if stratify_by_t:
+            pick = np.concatenate([
+                rng.choice(idx_t, size=n_t, replace=False),
+                rng.choice(idx_c, size=n_c, replace=False),
+            ])
+        else:
+            pick = rng.choice(n, size=max_n_train, replace=False)
+        rng.shuffle(pick)
+        cate_r = _cate_from_joint(
+            model,
+            X_train[pick], T_train[pick], Y_train_scaled[pick],
+            X_test, J,
+        )
+        per_run_cate.append(cate_r)
+    return np.mean(np.stack(per_run_cate, axis=0), axis=0)
+
+
 def _psid_balanced_subsample(X, T, Y, n_controls: int = 500, seed: int = 42):
     """Mirror `dofm_psid_balanced.py`: keep every treated unit, subsample
     up to n_controls control units. Returns (X, T, Y) shuffled."""
@@ -191,6 +249,9 @@ def _psid_balanced_subsample(X, T, Y, n_controls: int = 500, seed: int = 42):
 def evaluate_realization(model, cfg, dataset_cls, r: int,
                           psid_balanced: bool = False,
                           cluster: bool = False,
+                          subsample: bool = False,
+                          n_repeats: int = 20,
+                          stratify_by_t: bool = True,
                           max_n_train: int = 1000):
     ds = dataset_cls()
     cate_ds = ds[r][0]
@@ -216,7 +277,13 @@ def evaluate_realization(model, cfg, dataset_cls, r: int,
     y_scaled, ymin, yrange = _scale_y(y_tr_raw)
     Y_obs = y_scaled.reshape(-1, 1)
 
-    if cluster:
+    if subsample:
+        cate_scaled = _subsample_and_average_cate(
+            model, X_tr, T_tr, Y_obs, X_te, J,
+            max_n_train=max_n_train, n_repeats=n_repeats,
+            stratify_by_t=stratify_by_t, random_state=r,
+        )
+    elif cluster:
         cate_scaled = _cluster_and_average_cate(
             model, X_tr, T_tr, Y_obs, X_te, J, max_n_train=max_n_train,
         )
@@ -250,12 +317,28 @@ def main():
                      help='Mirror dofm_psid_balanced.py subsampling: keep all T=1 '
                           '+ 500 random T=0 per realization.')
     ap.add_argument('--cluster', action='store_true',
-                     help='Cluster train context via KMeans and average per-query '
-                          'CATE across clusters (mirrors UWYK SimplePFN SKlearn '
-                          'inference for large-context datasets like CPS).')
+                     help='(Legacy / A-B baseline.) KMeans-partition train context '
+                          'and average per-query CATE across clusters. Empirically '
+                          'no better than single-pass on CPS because KMeans '
+                          'creates narrow-X clusters whose per-cluster CATE is '
+                          'unreliable outside that X domain. Use --subsample.')
+    ap.add_argument('--subsample', action='store_true',
+                     help='Bagged in-context inference: draw N random subsets of '
+                          'size <= max_n_train from the train set, run one forward '
+                          'per subset, average per-query CATE. Preserves the '
+                          'marginal X distribution in every subset (unlike --cluster), '
+                          'so each per-subset CATE is unbiased. Recommended for '
+                          'large-context datasets (CPS, PSID).')
+    ap.add_argument('--n-repeats', type=int, default=20,
+                     help='Number of random subsets to draw in --subsample mode '
+                          '(default 20). More = lower variance, linearly more compute.')
+    ap.add_argument('--no-stratify-t', action='store_true',
+                     help='Disable T=0/T=1 stratification in --subsample mode. '
+                          'Only relevant when T is imbalanced (PSID); on balanced '
+                          'datasets stratification is a no-op.')
     ap.add_argument('--max-n-train', type=int, default=1000,
-                     help='Per-cluster max context size (default 1000, matches '
-                          'CausalPFN training-time context bound).')
+                     help='Per-subset (or per-cluster) max context size (default '
+                          '1000, matches CausalPFN training-time context bound).')
     args = ap.parse_args()
 
     assert os.path.isfile(args.ckpt), f'checkpoint not found: {args.ckpt}'
@@ -280,6 +363,9 @@ def main():
                 model, cfg, ds_cls, r,
                 psid_balanced=args.psid_balanced,
                 cluster=args.cluster,
+                subsample=args.subsample,
+                n_repeats=args.n_repeats,
+                stratify_by_t=not args.no_stratify_t,
                 max_n_train=args.max_n_train,
             )
             pehes.append(res['pehe']); atrerrs.append(res['ate_rel_err'])
