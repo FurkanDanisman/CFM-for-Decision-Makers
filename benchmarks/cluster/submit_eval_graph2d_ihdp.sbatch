@@ -38,6 +38,10 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export PYTHONUNBUFFERED=1
+# Shims dir must be BEFORE python starts so sitecustomize.py auto-loads
+# and shims faiss/huggingface_hub — otherwise causalpfn/__init__.py fails
+# at "ModuleNotFoundError: No module named 'faiss'" (job 5035871).
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching graph2d IHDP eval"
 python -u "$REPO/benchmarks/eval_graph2d/eval_graph2d_ihdp.py"
