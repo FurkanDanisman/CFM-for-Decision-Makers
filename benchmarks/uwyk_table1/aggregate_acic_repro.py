@@ -37,26 +37,37 @@ def _fmt(x: np.ndarray) -> str:
 
 
 def main():
-    job_id = os.environ.get('JOB_ID')
-    if job_id is None:
-        print('[warn] JOB_ID env var not set; picking latest matching dirs.', file=sys.stderr)
+    # Two separate JOB_IDs supported so you can mix an old UWYK-only array run
+    # with a fresh fn=50-only single-task run.
+    #   JOB_ID          — applies to all rows (single combined run)
+    #   JOB_ID_UWYK     — applies only to UWYK rows
+    #   JOB_ID_OURS     — applies only to fn=50 rows
+    job_id      = os.environ.get('JOB_ID')
+    job_id_uwyk = os.environ.get('JOB_ID_UWYK', job_id)
+    job_id_ours = os.environ.get('JOB_ID_OURS', job_id)
+    if job_id is None and job_id_uwyk is None and job_id_ours is None:
+        print('[warn] JOB_ID / JOB_ID_UWYK / JOB_ID_OURS unset; picking latest matching dirs.',
+              file=sys.stderr)
     UWYK_REPRO = os.environ.get(
         'UWYK_REPRO', '/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce')
     TABLE1_OUT_ROOT = os.environ.get(
         'TABLE1_OUT_ROOT', '/scratch/furkanbd/rpfn_bench_kit/results_table1_ours_fn50')
 
-    if job_id is not None:
+    if job_id_uwyk is not None or job_id_ours is not None:
+        # Wildcard the missing side so a partial invocation still works.
+        u = job_id_uwyk or '*'
+        o = job_id_ours or '*'
         rows = [
             ('UWYK Predictive',
-             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_predictive_{job_id}/*ACIC*'),
+             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_predictive_{u}/*ACIC*'),
             ('UWYK No-Anc',
-             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_noanc_{job_id}/*ACIC*'),
+             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_noanc_{u}/*ACIC*'),
             ('UWYK Anc',
-             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_anc_{job_id}/*ACIC*'),
+             f'{UWYK_REPRO}/RealCauseEval/results/table1_repro_anc_{u}/*ACIC*'),
             ('ours fn=50 (null-t)',
-             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_nullt_{job_id}/*ACIC*'),
+             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_nullt_{o}/*ACIC*'),
             ('ours fn=50 (pred-mirror)',
-             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_predstyle_{job_id}/*ACIC*'),
+             f'{TABLE1_OUT_ROOT}/table1_repro_ours_fn50_predstyle_{o}/*ACIC*'),
         ]
     else:
         def _latest(prefix, root):
@@ -84,7 +95,8 @@ def main():
     print(f'\n══ ACIC Table 1 reproduction (their scripts, their branch) ══')
     print(f'  UWYK_REPRO      = {UWYK_REPRO}')
     print(f'  TABLE1_OUT_ROOT = {TABLE1_OUT_ROOT}')
-    print(f'  JOB_ID          = {job_id or "(newest match)"}')
+    print(f'  JOB_ID_UWYK     = {job_id_uwyk or "(newest match)"}')
+    print(f'  JOB_ID_OURS     = {job_id_ours or "(newest match)"}')
     print()
     print(f'  {"method":<20s}   {"√PEHE ± SEM":>18s}   {"ε_ATE ± SEM":>14s}   n     '
           f'{"paper √PEHE":>14s}   {"paper ε_ATE":>14s}')
