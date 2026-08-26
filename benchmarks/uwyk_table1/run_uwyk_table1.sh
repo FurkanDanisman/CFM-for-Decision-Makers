@@ -34,7 +34,13 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/full_conditio
 CKPT_FILE="${CKPT_FILE:-best_model.pt}"
 CONFIG_FILE="${CONFIG_FILE:-best_model_config.yaml}"
 
-PRED_CKPT_DIR="${PRED_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/no_graph_conditioning/unconditional}"
+# Predictive checkpoint. The reproduce-realcause-results branch shipped the
+# real one (via git LFS) at experiments/checkpoints/predictive_slearner/;
+# our previous fallback (no_graph_conditioning/unconditional) gave a ~17%
+# gap on IHDP because it's a different, unconditional model. Point at the
+# real predictive_slearner if you've pulled the reproduce-realcause-results
+# branch + LFS; otherwise fall back to the old ckpt for smoke tests.
+PRED_CKPT_DIR="${PRED_CKPT_DIR:-$UWYK_ROOT/experiments/checkpoints/predictive_slearner}"
 PRED_CKPT_FILE="${PRED_CKPT_FILE:-best_model.pt}"
 PRED_CONFIG_FILE="${PRED_CONFIG_FILE:-best_model_config.yaml}"
 
@@ -66,6 +72,14 @@ patch_and_stage "predmodel_Slearner_full_context.py"  "$PRED_PATCHED"
 EVAL_MOD="run_baselines.${EVAL_PATCHED%.py}"
 sed -i "s/from run_baselines.eval import/from $EVAL_MOD import/g" \
     "$INSTALL_DIR/$DOFM_PATCHED" "$INSTALL_DIR/$PRED_PATCHED"
+
+# Disable the wrapper's default KMeans clustering. UWYK's reproduce-realcause
+# branch's dofm_no_clustering.py shows the fix: pass use_clustering=False to
+# PreprocessingGraphConditionedPFN. Their default (use_clustering=True)
+# clusters CPS's 14559 rows into 15 chunks and produces the ~2x PEHE
+# inflation on CPS + ~1.7x on PSID(unbal) that we spent last week chasing.
+sed -i 's/verbose=True,$/verbose=True, use_clustering=False,/' \
+    "$INSTALL_DIR/$DOFM_PATCHED"
 
 # UWYK's eval.py imports `from CausalPFN.benchmarks import …`, treating
 # CausalPFN as the repo dir with `benchmarks/` as a top-level submodule.
