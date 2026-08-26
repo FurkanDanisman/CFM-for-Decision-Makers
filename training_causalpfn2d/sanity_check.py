@@ -30,7 +30,8 @@ def main():
     t0 = time.time()
     yaml_path = os.path.join(
         os.environ.get('CAUSALPFN_ROOT',
-                        '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn'),
+                        os.path.abspath(os.path.join(
+                            os.path.dirname(__file__), '..', '..', 'external', 'causalpfn'))),
         'conf', 'meta_dataset', 'synthetic_backdoor.yaml',
     )
     cfg = OmegaConf.load(yaml_path)
