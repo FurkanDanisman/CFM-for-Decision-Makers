@@ -340,8 +340,16 @@ def main():
             if not os.path.isfile(ckpt_path):
                 raise RuntimeError(f'warmstart ckpt path does not exist: {ckpt_path}')
             sd = torch.load(ckpt_path, map_location='cpu', weights_only=False)
-            if isinstance(sd, dict) and 'model_state_dict' in sd: sd = sd['model_state_dict']
-            elif isinstance(sd, dict) and 'state_dict' in sd:    sd = sd['state_dict']
+            # CausalPFN's tabdpt_long_context.ckpt wraps the real state_dict
+            # under the key 'model' (top-level = {'model', 'opt', 'cfg',
+            # 'stats'}). Also handle the other common wrappers. Verified via
+            # the missing=148/unexpected=4 log on job 5037726.
+            if isinstance(sd, dict):
+                for wrap_key in ('model_state_dict', 'state_dict', 'model'):
+                    if wrap_key in sd and isinstance(sd[wrap_key], dict):
+                        sd = sd[wrap_key]
+                        print(f'[warmstart] unwrapped state_dict from top-level key {wrap_key!r}')
+                        break
             # Load into backbone only. Head keys (BarDist.borders / last-K logits)
             # are ours and stay at their random init.
             missing, unexpected = model.backbone.load_state_dict(sd, strict=False)
