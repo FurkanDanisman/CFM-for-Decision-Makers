@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --array=0-3
+#SBATCH --array=0-4
 #
 # ACIC Table-1 reproduction using UWYK's OWN scripts from their
 # reproduce-realcause-results branch, with THEIR pinned CausalPFN.
@@ -35,10 +35,11 @@
 #   sbatch R-PFN/benchmarks/cluster/submit_table1_acic_repro.sbatch
 #
 # Row structure (matches paper Table 1):
-#   task 0 : UWYK Predictive  -- predmodel_Slearner_full_context.py    (paper 3.14)
-#   task 1 : UWYK No-anc      -- dofm_no_clustering.py all_unknown     (paper 3.47)
-#   task 2 : UWYK Anc         -- dofm_no_clustering.py full_graph      (paper 2.79)
-#   task 3 : ours fn=50       -- ours_fn50_predictive_style.py         (no paper ref)
+#   task 0 : UWYK Predictive        -- predmodel_Slearner_full_context.py   (paper 3.14)
+#   task 1 : UWYK No-anc            -- dofm_no_clustering.py all_unknown    (paper 3.47)
+#   task 2 : UWYK Anc               -- dofm_no_clustering.py full_graph     (paper 2.79)
+#   task 3 : ours fn=50 (null-t)    -- ours_fn50_no_clustering.py           (in-distribution)
+#   task 4 : ours fn=50 (pred-mirror) -- ours_fn50_predictive_style.py      (OOD comparison)
 
 set -euo pipefail
 mkdir -p logs_table1_acic_repro
@@ -116,14 +117,23 @@ case "$SLURM_ARRAY_TASK_ID" in
         echo "== ours fn=50 on ACIC (null_t_intv, single pass, in-distribution) =="
         OURS_CKPT="${OURS_CKPT:-$REPO/checkpoints/step_50000_final.pt}"
         [ -f "$OURS_CKPT" ] || { echo "FATAL: fn=50 ckpt not at $OURS_CKPT" >&2; exit 1; }
-        # Use the pinned CausalPFN benchmarks so the ACIC realizations are
-        # byte-identical to what the three UWYK rows above just consumed.
         export CAUSALPFN_ROOT="$UWYK_REPRO/RealCauseEval/CausalPFN"
         export OURS_CKPT
         export TABLE1_OUT_ROOT="${TABLE1_OUT_ROOT:-$DEPLOY_ROOT/results_table1_ours_fn50}"
         python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_no_clustering.py" \
-            --dataset ACIC --model ours_fn50 \
-            --exp_name "table1_repro_ours_fn50_${SLURM_ARRAY_JOB_ID}"
+            --dataset ACIC --model ours_fn50_nullt \
+            --exp_name "table1_repro_ours_fn50_nullt_${SLURM_ARRAY_JOB_ID}"
+        ;;
+    4)
+        echo "== ours fn=50 on ACIC (predictive-mirror, OOD comparison) =="
+        OURS_CKPT="${OURS_CKPT:-$REPO/checkpoints/step_50000_final.pt}"
+        [ -f "$OURS_CKPT" ] || { echo "FATAL: fn=50 ckpt not at $OURS_CKPT" >&2; exit 1; }
+        export CAUSALPFN_ROOT="$UWYK_REPRO/RealCauseEval/CausalPFN"
+        export OURS_CKPT
+        export TABLE1_OUT_ROOT="${TABLE1_OUT_ROOT:-$DEPLOY_ROOT/results_table1_ours_fn50}"
+        python -u "$REPO/benchmarks/uwyk_table1/ours_fn50_predictive_style.py" \
+            --dataset ACIC --model ours_fn50_predstyle \
+            --exp_name "table1_repro_ours_fn50_predstyle_${SLURM_ARRAY_JOB_ID}"
         ;;
     *)
         echo "invalid array index" >&2; exit 2
