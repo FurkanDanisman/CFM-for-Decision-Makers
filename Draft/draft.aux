@@ -2,69 +2,118 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
-\citation{REF}
-\citation{}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}Joint Head Instead of Marginal}{1}{section.2}\protected@file@percent }
-\newlabel{sec:joint-head}{{2}{1}{Joint Head Instead of Marginal}{section.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Statistical efficiency of the joint objective}{1}{subsection.2.1}\protected@file@percent }
-\newlabel{sec:performance}{{2.1}{1}{Statistical efficiency of the joint objective}{subsection.2.1}{}}
-\newlabel{eq:nll}{{1}{1}{Statistical efficiency of the joint objective}{equation.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Background and related work}{1}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Structural causal model and interventions}{1}{subsection.2.1}\protected@file@percent }
+\newlabel{sec:scm-outcomes}{{2.1}{1}{Structural causal model and interventions}{subsection.2.1}{}}
+\newlabel{ass:regularity}{{1}{1}{Paired-outcome sampling}{assumption.1}{}}
+\citation{REF}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Prior-data fitted networks for Bayesian inference}{2}{subsection.2.2}\protected@file@percent }
+\newlabel{sec:pfn}{{2.2}{2}{Prior-data fitted networks for Bayesian inference}{subsection.2.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Causal foundation models}{2}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:cfm}{{2.3}{2}{Causal foundation models}{subsection.2.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Methodology}{2}{section.3}\protected@file@percent }
+\newlabel{sec:joint-head}{{3}{2}{Methodology}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Statistical efficiency of the joint objective}{2}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:performance}{{3.1}{2}{Statistical efficiency of the joint objective}{subsection.3.1}{}}
+\newlabel{eq:nll}{{3}{2}{Statistical efficiency of the joint objective}{equation.3}{}}
+\citation{}
+\newlabel{lem:sufficiency}{{1}{3}{}{theorem.1}{}}
+\newlabel{thm:efficiency}{{2}{3}{}{theorem.2}{}}
+\newlabel{eq:marg-ratio}{{4}{3}{}{equation.4}{}}
+\newlabel{eq:R-bound}{{5}{3}{}{equation.5}{}}
 \citation{TABPFN}
 \citation{...}
 \citation{...}
-\newlabel{lem:sufficiency}{{1}{2}{}{theorem.1}{}}
-\newlabel{thm:efficiency}{{2}{2}{}{theorem.2}{}}
-\newlabel{eq:marg-ratio}{{2}{2}{}{equation.2}{}}
-\newlabel{eq:R-bound}{{3}{2}{}{equation.3}{}}
-\newlabel{cor:stability}{{3}{2}{}{theorem.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Distributional inference for CATE and ATE}{3}{subsection.2.2}\protected@file@percent }
-\newlabel{sec:info-gain}{{2.2}{3}{Distributional inference for CATE and ATE}{subsection.2.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{3}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Discussion}{3}{section.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces RealCause benchmark, following UWYK's Table 3 protocol (target-encoded T, 100 realizations; ACIC has 10). ``UWYK Ancestral'' uses the graph-conditioned checkpoint with the full-graph adjacency (upper-bound baseline: sees the DAG). ``UWYK Baseline'' is the paper's own separately-trained unconditional checkpoint (no graph info) --- apples-to-apples with Ours. Metrics: $\sqrt  {\mathrm  {PEHE}}$ and $\varepsilon _{\mathrm  {ATE}}=|\hat  \tau -\tau |/|\tau |$, mean $\pm $ std across realizations. Bold = best in column.}}{4}{table.caption.1}\protected@file@percent }
+\newlabel{cor:stability}{{3}{4}{}{theorem.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Distributional inference for CATE and ATE}{4}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:info-gain}{{3.2}{4}{Distributional inference for CATE and ATE}{subsection.3.2}{}}
+\citation{danisman2026malc}
+\citation{UWYK}
+\citation{dopfn}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.1}Per-unit CATE distribution via MALC}{5}{subsubsection.3.2.1}\protected@file@percent }
+\newlabel{sec:cate-malc}{{3.2.1}{5}{Per-unit CATE distribution via MALC}{subsubsection.3.2.1}{}}
+\newlabel{eq:cate-density}{{6}{5}{Per-unit CATE distribution via MALC}{equation.6}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}ATE distribution via Optimal Transport}{5}{subsubsection.3.2.2}\protected@file@percent }
+\newlabel{sec:ate-barycenter}{{3.2.2}{5}{ATE distribution via Optimal Transport}{subsubsection.3.2.2}{}}
+\newlabel{eq:ate-quantile}{{7}{5}{ATE distribution via Optimal Transport}{equation.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experiments}{5}{section.4}\protected@file@percent }
+\newlabel{sec:results}{{4}{5}{Experiments}{section.4}{}}
+\citation{...}
+\citation{...}
+\citation{neal2020realcause}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Evaluation metrics}{6}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:eval-metrics}{{4.1}{6}{Evaluation metrics}{subsection.4.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Point estimates.}{6}{section*.1}\protected@file@percent }
+\newlabel{eq:pehe}{{8}{6}{Point estimates}{equation.8}{}}
+\newlabel{eq:eps-ate}{{9}{6}{Point estimates}{equation.9}{}}
+\@writefile{toc}{\contentsline {paragraph}{Distributional predictions.}{6}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}RealCause benchmarks - [A better name is needed]}{7}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:res-realcause}{{4.2}{7}{RealCause benchmarks - [A better name is needed]}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Marginal density estimation}{7}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:res-marginal}{{4.3}{7}{Marginal density estimation}{subsection.4.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Distributional inference for CATE and ATE}{7}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:res-distributions}{{4.4}{7}{Distributional inference for CATE and ATE}{subsection.4.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Context-size and asymptoticity - A better name is needed}{7}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:res-nsweep}{{4.5}{7}{Context-size and asymptoticity - A better name is needed}{subsection.4.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Robustness across $d$ and $\rho $.}{7}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Discussion}{7}{section.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces RealCause benchmark}}{8}{table.caption.4}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
-\newlabel{tab:table3}{{1}{4}{RealCause benchmark, following UWYK's Table 3 protocol (target-encoded T, 100 realizations; ACIC has 10). ``UWYK Ancestral'' uses the graph-conditioned checkpoint with the full-graph adjacency (upper-bound baseline: sees the DAG). ``UWYK Baseline'' is the paper's own separately-trained unconditional checkpoint (no graph info) --- apples-to-apples with Ours. Metrics: $\sqrt {\mathrm {PEHE}}$ and $\varepsilon _{\mathrm {ATE}}=|\hat \tau -\tau |/|\tau |$, mean $\pm $ std across realizations. Bold = best in column}{table.caption.1}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Context-size sweep on the CausalPFN polynomial prior, held out from our training corpus. 500 SCMs per context size $N$. UWYK Baseline is the paper's separately-trained unconditional checkpoint. Metric: $\sqrt  {\mathrm  {PEHE}}$ (mean $\pm $ std across SCMs). Bold = best in column.}}{4}{table.caption.2}\protected@file@percent }
-\newlabel{tab:sweep-pehe-poly}{{2}{4}{Context-size sweep on the CausalPFN polynomial prior, held out from our training corpus. 500 SCMs per context size $N$. UWYK Baseline is the paper's separately-trained unconditional checkpoint. Metric: $\sqrt {\mathrm {PEHE}}$ (mean $\pm $ std across SCMs). Bold = best in column}{table.caption.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {A}Joint head architecture: nine-region density and link functions}{5}{appendix.A}\protected@file@percent }
-\newlabel{app:head-spec}{{A}{5}{Joint head architecture: nine-region density and link functions}{appendix.A}{}}
-\@writefile{toc}{\contentsline {paragraph}{Interior bin structure.}{5}{section*.3}\protected@file@percent }
-\newlabel{eq:bin-index}{{4}{5}{Interior bin structure}{equation.4}{}}
-\@writefile{toc}{\contentsline {paragraph}{Per-query output and link functions.}{5}{section*.4}\protected@file@percent }
-\newlabel{eq:pmat-softmax}{{5}{5}{Per-query output and link functions}{equation.5}{}}
-\newlabel{eq:region-weights}{{6}{5}{Per-query output and link functions}{equation.6}{}}
-\newlabel{eq:tail-scales}{{7}{5}{Per-query output and link functions}{equation.7}{}}
-\@writefile{toc}{\contentsline {paragraph}{Case 1 --- interior ($y_0, y_1 \in [-1, 1]$).}{5}{section*.5}\protected@file@percent }
-\newlabel{eq:inner-density}{{8}{5}{Case 1 --- interior ($y_0, y_1 \in [-1, 1]$)}{equation.8}{}}
-\@writefile{toc}{\contentsline {paragraph}{Case 2 --- edge (one coordinate outside).}{5}{section*.6}\protected@file@percent }
-\newlabel{eq:mix-density}{{9}{5}{Case 2 --- edge (one coordinate outside)}{equation.9}{}}
-\newlabel{eq:boundary-conditional}{{10}{5}{Case 2 --- edge (one coordinate outside)}{equation.10}{}}
-\@writefile{toc}{\contentsline {paragraph}{Case 3 --- corner (both coordinates outside).}{5}{section*.7}\protected@file@percent }
-\newlabel{eq:tail-density}{{11}{5}{Case 3 --- corner (both coordinates outside)}{equation.11}{}}
-\newlabel{eq:sheppard}{{12}{5}{Case 3 --- corner (both coordinates outside)}{equation.12}{}}
-\@writefile{toc}{\contentsline {paragraph}{Correlation inherited from the interior grid.}{6}{section*.8}\protected@file@percent }
-\newlabel{eq:rho-derived}{{13}{6}{Correlation inherited from the interior grid}{equation.13}{}}
-\@writefile{toc}{\contentsline {paragraph}{Full mixture and training loss.}{6}{section*.9}\protected@file@percent }
-\newlabel{eq:full-density}{{14}{6}{Full mixture and training loss}{equation.14}{}}
-\@writefile{toc}{\contentsline {paragraph}{Notes on the edge-case approximation.}{6}{section*.10}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {B}Proofs and remarks}{6}{appendix.B}\protected@file@percent }
-\newlabel{app:proofs}{{B}{6}{Proofs and remarks}{appendix.B}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}Proof of Lemma~\ref {lem:sufficiency}}{6}{subsection.B.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}Proof of Theorem~\ref {thm:marg-half}}{6}{subsection.B.2}\protected@file@percent }
-\newlabel{rem:asymptotic-variance}{{4}{7}{The $N \cdot \mathrm {MSE}$ normalisation}{theorem.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.3}Proof of Theorem~\ref {thm:variance-ratio}}{7}{subsection.B.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {B.4}Proof of Corollary~\ref {cor:stability}}{7}{subsection.B.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {C}Empirical scaling of the required context size in $d$}{7}{appendix.C}\protected@file@percent }
-\newlabel{app:scaling-Nd}{{C}{7}{Empirical scaling of the required context size in $d$}{appendix.C}{}}
+\newlabel{tab:table3}{{1}{8}{RealCause benchmark}{table.caption.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces [Delta change- show.] Context-size sweep on the CausalPFN polynomial prior, held out from our training corpus. 500 SCMs per context size $N$. UWYK Baseline is the paper's separately-trained unconditional checkpoint. Metric: $\sqrt  {\mathrm  {PEHE}}$ (mean $\pm $ std across SCMs). Bold = best in column.}}{8}{table.caption.5}\protected@file@percent }
+\newlabel{tab:sweep-pehe-poly}{{2}{8}{[Delta change- show.] Context-size sweep on the CausalPFN polynomial prior, held out from our training corpus. 500 SCMs per context size $N$. UWYK Baseline is the paper's separately-trained unconditional checkpoint. Metric: $\sqrt {\mathrm {PEHE}}$ (mean $\pm $ std across SCMs). Bold = best in column}{table.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {A}Joint head architecture}{9}{appendix.A}\protected@file@percent }
+\newlabel{app:head-spec}{{A}{9}{Joint head architecture}{appendix.A}{}}
+\@writefile{toc}{\contentsline {paragraph}{Grid and indexing.}{9}{section*.6}\protected@file@percent }
+\newlabel{eq:bin-index}{{10}{9}{Grid and indexing}{equation.10}{}}
+\@writefile{toc}{\contentsline {paragraph}{Per-query outputs.}{9}{section*.7}\protected@file@percent }
+\newlabel{eq:pmat-softmax}{{11}{9}{Per-query outputs}{equation.11}{}}
+\newlabel{eq:region-weights}{{12}{9}{Per-query outputs}{equation.12}{}}
+\newlabel{eq:tail-scales}{{13}{9}{Per-query outputs}{equation.13}{}}
+\@writefile{toc}{\contentsline {paragraph}{Nine regions.}{9}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Interior region ($y_{0}, y_{1} \in [-1, 1]$).}{9}{section*.9}\protected@file@percent }
+\newlabel{eq:inner-density}{{14}{9}{Interior region ($y_{0}, y_{1} \in [-1, 1]$)}{equation.14}{}}
+\@writefile{toc}{\contentsline {paragraph}{Edge regions ($y_{i} \in [-1, 1]$, $y_{1-i} \notin  [-1, 1]$).}{10}{section*.10}\protected@file@percent }
+\newlabel{eq:mix-density}{{15}{10}{Edge regions ($y_{i} \in [-1, 1]$, $y_{1-i} \notin [-1, 1]$)}{equation.15}{}}
+\newlabel{eq:boundary-conditional}{{16}{10}{Edge regions ($y_{i} \in [-1, 1]$, $y_{1-i} \notin [-1, 1]$)}{equation.16}{}}
+\@writefile{toc}{\contentsline {paragraph}{Corner regions ($y_{0}, y_{1} \notin  [-1, 1]$).}{10}{section*.11}\protected@file@percent }
+\newlabel{eq:tail-density}{{17}{10}{Corner regions ($y_{0}, y_{1} \notin [-1, 1]$)}{equation.17}{}}
+\newlabel{eq:sheppard}{{18}{10}{Corner regions ($y_{0}, y_{1} \notin [-1, 1]$)}{equation.18}{}}
+\@writefile{toc}{\contentsline {paragraph}{Correlation inherited from the interior.}{10}{section*.12}\protected@file@percent }
+\newlabel{eq:rho-derived}{{19}{10}{Correlation inherited from the interior}{equation.19}{}}
+\@writefile{toc}{\contentsline {paragraph}{Full mixture and training loss.}{11}{section*.13}\protected@file@percent }
+\newlabel{eq:full-density}{{20}{11}{Full mixture and training loss}{equation.20}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {B}Proofs}{11}{appendix.B}\protected@file@percent }
+\newlabel{app:proofs}{{B}{11}{Proofs}{appendix.B}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.1}Proof of Lemma~\ref {lem:sufficiency}}{11}{subsection.B.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.2}Proof of Theorem~\ref {thm:efficiency}}{11}{subsection.B.2}\protected@file@percent }
+\citation{danisman2026malc}
+\citation{danisman2026malc}
+\newlabel{rem:asymptotic-variance}{{4}{12}{}{theorem.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {B.3}Proof of Corollary~\ref {cor:stability}}{12}{subsection.B.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {C}MALC}{12}{appendix.C}\protected@file@percent }
+\newlabel{app:malc}{{C}{12}{MALC}{appendix.C}{}}
+\@writefile{toc}{\contentsline {paragraph}{Base class.}{13}{section*.14}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Mixture family.}{13}{section*.15}\protected@file@percent }
+\newlabel{eq:malc-family}{{21}{13}{Mixture family}{equation.21}{}}
+\@writefile{toc}{\contentsline {paragraph}{Mixture EM on binned data.}{13}{section*.16}\protected@file@percent }
+\newlabel{eq:malc-estep}{{22}{13}{Mixture EM on binned data}{equation.22}{}}
+\newlabel{eq:malc-pi-update}{{23}{13}{Mixture EM on binned data}{equation.23}{}}
+\newlabel{eq:malc-mstep}{{24}{13}{Mixture EM on binned data}{equation.24}{}}
+\@writefile{toc}{\contentsline {paragraph}{Order selection.}{13}{section*.17}\protected@file@percent }
+\newlabel{eq:bic}{{25}{13}{Order selection}{equation.25}{}}
+\@writefile{toc}{\contentsline {paragraph}{Output and downstream use.}{13}{section*.18}\protected@file@percent }
+\newlabel{eq:malc-output}{{26}{13}{Output and downstream use}{equation.26}{}}
 \bibstyle{plainnat}
 \bibcite{van-der-vaart-1998-asymptotic-statistics}{{1}{1998}{{van~der~Vaart}}{{}}}
 \bibcite{sheppard1899application}{{2}{1899}{{Sheppard}}{{}}}
 \bibcite{danisman2026malc}{{3}{2026}{{Danisman}}{{}}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces $\sqrt  {\mathrm  {PEHE}}$ ratio at $N \approx 1250 \cdot d$ for $d = 2, \ldots  , 11$ on the controlled linear SCM. Green line: per-cell mean over $K \geq 15$ SCMs. Shaded band: 95\% CI. Dashed line: Theorem \ref {thm:variance-ratio}'s prediction $\sqrt  {2} \approx 1.414$.}}{8}{figure.caption.11}\protected@file@percent }
-\newlabel{fig:d-scaling}{{1}{8}{$\sqrt {\mathrm {PEHE}}$ ratio at $N \approx 1250 \cdot d$ for $d = 2, \ldots , 11$ on the controlled linear SCM. Green line: per-cell mean over $K \geq 15$ SCMs. Shaded band: 95\% CI. Dashed line: Theorem \ref {thm:variance-ratio}'s prediction $\sqrt {2} \approx 1.414$}{figure.caption.11}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {D}Mixture density post-processing}{8}{appendix.D}\protected@file@percent }
-\newlabel{app:malc}{{D}{8}{Mixture density post-processing}{appendix.D}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {E}Two-Wasserstein barycenter aggregation}{8}{appendix.E}\protected@file@percent }
-\newlabel{app:ot}{{E}{8}{Two-Wasserstein barycenter aggregation}{appendix.E}{}}
-\gdef \@abspage@last{8}
+\@writefile{toc}{\contentsline {section}{\numberline {D}Optimal-transport aggregation}{14}{appendix.D}\protected@file@percent }
+\newlabel{app:ot}{{D}{14}{Optimal-transport aggregation}{appendix.D}{}}
+\@writefile{toc}{\contentsline {paragraph}{Notation.}{14}{section*.19}\protected@file@percent }
+\newlabel{eq:agueh-carlier}{{27}{14}{Notation}{equation.27}{}}
+\@writefile{toc}{\contentsline {paragraph}{Grid-level implementation.}{14}{section*.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {E}Theory Validation something something}{14}{appendix.E}\protected@file@percent }
+\newlabel{app:theoryval}{{E}{14}{Theory Validation something something}{appendix.E}{}}
+\gdef \@abspage@last{14}
