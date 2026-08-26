@@ -44,7 +44,8 @@ def _wire_causalpfn_paths(causalpfn_root: Optional[str] = None):
     being installed (Table 1 runner uses the same trick)."""
     causalpfn_root = causalpfn_root or os.environ.get(
         'CAUSALPFN_ROOT',
-        '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn',
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..', 'external', 'causalpfn')),
     )
     shims = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                           '..', 'benchmarks', 'uwyk_table1', 'shims'))

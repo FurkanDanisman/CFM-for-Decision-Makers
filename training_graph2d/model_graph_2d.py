@@ -19,7 +19,9 @@ import torch.nn as nn
 
 def _wire_uwyk_paths(uwyk_root: Optional[str] = None):
     uwyk_root = uwyk_root or os.environ.get(
-        'UWYK_ROOT', '/scratch/furkanbd/rpfn_bench_kit/external/uwyk')
+        'UWYK_ROOT',
+        os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..', 'external', 'uwyk')))
     uwyk_src = os.path.join(uwyk_root, 'src')
     for p in (uwyk_src, uwyk_root):
         if p not in sys.path:
