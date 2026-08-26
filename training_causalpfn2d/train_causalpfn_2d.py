@@ -290,6 +290,59 @@ def main():
     ).to(DEVICE)
     print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
 
+    # ── OPTIONAL: warm-start the backbone from CausalPFN's pretrained TabDPT ──
+    # CausalPFN's REPRODUCE.md explicitly says: "We specifically warm-start the
+    # training with a predictive TabDPT checkpoint." Their tabdpt_long_context_
+    # pretrained.yaml loads vdblm/causalpfn/tabdpt_long_context.ckpt from HF Hub
+    # (revision 83aad07d...). Without this we train the backbone from random init
+    # which loses their pretraining advantage and gives worse convergence.
+    #
+    # The head weights of our 2D BarDist head are NOT loaded — those are ours,
+    # random-init. Only the backbone (attention + FFN + input embeddings) is
+    # warm-started.
+    #
+    # WARMSTART_CKPT: HuggingFace model path (repo/filename) OR a local .pt path
+    #   default: vdblm/causalpfn/tabdpt_long_context.ckpt (their default)
+    # WARMSTART_REVISION: HF revision hash (default: 83aad07d..., their pinned commit)
+    # WARMSTART=0 disables (train from scratch, matches previous behavior).
+    # Only warmstart when there's no checkpoint to resume from — else the RESUME
+    # block below would overwrite the warmstarted backbone with our own past step.
+    _has_resume_ckpt = RESUME and latest_checkpoint(CHECKPOINT_DIR) is not None
+    if os.environ.get('WARMSTART', '1') == '1' and not _has_resume_ckpt:
+        try:
+            hf_repo = os.environ.get('WARMSTART_REPO', 'vdblm/causalpfn')
+            hf_file = os.environ.get('WARMSTART_FILE', 'tabdpt_long_context.ckpt')
+            hf_rev  = os.environ.get(
+                'WARMSTART_REVISION',
+                '83aad07da1cb077cfda4236878a1b07dc9f72a54',
+            )
+            local_ckpt = os.environ.get('WARMSTART_LOCAL')
+            if local_ckpt and os.path.isfile(local_ckpt):
+                ckpt_path = local_ckpt
+                print(f'[warmstart] loading local pretrained TabDPT ckpt: {ckpt_path}')
+            else:
+                from huggingface_hub import hf_hub_download
+                ckpt_path = hf_hub_download(
+                    repo_id=hf_repo, filename=hf_file, revision=hf_rev,
+                )
+                print(f'[warmstart] downloaded pretrained TabDPT ckpt from '
+                      f'{hf_repo}/{hf_file}@{hf_rev[:8]}: {ckpt_path}')
+            sd = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+            if isinstance(sd, dict) and 'model_state_dict' in sd: sd = sd['model_state_dict']
+            elif isinstance(sd, dict) and 'state_dict' in sd:    sd = sd['state_dict']
+            # Load into backbone only. Head keys (BarDist.borders / last-K logits)
+            # are ours and stay at their random init.
+            missing, unexpected = model.backbone.load_state_dict(sd, strict=False)
+            print(f'[warmstart] backbone loaded  '
+                  f'missing={len(missing)}  unexpected={len(unexpected)}')
+            if len(missing) > 20 or len(unexpected) > 20:
+                print(f'[warmstart]   first missing:    {list(missing)[:5]}')
+                print(f'[warmstart]   first unexpected: {list(unexpected)[:5]}')
+                print(f'[warmstart] NOTE: many mismatches suggests key-prefix issue; '
+                      f'set WARMSTART=0 if this looks wrong.')
+        except Exception as e:
+            print(f'[warmstart] FAILED ({e}); continuing from scratch')
+
     # torch.compile matches the CausalPFN trainer (their conf/model/*.yaml
     # sets compile: true and their trainer wraps model = torch.compile(model,
     # dynamic=True)). On a 20-layer transformer at bf16 this fuses
