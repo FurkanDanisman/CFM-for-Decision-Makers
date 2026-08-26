@@ -38,5 +38,12 @@ export CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$DEPLOY_ROOT/external/causalpfn}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
+# Put the shims dir on PYTHONPATH BEFORE python starts, so its
+# sitecustomize.py auto-loads and installs the faiss/huggingface_hub
+# stub loaders BEFORE causalpfn/__init__.py runs. Doing this from
+# inside the module is too late -- sitecustomize only fires at
+# interpreter startup.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+
 cd "$REPO"
 python -u training_causalpfn2d/sanity_check.py
