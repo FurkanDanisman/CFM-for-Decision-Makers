@@ -237,6 +237,24 @@ def main():
     print_config()
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
+    # ── H100 perf knobs. All are free wins on any modern GPU ─────────────
+    # TF32 on matmul: ~2x on H100 for fp32 matmuls (bf16 autocast skips
+    # most of these but the residual fp32 layers still benefit).
+    torch.set_float32_matmul_precision('high')
+    # Force Flash / Memory-efficient SDPA. Attention on seq=2048 is O(N²)
+    # naïve → O(N) with Flash, which is 8-15x faster on H100. If the
+    # CausalPFN backbone routes through F.scaled_dot_product_attention,
+    # these hints stick; if it uses a hand-rolled matmul-softmax path,
+    # they're inert (still safe to set).
+    if DEVICE.type == 'cuda':
+        try:
+            torch.backends.cuda.enable_flash_sdp(True)
+            torch.backends.cuda.enable_mem_efficient_sdp(True)
+            torch.backends.cuda.enable_math_sdp(False)   # fall back only if the others reject
+            torch.backends.cudnn.benchmark = True
+        except Exception as e:
+            print(f'[perf] SDPA hint failed: {e}')
+
     interrupted = {'flag': False}
     def _sig(sig, frame):
         print(f'\n[signal] {sig} — will save on next step boundary')
@@ -277,21 +295,36 @@ def main():
     # attention + MLP kernels and picks the Flash-Attention path where
     # available — typically 2-3x per-step on H100. `dynamic=True` because
     # our context/query split varies per batch.
-    if os.environ.get('COMPILE', '0') == '1' and DEVICE.type == 'cuda':
+    # ── torch.compile strategy ────────────────────────────────────────
+    # Full-model compile (previous attempt) hit an Inductor tiling assert
+    # (InductorError in tiling_utils.py get_pw_red_splits, job 5032910)
+    # — almost certainly triggered by the loss's 8× data-dependent
+    # `region_idx[bool_mask] = R_X` scatter writes + `.item()` calls.
+    # The transformer backbone is where the compute is anyway, so we
+    # compile just that. Loss stays eager, no compile-hostile patterns
+    # in the compiled subgraph.
+    #
+    # COMPILE_MODE: 'backbone' (default) | 'full' | 'off'
+    compile_mode = os.environ.get('COMPILE_MODE', 'backbone' if os.environ.get('COMPILE', '1') == '1' else 'off')
+    if compile_mode != 'off' and DEVICE.type == 'cuda':
         try:
-            # suppress_errors makes broken subgraphs fall back to eager at
-            # first-forward time instead of crashing the whole training.
-            # Without this, torch._inductor.exc.InductorError in
-            # tiling_utils.py can nuke the run at step 1.
             import torch._dynamo as _dynamo
             _dynamo.config.suppress_errors = True
-            model = torch.compile(model, dynamic=True)
-            print('[compile] torch.compile(model, dynamic=True) enabled '
-                  '(suppress_errors=True — will fall back to eager on failure)')
+            if compile_mode == 'backbone':
+                # Wrap only the transformer. Same shared parameters, so
+                # the optimizer still sees the raw params.
+                inner = model.module if hasattr(model, 'module') else model
+                inner.backbone = torch.compile(inner.backbone, dynamic=True)
+                print('[compile] torch.compile(model.backbone, dynamic=True) enabled '
+                      '(compile_mode=backbone — loss stays eager)')
+            elif compile_mode == 'full':
+                model = torch.compile(model, dynamic=True)
+                print('[compile] torch.compile(model, dynamic=True) enabled '
+                      '(compile_mode=full — may hit Inductor tiling bug in loss)')
         except Exception as e:
             print(f'[compile] torch.compile failed ({e}); running eager')
     else:
-        print('[compile] disabled (COMPILE=0). Set COMPILE=1 to attempt compile.')
+        print(f'[compile] disabled (compile_mode={compile_mode})')
 
     opt = build_optimizer(model.parameters())
     sched = None                       # schedulefree handles its own LR
@@ -320,12 +353,27 @@ def main():
     model.train()
     t0 = time.time()
 
+    # Profile the first 3 steps to see where wall-clock actually goes.
+    # Toggle with PROFILE_STEPS env (default 3; 0 disables).
+    profile_steps = int(os.environ.get('PROFILE_STEPS', 3))
+
+    def _cuda_sync():
+        if DEVICE.type == 'cuda':
+            torch.cuda.synchronize()
+
     for step in range(start + 1, N_STEPS + 1):
         opt.zero_grad(set_to_none=True)
-        accum_loss = 0.0
+        # Tensor accumulator so we don't sync every microbatch. Only .item()
+        # the sum once per LOG_EVERY, when we actually print it.
+        accum_loss_t = torch.zeros((), device=DEVICE)
+        do_profile = (step - start) <= profile_steps
+        prof = {'data': 0.0, 'fwd': 0.0, 'bwd': 0.0}
+
         for _ in range(GRAD_ACCUM):
+            if do_profile: _cuda_sync(); t_data = time.time()
             batch = next(it)
             b = _train_step_data(batch, DEVICE)
+            if do_profile: _cuda_sync(); prof['data'] += time.time() - t_data; t_fwd = time.time()
             with ac():
                 losses = model(
                     X_context=b['X_context'],
@@ -338,27 +386,34 @@ def main():
                 )
                 mask = _valid_mask(b['t_full'], b['split_pos'], OVERLAP_THRESHOLD)
                 mask = mask & torch.isfinite(losses)
-                valid = losses[mask]
-                if valid.numel() == 0:
-                    # Attach zero to every parameter so DDP-alike training doesn't hang.
-                    loss = losses.new_zeros(())
-                    for p in model.parameters():
-                        if p.requires_grad:
-                            loss = loss + 0.0 * p.sum()
-                else:
-                    loss = valid.mean()
-            if not torch.isfinite(loss):
-                print(f'step {step}: non-finite loss, skip')
-                continue
+                # Don't index by bool mask + branch on .numel() — that
+                # forces a CPU sync every microbatch. Zero out invalid
+                # entries and average over the valid count as a scalar.
+                mask_f = mask.float()
+                valid_count = mask_f.sum().clamp(min=1.0)
+                loss = (losses * mask_f).sum() / valid_count
+            if do_profile: _cuda_sync(); prof['fwd'] += time.time() - t_fwd; t_bwd = time.time()
             (loss / GRAD_ACCUM).backward()
-            accum_loss += loss.item()
+            if do_profile: _cuda_sync(); prof['bwd'] += time.time() - t_bwd
+            accum_loss_t = accum_loss_t + loss.detach()
 
+        if do_profile: _cuda_sync(); t_opt = time.time()
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
         opt.step()
+        if do_profile:
+            _cuda_sync()
+            opt_dt = time.time() - t_opt
+            total = prof['data'] + prof['fwd'] + prof['bwd'] + opt_dt
+            print(f'[profile step={step}]  data={prof["data"]:.2f}s  '
+                  f'fwd={prof["fwd"]:.2f}s  bwd={prof["bwd"]:.2f}s  '
+                  f'opt={opt_dt:.2f}s  total={total:.2f}s  '
+                  f'(per microbatch: fwd={prof["fwd"]/GRAD_ACCUM*1000:.0f}ms  '
+                  f'bwd={prof["bwd"]/GRAD_ACCUM*1000:.0f}ms)', flush=True)
 
         if step % LOG_EVERY == 0 or step == 1:
-            print(f'{step:>7}  {accum_loss/GRAD_ACCUM:>10.4f}  '
-                  f'{opt.param_groups[0]["lr"]:>10.2e}  {time.time()-t0:>7.1f}s')
+            avg_loss = (accum_loss_t / GRAD_ACCUM).item()
+            print(f'{step:>7}  {avg_loss:>10.4f}  '
+                  f'{opt.param_groups[0]["lr"]:>10.2e}  {time.time()-t0:>7.1f}s', flush=True)
 
         if step % CHECKPOINT_EVERY == 0:
             if hasattr(opt, 'eval'): opt.eval()

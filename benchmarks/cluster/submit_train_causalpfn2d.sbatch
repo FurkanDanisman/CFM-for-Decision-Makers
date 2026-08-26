@@ -85,13 +85,20 @@ export USE_BF16=1
 # above; if you reduce the CPU quota, drop this in lockstep.
 export STREAM_WORKERS=32
 export STREAM_WARMUP=4
-# torch.compile with dynamic=True currently crashes Inductor's tiling
-# analysis on this model (torch._inductor.exc.InductorError in
-# tiling_utils.py get_pw_red_splits, seen on 5032910). Vectorised loss
-# + 32 workers alone should get us to ~2-4 s/step (from 22 s baseline).
-# Set COMPILE=1 to re-attempt (harmless — the trainer catches the crash
-# and falls back to eager, then the first forward pass may still error).
-export COMPILE=0
+# torch.compile: backbone-only mode. Full-model compile hit an
+# Inductor tiling assertion (job 5032910) triggered by the loss's
+# data-dependent scatter writes in neg_log_prob_2d. Backbone-only
+# compiles the 20-layer transformer (where the compute lives) and
+# leaves the loss eager — no compile-hostile patterns in the compiled
+# graph.  Set COMPILE_MODE=full to retry full compile, COMPILE_MODE=off
+# to disable.
+export COMPILE=1
+export COMPILE_MODE=backbone
+
+# One-time diagnostic: profile per-microbatch fwd/bwd/data-load timings
+# for the first N steps so we can see where wall-clock actually goes.
+# Set to 0 in steady-state runs.
+export PROFILE_STEPS=3
 
 export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO/checkpoints_causalpfn2d}"
 export CHECKPOINT_EVERY=2000
