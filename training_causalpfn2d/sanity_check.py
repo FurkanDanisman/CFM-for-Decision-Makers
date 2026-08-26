@@ -15,8 +15,9 @@ sys.path.insert(0, REPO_SRC)
 from training_causalpfn2d.model_causalpfn_2d import CausalPFN2DHead, _wire_causalpfn_paths
 _wire_causalpfn_paths()
 
-from causalpfn.training.priors import BackdoorDGPMetaDataset
 from losses.BarDistribution2D import fit_edges_2d, total_params
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
 
 
 def main():
@@ -25,10 +26,19 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'── sanity check (CausalPFN 2D-head) ── device={device}  J={J}')
 
-    print('[1/4] one batch from BackdoorDGPMetaDataset…')
+    print('[1/4] one batch from BackdoorDGPMetaDataset (via CausalPFN hydra config)…')
     t0 = time.time()
-    meta = BackdoorDGPMetaDataset(name='backdoor', n_samples=64, max_n_covariates=8,
-                                    post_padding_n_cols=50)
+    yaml_path = os.path.join(
+        os.environ.get('CAUSALPFN_ROOT',
+                        '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn'),
+        'conf', 'meta_dataset', 'synthetic_backdoor.yaml',
+    )
+    cfg = OmegaConf.load(yaml_path)
+    # Tiny overrides for a fast smoke test
+    cfg.n_samples = 64
+    cfg.max_n_covariates = 8
+    cfg.post_padding_n_cols = 50
+    meta = instantiate(cfg)
     loader = torch.utils.data.DataLoader(meta, batch_size=2, num_workers=0)
     it = iter(loader)
     b = next(it)

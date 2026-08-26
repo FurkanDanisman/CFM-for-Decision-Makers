@@ -167,15 +167,34 @@ def latest_checkpoint(ckpt_dir):
 
 
 def build_meta_dataset() -> BackdoorDGPMetaDataset:
-    """Construct BackdoorDGPMetaDataset. Passes only the two knobs we want
-    to expose via env vars (n_samples, max_covariates); everything else
-    uses the class's own defaults."""
-    return BackdoorDGPMetaDataset(
-        name='backdoor',
-        n_samples=N_SAMPLES_PER_TASK,
-        max_n_covariates=MAX_N_COVARIATES,
-        post_padding_n_cols=NUM_FEATURES,
+    """Instantiate BackdoorDGPMetaDataset the SAME way CausalPFN does --
+    via Hydra on their published conf/meta_dataset/synthetic_backdoor.yaml.
+
+    That yaml wires the two SyntheticTableGenerator objects plus the sampler
+    distributions the constructor requires. Rather than reimplement them, we
+    load the yaml with OmegaConf and let hydra.utils.instantiate do the work,
+    matching CausalPFN's own train.py path.
+    """
+    from omegaconf import OmegaConf
+    from hydra.utils import instantiate
+
+    yaml_path = os.path.join(
+        os.environ.get('CAUSALPFN_ROOT',
+                        '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn'),
+        'conf', 'meta_dataset', 'synthetic_backdoor.yaml',
     )
+    if not os.path.isfile(yaml_path):
+        raise FileNotFoundError(
+            f'meta-dataset yaml not found at {yaml_path}. Is the '
+            'codex/add-training-code branch of CausalPFN checked out?'
+        )
+    cfg = OmegaConf.load(yaml_path)
+    # Override only the two knobs we want env-controllable; everything else
+    # (samplers, distributions) inherits from the yaml.
+    cfg.n_samples          = N_SAMPLES_PER_TASK
+    cfg.max_n_covariates   = MAX_N_COVARIATES
+    cfg.post_padding_n_cols = NUM_FEATURES
+    return instantiate(cfg)
 
 
 def _train_step_data(batch, device):
