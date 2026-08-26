@@ -85,7 +85,13 @@ export USE_BF16=1
 # above; if you reduce the CPU quota, drop this in lockstep.
 export STREAM_WORKERS=32
 export STREAM_WARMUP=4
-export COMPILE=1                       # torch.compile(model, dynamic=True)
+# torch.compile with dynamic=True currently crashes Inductor's tiling
+# analysis on this model (torch._inductor.exc.InductorError in
+# tiling_utils.py get_pw_red_splits, seen on 5032910). Vectorised loss
+# + 32 workers alone should get us to ~2-4 s/step (from 22 s baseline).
+# Set COMPILE=1 to re-attempt (harmless — the trainer catches the crash
+# and falls back to eager, then the first forward pass may still error).
+export COMPILE=0
 
 export CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO/checkpoints_causalpfn2d}"
 export CHECKPOINT_EVERY=2000
