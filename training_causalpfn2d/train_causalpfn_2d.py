@@ -277,12 +277,21 @@ def main():
     # attention + MLP kernels and picks the Flash-Attention path where
     # available — typically 2-3x per-step on H100. `dynamic=True` because
     # our context/query split varies per batch.
-    if os.environ.get('COMPILE', '1') == '1' and DEVICE.type == 'cuda':
+    if os.environ.get('COMPILE', '0') == '1' and DEVICE.type == 'cuda':
         try:
+            # suppress_errors makes broken subgraphs fall back to eager at
+            # first-forward time instead of crashing the whole training.
+            # Without this, torch._inductor.exc.InductorError in
+            # tiling_utils.py can nuke the run at step 1.
+            import torch._dynamo as _dynamo
+            _dynamo.config.suppress_errors = True
             model = torch.compile(model, dynamic=True)
-            print('[compile] torch.compile(model, dynamic=True) enabled')
+            print('[compile] torch.compile(model, dynamic=True) enabled '
+                  '(suppress_errors=True — will fall back to eager on failure)')
         except Exception as e:
             print(f'[compile] torch.compile failed ({e}); running eager')
+    else:
+        print('[compile] disabled (COMPILE=0). Set COMPILE=1 to attempt compile.')
 
     opt = build_optimizer(model.parameters())
     sched = None                       # schedulefree handles its own LR
