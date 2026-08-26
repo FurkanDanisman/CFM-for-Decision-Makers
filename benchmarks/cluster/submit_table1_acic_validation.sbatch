@@ -58,6 +58,13 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 export PYTHONUNBUFFERED=1
 
+# Put the faiss/huggingface_hub shims dir on PYTHONPATH BEFORE python
+# starts so its sitecustomize auto-loads and causalpfn/__init__.py can
+# `import faiss` without crashing. Tasks 1/2 run through run_uwyk_table1.sh
+# which sets its own PYTHONPATH; tasks 3/4 invoke python directly so we
+# have to set it here.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] task=$SLURM_ARRAY_TASK_ID"
 
 case "$SLURM_ARRAY_TASK_ID" in
