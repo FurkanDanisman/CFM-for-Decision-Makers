@@ -99,7 +99,9 @@ sed -i 's/from CausalPFN\.benchmarks import/from benchmarks import/g' \
 # - $UWYK_ROOT/RealCauseEval   → 'run_baselines.eval__patched_*'
 # - $CAUSALPFN_ROOT            → top-level `benchmarks` package
 SHIM_DIR="$(dirname "$(readlink -f "$0")")/shims"
-export PYTHONPATH="$SHIM_DIR:$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+# CAUSALPFN_ROOT gives us the top-level `benchmarks/` package; CAUSALPFN_ROOT/src
+# gives us the `causalpfn` package that `benchmarks/__init__.py` imports from.
+export PYTHONPATH="$SHIM_DIR:$UWYK_ROOT:$UWYK_ROOT/RealCauseEval:$CAUSALPFN_ROOT:$CAUSALPFN_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
 MODEL_NAME="uwyk_table1_${MODE}"
 EXP_NAME="table1_${MODE}_${CKPT_TAG}"
