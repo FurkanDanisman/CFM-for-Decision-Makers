@@ -53,12 +53,14 @@ def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
     return np.hstack([X, pad])
 
 
-# NOTE: no caller-side X standardization here.
-# GraphConditioned2DHead was constructed with normalize_features=True, so the
-# parent's forward computes per-batch feature normalization internally --
-# mirroring how our PairedInterventionalDataset -> InterventionalPFN training
-# path was fed (raw padded X in, model normalises). Adding a manual z-score
-# here would double-normalise the features and produce OOD activations.
+def _standardize_train_test(X_train: np.ndarray, X_test: np.ndarray, eps: float = 1e-8):
+    """Z-score X_train and X_test using X_train's mean / std, matching the
+    training dataset's _standardize() in PairedInterventionalDataset.py:314.
+    The model sees standardised X at every training step, so eval must too."""
+    mu = X_train.mean(axis=0, keepdims=True)
+    sd = X_train.std(axis=0, keepdims=True)
+    sd = np.where(sd < eps, eps, sd)
+    return (X_train - mu) / sd, (X_test - mu) / sd
 
 
 def _scale_y(y: np.ndarray):
@@ -165,8 +167,9 @@ def evaluate(realization: int, model: GraphConditioned2DHead, J: int, F: int):
     true_ate  = float(true_cate.mean())
 
     n_real = X_tr_raw.shape[1]
-    X_tr = _pad_features(X_tr_raw, F)
-    X_te = _pad_features(X_te_raw, F)
+    X_tr_std, X_te_std = _standardize_train_test(X_tr_raw, X_te_raw)
+    X_tr = _pad_features(X_tr_std, F)
+    X_te = _pad_features(X_te_std, F)
     y_scaled, ymin, yrange = _scale_y(y_tr_raw)
     Y_obs = y_scaled.reshape(-1, 1)
 
