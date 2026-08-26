@@ -1,17 +1,15 @@
 """Train CausalPFN's transformer body with our 2D joint BarDistribution head.
 
-Same training pattern as ``training_graph2d/train_graph_2d.py``:
+Uses CausalPFN's own data pipeline (`BackdoorDGPMetaDataset`) and mirrors
+the per-batch train-step logic of `causalpfn.training.trainer` — the
+only difference is the loss: our joint 2D neg-log-prob on paired
+(E_y0, E_y1) instead of their single-arm HL-Gauss cross-entropy.
 
-  - Streaming ``PairedInterventionalDataset`` for paired (Y_do0, Y_do1) labels
-  - bf16 autocast
-  - Gradient accumulation
-  - Cosine LR with linear warmup
-  - Checkpoint save + resume + SIGTERM-safe interrupt save
-
-Env vars mirror the graph2d trainer. Only differences:
-  - Model class is ``CausalPFN2DHead`` (no ancestral matrix input).
-  - Loss target: raw ``(Y_do0, Y_do1)`` in the scaled [-1, 1] domain that
-    ``PairedInterventionalDataset`` already emits.
+Env vars mirror `training_graph2d/train_graph_2d.py`. Key CausalPFN
+config that matters here:
+  - MIN/MAX_TRAIN_SPLIT: random context/query split fraction per batch
+  - OVERLAP_THRESHOLD: drop tables where treated or control count is
+    below this fraction of split_pos (mirrors CausalPFN's valid_mask)
 """
 import faulthandler
 faulthandler.enable()
@@ -26,29 +24,37 @@ import time
 
 import torch
 import torch.optim as optim
+from torch.utils.data import DataLoader
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, REPO_SRC)
 
-from losses.BarDistribution2D import fit_edges_2d, neg_log_prob_2d, total_params
-from training.data.PairedInterventionalDataset import make_streaming_loader
-from training_causalpfn2d.model_causalpfn_2d import CausalPFN2DHead
+# Make sure CAUSALPFN_ROOT is on sys.path before importing the dataset.
+from training_causalpfn2d.model_causalpfn_2d import (      # noqa: E402  (side-effects wire paths)
+    CausalPFN2DHead, _wire_causalpfn_paths,
+)
+_wire_causalpfn_paths()
+
+from causalpfn.training.priors import BackdoorDGPMetaDataset  # noqa: E402
+from losses.BarDistribution2D import fit_edges_2d, total_params  # noqa: E402
 
 
 # ── CONFIG (env-overridable) ──────────────────────────────────────────────────
 
-J             = int(os.environ.get('J', 100))
+# Grid / output. J=25 matches CausalPFN's default nbins=500 in param budget
+# (25^2 + 13 = 638 vs 500).
+J             = int(os.environ.get('J', 25))
 OUTPUT_DIM    = total_params(J)
-NUM_FEATURES  = int(os.environ.get('NUM_FEATURES', 50))
+NUM_FEATURES  = int(os.environ.get('NUM_FEATURES', 100))
 
-# CausalPFN's TabDPTLongContextModel defaults from the codex branch.
+# Backbone
 NINP          = int(os.environ.get('NINP', 256))
 NHID_FACTOR   = int(os.environ.get('NHID_FACTOR', 4))
 NHID          = NINP * NHID_FACTOR
 NHEAD         = int(os.environ.get('NHEAD', 8))
 NLAYERS       = int(os.environ.get('NLAYERS', 8))
 DROPOUT       = float(os.environ.get('DROPOUT', 0.0))
-N_OUT         = int(os.environ.get('N_OUT', 10))   # unused for regression, kept for head layout
+N_OUT         = int(os.environ.get('N_OUT', 10))
 
 # Optimizer
 LR            = float(os.environ.get('LR', 1e-4))
@@ -58,17 +64,26 @@ MIN_LR_RATIO  = float(os.environ.get('MIN_LR_RATIO', 0.1))
 GRAD_CLIP     = float(os.environ.get('GRAD_CLIP', 1.0))
 
 # Training length + batching. Default matches graph2d/fn=50 (50k steps).
-N_STEPS         = int(os.environ.get('N_STEPS', 50000))
-MICROBATCH      = int(os.environ.get('MICROBATCH', 2))
-GRAD_ACCUM      = int(os.environ.get('GRAD_ACCUM', 16))
-N_CONTEXT_TRAIN = int(os.environ.get('N_CONTEXT_TRAIN', 1000))
-N_QUERY_TRAIN   = int(os.environ.get('N_QUERY_TRAIN', 250))
+N_STEPS       = int(os.environ.get('N_STEPS', 50000))
+MICROBATCH    = int(os.environ.get('MICROBATCH', 2))
+GRAD_ACCUM    = int(os.environ.get('GRAD_ACCUM', 16))
 
-USE_BF16        = os.environ.get('USE_BF16', '1') == '1'
+# CausalPFN train-step config
+MIN_TRAIN_SPLIT   = float(os.environ.get('MIN_TRAIN_SPLIT', 0.3))
+MAX_TRAIN_SPLIT   = float(os.environ.get('MAX_TRAIN_SPLIT', 0.9))
+OVERLAP_THRESHOLD = float(os.environ.get('OVERLAP_THRESHOLD', 0.05))
+
+# CausalPFN meta-dataset config (BackdoorDGPMetaDataset defaults are set
+# via its hydra config; we pass a minimum set here and let the class
+# fill any remaining defaults). Override individual knobs with env vars
+# if you need to.
+N_SAMPLES_PER_TASK = int(os.environ.get('N_SAMPLES_PER_TASK', 1024))
+MAX_N_COVARIATES   = int(os.environ.get('MAX_N_COVARIATES', 50))
+
+USE_BF16          = os.environ.get('USE_BF16', '1') == '1'
 
 # Streaming
 STREAM_WORKERS  = int(os.environ.get('STREAM_WORKERS', 8))
-STREAM_SEED     = int(os.environ.get('STREAM_SEED', 42))
 STREAM_WARMUP   = int(os.environ.get('STREAM_WARMUP', 4))
 
 # Checkpoints
@@ -88,31 +103,11 @@ else:
     DEVICE = torch.device('cpu')
 
 
-def _range_str(t):
-    tf = t.detach().float()
-    nb = int((~torch.isfinite(tf)).sum())
-    fin = tf[torch.isfinite(tf)]
-    if fin.numel() == 0:
-        return f'all-nonfinite (n={tf.numel()})'
-    return (f'min={fin.min().item():.3g} max={fin.max().item():.3g} '
-            f'absmax={fin.abs().max().item():.3g} nonfinite={nb}/{tf.numel()}')
-
-
-def log_bad_batch(step, loss, batch, logits, reason):
-    print(f'  [LOSS-WARN] step {step}: {reason} (loss={loss.item():.4g})')
-    for k in ('Y_obs', 'Y_do0', 'Y_do1'):
-        if k in batch:
-            print(f'      {k:>6}: {_range_str(batch[k])}')
-    print(f'      logits: {_range_str(logits)}')
-    sys.stdout.flush()
-
-
 def print_config():
     print('─' * 72)
     print(f'Device:        {DEVICE}')
     if DEVICE.type == 'cuda':
         print(f'GPU:           {torch.cuda.get_device_name(0)}')
-        print(f'Free memory:   {torch.cuda.mem_get_info()[0] / 1e9:.1f} GB')
     print(f'Precision:     {"bf16 autocast" if USE_BF16 else "fp32"}')
     print(f'J:             {J}  (output_dim = {OUTPUT_DIM})')
     print(f'Backbone:      TabDPTLongContext  ninp={NINP}  nhid={NHID}  '
@@ -121,8 +116,11 @@ def print_config():
     print(f'Schedule:      cosine  warmup_frac={WARMUP_FRAC}  min_lr_ratio={MIN_LR_RATIO}')
     print(f'Training:      steps={N_STEPS}  microbatch={MICROBATCH}  grad_accum={GRAD_ACCUM}')
     print(f'                effective_batch = {MICROBATCH * GRAD_ACCUM}')
-    print(f'                N_context={N_CONTEXT_TRAIN}  N_query={N_QUERY_TRAIN}')
-    print(f'Streaming:     workers={STREAM_WORKERS}  seed_base={STREAM_SEED}  warmup={STREAM_WARMUP}')
+    print(f'Data:          BackdoorDGPMetaDataset  n_samples={N_SAMPLES_PER_TASK}  '
+          f'max_covariates={MAX_N_COVARIATES}')
+    print(f'Split:         [{MIN_TRAIN_SPLIT}, {MAX_TRAIN_SPLIT}]  '
+          f'overlap_threshold={OVERLAP_THRESHOLD}')
+    print(f'Streaming:     workers={STREAM_WORKERS}  warmup={STREAM_WARMUP}')
     print(f'Checkpoint:    dir={CHECKPOINT_DIR}  every={CHECKPOINT_EVERY}  resume={RESUME}')
     print(f'Logging:       every {LOG_EVERY} steps')
     print('─' * 72)
@@ -143,7 +141,7 @@ def make_scheduler(optimizer, n_steps, warmup_frac, min_lr_ratio):
 
 
 def save_checkpoint(path, step, model, optimizer, scheduler, edges):
-    tmp_path = path + '.tmp'
+    tmp = path + '.tmp'
     torch.save({
         'step':             step,
         'model_state_dict': model.state_dict(),
@@ -155,8 +153,8 @@ def save_checkpoint(path, step, model, optimizer, scheduler, edges):
             'num_features': NUM_FEATURES, 'n_out': N_OUT, 'dropout': DROPOUT,
             'backbone': 'causalpfn.TabDPTLongContextModel',
         },
-    }, tmp_path)
-    os.replace(tmp_path, path)
+    }, tmp)
+    os.replace(tmp, path)
 
 
 def latest_checkpoint(ckpt_dir):
@@ -167,33 +165,52 @@ def latest_checkpoint(ckpt_dir):
     return files[-1]
 
 
-def load_checkpoint(path, model, optimizer, scheduler):
-    print(f'Resuming from {path}')
-    ckpt = torch.load(path, map_location=DEVICE, weights_only=False)
-    model.load_state_dict(ckpt['model_state_dict'])
-    optimizer.load_state_dict(ckpt['optimizer_state'])
-    scheduler.load_state_dict(ckpt['scheduler_state'])
-    edges = ckpt['edges'].to(DEVICE)
-    return ckpt['step'], edges
+def build_meta_dataset() -> BackdoorDGPMetaDataset:
+    """Construct BackdoorDGPMetaDataset. Passes only the two knobs we want
+    to expose via env vars (n_samples, max_covariates); everything else
+    uses the class's own defaults."""
+    return BackdoorDGPMetaDataset(
+        name='backdoor',
+        n_samples=N_SAMPLES_PER_TASK,
+        max_n_covariates=MAX_N_COVARIATES,
+        post_padding_n_cols=NUM_FEATURES,
+    )
 
 
-def subsample_task(batch, n_context, n_query):
-    """Subsample N and M axes; anc_matrix (if emitted by the dataset) is
-    dropped -- CausalPFN's body doesn't consume it."""
-    N = batch['X_obs'].shape[1]
-    M = batch['X_intv'].shape[1]
-    n = min(n_context, N)
-    m = min(n_query,   M)
-    ctx = torch.randperm(N)[:n]
-    qry = torch.randperm(M)[:m]
+def _train_step_data(batch, device):
+    """Mirror CausalPFN's trainer._train_step batch unpacking and split."""
+    X = batch['X'].to(device, non_blocking=True)                # (B, N, F)
+    # column permutation for invariance (same as CausalPFN)
+    idx = torch.randperm(X.shape[-1], device=device)
+    X = X[:, :, idx]
+    t = batch['t'].to(device, non_blocking=True)                # (B, N)
+    y = batch['y'].to(device, non_blocking=True)                # (B, N)
+    E_y0 = batch['E_y0'].to(device, non_blocking=True)          # (B, N)
+    E_y1 = batch['E_y1'].to(device, non_blocking=True)          # (B, N)
+
+    split_frac = (torch.rand(()) * (MAX_TRAIN_SPLIT - MIN_TRAIN_SPLIT) + MIN_TRAIN_SPLIT).item()
+    split_pos = max(1, int(X.shape[1] * split_frac))
+
     return {
-        'X_obs':  batch['X_obs'][:, ctx],
-        'T_obs':  batch['T_obs'][:, ctx],
-        'Y_obs':  batch['Y_obs'][:, ctx].squeeze(-1),
-        'X_intv': batch['X_intv'][:, qry],
-        'Y_do0':  batch['Y_do0'][:, qry].squeeze(-1),
-        'Y_do1':  batch['Y_do1'][:, qry].squeeze(-1),
+        'X_context':  X[:, :split_pos],
+        't_context':  t[:, :split_pos],
+        'y_context':  y[:, :split_pos],
+        'X_query':    X[:, split_pos:],
+        'E_y0_query': E_y0[:, split_pos:],
+        'E_y1_query': E_y1[:, split_pos:],
+        't_full':     t,
+        'split_pos':  split_pos,
     }
+
+
+def _valid_mask(t_full, split_pos, overlap_thr):
+    """Same mask CausalPFN's trainer uses: drop tasks whose context has
+    too few treated or too few control units."""
+    t_ctx = t_full[:, :split_pos]
+    treated = (t_ctx == 1).long().sum(dim=1)
+    control = (t_ctx == 0).long().sum(dim=1)
+    thr = overlap_thr * split_pos
+    return (treated >= thr) & (control >= thr)
 
 
 def main():
@@ -201,116 +218,113 @@ def main():
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
     interrupted = {'flag': False}
-    def _sigterm_handler(signum, frame):
-        print(f'\n[signal] Received signal {signum} — will save on next step boundary')
+    def _sig(sig, frame):
+        print(f'\n[signal] {sig} — will save on next step boundary')
         interrupted['flag'] = True
-    signal.signal(signal.SIGTERM, _sigterm_handler)
-    signal.signal(signal.SIGINT,  _sigterm_handler)
+    signal.signal(signal.SIGTERM, _sig); signal.signal(signal.SIGINT, _sig)
 
-    print(f'[stream] starting DataLoader (workers={STREAM_WORKERS}, microbatch={MICROBATCH})')
-    train_loader = make_streaming_loader(
+    # ── data ──
+    meta = build_meta_dataset()
+    loader = DataLoader(
+        meta,
         batch_size=MICROBATCH,
         num_workers=STREAM_WORKERS,
-        seed_base=STREAM_SEED,
+        pin_memory=True,
     )
-    train_iter = iter(train_loader)
+    it = iter(loader)
 
-    print(f'[stream] drawing {STREAM_WARMUP} warm-up tasks for edge fitting…')
-    warmup_samples = []
+    # ── edges from warmup batches (uses standardised y_context per task) ──
+    warmup = []
     for _ in range(STREAM_WARMUP):
-        b = next(train_iter)
+        b = next(it)
         for i in range(MICROBATCH):
-            warmup_samples.append({k: v[i] for k, v in b.items()})
-    edges = fit_edges_2d(warmup_samples, J).to(DEVICE)
+            y = b['y'][i].float()
+            y_std = (y - y.mean()) / (y.std() + 1e-6)
+            warmup.append({'Y_obs': y_std})
+    edges = fit_edges_2d(warmup, J).to(DEVICE)
 
+    # ── model ──
     model = CausalPFN2DHead(
-        J=J,
-        num_features=NUM_FEATURES,
-        ninp=NINP,
-        nhid=NHID,
-        nhead=NHEAD,
-        nlayers=NLAYERS,
-        dropout=DROPOUT,
-        n_out=N_OUT,
+        J=J, num_features=NUM_FEATURES,
+        ninp=NINP, nhid=NHID, nhead=NHEAD, nlayers=NLAYERS,
+        dropout=DROPOUT, n_out=N_OUT,
     ).to(DEVICE)
+    print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
 
-    n_params = sum(p.numel() for p in model.parameters())
-    print(f'Model parameters: {n_params:,}')
+    opt = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    sched = make_scheduler(opt, N_STEPS, WARMUP_FRAC, MIN_LR_RATIO)
 
-    optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler = make_scheduler(optimizer, N_STEPS, WARMUP_FRAC, MIN_LR_RATIO)
-
-    start_step = 0
+    start = 0
     if RESUME:
-        ckpt = latest_checkpoint(CHECKPOINT_DIR)
-        if ckpt:
-            start_step, edges = load_checkpoint(ckpt, model, optimizer, scheduler)
+        cp = latest_checkpoint(CHECKPOINT_DIR)
+        if cp:
+            print(f'Resuming from {cp}')
+            ck = torch.load(cp, map_location=DEVICE, weights_only=False)
+            model.load_state_dict(ck['model_state_dict'])
+            opt.load_state_dict(ck['optimizer_state'])
+            sched.load_state_dict(ck['scheduler_state'])
+            edges = ck['edges'].to(DEVICE)
+            start = ck['step']
 
     use_amp = USE_BF16 and DEVICE.type == 'cuda'
-    autocast_ctx = (lambda: torch.autocast(device_type='cuda', dtype=torch.bfloat16)) \
-        if use_amp else (lambda: contextlib.nullcontext())
+    ac = (lambda: torch.autocast('cuda', dtype=torch.bfloat16)) if use_amp else (lambda: contextlib.nullcontext())
 
     print(f'\n{"step":>7}  {"loss":>10}  {"lr":>10}  {"wall":>8}')
     print('─' * 42)
     model.train()
     t0 = time.time()
 
-    for step in range(start_step + 1, N_STEPS + 1):
-        optimizer.zero_grad(set_to_none=True)
+    for step in range(start + 1, N_STEPS + 1):
+        opt.zero_grad(set_to_none=True)
         accum_loss = 0.0
-
         for _ in range(GRAD_ACCUM):
-            batch = next(train_iter)
-            batch = subsample_task(batch, N_CONTEXT_TRAIN, N_QUERY_TRAIN)
-            for k in batch:
-                batch[k] = batch[k].to(DEVICE, non_blocking=True)
-
-            with autocast_ctx():
-                logits = model(
-                    batch['X_obs'], batch['T_obs'], batch['Y_obs'],
-                    batch['X_intv'],
+            batch = next(it)
+            b = _train_step_data(batch, DEVICE)
+            with ac():
+                losses = model(
+                    X_context=b['X_context'],
+                    t_context=b['t_context'],
+                    y_context=b['y_context'],
+                    X_query=b['X_query'],
+                    E_y0_query=b['E_y0_query'],
+                    E_y1_query=b['E_y1_query'],
+                    edges=edges,
                 )
-                loss = neg_log_prob_2d(
-                    logits.float(), batch['Y_do0'], batch['Y_do1'], J, edges,
-                )
-
+                mask = _valid_mask(b['t_full'], b['split_pos'], OVERLAP_THRESHOLD)
+                mask = mask & torch.isfinite(losses)
+                valid = losses[mask]
+                if valid.numel() == 0:
+                    # Attach zero to every parameter so DDP-alike training doesn't hang.
+                    loss = losses.new_zeros(())
+                    for p in model.parameters():
+                        if p.requires_grad:
+                            loss = loss + 0.0 * p.sum()
+                else:
+                    loss = valid.mean()
             if not torch.isfinite(loss):
-                print(f'step {step}: non-finite loss — skipping microbatch')
-                log_bad_batch(step, loss, batch, logits, 'non-finite loss')
+                print(f'step {step}: non-finite loss, skip')
                 continue
-
-            if loss.item() > LOSS_WARN_THRESH:
-                log_bad_batch(step, loss, batch, logits, f'loss > {LOSS_WARN_THRESH:.0e}')
-
             (loss / GRAD_ACCUM).backward()
             accum_loss += loss.item()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRAD_CLIP)
-        optimizer.step()
-        scheduler.step()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+        opt.step(); sched.step()
 
         if step % LOG_EVERY == 0 or step == 1:
-            wall = time.time() - t0
-            lr_now = scheduler.get_last_lr()[0]
-            avg_loss = accum_loss / GRAD_ACCUM
-            print(f'{step:>7}  {avg_loss:>10.4f}  {lr_now:>10.2e}  {wall:>7.1f}s')
+            print(f'{step:>7}  {accum_loss/GRAD_ACCUM:>10.4f}  '
+                  f'{sched.get_last_lr()[0]:>10.2e}  {time.time()-t0:>7.1f}s')
 
         if step % CHECKPOINT_EVERY == 0:
-            path = os.path.join(CHECKPOINT_DIR, f'step_{step}.pt')
-            save_checkpoint(path, step, model, optimizer, scheduler, edges)
-            print(f'  → checkpoint saved: {path}')
+            save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}.pt'),
+                            step, model, opt, sched, edges)
 
         if interrupted['flag']:
-            path = os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt')
-            save_checkpoint(path, step, model, optimizer, scheduler, edges)
-            print(f'  → interrupt checkpoint saved: {path}')
-            print('  Exiting cleanly. Resubmit sbatch to resume.')
+            save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{step}_interrupt.pt'),
+                            step, model, opt, sched, edges)
             sys.exit(0)
 
-    final_path = os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt')
-    save_checkpoint(final_path, N_STEPS, model, optimizer, scheduler, edges)
-    print(f'\nFinal checkpoint: {final_path}')
-    print(f'Total wall: {time.time() - t0:.1f}s')
+    save_checkpoint(os.path.join(CHECKPOINT_DIR, f'step_{N_STEPS}_final.pt'),
+                    N_STEPS, model, opt, sched, edges)
 
 
 if __name__ == '__main__':

@@ -39,8 +39,8 @@ export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"     # PairedInterv
 
 # LR-schedule horizon (see comment in submit_train_graph2d.sbatch about the
 # 1M mistake — never decouple this from the intended training length).
-export J=100
-export NUM_FEATURES=50
+export J=25                          # J**2 + 13 = 638 ≈ CausalPFN's nbins=500
+export NUM_FEATURES=100               # matches CausalPFN's default max_n_covariates budget
 
 export NINP=256
 export NHID_FACTOR=4

@@ -5,8 +5,10 @@
 # d_model / depth / heads / hidden_mult).
 
 # ── Grid / output head ────────────────────────────────────────────────────
-J: 100                    # output_dim = J**2 + 9 + 4 = 10013
-NUM_FEATURES: 50          # padded max features (excluding the T column, which is added inside)
+# K=25 matches CausalPFN's default single-arm head (nbins=500) in parameter
+# budget: 25**2 + 9 + 4 = 638 ≈ 500.
+J: 25                     # output_dim = J**2 + 9 + 4 = 638
+NUM_FEATURES: 100         # CausalPFN's default max covariate width
 
 # ── Backbone (CausalPFN TabDPTLongContext defaults from codex branch) ────
 NINP: 256                 # embed dim
