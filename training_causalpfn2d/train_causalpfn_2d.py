@@ -350,6 +350,18 @@ def main():
                         sd = sd[wrap_key]
                         print(f'[warmstart] unwrapped state_dict from top-level key {wrap_key!r}')
                         break
+            # Strip `_orig_mod.` prefix. When a model was wrapped with
+            # torch.compile(...) before saving, PyTorch prepends this prefix
+            # to every state_dict key. CausalPFN saves compiled models, so
+            # every key looks like `_orig_mod.transformer_encoder.0.kv_proj.
+            # weight` — mismatched against our uncompiled model's keys.
+            # Verified via missing=148/unexpected=148 log on job 5037860.
+            if isinstance(sd, dict) and any(k.startswith('_orig_mod.') for k in sd):
+                _prefix = '_orig_mod.'
+                sd = {(k[len(_prefix):] if k.startswith(_prefix) else k): v
+                      for k, v in sd.items()}
+                print(f'[warmstart] stripped {_prefix!r} prefix from state_dict keys '
+                      '(torch.compile wrapping)')
             # Load into backbone only. Head keys (BarDist.borders / last-K logits)
             # are ours and stay at their random init.
             missing, unexpected = model.backbone.load_state_dict(sd, strict=False)
