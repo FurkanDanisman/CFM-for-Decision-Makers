@@ -41,6 +41,11 @@ CAUSALPFN = os.environ.get(
     'CAUSALPFN_ROOT', '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn')
 sys.path.insert(0, _R_PFN)
 sys.path.insert(0, CAUSALPFN)
+# benchmarks/__init__.py at CAUSALPFN root imports `causalpfn.synthetic`,
+# which lives at CAUSALPFN/src/causalpfn/, so add both dirs.
+_CAUSALPFN_SRC = os.path.join(CAUSALPFN, 'src')
+if os.path.isdir(_CAUSALPFN_SRC):
+    sys.path.insert(0, _CAUSALPFN_SRC)
 
 # Shim faiss / huggingface_hub etc. so `causalpfn` can be imported.
 _SHIMS = os.path.join(_HERE, 'shims')

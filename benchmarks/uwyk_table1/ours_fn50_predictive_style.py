@@ -44,6 +44,9 @@ CAUSALPFN = os.environ.get(
     'CAUSALPFN_ROOT', '/scratch/furkanbd/rpfn_bench_kit/external/causalpfn')
 sys.path.insert(0, _R_PFN)
 sys.path.insert(0, CAUSALPFN)
+_CAUSALPFN_SRC = os.path.join(CAUSALPFN, 'src')
+if os.path.isdir(_CAUSALPFN_SRC):
+    sys.path.insert(0, _CAUSALPFN_SRC)
 _SHIMS = os.path.join(_HERE, 'shims')
 if os.path.isdir(_SHIMS) and _SHIMS not in sys.path:
     sys.path.insert(0, _SHIMS)
