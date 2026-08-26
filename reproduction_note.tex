@@ -1,0 +1,20 @@
+\paragraph{Reproduction note for ACIC and CPS.}
+Our reproduction of the Predictive / No-Ancestral / Ancestral rows on
+IHDP and PSID-balanced matches the reported numbers byte-for-byte, but
+ACIC and CPS drift by roughly one to two percent on the No-Ancestral
+and Ancestral rows. The cause is not GPU numerics or dataset drift,
+but an unseeded random subsample in the reproduce-branch inference
+code. The published checkpoint has a hard training-context capacity of
+$1000$ rows, and
+\texttt{PreprocessingGraphConditionedPFN.\_pad\_or\_truncate\_samples}
+(line~447) shrinks any larger training set to $1000$ rows via
+\texttt{np.random.choice($n_\text{train}$, $1000$, replace=False)}
+without a seed, relying instead on numpy's global random state. On
+IHDP ($n_\text{train}\!\lesssim\!500$) and PSID-balanced (subsampled
+to $\lesssim\!1000$) this branch is never entered and inference is
+deterministic, so both rows match exactly. On ACIC
+($n_\text{train}\!\approx\!4{,}802$) and CPS ($n_\text{train}\!=\!14{,}559$)
+it fires on every call and draws a different $1000$-row subset than
+the paper's environment happened to draw, giving the model a different
+context and therefore a slightly different CATE. Passing a fixed seed
+to that one call eliminates the drift.

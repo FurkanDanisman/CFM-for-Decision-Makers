@@ -19,7 +19,15 @@ suppressPackageStartupMessages({
 # Load the DensOLog algorithms (get_fhatn lives here)
 source("/Users/furkandanisman/DensOLog_VS/Algorithms/MALC_Algorithm.R")
 
-blob <- fromJSON(json_path, simplifyVector = TRUE)
+# simplifyVector=FALSE keeps the queries list as a list-of-lists rather
+# than collapsing to a data.frame (which breaks per-query $p_y0_true access).
+blob <- fromJSON(json_path, simplifyVector = FALSE)
+# But convert scalar-list fields back to vectors for convenience
+blob$edges_scaled <- unlist(blob$edges_scaled)
+blob$Y_CENTERS <- unlist(blob$Y_CENTERS)
+blob$J <- as.integer(blob$J)
+blob$n_queries <- as.integer(blob$n_queries)
+blob$realization <- as.integer(blob$realization)
 J <- blob$J
 Y_CENTERS <- blob$Y_CENTERS
 edges_scaled <- blob$edges_scaled
@@ -81,8 +89,9 @@ r_l2_y1 <- setNames(rep(list(numeric(0)), length(R_METHODS)), R_METHODS)
 
 for (i in seq_len(blob$n_queries)) {
   q <- blob$queries[[i]]
-  p_y0_true <- q$p_y0_true; p_y1_true <- q$p_y1_true
-  py_p_y0 <- q$py_malc_p_y0; py_p_y1 <- q$py_malc_p_y1
+  p_y0_true <- unlist(q$p_y0_true); p_y1_true <- unlist(q$p_y1_true)
+  py_p_y0   <- unlist(q$py_malc_p_y0); py_p_y1 <- unlist(q$py_malc_p_y1)
+  p_marg_y0 <- unlist(q$p_marg_y0_raw); p_marg_y1 <- unlist(q$p_marg_y1_raw)
 
   # Python L2 (should match what summary_ihdp.py prints)
   py_l2_y0[i] <- l2_dist(py_p_y0, p_y0_true, Y_BIN)
@@ -90,12 +99,12 @@ for (i in seq_len(blob$n_queries)) {
 
   # R L2 for each method
   for (m in R_METHODS) {
-    rp0 <- r_malc_eval(q$p_marg_y0_raw, method = m)
-    rp1 <- r_malc_eval(q$p_marg_y1_raw, method = m)
+    rp0 <- r_malc_eval(p_marg_y0, method = m)
+    rp1 <- r_malc_eval(p_marg_y1, method = m)
     r_l2_y0[[m]][i] <- l2_dist(rp0, p_y0_true, Y_BIN)
     r_l2_y1[[m]][i] <- l2_dist(rp1, p_y1_true, Y_BIN)
   }
-  cat(sprintf("  q=%2d done\n", q$q))
+  cat(sprintf("  q=%2d done\n", as.integer(q$q)))
 }
 
 cat("\n=== L2 y0 (mean ± SEM) — lower is better ===\n")
