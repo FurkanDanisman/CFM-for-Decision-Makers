@@ -128,9 +128,17 @@ export LOG_EVERY=100
 export LOSS_WARN_THRESH=1e3
 
 source "$DEPLOY_ROOT/venv/bin/activate"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+# CRITICAL: NumPy's BLAS backend (OpenBLAS/MKL) uses OMP threads. In a
+# DataLoader worker pool, each worker's NumPy calls spawn threads
+# independently, so setting OMP=32 with 32 workers means 32×32 = 1024
+# threads competing for the CPU. Load average balloons to 500+, kernel
+# scheduling dominates over actual work, and training crawls. Kill the
+# thread pool per-worker — the SCM sampler doesn't parallelize well past
+# 1-2 threads anyway. This matches PyTorch's own recommendation for
+# DataLoader with num_workers > 0.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 # Shims for faiss / huggingface_hub / ... that causalpfn/__init__.py
 # tries to import unconditionally. Must be on PYTHONPATH BEFORE python

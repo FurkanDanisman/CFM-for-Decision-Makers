@@ -108,9 +108,12 @@ export LOSS_WARN_THRESH=1e3
 export PROFILE_STEPS=3
 
 source "$DEPLOY_ROOT/venv/bin/activate"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+# CRITICAL: OMP=SLURM_CPUS_PER_TASK caused thread oversubscription in
+# DataLoader workers. See submit_train_causalpfn2d.sbatch for the full
+# analysis. Same fix applies to DDP.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
