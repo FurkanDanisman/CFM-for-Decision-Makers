@@ -96,11 +96,13 @@ export MAX_N_COVARIATES=98
 
 export USE_BF16=1
 
-# Worker count and warmup — same as H100 sbatch. Job 5038775 diagnosed the
-# 32-worker CPU thrash on shared H100 nodes; 8 workers + STREAM_WARMUP=16
-# was the fix. L40s nodes have comparable per-GPU CPU quotas so the same
-# knobs apply.
-export STREAM_WORKERS="${STREAM_WORKERS:-8}"
+# Worker count matches CausalPFN's conf/train.yaml verbatim: num_workers=32,
+# prefetch_factor=4. The earlier "8 workers per rank in DDP" argument was
+# wrong — CausalPFN's DataLoader uses num_workers=32 PER RANK, not 8. Job
+# 5038775's 32-worker thrash was a shared-node artefact; on L40s we
+# request 32 CPUs so 1 worker per CPU is fine.
+export STREAM_WORKERS="${STREAM_WORKERS:-32}"
+export PREFETCH_FACTOR="${PREFETCH_FACTOR:-4}"
 export STREAM_WARMUP="${STREAM_WARMUP:-16}"
 
 # torch.compile: backbone-only. Full-model compile hit an Inductor tiling

@@ -84,8 +84,9 @@ MAX_N_COVARIATES   = int(os.environ.get('MAX_N_COVARIATES', 98))
 USE_BF16          = os.environ.get('USE_BF16', '1') == '1'
 
 # Streaming
-STREAM_WORKERS  = int(os.environ.get('STREAM_WORKERS', 8))
+STREAM_WORKERS  = int(os.environ.get('STREAM_WORKERS', 32))
 STREAM_WARMUP   = int(os.environ.get('STREAM_WARMUP', 4))
+PREFETCH_FACTOR = int(os.environ.get('PREFETCH_FACTOR', 4))
 
 # Checkpoints
 CHECKPOINT_DIR    = os.environ.get('CHECKPOINT_DIR', './checkpoints_causalpfn2d')
@@ -296,13 +297,23 @@ def main():
     signal.signal(signal.SIGTERM, _sig); signal.signal(signal.SIGINT, _sig)
 
     # ── data ──
+    # Match CausalPFN's conf/train.yaml verbatim: num_workers=32,
+    # prefetch_factor=4, persistent_workers when workers>0. Without
+    # persistent_workers, PyTorch tears down worker processes on iterator
+    # restart, incurring Python import + SCM sampler warmup on every
+    # relaunch and starving the GPU. Without prefetch_factor>=4, the
+    # per-worker queue depth is only 2 (PyTorch default), which is not
+    # deep enough to absorb DGP sampling latency variance.
     meta = build_meta_dataset()
-    loader = DataLoader(
-        meta,
+    loader_kwargs = dict(
         batch_size=MICROBATCH,
         num_workers=STREAM_WORKERS,
         pin_memory=True,
     )
+    if STREAM_WORKERS > 0:
+        loader_kwargs['prefetch_factor'] = PREFETCH_FACTOR
+        loader_kwargs['persistent_workers'] = True
+    loader = DataLoader(meta, **loader_kwargs)
     it = iter(loader)
 
     # ── edges from warmup batches (uses standardised y_context per task) ──
