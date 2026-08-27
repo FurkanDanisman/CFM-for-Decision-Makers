@@ -137,9 +137,13 @@ export LOG_EVERY=100
 export LOSS_WARN_THRESH=1e3
 
 source "$DEPLOY_ROOT/venv/bin/activate"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+# CRITICAL: OMP=SLURM_CPUS_PER_TASK caused thread oversubscription in
+# DataLoader workers (32 workers × 32 OMP threads = 1024-thread thrash,
+# load average 500+, training stalled). NumPy's SCM sampling doesn't
+# benefit from >1 BLAS thread anyway. See L40s sbatch for full analysis.
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 # Shims for faiss / huggingface_hub / ... that causalpfn/__init__.py
 # tries to import unconditionally. Must be on PYTHONPATH BEFORE python
