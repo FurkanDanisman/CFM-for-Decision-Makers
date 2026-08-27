@@ -80,10 +80,16 @@ export N_SAMPLES_PER_TASK=2048
 export MAX_N_COVARIATES=98
 export USE_BF16=1
 
-# Per-rank workers. With --exclusive + 32 cpus and 4 ranks, each rank
-# gets 8 dedicated CPUs → 8 workers per rank = 32 workers total across
-# the node. Matches CausalPFN's per-rank worker allocation.
+# Per-rank workers. Slurm allocates 32 CPUs to the srun task; torchrun
+# then forks 4 rank processes internally that share those CPUs. Setting
+# STREAM_WORKERS=8 per rank gives 8×4 = 32 workers total = 1 worker per
+# CPU (no oversubscription). CausalPFN's conf/train.yaml sets
+# num_workers=32 per rank, but that assumes each rank has its own 32 CPUs
+# (e.g. a 128-CPU node). Here Slurm gives us 32 total, so 8 per rank
+# matches the CPU budget. If you bump --cpus-per-task=128 above, also
+# bump STREAM_WORKERS to 32 to match CausalPFN verbatim.
 export STREAM_WORKERS="${STREAM_WORKERS:-8}"
+export PREFETCH_FACTOR="${PREFETCH_FACTOR:-4}"
 export STREAM_WARMUP="${STREAM_WARMUP:-16}"
 
 # Compile mode. Full-compile hit an Inductor tiling assert on the joint

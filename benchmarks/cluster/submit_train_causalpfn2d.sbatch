@@ -98,19 +98,16 @@ export MAX_N_COVARIATES=98
 
 export USE_BF16=1
 
-# Match CausalPFN's num_workers=32 exactly. Requires cpus-per-task=32
-# above; if you reduce the CPU quota, drop this in lockstep.
-# CausalPFN's config: num_workers=32 — but that's designed for DDP with
-# 4 GPUs (~8 workers per rank). On single-H100 all 32 contend for CPU
-# with other jobs on the shared node, workers thrash without producing
-# batches fast enough, GPU sits at ~19% utilization while main process
-# waits in Sleep state on next(iterator). Job 5038775 stalled around
-# step 4-100 with this exact pattern. Drop to 8 workers — matches
-# per-rank workload of the original CausalPFN setup.
-export STREAM_WORKERS="${STREAM_WORKERS:-8}"
-# Bump warmup buffer so the initial batches ahead of steady-state don't
-# starve either. STREAM_WARMUP=4 was fine when workers were fast; give
-# ourselves more headroom.
+# Match CausalPFN's conf/train.yaml verbatim: num_workers=32,
+# prefetch_factor=4. The prior "8 workers per rank in DDP" reasoning was
+# wrong — CausalPFN's DataLoader is num_workers=32 per rank. Job 5038775's
+# thrash was because the H100 node was shared with other jobs; on a
+# dedicated allocation (this sbatch requests --cpus-per-task=32) 32
+# workers × 1 CPU each fits exactly.
+export STREAM_WORKERS="${STREAM_WORKERS:-32}"
+export PREFETCH_FACTOR="${PREFETCH_FACTOR:-4}"
+# BarDist edges are computed from STREAM_WARMUP batches before training
+# starts. Independent of DataLoader prefetch_factor.
 export STREAM_WARMUP="${STREAM_WARMUP:-16}"
 # torch.compile: backbone-only mode. Full-model compile hit an
 # Inductor tiling assertion (job 5032910) triggered by the loss's
