@@ -44,6 +44,16 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$DEPLOY_ROOT/external/causalpfn}"
 export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 
+# WARMSTART IS MANDATORY. See submit_train_causalpfn2d.sbatch for the
+# rationale — training from scratch invalidates the CausalPFN comparison.
+export WARMSTART_LOCAL="${WARMSTART_LOCAL:-$DEPLOY_ROOT/warmstart/tabdpt_long_context.ckpt}"
+if [ ! -f "$WARMSTART_LOCAL" ]; then
+    echo "FATAL: WARMSTART_LOCAL not found at $WARMSTART_LOCAL." >&2
+    echo "       Refusing to run — training from scratch would invalidate the CausalPFN comparison." >&2
+    exit 1
+fi
+echo "[warmstart-preflight] found ckpt at $WARMSTART_LOCAL"
+
 # Same knobs as single-GPU sbatch. Per-rank batch matches CausalPFN's;
 # world_size=4 gives effective batch = 1024 (paper spec).
 export J=32

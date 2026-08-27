@@ -41,6 +41,23 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN_ROOT="${CAUSALPFN_ROOT:-$DEPLOY_ROOT/external/causalpfn}"
 export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"     # PairedInterventionalDataset needs UWYK's SCMSampler
 
+# WARMSTART IS MANDATORY. Every comparison against CausalPFN's published
+# Stage-1 (TabDPT long-context) baseline requires that we start from the
+# same checkpoint. Silently training from scratch invalidates every
+# downstream number. If the file is missing, abort the job before any GPU
+# time is charged. Download once on the login node with:
+#   PYTHONPATH= python -c "from huggingface_hub import hf_hub_download; \
+#     print(hf_hub_download('vdblm/causalpfn','tabdpt_long_context.ckpt'))"
+#   cp <printed-path> $DEPLOY_ROOT/warmstart/tabdpt_long_context.ckpt
+export WARMSTART_LOCAL="${WARMSTART_LOCAL:-$DEPLOY_ROOT/warmstart/tabdpt_long_context.ckpt}"
+if [ ! -f "$WARMSTART_LOCAL" ]; then
+    echo "FATAL: WARMSTART_LOCAL not found at $WARMSTART_LOCAL." >&2
+    echo "       Refusing to run — training from scratch would invalidate the CausalPFN comparison." >&2
+    echo "       Download vdblm/causalpfn/tabdpt_long_context.ckpt on the login node first." >&2
+    exit 1
+fi
+echo "[warmstart-preflight] found ckpt at $WARMSTART_LOCAL"
+
 # LR-schedule horizon (see comment in submit_train_graph2d.sbatch about the
 # 1M mistake — never decouple this from the intended training length).
 # Every knob mirrors conf/{trainer,optimizer,meta_dataset,model}/*.yaml on
