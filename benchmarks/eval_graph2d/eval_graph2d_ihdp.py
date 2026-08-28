@@ -115,6 +115,26 @@ def build_anc_none(F: int, n_real: int) -> np.ndarray:
 def load_model(ckpt_path: str) -> tuple[GraphConditioned2DHead, dict]:
     ck = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
     cfg = ck['config']
+
+    # Attention-sink counts aren't saved to cfg by the trainer. Infer them
+    # from the checkpoint's own state_dict: if `sink_rows_x` / `sink_rows_y`
+    # (or `sink_cols_x` / `sink_cols_y`) params exist, their first dim IS
+    # the sink count. Else 0. This avoids env-var coupling to the sbatch.
+    sd = ck['model_state_dict']
+    if any('_orig_mod.' in k for k in sd):
+        sd = {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
+        ck['model_state_dict'] = sd
+
+    def _sink_count(prefix):
+        for suffix in ('_x', '_y'):
+            k = prefix + suffix
+            if k in sd and sd[k].dim() >= 1:
+                return int(sd[k].shape[0])
+        return 0
+
+    n_sample_sink = _sink_count('sink_rows')
+    n_feature_sink = _sink_count('sink_cols')
+
     model = GraphConditioned2DHead(
         num_features=cfg['num_features'],
         d_model=cfg['d_model'],
@@ -125,8 +145,22 @@ def load_model(ckpt_path: str) -> tuple[GraphConditioned2DHead, dict]:
         hidden_mult=cfg['hidden_mult'],
         normalize_features=True,
         J=cfg['J'],
+        n_sample_attention_sink_rows=n_sample_sink,
+        n_feature_attention_sink_cols=n_feature_sink,
     ).to(DEVICE)
-    model.load_state_dict(ck['model_state_dict'])
+    print(f'[load_model] sink_rows={n_sample_sink}  sink_cols={n_feature_sink}  '
+          f'(inferred from ckpt state_dict)', flush=True)
+
+    ref = model.state_dict()
+    kept = {k: v for k, v in sd.items() if k in ref and ref[k].shape == v.shape}
+    missing, unexpected = model.load_state_dict(kept, strict=False)
+    print(f'[load_model] load_state_dict: missing={len(missing)} unexpected={len(unexpected)}  '
+          f'loaded={len(kept)}/{len(ref)}', flush=True)
+    if len(missing) > 5:
+        raise RuntimeError(
+            f'[load_model] ABORT: {len(missing)} missing keys — refusing to '
+            f'eval a partially-loaded model. First missing: {list(missing)[:8]}'
+        )
     model.eval()
     return model, cfg
 
