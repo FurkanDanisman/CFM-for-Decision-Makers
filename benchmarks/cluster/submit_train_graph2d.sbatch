@@ -33,7 +33,7 @@ UWYK_ROOT="${UWYK_ROOT:-$DEPLOY_ROOT/external/uwyk}"
 # ── Training config (env-var → src/training_graph2d/train_graph_2d.py) ──
 # Values MUST mirror training_graph2d/configs/graph2d_20k.yaml.
 
-export J=100
+export J=32
 export NUM_FEATURES=50
 
 export D_MODEL=256
