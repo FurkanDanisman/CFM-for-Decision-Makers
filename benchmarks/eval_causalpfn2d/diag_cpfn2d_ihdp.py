@@ -34,12 +34,21 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def _load_sd(model, sd):
-    if any(k.startswith('_orig_mod.') for k in sd):
-        sd = {k.removeprefix('_orig_mod.'): v for k, v in sd.items()}
+    # Global replace — the trainer compiled only the backbone, so keys look
+    # like `backbone._orig_mod.encoder.weight` with the prefix MID-PATH.
+    # Prior startswith-based strip silently dropped 148/149 backbone keys.
+    if any('_orig_mod.' in k for k in sd):
+        sd = {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
+        print('[load] stripped _orig_mod. (global) from state_dict keys', flush=True)
     ref = model.state_dict()
     kept = {k: v for k, v in sd.items() if k in ref and ref[k].shape == v.shape}
     m, u = model.load_state_dict(kept, strict=False)
-    print(f'[load] missing={len(m)} unexpected={len(u)}', flush=True)
+    print(f'[load] missing={len(m)} unexpected={len(u)}  loaded={len(kept)}/{len(ref)}', flush=True)
+    if len(m) > 20:
+        raise RuntimeError(
+            f'[load] ABORT: {len(m)} missing keys after load — refusing to '
+            f'diagnose a random-init model. First missing: {list(m)[:8]}'
+        )
 
 
 def _std_train_test(Xtr, Xte):

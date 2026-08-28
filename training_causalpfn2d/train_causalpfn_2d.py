@@ -38,7 +38,7 @@ from training_causalpfn2d.model_causalpfn_2d import (      # noqa: E402  (side-e
 _wire_causalpfn_paths()
 
 from causalpfn.training.priors import BackdoorDGPMetaDataset  # noqa: E402
-from losses.BarDistribution2D import fit_edges_2d, total_params  # noqa: E402
+from losses.BarDistribution2D import make_edges, total_params  # noqa: E402
 
 
 # ── CONFIG (env-overridable) ──────────────────────────────────────────────────
@@ -145,11 +145,26 @@ def build_optimizer(params):
     )
 
 
+def _strip_compile_prefix(sd):
+    """Remove torch.compile's '_orig_mod.' segment from anywhere in each key.
+
+    When only a SUBMODULE is compiled (e.g. `inner.backbone = torch.compile(inner.backbone)`),
+    the resulting state_dict keys look like `backbone._orig_mod.transformer_encoder.0.weight`
+    — the prefix is MID-PATH, not at the start. A naive `k.startswith('_orig_mod.')`
+    strip misses these entirely, and downstream loaders silently fail to bind 148/149
+    backbone parameters (verified: step_28000.pt had this exact shape). Use a global
+    replace so both start-of-key and mid-path prefixes are handled.
+    """
+    if any('_orig_mod.' in k for k in sd):
+        return {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
+    return sd
+
+
 def save_checkpoint(path, step, model, optimizer, edges):
     tmp = path + '.tmp'
     torch.save({
         'step':             step,
-        'model_state_dict': model.state_dict(),
+        'model_state_dict': _strip_compile_prefix(model.state_dict()),
         'optimizer_state':  optimizer.state_dict(),
         'edges':            edges.cpu(),
         'config': {
@@ -316,15 +331,34 @@ def main():
     loader = DataLoader(meta, **loader_kwargs)
     it = iter(loader)
 
-    # ── edges from warmup batches (uses standardised y_context per task) ──
-    warmup = []
+    # ── FIXED edges [-10, +10], matching CausalPFN's InContextModel ────
+    # CausalPFN hardcodes vmin=-10, vmax=+10 in their bar-distribution head
+    # (src/causalpfn/models/icl_model.py: vmin/vmax defaults). We used to
+    # fit edges empirically from warmup Y_obs, but a single outlier task
+    # dragged y_max to +40 (job 5053194 log: 'edges std-space: [-9.460, 39.864]'),
+    # giving bin_width = 1.54 std-devs — 80x wider than CausalPFN's 0.02.
+    # Result: model couldn't localise the joint anywhere and plateaued at
+    # loss ≈ log(2π) ≈ 1.83 for 28k steps.
+    #
+    # Fixed edges + pooled per-task standardisation is the right combo for
+    # the 2D joint head: pooled std keeps E[Y0] and E[Y1] on the same scale
+    # (the joint requires this), fixed edges are outlier-proof.
+    edges = make_edges(J, y_min=-10.0, y_max=10.0).to(DEVICE)
+    _log(f'[edges] fixed to [-10.0, +10.0]  J+1={J+1}  bin_width={20/J:.4f}')
+
+    # Empirical sanity: consume warmup batches and log how far y_std actually
+    # ranges. If typical values fall well inside [-10, +10] the fixed edges
+    # cover the density; if they exceed, tail regions handle the overflow.
+    ymin_seen, ymax_seen = float('inf'), float('-inf')
     for _ in range(STREAM_WARMUP):
         b = next(it)
         for i in range(MICROBATCH):
             y = b['y'][i].float()
             y_std = (y - y.mean()) / (y.std() + 1e-6)
-            warmup.append({'Y_obs': y_std})
-    edges = fit_edges_2d(warmup, J).to(DEVICE)
+            ymin_seen = min(ymin_seen, y_std.min().item())
+            ymax_seen = max(ymax_seen, y_std.max().item())
+    _log(f'[edges] warmup empirical y_std range: [{ymin_seen:.3f}, {ymax_seen:.3f}]  '
+         f'(fixed edges cover: {(ymin_seen >= -10.0 and ymax_seen <= 10.0)})')
 
     # ── model ──
     model = CausalPFN2DHead(
@@ -437,12 +471,54 @@ def main():
             print(f'[warmstart] backbone loaded  '
                   f'missing={len(missing)}  unexpected={len(unexpected)}  '
                   f'(missing includes the {len(_skipped_shape)} skipped mismatches above)')
-            if len(missing) - len(_skipped_shape) > 20 or len(unexpected) > 20:
-                print(f'[warmstart]   first missing:    {list(missing)[:5]}')
-                print(f'[warmstart]   first unexpected: {list(unexpected)[:5]}')
-                print(f'[warmstart] NOTE: many mismatches suggests key-prefix issue; '
-                      f'set WARMSTART=0 if this looks wrong.')
+
+            # HARD verification 1: reject silent load failures. Anything beyond the
+            # intentionally-skipped head keys means our load path is wrong; refuse to
+            # train on random init.
+            _unexpected_missing = len(missing) - len(_skipped_shape)
+            if _unexpected_missing > 5 or len(unexpected) > 5:
+                print(f'[warmstart]   first missing:    {list(missing)[:10]}')
+                print(f'[warmstart]   first unexpected: {list(unexpected)[:10]}')
+                raise RuntimeError(
+                    f'[warmstart] ABORT: {_unexpected_missing} unexpected missing '
+                    f'and {len(unexpected)} unexpected extra keys after load_state_dict '
+                    f'(beyond the {len(_skipped_shape)} intentional shape-mismatches). '
+                    f'Backbone weights are mostly at random init — refusing to waste '
+                    f'GPU days training a random model. Fix the load path or set '
+                    f'WARMSTART=0 explicitly to skip warmstart.'
+                )
+
+            # HARD verification 2: bytes match. Pick a probe parameter and verify
+            # its post-load value is bit-identical to the checkpoint's. Catches
+            # cases where load_state_dict silently no-ops (empty _filtered_sd, all
+            # keys skipped, wrong prefix).
+            _probe_key = next(
+                (k for k in _filtered_sd
+                 if 'weight' in k and hasattr(_filtered_sd[k], 'dim')
+                    and _filtered_sd[k].dim() >= 2),
+                None,
+            )
+            if _probe_key is None:
+                raise RuntimeError(
+                    '[warmstart] ABORT: no probe key found in filtered state_dict — '
+                    'nothing was loaded. Check the checkpoint format.'
+                )
+            _got = model.backbone.state_dict()[_probe_key].detach().cpu()
+            _want = _filtered_sd[_probe_key].detach().cpu()
+            if not torch.equal(_got, _want):
+                raise RuntimeError(
+                    f'[warmstart] ABORT: probe key {_probe_key!r} bytes do NOT match '
+                    f'the checkpoint after load_state_dict. Load silently no-op\'d. '
+                    f'ckpt_norm={_want.norm().item():.6f} vs loaded_norm={_got.norm().item():.6f}'
+                )
+            print(f'[warmstart] VERIFIED: backbone.{_probe_key} matches ckpt exactly  '
+                  f'(L2={_want.norm().item():.4f}, n_elems={_want.numel()})')
         except Exception as e:
+            # RuntimeError from our own abort should NOT be swallowed — that
+            # defeats the whole point of the verification. Only swallow
+            # transient IO / hf-hub errors.
+            if isinstance(e, RuntimeError) and '[warmstart] ABORT' in str(e):
+                raise
             print(f'[warmstart] FAILED ({e}); continuing from scratch')
 
     # torch.compile matches the CausalPFN trainer (their conf/model/*.yaml
@@ -508,7 +584,9 @@ def main():
             # save_checkpoint below), so load into the unwrapped model
             # regardless of DDP-wrapping.
             _load_target = model.module if using_dist and hasattr(model, 'module') else model
-            _load_target.load_state_dict(ck['model_state_dict'])
+            # Strip torch.compile's '_orig_mod.' prefix (potentially mid-path)
+            # so old checkpoints saved before _strip_compile_prefix load cleanly.
+            _load_target.load_state_dict(_strip_compile_prefix(ck['model_state_dict']))
             opt.load_state_dict(ck['optimizer_state'])
             edges = ck['edges'].to(DEVICE)
             start = ck['step']

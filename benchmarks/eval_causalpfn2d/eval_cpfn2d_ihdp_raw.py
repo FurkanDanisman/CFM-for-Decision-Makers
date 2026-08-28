@@ -123,11 +123,16 @@ def evaluate(realization: int, model, edges, J, F):
 
 
 def _load_state_dict_safe(model, sd):
-    """Handle torch.compile _orig_mod. prefix and shape-mismatch gracefully."""
-    if any(k.startswith('_orig_mod.') for k in sd):
-        sd = {k[len('_orig_mod.'):] if k.startswith('_orig_mod.') else k: v
-              for k, v in sd.items()}
-        print('[eval] stripped _orig_mod. prefix from state_dict keys', flush=True)
+    """Handle torch.compile _orig_mod. prefix and shape-mismatch gracefully.
+
+    Uses a GLOBAL replace on '_orig_mod.' — the prefix may be mid-path when
+    only a submodule was compiled (e.g. `backbone._orig_mod.encoder.weight`
+    when the trainer did `inner.backbone = torch.compile(inner.backbone)`).
+    Prior version used k.startswith and silently dropped 148/149 keys.
+    """
+    if any('_orig_mod.' in k for k in sd):
+        sd = {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
+        print('[eval] stripped _orig_mod. prefix (global) from state_dict keys', flush=True)
     ref = model.state_dict()
     kept, skipped = {}, []
     for k, v in sd.items():
@@ -140,6 +145,14 @@ def _load_state_dict_safe(model, sd):
           f'shape-mismatch-skipped={len(skipped)}', flush=True)
     for k, shp_have, shp_want in skipped:
         print(f'  SKIP {k}: ckpt {shp_have} vs model {shp_want}', flush=True)
+    # Hard abort: if we're missing most of the backbone, we're about to
+    # evaluate a random-init model. That's what silently happened for the
+    # entire previous eval sweep (missing=148/149).
+    if len(missing) > 20:
+        raise RuntimeError(
+            f'[eval] ABORT: {len(missing)} missing keys after load — refusing '
+            f'to eval a random-init model. First missing: {list(missing)[:8]}'
+        )
 
 
 def main():
