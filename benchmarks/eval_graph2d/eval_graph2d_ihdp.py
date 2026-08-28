@@ -79,22 +79,28 @@ def _scale_y(y: np.ndarray):
 
 
 def build_anc_full(F: int, n_real: int) -> np.ndarray:
-    """True-graph adjacency in UWYK's convention:
+    """True-graph adjacency in the training convention (matches
+    PairedInterventionalDataset's ``2*adjacency_to_ancestor_matrix - 1``):
        positions [T, Y, feat_0, ..., feat_{F-1}].
        T -> Y; every real feature -> T; every real feature -> Y.
-       Padded feature slots masked with -1 everywhere.
+       All OTHER real-feature positions are -1 (confirmed non-ancestor),
+       NOT 0 (which would signal 'unknown' to the model). Bug fixed:
+       previous version left them at 0, so the model treated the 'true'
+       adjacency as mostly-unknown and produced a near-constant
+       degenerate output (eps_ATE=1.00 +/- 0.007 across realisations).
+       Padded feature slots masked with -1.
     """
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    real_size = 2 + n_real
+    # Default the real-feature block to -1 (confirmed non-ancestor),
+    # then overwrite the actual +1 edges. Padded positions get -1 at the
+    # end.
+    A = np.full((F + 2, F + 2), -1.0, dtype=np.float32)
     T_idx, Y_idx = 0, 1
     feat_off = 2
     A[T_idx, Y_idx] = 1.0
     for i in range(n_real):
         A[feat_off + i, T_idx] = 1.0
         A[feat_off + i, Y_idx] = 1.0
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
     return A
 
 
