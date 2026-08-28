@@ -51,6 +51,10 @@ HEADS         = int(os.environ.get('HEADS', 8))
 DROPOUT       = float(os.environ.get('DROPOUT', 0.0))
 HIDDEN_MULT   = int(os.environ.get('HIDDEN_MULT', 4))
 
+# Attention sinks — UWYK Table 1 uses 10 sample-sink rows, 0 feature-sink cols.
+N_SAMPLE_SINK_ROWS   = int(os.environ.get('N_SAMPLE_SINK_ROWS', 0))
+N_FEATURE_SINK_COLS  = int(os.environ.get('N_FEATURE_SINK_COLS', 0))
+
 # Optimizer — UWYK Appendix G defaults
 LR            = float(os.environ.get('LR', 1e-4))
 WEIGHT_DECAY  = float(os.environ.get('WEIGHT_DECAY', 1e-5))
@@ -228,9 +232,9 @@ def main():
             warmup_samples.append({k: v[i] for k, v in b.items()})
     edges = fit_edges_2d(warmup_samples, J).to(DEVICE)
 
-    # NOTE: UWYK's GraphConditionedInterventionalPFN.__init__ does not accept
-    # `normalize_treatment` or `use_checkpoint` — the only knobs it exposes are
-    # the ones listed in GraphConditionedInterventionalPFN.py:302-315.
+    # Model is now PartialGraphConditionedInterventionalPFN under the hood
+    # (in 'partial_gcn_and_soft_attention' mode). Sink rows/cols and depth/heads
+    # match UWYK Table 1 checkpoint's best_model_config.yaml.
     model = GraphConditioned2DHead(
         num_features=NUM_FEATURES,
         d_model=D_MODEL,
@@ -240,6 +244,8 @@ def main():
         dropout=DROPOUT,
         hidden_mult=HIDDEN_MULT,
         normalize_features=True,
+        n_sample_attention_sink_rows=N_SAMPLE_SINK_ROWS,
+        n_feature_attention_sink_cols=N_FEATURE_SINK_COLS,
         J=J,
     ).to(DEVICE)
 

@@ -37,8 +37,15 @@ export J=100
 export NUM_FEATURES=50
 
 export D_MODEL=256
-export DEPTH=8
-export HEADS=8
+# Table 1 checkpoint uses depth=6 heads=4 (from
+# experiments/checkpoints/full_conditioned_model/.../best_model_config.yaml
+# on the reproduce-realcause-results branch). Previous config (depth=8,
+# heads=8) was pre-existing session code that never matched UWYK.
+export DEPTH=6
+export HEADS=4
+# n_sample_attention_sink_rows = 10 in UWYK Table 1 config.
+export N_SAMPLE_SINK_ROWS=10
+export N_FEATURE_SINK_COLS=0
 export DROPOUT=0.0
 export HIDDEN_MULT=4
 
