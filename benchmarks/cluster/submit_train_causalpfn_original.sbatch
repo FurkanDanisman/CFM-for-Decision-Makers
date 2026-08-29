@@ -48,10 +48,12 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
-# Shim on PYTHONPATH for faiss stub (their trainer imports causalpfn
-# which chains through causal_estimator -> import faiss). Training
-# doesn't actually CALL faiss functions, so the MagicMock stub works.
-export PYTHONPATH="$DEPLOY_ROOT/R-PFN/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+# PYTHONPATH:
+#   1. shims first — faiss stub (their trainer imports causalpfn which
+#      chains through causal_estimator's `import faiss`)
+#   2. $CAUSALPFN/src — the `causalpfn` package lives there
+#   3. $CAUSALPFN — for `benchmarks` and other top-level modules
+export PYTHONPATH="$DEPLOY_ROOT/R-PFN/benchmarks/uwyk_table1/shims:$CAUSALPFN/src:$CAUSALPFN${PYTHONPATH:+:$PYTHONPATH}"
 
 # Point HF cache into $DEPLOY_ROOT in case anything wants to download.
 export HF_HOME="${HF_HOME:-$DEPLOY_ROOT/hf_cache}"
