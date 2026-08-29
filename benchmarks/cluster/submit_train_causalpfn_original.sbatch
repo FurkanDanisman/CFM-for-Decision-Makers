@@ -97,10 +97,12 @@ python -u train.py \
     hydra.run.dir="$OUT_DIR/hydra_run" \
     +callbacks@callbacks.checkpoint=checkpoint \
     callbacks.checkpoint.checkpoint_root="$OUT_DIR/checkpoints" \
-    ~callbacks.eval \
+    ~callbacks.eval_cate \
     &
-    # ~callbacks.eval removes the in-training CATE eval callback which
-    # calls CATEEstimator.estimate_cate → needs faiss (unavailable here).
+    # ~callbacks.eval_cate removes the in-training CATE eval callback
+    # (defined at `callbacks.eval_cate` in simple_configuration.yaml —
+    # points at conf/callbacks/eval_cate_simple.yaml). It calls
+    # CATEEstimator.estimate_cate which needs faiss (unavailable here).
     # We only want raw checkpoints; standalone eval via our minimal script
     # after training completes.
 CHILD=$!
