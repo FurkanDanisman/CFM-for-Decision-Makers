@@ -28,14 +28,24 @@ import torch
 
 OUT       = os.environ.get('OUT', './results_causalpfn_v0_ihdp')
 CAUSALPFN = os.environ['CAUSALPFN']
+# Optional local checkpoint path — bypasses HF download entirely so this
+# eval can run on compute nodes without internet. Pre-download once on
+# the login node into $DEPLOY_ROOT/warmstart/causalpfn_v0.pt.
+CPFN_V0_LOCAL = os.environ.get('CPFN_V0_LOCAL', '')
 
+# CRITICAL: import R-PFN's `benchmarks` FIRST, before adding CausalPFN's
+# paths. Otherwise `from benchmarks import IHDPDataset` resolves to
+# CausalPFN's own benchmarks package (external/causalpfn/benchmarks/),
+# which chains through causalpfn.__init__ -> causal_estimator ->
+# `import faiss` and dies at bootstrap.
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
-sys.path.insert(0, CAUSALPFN)
-sys.path.insert(0, CAUSALPFN + '/src')
+from benchmarks import IHDPDataset  # noqa: E402  — R-PFN's version
 
-from benchmarks import IHDPDataset  # noqa: E402
-from causalpfn import CATEEstimator  # noqa: E402
+# Now add CausalPFN and its src for CATEEstimator.
+sys.path.insert(0, CAUSALPFN + '/src')
+sys.path.insert(0, CAUSALPFN)
+from causalpfn import CATEEstimator  # noqa: E402  — requires faiss installed
 
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -71,10 +81,17 @@ def evaluate(realization: int, estimator: CATEEstimator):
 
 def main():
     print(f'[bootstrap] device={DEVICE}  out={OUT}', flush=True)
-    print(f'[bootstrap] instantiating CATEEstimator (auto-downloads '
-          f'vdblm/causalpfn/causalpfn_v0.pt on first run)…', flush=True)
-
-    estimator = CATEEstimator(device=DEVICE, verbose=False)
+    # Prefer local ckpt (no compute-node internet needed). Falls back to
+    # CATEEstimator's HF auto-download if CPFN_V0_LOCAL isn't set.
+    if CPFN_V0_LOCAL and os.path.isfile(CPFN_V0_LOCAL):
+        print(f'[bootstrap] instantiating CATEEstimator from local ckpt: '
+              f'{CPFN_V0_LOCAL}', flush=True)
+        estimator = CATEEstimator(device=DEVICE, model_path=CPFN_V0_LOCAL, verbose=False)
+    else:
+        print(f'[bootstrap] instantiating CATEEstimator (auto-downloads '
+              f'vdblm/causalpfn/causalpfn_v0.pt on first run — may fail on '
+              f'compute nodes without internet)…', flush=True)
+        estimator = CATEEstimator(device=DEVICE, verbose=False)
     print(f'[bootstrap] estimator ready', flush=True)
 
     os.makedirs(OUT, exist_ok=True)
