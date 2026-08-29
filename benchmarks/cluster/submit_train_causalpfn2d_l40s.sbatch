@@ -62,7 +62,7 @@ echo "[warmstart-preflight] found ckpt at $WARMSTART_LOCAL"
 # Model / trainer knobs: identical to the H100 sbatch. Do not diverge —
 # both runs must produce comparable checkpoints.
 # ---------------------------------------------------------------------------
-export J=32                          # K^2 + 13 = 1037 ≈ CausalPFN's nbins=1024
+export J="${J:-32}"                  # K^2 + 13 = 1037 ≈ CausalPFN's nbins=1024. Overridable via --export=ALL,J=100 (etc.)
 export NUM_FEATURES=100
 
 # Model: conf/model/tabdpt_long_context.yaml

@@ -56,7 +56,7 @@ echo "[warmstart-preflight] found ckpt at $WARMSTART_LOCAL"
 
 # Same knobs as single-GPU sbatch. Per-rank batch matches CausalPFN's;
 # world_size=4 gives effective batch = 1024 (paper spec).
-export J=32
+export J="${J:-32}"                  # Overridable via --export=ALL,J=100 (etc.)
 export NUM_FEATURES=100
 export NINP=384
 export NHID=768

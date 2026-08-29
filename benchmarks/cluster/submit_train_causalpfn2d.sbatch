@@ -64,7 +64,7 @@ echo "[warmstart-preflight] found ckpt at $WARMSTART_LOCAL"
 # CausalPFN's codex/add-training-code branch. Only difference from their
 # published run: the head is our 2D joint (K**2 + 13 = 1037 ≈ their
 # nbins=1024) and the loss is neg_log_prob_2d instead of HL-Gauss CE.
-export J=32                          # K^2 + 13 = 1037 ≈ CausalPFN's nbins=1024
+export J="${J:-32}"                  # K^2 + 13 = 1037 ≈ CausalPFN's nbins=1024. Overridable via --export=ALL,J=100 (etc.)
 export NUM_FEATURES=100
 
 # Model: conf/model/tabdpt_long_context.yaml
