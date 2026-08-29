@@ -55,7 +55,7 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching causalpfn_v0 IHDP reference eval"
 echo "  CAUSALPFN=$CAUSALPFN"
-echo "  HF_HUB_CACHE=$HF_HUB_CACHE"
+echo "  CPFN_V0_LOCAL=$CPFN_V0_LOCAL  (exists: $([ -f "$CPFN_V0_LOCAL" ] && echo yes || echo no))"
 echo "  OUT=$OUT"
 python -u "$REPO/benchmarks/eval_causalpfn2d/eval_causalpfn_v0_ihdp.py"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
