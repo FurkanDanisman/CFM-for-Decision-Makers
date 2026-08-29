@@ -97,7 +97,12 @@ python -u train.py \
     hydra.run.dir="$OUT_DIR/hydra_run" \
     +callbacks@callbacks.checkpoint=checkpoint \
     callbacks.checkpoint.checkpoint_root="$OUT_DIR/checkpoints" \
+    ~callbacks.eval \
     &
+    # ~callbacks.eval removes the in-training CATE eval callback which
+    # calls CATEEstimator.estimate_cate → needs faiss (unavailable here).
+    # We only want raw checkpoints; standalone eval via our minimal script
+    # after training completes.
 CHILD=$!
 wait "$CHILD"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
