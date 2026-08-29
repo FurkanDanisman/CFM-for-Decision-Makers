@@ -28,21 +28,30 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export OUT="${OUT:-$DEPLOY_ROOT/results_causalpfn_v0_ihdp}"
 
-# HF cache dir — first run downloads causalpfn_v0.pt (~75MB) here.
-# Reuse across runs so we don't re-download.
-export HF_HOME="${HF_HOME:-$DEPLOY_ROOT/hf_cache}"
-export HF_HUB_CACHE="${HF_HUB_CACHE:-$HF_HOME/hub}"
-mkdir -p "$HF_HUB_CACHE"
+# Local pretrained ckpt — pre-downloaded on login node into $DEPLOY_ROOT/warmstart/.
+# If missing here, eval falls back to HF download (may fail if compute
+# node has no internet).
+export CPFN_V0_LOCAL="${CPFN_V0_LOCAL:-$DEPLOY_ROOT/warmstart/causalpfn_v0.pt}"
+if [ ! -f "$CPFN_V0_LOCAL" ]; then
+    echo "WARNING: $CPFN_V0_LOCAL not found; eval will try HF download at runtime." >&2
+    echo "  Pre-download on login node with:" >&2
+    echo "    PYTHONPATH= python -c \"from huggingface_hub import hf_hub_download; print(hf_hub_download('vdblm/causalpfn', 'causalpfn_v0.pt'))\"" >&2
+    echo "    cp <printed-path> $CPFN_V0_LOCAL" >&2
+fi
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
-# NOTE: no shims on PYTHONPATH here. causalpfn's own CATEEstimator needs
-# real huggingface_hub / faiss — not shim stubs. Our shims exist for the
-# TRAINING pipeline where we only need CausalPFN's model class (not its
-# inference stack). For this reference eval we use the full package.
+# Shim on PYTHONPATH — sitecustomize.py registers a LAST-RESORT meta_path
+# finder that stubs faiss/transformers/wandb/etc. Real packages (like
+# huggingface_hub installed via `pip install huggingface-hub`) take
+# precedence over the stub. This lets `from causalpfn import CATEEstimator`
+# succeed on Alliance Canada where faiss-cpu can't be built from source.
+# We don't hit any code paths that actually call faiss functions, so the
+# MagicMock stub is harmless.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching causalpfn_v0 IHDP reference eval"
 echo "  CAUSALPFN=$CAUSALPFN"
