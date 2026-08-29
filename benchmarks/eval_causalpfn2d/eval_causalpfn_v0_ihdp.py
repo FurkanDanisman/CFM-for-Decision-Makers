@@ -33,19 +33,19 @@ CAUSALPFN = os.environ['CAUSALPFN']
 # the login node into $DEPLOY_ROOT/warmstart/causalpfn_v0.pt.
 CPFN_V0_LOCAL = os.environ.get('CPFN_V0_LOCAL', '')
 
-# CRITICAL: import R-PFN's `benchmarks` FIRST, before adding CausalPFN's
-# paths. Otherwise `from benchmarks import IHDPDataset` resolves to
-# CausalPFN's own benchmarks package (external/causalpfn/benchmarks/),
-# which chains through causalpfn.__init__ -> causal_estimator ->
-# `import faiss` and dies at bootstrap.
+# Same sys.path setup as the working raw/em evals — IHDPDataset comes
+# from CausalPFN's benchmarks package (their external/causalpfn/benchmarks/
+# module — R-PFN's benchmarks/__init__.py doesn't export IHDPDataset).
+# The sitecustomize.py shim on PYTHONPATH stubs faiss so CausalPFN's
+# import chain (benchmarks/__init__ -> polynomial -> base -> causalpfn ->
+# causal_estimator -> faiss) doesn't die.
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
-from benchmarks import IHDPDataset  # noqa: E402  — R-PFN's version
-
-# Now add CausalPFN and its src for CATEEstimator.
-sys.path.insert(0, CAUSALPFN + '/src')
 sys.path.insert(0, CAUSALPFN)
-from causalpfn import CATEEstimator  # noqa: E402  — requires faiss installed
+sys.path.insert(0, CAUSALPFN + '/src')
+
+from benchmarks import IHDPDataset  # noqa: E402  — CausalPFN's benchmarks
+from causalpfn import CATEEstimator  # noqa: E402
 
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
