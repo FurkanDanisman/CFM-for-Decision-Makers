@@ -48,6 +48,13 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
+# Disable torch.compile / dynamo. Their trainer wraps the model in
+# torch.compile by default, which triggers the same Inductor tiling
+# assertion we hit ourselves (job 5032910, torch._inductor.exc.
+# InductorError in tiling_utils.py get_pw_red_splits). Skip compile
+# entirely — training is slower but functional.
+export TORCHDYNAMO_DISABLE=1
+export TORCH_COMPILE_DISABLE=1
 # PYTHONPATH:
 #   1. shims first — faiss stub (their trainer imports causalpfn which
 #      chains through causal_estimator's `import faiss`)
