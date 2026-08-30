@@ -82,8 +82,11 @@ python -u train.py \
     +callbacks@callbacks.checkpoint=checkpoint \
     callbacks.checkpoint.checkpoint_root="$OUT_DIR/checkpoints" \
     ~callbacks.eval_cate \
-    model.obj.model.nbins=100 \
+    ++model.obj.model.nbins=100 \
     sigma="$SIGMA" \
+    # ++ = force set (creates key if missing, overrides if exists). Plain = requires
+    # the key to already exist in the merged config, which we can't guarantee across
+    # different model variants (pretrained vs plain tabdpt_long_context).
     &
 CHILD=$!
 wait "$CHILD"
