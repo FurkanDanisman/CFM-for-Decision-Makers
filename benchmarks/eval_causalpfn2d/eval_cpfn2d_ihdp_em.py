@@ -92,19 +92,30 @@ def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
 
 
 @torch.no_grad()
-def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J):
+def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J,
+                     y_scaling_mode='pooled_std'):
     """Return (cate_raw, cate_em) per query, in raw Y units.
 
     Both share the same forward + interior marginalisation; they only
     differ in how the 1D expected value is derived from p_y0 / p_y1.
+
+    y_scaling_mode must match how the model was trained:
+      - pooled_std: y_scaled = (y - pooled_mean) / pooled_std
+      - uwyk_minmax: y_scaled = (y - (min+max)/2) / ((max-min)/2)
     """
     X_ctx = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     t_ctx = torch.from_numpy(T_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     y_ctx_raw = torch.from_numpy(Y_train_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)
     X_q = torch.from_numpy(X_test.astype(np.float32)).unsqueeze(0).to(DEVICE)
 
-    y_mean = y_ctx_raw.mean(dim=1, keepdim=True)
-    y_std  = y_ctx_raw.std(dim=1, keepdim=True).clamp(min=1e-6)
+    if y_scaling_mode == 'uwyk_minmax':
+        y_lo = y_ctx_raw.amin(dim=1, keepdim=True)
+        y_hi = y_ctx_raw.amax(dim=1, keepdim=True)
+        y_mean = 0.5 * (y_lo + y_hi)           # shift
+        y_std  = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)  # scale
+    else:  # pooled_std
+        y_mean = y_ctx_raw.mean(dim=1, keepdim=True)
+        y_std  = y_ctx_raw.std(dim=1, keepdim=True).clamp(min=1e-6)
     y_ctx_std = (y_ctx_raw - y_mean) / y_std
 
     logits = model._forward_logits(X_ctx, t_ctx, y_ctx_std, X_q)
@@ -138,7 +149,7 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J):
     return cate_raw.astype(np.float32), cate_em.astype(np.float32)
 
 
-def evaluate(realization: int, model, edges, J, F):
+def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
     ds = IHDPDataset()
     cate_ds = ds[realization][0]
     X_tr = cate_ds.X_train.astype(np.float32)
@@ -152,7 +163,8 @@ def evaluate(realization: int, model, edges, J, F):
     X_tr_p = _pad_features(X_tr_std, F)
     X_te_p = _pad_features(X_te_std, F)
 
-    cate_raw, cate_em = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p, edges, J)
+    cate_raw, cate_em = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p, edges, J,
+                                         y_scaling_mode=y_scaling_mode)
 
     def _pehe_err(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
@@ -190,8 +202,15 @@ def _load_state_dict_safe(model, sd):
 def main():
     ck = torch.load(CKPT, map_location=DEVICE, weights_only=False)
     cfg = ck['config']; edges = ck['edges']; step = ck.get('step', '?')
+    # Backward-compat: older ckpts don't have loss/scaling knobs → fall back
+    # to the historical defaults (pooled_std + density loss).
+    y_scaling_mode = cfg.get('y_scaling_mode', 'pooled_std')
+    loss_type      = cfg.get('loss_type',      'density')
+    hlgauss_sigma  = float(cfg.get('hlgauss_sigma', 0.2))
     print(f'[bootstrap] ckpt={CKPT}')
-    print(f'[bootstrap] step={step}  J={cfg["J"]}  num_features={cfg["num_features"]}')
+    print(f'[bootstrap] step={step}  J={cfg["J"]}  num_features={cfg["num_features"]}  '
+          f'y_scaling_mode={y_scaling_mode}  loss_type={loss_type}'
+          f'{"  σ=" + str(hlgauss_sigma) if loss_type == "hlgauss" else ""}')
     print(f'[bootstrap] edges: [{edges[0].item():.3f}, {edges[-1].item():.3f}]  '
           f'bw={((edges[-1]-edges[0])/cfg["J"]).item():.4f}')
 
@@ -200,6 +219,9 @@ def main():
         ninp=cfg['ninp'], nhid=cfg['nhid'], nhead=cfg['nhead'],
         nlayers=cfg['nlayers'], dropout=cfg.get('dropout', 0.0),
         n_out=cfg.get('n_out', 10),
+        y_scaling_mode=y_scaling_mode,
+        loss_type=loss_type,
+        hlgauss_sigma=hlgauss_sigma,
     ).to(DEVICE)
     _load_state_dict_safe(model, ck['model_state_dict'])
     model.eval()
@@ -209,7 +231,7 @@ def main():
     all_rows = []
     t0 = time.time()
     for r in range(100):
-        row = evaluate(r, model, edges, J, F)
+        row = evaluate(r, model, edges, J, F, y_scaling_mode=y_scaling_mode)
         np.savez(os.path.join(OUT, f'r{r:03d}.npz'), **{k: np.array(v) for k, v in row.items()})
         all_rows.append(row)
         print(

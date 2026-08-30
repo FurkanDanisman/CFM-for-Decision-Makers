@@ -86,7 +86,7 @@ from causalpfn.models.model import TabDPTLongContextModel  # noqa: E402
 _REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _REPO_SRC not in sys.path:
     sys.path.insert(0, _REPO_SRC)
-from losses.BarDistribution2D import total_params, neg_log_prob_2d  # noqa: E402
+from losses.BarDistribution2D import total_params, neg_log_prob_2d, neg_log_prob_2d_hlgauss  # noqa: E402
 
 
 class CausalPFN2DHead(nn.Module):
@@ -103,12 +103,21 @@ class CausalPFN2DHead(nn.Module):
         nlayers: int = 8,
         dropout: float = 0.0,
         n_out: int = 10,
+        y_scaling_mode: str = 'pooled_std',   # 'pooled_std' | 'uwyk_minmax'
+        loss_type: str = 'density',            # 'density' | 'hlgauss'
+        hlgauss_sigma: float = 0.2,            # only used when loss_type='hlgauss'
     ):
         super().__init__()
         self.J = J
         self.num_features = num_features       # X features only (T column added inside)
         self.n_out = n_out
         self.nbins_2d = total_params(J)        # K**2 + 9 + 4 ; at J=25 this is 638
+        # Loss + scaling knobs (set via constructor from trainer's env vars).
+        assert y_scaling_mode in ('pooled_std', 'uwyk_minmax'), y_scaling_mode
+        assert loss_type in ('density', 'hlgauss'), loss_type
+        self.y_scaling_mode = y_scaling_mode
+        self.loss_type      = loss_type
+        self.hlgauss_sigma  = float(hlgauss_sigma)
 
         # Backbone sees (T | X) as one flat vector, so its num_features = X + 1.
         self.backbone = TabDPTLongContextModel(
@@ -176,6 +185,24 @@ class CausalPFN2DHead(nn.Module):
         std  = y_context.std(dim=1, keepdim=True).clamp(min=1e-6)  # (B, 1)
         return mean, std
 
+    @staticmethod
+    def _uwyk_y_stats(y_context: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """UWYK-style per-task min/max stats.
+
+        Returns (shift, scale) such that y_scaled = (y - shift) / scale
+        lands each task's y_context in [-1, +1].
+          shift = (y_min + y_max) / 2
+          scale = (y_max - y_min) / 2
+        Ties Y_do0 and Y_do1 to the same per-task shift/scale — required
+        for the joint head (both axes on same scale so correlation and
+        CATE are well-defined).
+        """
+        y_min = y_context.amin(dim=1, keepdim=True)              # (B, 1)
+        y_max = y_context.amax(dim=1, keepdim=True)              # (B, 1)
+        shift = 0.5 * (y_min + y_max)
+        scale = (0.5 * (y_max - y_min)).clamp(min=1e-6)
+        return shift, scale
+
     def forward(
         self,
         X_context: torch.Tensor,   # (B, N_ctx, F)
@@ -184,24 +211,32 @@ class CausalPFN2DHead(nn.Module):
         X_query:   torch.Tensor,   # (B, N_q,   F)
         E_y0_query: torch.Tensor,  # (B, N_q)
         E_y1_query: torch.Tensor,  # (B, N_q)
-        edges: torch.Tensor,       # (J+1,)  fitted once by the trainer
+        edges: torch.Tensor,       # (J+1,)  set by the trainer based on scaling mode
     ) -> torch.Tensor:
         """Returns per-task loss vector (B,) — trainer applies valid_mask + mean."""
-        # Per-task pooled standardisation.
-        y_mean, y_std = self._pooled_y_stats(y_context)
-        y_context_std = (y_context - y_mean) / y_std           # (B, N_ctx)
-        E_y0_std      = (E_y0_query - y_mean) / y_std          # (B, N_q)
-        E_y1_std      = (E_y1_query - y_mean) / y_std
+        # Per-task Y-scaling. Two modes:
+        #   pooled_std   → (y - pooled_mean) / pooled_std   ; edges [-10, +10]
+        #   uwyk_minmax  → (y - shift) / scale to [-1, +1]  ; edges [-1, +1]
+        if self.y_scaling_mode == 'uwyk_minmax':
+            y_shift, y_scale = self._uwyk_y_stats(y_context)
+        else:
+            y_shift, y_scale = self._pooled_y_stats(y_context)
+        y_context_std = (y_context - y_shift) / y_scale
+        E_y0_std      = (E_y0_query - y_shift) / y_scale
+        E_y1_std      = (E_y1_query - y_shift) / y_scale
 
         logits = self._forward_logits(
             X_context, t_context, y_context_std, X_query,
         )                                                       # (B, N_q, nbins_2d)
 
-        # Single vectorised call over the full (B, N_q, nbins) tensor. The
-        # loss returns per-task NLL via reduce='per_task', so the trainer's
-        # valid_mask still gets a (B,) tensor to filter. Prior version
-        # looped in Python — 32 sequential CUDA launches per step, ~5-10x
-        # slower on H100.
+        # Loss selection:
+        #   density → neg_log_prob_2d           (bar-distribution density loss)
+        #   hlgauss → neg_log_prob_2d_hlgauss   (inner CE + tail densities)
+        if self.loss_type == 'hlgauss':
+            return neg_log_prob_2d_hlgauss(
+                logits.float(), E_y0_std, E_y1_std, self.J, edges,
+                sigma=self.hlgauss_sigma, reduce='per_task',
+            )
         return neg_log_prob_2d(
             logits.float(), E_y0_std, E_y1_std, self.J, edges,
             reduce='per_task',
