@@ -57,7 +57,7 @@ export PYTHONUNBUFFERED=1
 export TORCHDYNAMO_DISABLE=1
 export TORCH_COMPILE_DISABLE=1
 export HF_HOME="${HF_HOME:-$DEPLOY_ROOT/hf_cache}"
-export PYTHONPATH="$DEPLOY_ROOT/R-PFN/benchmarks/uwyk_table1/shims:$CAUSALPFN/src:$CAUSALPFN${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$DEPLOY_ROOT/R-PFN/benchmarks/uwyk_table1/shims:$CAUSALPFN/src:$CAUSALPFN:$DEPLOY_ROOT/R-PFN${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] launching CausalPFN's trainer with nbins=100"
 echo "  CAUSALPFN=$CAUSALPFN"
@@ -82,11 +82,16 @@ python -u train.py \
     +callbacks@callbacks.checkpoint=checkpoint \
     callbacks.checkpoint.checkpoint_root="$OUT_DIR/checkpoints" \
     ~callbacks.eval_cate \
-    ++model.obj.model.nbins=100 \
+    model.obj._target_=rpfn_patches.loader_with_nbins.load_pretrained_in_context_model_with_nbins \
+    +model.obj.nbins_override=100 \
     sigma="$SIGMA" \
-    # ++ = force set (creates key if missing, overrides if exists). Plain = requires
-    # the key to already exist in the merged config, which we can't guarantee across
-    # different model variants (pretrained vs plain tabdpt_long_context).
+    # simple_configuration uses causalpfn.models.load_pretrained_in_context_model
+    # which builds the model at the ckpt's native nbins (=1024). To change nbins
+    # while keeping the warmstart on the backbone, swap in our patched loader:
+    #   rpfn_patches.loader_with_nbins.load_pretrained_in_context_model_with_nbins
+    # which loads the standard model, then surgically replaces head[2] with a
+    # fresh Linear at (n_out + nbins_override) and re-inits bin_edges/centers.
+    # Backbone weights unchanged; only ~10k head params are random-init.
     &
 CHILD=$!
 wait "$CHILD"
