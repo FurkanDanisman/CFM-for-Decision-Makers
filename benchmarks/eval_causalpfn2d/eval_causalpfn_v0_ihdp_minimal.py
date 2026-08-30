@@ -48,12 +48,11 @@ from causalpfn.models.model import TabDPTLongContextModel  # noqa: E402
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# CausalPFN's InContextModel defaults — from src/causalpfn/models/icl_model.py
+# CausalPFN's InContextModel defaults — from src/causalpfn/models/icl_model.py.
+# nbins is now inferred from the checkpoint (via model_config or state_dict shape)
+# in main(); these module-level constants stay as defaults only.
 VMIN  = -10.0
 VMAX  = +10.0
-NBINS = 1024
-BIN_EDGES   = torch.linspace(VMIN, VMAX, NBINS + 1)          # (1025,)
-BIN_CENTERS = 0.5 * (BIN_EDGES[:-1] + BIN_EDGES[1:])         # (1024,)
 
 
 def _strip_prefix(sd, prefix, drop_no_prefix=False):
@@ -103,7 +102,7 @@ def _per_arm_shift_scale(t_context, y_context, eps=1e-6):
 
 
 @torch.no_grad()
-def _forward_one_arm(model, X_ctx, T_ctx, Y_std_ctx, X_q, t_val, num_features):
+def _forward_one_arm(model, X_ctx, T_ctx, Y_std_ctx, X_q, t_val, num_features, nbins):
     """Run TabDPTLongContextModel forward with T_query fixed to t_val at
     every query position. Returns (B, N_q, nbins) logits from the last
     nbins columns of the head output."""
@@ -125,11 +124,12 @@ def _forward_one_arm(model, X_ctx, T_ctx, Y_std_ctx, X_q, t_val, num_features):
 
     pred = model(x_src, y_src)                                 # (N_q, B, n_out+nbins)
     pred = pred.transpose(0, 1).contiguous()                   # (B, N_q, n_out+nbins)
-    return pred[..., -NBINS:]                                  # (B, N_q, nbins)
+    return pred[..., -nbins:]                                  # (B, N_q, nbins)
 
 
 @torch.no_grad()
-def cate_causalpfn_v0(model, X_train, T_train, Y_train_raw, X_test, num_features):
+def cate_causalpfn_v0(model, X_train, T_train, Y_train_raw, X_test,
+                       num_features, nbins, bin_centers):
     """CausalPFN pure-ICL CATE per query, in raw Y units."""
     # Per-arm standardisation stats (from raw arrays, then applied per-arm).
     y0s, y0sc, y1s, y1sc = _per_arm_shift_scale(T_train, Y_train_raw)
@@ -144,11 +144,11 @@ def cate_causalpfn_v0(model, X_train, T_train, Y_train_raw, X_test, num_features
     Y_ctx = torch.from_numpy(y_ctx_std).unsqueeze(0).to(DEVICE)
     X_q   = torch.from_numpy(X_test.astype(np.float32)).unsqueeze(0).to(DEVICE)
 
-    centers = BIN_CENTERS.to(DEVICE)                              # (nbins,)
+    centers = bin_centers.to(DEVICE)                              # (nbins,)
 
     # Two forwards: one per arm.
-    logits_t0 = _forward_one_arm(model, X_ctx, T_ctx, Y_ctx, X_q, 0.0, num_features)
-    logits_t1 = _forward_one_arm(model, X_ctx, T_ctx, Y_ctx, X_q, 1.0, num_features)
+    logits_t0 = _forward_one_arm(model, X_ctx, T_ctx, Y_ctx, X_q, 0.0, num_features, nbins)
+    logits_t1 = _forward_one_arm(model, X_ctx, T_ctx, Y_ctx, X_q, 1.0, num_features, nbins)
 
     p0 = torch.softmax(logits_t0.float(), dim=-1)                # (1, N_q, nbins)
     p1 = torch.softmax(logits_t1.float(), dim=-1)
@@ -161,7 +161,7 @@ def cate_causalpfn_v0(model, X_train, T_train, Y_train_raw, X_test, num_features
     return (e_y1 - e_y0).astype(np.float32)
 
 
-def evaluate(realization, model, num_features):
+def evaluate(realization, model, num_features, nbins, bin_centers):
     ds = IHDPDataset()
     cate_ds = ds[realization][0]
     X_tr = cate_ds.X_train.astype(np.float32)
@@ -175,7 +175,8 @@ def evaluate(realization, model, num_features):
     X_tr_p = _pad_features(X_tr_std, num_features)
     X_te_p = _pad_features(X_te_std, num_features)
 
-    cate = cate_causalpfn_v0(model, X_tr_p, T_tr, y_tr, X_te_p, num_features)
+    cate = cate_causalpfn_v0(model, X_tr_p, T_tr, y_tr, X_te_p,
+                              num_features, nbins, bin_centers)
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
     ate_hat = float(cate.mean())
     err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
@@ -214,13 +215,31 @@ def main():
     nlayers  = cfg.get('nlayers', 20)
     n_out    = cfg.get('n_out',   10)
     dropout  = cfg.get('dropout', 0.0)
+
+    # Infer nbins from the checkpoint. Their nested config sometimes has it at
+    # cfg['model']['nbins']; older/newer variants may just have cfg['nbins'].
+    # Fallback: derive from head.2.weight shape[0] = n_out + nbins.
+    nbins = None
+    if isinstance(cfg, dict):
+        nbins = cfg.get('nbins') or cfg.get('model', {}).get('nbins')
+    if nbins is None:
+        head_w = sd.get('head.2.weight')
+        if head_w is not None:
+            nbins = head_w.shape[0] - n_out
+    if nbins is None:
+        nbins = 1024  # last-resort default
+        print('[bootstrap] WARNING: could not infer nbins; defaulting to 1024', flush=True)
     print(f'[bootstrap] model: ninp={ninp} nhid={nhid} nhead={nhead} nlayers={nlayers} '
-          f'nbins={NBINS} num_features={num_features} n_out={n_out}', flush=True)
+          f'nbins={nbins} num_features={num_features} n_out={n_out}', flush=True)
 
     model = TabDPTLongContextModel(
         dropout=dropout, n_out=n_out, nhead=nhead, nhid=nhid, ninp=ninp,
-        nlayers=nlayers, num_features=num_features_plus_t, nbins=NBINS,
+        nlayers=nlayers, num_features=num_features_plus_t, nbins=nbins,
     ).to(DEVICE)
+
+    # Compute bin_centers on [-10, +10] with inferred nbins.
+    bin_edges = torch.linspace(VMIN, VMAX, nbins + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
     missing, unexpected = model.load_state_dict(sd, strict=False)
     print(f'[bootstrap] load: missing={len(missing)} unexpected={len(unexpected)}', flush=True)
@@ -235,7 +254,7 @@ def main():
     rows = []
     t0 = time.time()
     for r in range(100):
-        row = evaluate(r, model, num_features)
+        row = evaluate(r, model, num_features, nbins, bin_centers)
         np.savez(os.path.join(OUT, f'r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         rows.append(row)
