@@ -56,10 +56,27 @@ BIN_EDGES   = torch.linspace(VMIN, VMAX, NBINS + 1)          # (1025,)
 BIN_CENTERS = 0.5 * (BIN_EDGES[:-1] + BIN_EDGES[1:])         # (1024,)
 
 
-def _strip_prefix(sd, prefix):
-    if all(k.startswith(prefix) for k in sd):
-        return {k[len(prefix):]: v for k, v in sd.items()}
-    return sd
+def _strip_prefix(sd, prefix, drop_no_prefix=False):
+    """Strip `prefix` from any key that has it.
+
+    - drop_no_prefix=False (default): keys without the prefix are kept as-is.
+    - drop_no_prefix=True: keys without the prefix are dropped. Used when the
+      un-prefixed keys are top-level buffers on the wrapper class (InContextModel)
+      that don't exist on our unwrapped TabDPTLongContextModel — those buffers
+      are `bin_edges`, `bin_width`, `bin_centers` in causalpfn's InContextModel.
+
+    causalpfn_v0.pt and their epoch_XXXX.pt checkpoints save an
+    `InContextModel` state_dict which nests the backbone under `model.`
+    and adds 3 top-level buffers. Both need to be handled.
+    """
+    out = {}
+    for k, v in sd.items():
+        if k.startswith(prefix):
+            out[k[len(prefix):]] = v
+        elif not drop_no_prefix:
+            out[k] = v
+        # else: dropped
+    return out
 
 
 def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
@@ -174,9 +191,15 @@ def main():
     ck = torch.load(CPFN_V0_LOCAL, map_location='cpu', weights_only=False)
     cfg = ck.get('model_config', {})
     sd  = ck['model_state_dict']
-    sd = _strip_prefix(sd, 'model.')
-    print(f'[bootstrap] ckpt model_config: {cfg}', flush=True)
-    print(f'[bootstrap] state_dict: {len(sd)} keys after prefix strip', flush=True)
+    # Their trainer saves InContextModel state (which wraps TabDPTLongContextModel
+    # under `.model` and adds 3 top-level buffers: bin_edges/width/centers).
+    # We only want the TabDPTLongContextModel state → strip `model.` prefix
+    # AND drop keys that don't have it.
+    sd = _strip_prefix(sd, 'model.', drop_no_prefix=True)
+    print(f'[bootstrap] ckpt model_config keys: '
+          f'{list(cfg.keys()) if isinstance(cfg, dict) else type(cfg).__name__}', flush=True)
+    print(f'[bootstrap] state_dict: {len(sd)} keys after prefix strip + buffer drop',
+          flush=True)
 
     # Instantiate matching architecture. Config hints from state_dict shapes:
     #   ninp=384 (from encoder shapes we probed), nhid=768, nhead=6,
