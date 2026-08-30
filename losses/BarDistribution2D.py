@@ -279,6 +279,154 @@ def neg_log_prob_2d(
     raise ValueError(f'reduce must be mean|per_task|none, got {reduce}')
 
 
+def neg_log_prob_2d_hlgauss(
+    pred:  Tensor,
+    y0:    Tensor,
+    y1:    Tensor,
+    J:     int,
+    edges: Tensor,
+    sigma: float = 0.1,
+    reduce: str = 'mean',
+) -> Tensor:
+    """2D HL-Gauss variant of neg_log_prob_2d.
+
+    Same 9-region mixture structure. Only the INNER region loss changes:
+    instead of a point log-density lookup at p_mat[j0, j1], we compute
+    cross-entropy against a diagonal 2D Gaussian-smoothed target
+    (Σ = σ²·I) integrated over the K² inner cells:
+
+        p_target[j0, j1] = [Φ((e[j0+1] - y0)/σ) - Φ((e[j0] - y0)/σ)]
+                         · [Φ((e[j1+1] - y1)/σ) - Φ((e[j1] - y1)/σ)]
+
+    Loss contribution for inner queries: log_w[INNER] - CE(p_target, p_mat).
+    All 8 tail/corner regions unchanged from neg_log_prob_2d (half-Gauss /
+    bivariate half-Gauss density losses).
+
+    Design notes:
+      - Diagonal covariance (Σ = σ²·I), not full-covariance. Justification:
+        target smoothing shouldn't leak correlation priors — the model's
+        p_mat learns correlation from data.
+      - The Gaussian target is renormalised over the K² cells so that
+        even inner points near the edge (where some Gaussian mass falls
+        outside inner) get a well-scaled CE.
+      - sigma is on the same scale as (Y_scaled) inputs. For fixed edges
+        [-10, +10] with J=100 → bin_width = 0.2, natural choice σ ≈ 0.2
+        (spread across ~1 bin). σ = 0.01 (CausalPFN's 1D default at
+        J=1024) degenerates to hard one-hot at J=100.
+    """
+    if y0.dim() == 3:
+        y0 = y0.squeeze(-1)
+    if y1.dim() == 3:
+        y1 = y1.squeeze(-1)
+
+    B, M, _ = pred.shape
+    edges = edges.to(pred.device)
+
+    bin_width = (edges[-1] - edges[0]) / J
+    log_bw    = torch.log(bin_width)
+    lo        = edges[0]
+    hi        = edges[-1]
+
+    p_mat, w_reg, sL0, sR0, sL1, sR1 = _unpack(pred, J, bin_width)
+    bin_centers = ((edges[:-1] + edges[1:]) / 2)
+    rho = _compute_rho(p_mat, bin_centers)
+
+    interior = edges[1:-1].contiguous()
+    j0_idx = torch.bucketize(y0.contiguous(), interior, right=False).clamp(0, J - 1)
+    j1_idx = torch.bucketize(y1.contiguous(), interior, right=False).clamp(0, J - 1)
+
+    in0    = (y0 >= lo) & (y0 <= hi)
+    in1    = (y1 >= lo) & (y1 <= hi)
+    out_L0 = y0 < lo
+    out_R0 = y0 > hi
+    out_L1 = y1 < lo
+    out_R1 = y1 > hi
+
+    region_idx = (
+          R_L0     * (out_L0 & in1   ).long()
+        + R_R0     * (out_R0 & in1   ).long()
+        + R_L1     * (in0    & out_L1).long()
+        + R_R1     * (in0    & out_R1).long()
+        + R_L0L1   * (out_L0 & out_L1).long()
+        + R_L0R1   * (out_L0 & out_R1).long()
+        + R_R0L1   * (out_R0 & out_L1).long()
+        + R_R0R1   * (out_R0 & out_R1).long()
+    )
+
+    log_w = w_reg.clamp(min=1e-45).log()
+
+    # ── Region 0: inner — HL-GAUSS CE ────────────────────────────────────
+    # 2D diagonal Gaussian target: product of two 1D CDF-diffs.
+    #   z = (edges - y) / sigma            shape: (B, M, J+1)
+    #   cdf_diff[j] = Φ(z[j+1]) - Φ(z[j])  shape: (B, M, J)
+    # Then p_target[j0, j1] = cdf_diff_y0[j0] · cdf_diff_y1[j1]
+    sigma_t = torch.tensor(float(sigma), device=pred.device, dtype=pred.dtype)
+    inv_sqrt2 = 1.0 / math.sqrt(2.0)
+
+    z0 = (edges.unsqueeze(0).unsqueeze(0) - y0.unsqueeze(-1)) / sigma_t   # (B, M, J+1)
+    z1 = (edges.unsqueeze(0).unsqueeze(0) - y1.unsqueeze(-1)) / sigma_t
+    cdf0 = 0.5 * (1.0 + torch.erf(z0 * inv_sqrt2))                        # (B, M, J+1)
+    cdf1 = 0.5 * (1.0 + torch.erf(z1 * inv_sqrt2))
+    p_marg0 = (cdf0[..., 1:] - cdf0[..., :-1]).clamp(min=0.0)             # (B, M, J)
+    p_marg1 = (cdf1[..., 1:] - cdf1[..., :-1]).clamp(min=0.0)
+
+    # Outer product to form the 2D target (B, M, J, J). Renormalise so
+    # target sums to 1 over inner cells (handles edge points where some
+    # Gaussian mass falls outside [lo, hi]).
+    p_target = p_marg0.unsqueeze(-1) * p_marg1.unsqueeze(-2)              # (B, M, J, J)
+    p_target = p_target / p_target.sum(dim=(-2, -1), keepdim=True).clamp(min=1e-12)
+
+    # Cross-entropy between p_target and p_mat.
+    ce_inner = -(p_target * p_mat.clamp(min=1e-45).log()).sum(dim=(-2, -1))  # (B, M)
+    lp_inner = log_w[..., R_INNER] - ce_inner
+
+    # ── Regions 1..8: UNCHANGED from neg_log_prob_2d ────────────────────
+    flat_idx = (j0_idx * J + j1_idx).unsqueeze(-1)
+    p_flat   = p_mat.reshape(B, M, J * J)
+    p_at_ij  = p_flat.gather(-1, flat_idx).squeeze(-1)   # unused for inner (HL-Gauss replaces it)
+
+    row_L0   = p_mat[..., 0,   :]
+    row_R0   = p_mat[..., J-1, :]
+    marg_L0  = row_L0.sum(-1).clamp(1e-45)
+    marg_R0  = row_R0.sum(-1).clamp(1e-45)
+    p_cond_L0 = row_L0.gather(-1, j1_idx.unsqueeze(-1)).squeeze(-1)
+    p_cond_R0 = row_R0.gather(-1, j1_idx.unsqueeze(-1)).squeeze(-1)
+    log_cond_L0 = p_cond_L0.clamp(1e-45).log() - marg_L0.log() - log_bw
+    log_cond_R0 = p_cond_R0.clamp(1e-45).log() - marg_R0.log() - log_bw
+    lp_L0 = log_w[..., R_L0] + _log_half_gauss(y0, lo, sL0) + log_cond_L0
+    lp_R0 = log_w[..., R_R0] + _log_half_gauss(y0, hi, sR0) + log_cond_R0
+
+    col_L1   = p_mat[..., :, 0  ]
+    col_R1   = p_mat[..., :, J-1]
+    marg_L1  = col_L1.sum(-1).clamp(1e-45)
+    marg_R1  = col_R1.sum(-1).clamp(1e-45)
+    p_cond_L1 = col_L1.gather(-1, j0_idx.unsqueeze(-1)).squeeze(-1)
+    p_cond_R1 = col_R1.gather(-1, j0_idx.unsqueeze(-1)).squeeze(-1)
+    log_cond_L1 = p_cond_L1.clamp(1e-45).log() - marg_L1.log() - log_bw
+    log_cond_R1 = p_cond_R1.clamp(1e-45).log() - marg_R1.log() - log_bw
+    lp_L1 = log_w[..., R_L1] + log_cond_L1 + _log_half_gauss(y1, lo, sL1)
+    lp_R1 = log_w[..., R_R1] + log_cond_R1 + _log_half_gauss(y1, hi, sR1)
+
+    log_norm_same = torch.log(0.25 + torch.asin(rho) / (2 * math.pi))
+    log_norm_opp  = torch.log((0.25 - torch.asin(rho) / (2 * math.pi)).clamp(1e-45))
+    lp_L0L1 = log_w[..., R_L0L1] + _log_biv_gauss(y0, y1, lo, lo, sL0, sL1, rho) - log_norm_same
+    lp_L0R1 = log_w[..., R_L0R1] + _log_biv_gauss(y0, y1, lo, hi, sL0, sR1, rho) - log_norm_opp
+    lp_R0L1 = log_w[..., R_R0L1] + _log_biv_gauss(y0, y1, hi, lo, sR0, sL1, rho) - log_norm_opp
+    lp_R0R1 = log_w[..., R_R0R1] + _log_biv_gauss(y0, y1, hi, hi, sR0, sR1, rho) - log_norm_same
+
+    all_lp = torch.stack(
+        [lp_inner, lp_L0, lp_R0, lp_L1, lp_R1,
+         lp_L0L1, lp_L0R1, lp_R0L1, lp_R0R1],
+        dim=-1
+    )
+    log_prob = all_lp.gather(-1, region_idx.unsqueeze(-1)).squeeze(-1)
+
+    if reduce == 'mean':     return -log_prob.mean()
+    if reduce == 'per_task': return -log_prob.mean(dim=-1)
+    if reduce == 'none':     return -log_prob
+    raise ValueError(f'reduce must be mean|per_task|none, got {reduce}')
+
+
 # ── Reference implementation (for numerical-equivalence test only) ───────────
 
 def _neg_log_prob_2d_scatter_reference(pred, y0, y1, J, edges, reduce='mean'):

@@ -57,6 +57,21 @@ NLAYERS       = int(os.environ.get('NLAYERS', 20))
 DROPOUT       = float(os.environ.get('DROPOUT', 0.0))
 N_OUT         = int(os.environ.get('N_OUT', 10))
 
+# Loss + scaling knobs (default = current CausalPFN-style behaviour).
+#   Y_SCALING_MODE ∈ {pooled_std, uwyk_minmax}
+#     pooled_std  → (y - pooled_mean) / pooled_std, edges [-10, +10]
+#     uwyk_minmax → per-task min/max scale to [-1, +1], edges [-1, +1]
+#   LOSS_TYPE ∈ {density, hlgauss}
+#     density → neg_log_prob_2d (bar-distribution density on full 9 regions)
+#     hlgauss → neg_log_prob_2d_hlgauss (2D CE with diagonal Gaussian target
+#               on the inner K² region; 8 tail regions unchanged)
+#   HLGAUSS_SIGMA → sigma of the target Gaussian (only used if LOSS_TYPE=hlgauss)
+Y_SCALING_MODE = os.environ.get('Y_SCALING_MODE', 'pooled_std')
+LOSS_TYPE      = os.environ.get('LOSS_TYPE',      'density')
+HLGAUSS_SIGMA  = float(os.environ.get('HLGAUSS_SIGMA', 0.2))
+assert Y_SCALING_MODE in ('pooled_std', 'uwyk_minmax'), Y_SCALING_MODE
+assert LOSS_TYPE      in ('density',    'hlgauss'),     LOSS_TYPE
+
 # Optimizer -- matches conf/optimizer/schedulefree_adamw.yaml.
 LR            = float(os.environ.get('LR', 5e-4))
 WEIGHT_DECAY  = float(os.environ.get('WEIGHT_DECAY', 0.05))
@@ -171,6 +186,11 @@ def save_checkpoint(path, step, model, optimizer, edges):
             'J': J, 'ninp': NINP, 'nhid': NHID, 'nlayers': NLAYERS, 'nhead': NHEAD,
             'num_features': NUM_FEATURES, 'n_out': N_OUT, 'dropout': DROPOUT,
             'backbone': 'causalpfn.TabDPTLongContextModel',
+            # Loss/scaling knobs — eval needs these to reconstruct the model
+            # with matching scaling behaviour.
+            'y_scaling_mode': Y_SCALING_MODE,
+            'loss_type':      LOSS_TYPE,
+            'hlgauss_sigma':  HLGAUSS_SIGMA,
         },
     }, tmp)
     os.replace(tmp, path)
@@ -331,40 +351,47 @@ def main():
     loader = DataLoader(meta, **loader_kwargs)
     it = iter(loader)
 
-    # ── FIXED edges [-10, +10], matching CausalPFN's InContextModel ────
-    # CausalPFN hardcodes vmin=-10, vmax=+10 in their bar-distribution head
-    # (src/causalpfn/models/icl_model.py: vmin/vmax defaults). We used to
-    # fit edges empirically from warmup Y_obs, but a single outlier task
-    # dragged y_max to +40 (job 5053194 log: 'edges std-space: [-9.460, 39.864]'),
-    # giving bin_width = 1.54 std-devs — 80x wider than CausalPFN's 0.02.
-    # Result: model couldn't localise the joint anywhere and plateaued at
-    # loss ≈ log(2π) ≈ 1.83 for 28k steps.
-    #
-    # Fixed edges + pooled per-task standardisation is the right combo for
-    # the 2D joint head: pooled std keeps E[Y0] and E[Y1] on the same scale
-    # (the joint requires this), fixed edges are outlier-proof.
-    edges = make_edges(J, y_min=-10.0, y_max=10.0).to(DEVICE)
-    _log(f'[edges] fixed to [-10.0, +10.0]  J+1={J+1}  bin_width={20/J:.4f}')
+    # ── Edges depend on Y_SCALING_MODE ────────────────────────────────
+    # pooled_std  → y_scaled = (y - pooled_mean) / pooled_std, edges [-10, +10]
+    # uwyk_minmax → y_scaled = (y - shift) / scale ∈ [-1, +1],  edges [-1, +1]
+    if Y_SCALING_MODE == 'uwyk_minmax':
+        _edge_lo, _edge_hi = -1.0, 1.0
+    else:
+        _edge_lo, _edge_hi = -10.0, 10.0
+    edges = make_edges(J, y_min=_edge_lo, y_max=_edge_hi).to(DEVICE)
+    _log(f'[edges] Y_SCALING_MODE={Y_SCALING_MODE}  LOSS_TYPE={LOSS_TYPE}'
+         f'{"  HLGAUSS_SIGMA=" + str(HLGAUSS_SIGMA) if LOSS_TYPE == "hlgauss" else ""}')
+    _log(f'[edges] fixed to [{_edge_lo}, {_edge_hi}]  J+1={J+1}  '
+         f'bin_width={(_edge_hi - _edge_lo)/J:.4f}')
 
-    # Empirical sanity: consume warmup batches and log how far y_std actually
-    # ranges. If typical values fall well inside [-10, +10] the fixed edges
-    # cover the density; if they exceed, tail regions handle the overflow.
+    # Empirical sanity: consume warmup batches and log how far Y_scaled
+    # actually ranges under the chosen mode. If typical values fall well
+    # inside [_edge_lo, _edge_hi] the fixed edges cover the density.
     ymin_seen, ymax_seen = float('inf'), float('-inf')
     for _ in range(STREAM_WARMUP):
         b = next(it)
         for i in range(MICROBATCH):
             y = b['y'][i].float()
-            y_std = (y - y.mean()) / (y.std() + 1e-6)
-            ymin_seen = min(ymin_seen, y_std.min().item())
-            ymax_seen = max(ymax_seen, y_std.max().item())
-    _log(f'[edges] warmup empirical y_std range: [{ymin_seen:.3f}, {ymax_seen:.3f}]  '
-         f'(fixed edges cover: {(ymin_seen >= -10.0 and ymax_seen <= 10.0)})')
+            if Y_SCALING_MODE == 'uwyk_minmax':
+                y_lo, y_hi = y.amin(), y.amax()
+                shift = 0.5 * (y_lo + y_hi)
+                scale = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
+                y_scaled = (y - shift) / scale
+            else:
+                y_scaled = (y - y.mean()) / (y.std() + 1e-6)
+            ymin_seen = min(ymin_seen, y_scaled.min().item())
+            ymax_seen = max(ymax_seen, y_scaled.max().item())
+    _log(f'[edges] warmup empirical y_scaled range: [{ymin_seen:.3f}, {ymax_seen:.3f}]  '
+         f'(fixed edges cover: {(ymin_seen >= _edge_lo and ymax_seen <= _edge_hi)})')
 
     # ── model ──
     model = CausalPFN2DHead(
         J=J, num_features=NUM_FEATURES,
         ninp=NINP, nhid=NHID, nhead=NHEAD, nlayers=NLAYERS,
         dropout=DROPOUT, n_out=N_OUT,
+        y_scaling_mode=Y_SCALING_MODE,
+        loss_type=LOSS_TYPE,
+        hlgauss_sigma=HLGAUSS_SIGMA,
     ).to(DEVICE)
     if is_main:
         print(f'Model parameters: {sum(p.numel() for p in model.parameters()):,}')
