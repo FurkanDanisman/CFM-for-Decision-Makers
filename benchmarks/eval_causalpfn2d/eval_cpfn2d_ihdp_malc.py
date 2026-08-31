@@ -58,10 +58,19 @@ _MALC_DIR = os.path.join(REPO_SRC, 'MALC')
 if _MALC_DIR not in sys.path:
     sys.path.insert(0, _MALC_DIR)
 
-from benchmarks import IHDPDataset  # noqa: E402
+from benchmarks import IHDPDataset  # noqa: E402  — CausalPFN's benchmarks pkg
 from training_causalpfn2d.model_causalpfn_2d import CausalPFN2DHead  # noqa: E402
-from benchmarks.l2_ihdp.methods_densities import malc_1d_cvxpy  # noqa: E402
 from malc_2d import MALC_2D, eval_grid_2d  # noqa: E402
+
+# `benchmarks` here resolves to CausalPFN's package (path order), so
+# `from benchmarks.l2_ihdp.methods_densities import malc_1d_cvxpy` fails
+# with ModuleNotFoundError. Load our copy directly by file path.
+import importlib.util as _iutil  # noqa: E402
+_methods_path = os.path.join(REPO_SRC, 'benchmarks', 'l2_ihdp', 'methods_densities.py')
+_spec = _iutil.spec_from_file_location('rpfn_methods_densities', _methods_path)
+_methods_densities = _iutil.module_from_spec(_spec)
+_spec.loader.exec_module(_methods_densities)
+malc_1d_cvxpy = _methods_densities.malc_1d_cvxpy
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
