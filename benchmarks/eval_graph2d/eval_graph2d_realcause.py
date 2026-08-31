@@ -80,7 +80,7 @@ PROPAGATE_ANC = os.environ.get('PROPAGATE_ANC', '1') == '1'
 # anc matrix has -1s there — leaving 0 at eval creates a distribution
 # shift proportional to n_real^2 (small for Lalonde n_real=8, huge for
 # ACIC n_real=50).
-INDEP_FEATURES = os.environ.get('INDEP_FEATURES', '1') == '1'
+INDEP_FEATURES = os.environ.get('INDEP_FEATURES', '0') == '1'
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
