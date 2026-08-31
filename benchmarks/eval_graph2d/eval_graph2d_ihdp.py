@@ -86,13 +86,10 @@ def build_anc_full(F: int, n_real: int) -> np.ndarray:
        Non-edge real positions stay at 0. Padded feature slots masked
        with -1 everywhere.
     """
-    # Unconfoundedness assumption only: X→T, X→Y. T→Y is the estimand,
-    # left unlabeled at 0. Matches the reproduce-branch README's stated
-    # semantics for "full_graph" mode (their code contradicts the README
-    # by setting T→Y=1; we follow the README).
     A = np.zeros((F + 2, F + 2), dtype=np.float32)
     T_idx, Y_idx = 0, 1
     feat_off = 2
+    A[T_idx, Y_idx] = 1.0
     for i in range(n_real):
         A[feat_off + i, T_idx] = 1.0
         A[feat_off + i, Y_idx] = 1.0
