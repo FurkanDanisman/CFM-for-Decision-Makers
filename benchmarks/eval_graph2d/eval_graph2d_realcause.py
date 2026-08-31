@@ -63,6 +63,17 @@ from benchmarks import (  # noqa: E402
     RealCauseLalondePSIDDataset,
 )
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
+from utils.graph_utils import propagate_ancestor_knowledge  # noqa: E402  # UWYK
+
+# Match training-time anc matrix distribution: after building the +1
+# ancestor edges we assert, run propagate_ancestor_knowledge to fill in
+# the -1s at (a) diagonal (irreflexive), (b) antisymmetric reverse edges,
+# and derive any transitive +1s. This is the SAME function training uses
+# (PairedInterventionalDataset.py:754). If we skip this step, our eval
+# matrix has 0 at positions where training would have -1, which is a
+# distribution shift on the input the soft-attention-bias params were
+# calibrated for. Toggle via env var; default ON (match training).
+PROPAGATE_ANC = os.environ.get('PROPAGATE_ANC', '1') == '1'
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -114,6 +125,16 @@ def build_anc_full(F, n_real):
         A[feat_off + i, :] = -1.0
         A[:, feat_off + i] = -1.0
         A[feat_off + i, feat_off + i] = -1.0
+
+    if PROPAGATE_ANC:
+        # Fill in -1s at antisymmetric reverse edges + diagonal, and any
+        # transitive +1s. Restricted to the REAL submatrix so we don't
+        # perturb the padded -1s.
+        import torch as _torch
+        real_n = 2 + n_real
+        real_block = _torch.from_numpy(A[:real_n, :real_n].copy())
+        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
+        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
     return A
 
 
