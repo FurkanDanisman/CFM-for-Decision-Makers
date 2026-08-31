@@ -104,9 +104,24 @@ def _scale_y(y):
 
 
 def build_anc_full(F, n_real):
+    """Ancestral info = the UNCONFOUNDEDNESS assumption only.
+
+    Encoded edges:
+      +1 at (X_i, T)   — X_i is ancestor of T
+      +1 at (X_i, Y)   — X_i is ancestor of Y
+    LEFT UNLABELED (0):
+      A[T, Y] — T→Y IS the causal effect we are estimating; asserting it
+                as an ancestor edge conflates the identification
+                assumption with the estimand.
+
+    The reproduce-realcause-results branch's build_adjacency_matrix
+    (RealCauseEval/run_baselines/dofm_no_clustering.py) sets A[T, Y] = 1
+    in "full_graph" mode; that contradicts their own README which explicitly
+    documents the mode as "reveals X→T=1, X→Y=1, leaves T→Y unlabeled."
+    We follow the README's stated meaning here.
+    """
     A = np.zeros((F + 2, F + 2), dtype=np.float32)
     T_idx, Y_idx, feat_off = 0, 1, 2
-    A[T_idx, Y_idx] = 1.0
     for i in range(n_real):
         A[feat_off + i, T_idx] = 1.0
         A[feat_off + i, Y_idx] = 1.0
