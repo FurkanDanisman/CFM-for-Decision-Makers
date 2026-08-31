@@ -126,10 +126,16 @@ def load_model(ckpt_path: str) -> tuple[GraphConditioned2DHead, dict]:
         ck['model_state_dict'] = sd
 
     def _sink_count(prefix):
+        # Buffer shape is (1, num_sinks, ...); the leading 1 is a batch dim.
+        # Reading shape[0] returned 1 (batch) and silently mis-configured the
+        # model → sink buffers were dropped by load_state_dict → attention
+        # sinks ran on random init.
         for suffix in ('_x', '_y'):
             k = prefix + suffix
-            if k in sd and sd[k].dim() >= 1:
-                return int(sd[k].shape[0])
+            if k not in sd or sd[k].dim() < 2:
+                continue
+            t = sd[k]
+            return int(t.shape[1] if t.shape[0] == 1 else t.shape[0])
         return 0
 
     n_sample_sink = _sink_count('sink_rows')
