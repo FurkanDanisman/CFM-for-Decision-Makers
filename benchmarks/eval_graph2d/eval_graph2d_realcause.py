@@ -165,10 +165,22 @@ def load_model(ckpt_path):
         sd = {k.replace('_orig_mod.', ''): v for k, v in sd.items()}
 
     def _sink_count(prefix):
+        # Buffer shapes in the saved state_dict:
+        #   sink_rows_x: (1, num_sinks, F+2, d_model)
+        #   sink_rows_y: (1, num_sinks, d_model)
+        # Leading dim is a batch broadcast (fixed at 1). The actual sink count
+        # lives at dim 1. Reading shape[0] gave us 1 → model was built with
+        # n_sample_attention_sink_rows=1 → sink buffers had a different shape
+        # than the ckpt's → load_state_dict SILENTLY DROPPED them due to the
+        # shape filter → the model ran with sink buffers at random init.
+        # Fix: if there's a leading batch dim (shape[0]==1) use shape[1],
+        # otherwise fall back to shape[0] (older ckpts without batch dim).
         for suffix in ('_x', '_y'):
             k = prefix + suffix
-            if k in sd and sd[k].dim() >= 1:
-                return int(sd[k].shape[0])
+            if k not in sd or sd[k].dim() < 2:
+                continue
+            t = sd[k]
+            return int(t.shape[1] if t.shape[0] == 1 else t.shape[0])
         return 0
 
     model = GraphConditioned2DHead(
