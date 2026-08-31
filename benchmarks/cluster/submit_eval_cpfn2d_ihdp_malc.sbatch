@@ -2,10 +2,10 @@
 #SBATCH --job-name=cpfn2d-malc
 #SBATCH --output=logs_cpfn2d_ihdp_malc/eval_%j.out
 #SBATCH --error=logs_cpfn2d_ihdp_malc/eval_%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=02:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
 
 # MALC-based IHDP eval — reports BOTH 1D MALC on marginals AND 2D MALC + marginals
 # for CATE means. Multiprocessing across queries for the 2D fits.
@@ -40,8 +40,9 @@ export OUT="${OUT:-$DEPLOY_ROOT/results_cpfn2d_ihdp_malc_${STEP_TAG}}"
 # MALC knobs (overridable via --export)
 export MALC_B="${MALC_B:-1000}"
 export MALC_MAX_K="${MALC_MAX_K:-5}"
-export N_WORKERS="${SLURM_CPUS_PER_TASK:-32}"
-export N_REAL="${N_REAL:-100}"
+export N_WORKERS="${SLURM_CPUS_PER_TASK:-8}"
+export REAL_START="${REAL_START:-0}"
+export REAL_END="${REAL_END:-100}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 # BLAS threads capped at 1 — each MALC worker will spawn its own math. Otherwise

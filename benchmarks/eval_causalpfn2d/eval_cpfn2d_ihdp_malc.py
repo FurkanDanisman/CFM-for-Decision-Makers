@@ -43,7 +43,10 @@ CAUSALPFN = os.environ['CAUSALPFN']
 MALC_B    = int(os.environ.get('MALC_B',    1000))
 MALC_MAX_K = int(os.environ.get('MALC_MAX_K', 5))
 N_WORKERS = int(os.environ.get('N_WORKERS', os.environ.get('SLURM_CPUS_PER_TASK', 8)))
-N_REAL    = int(os.environ.get('N_REAL', 100))
+# Range of realizations this job evaluates: [REAL_START, REAL_END).
+# Default = [0, 100) — full IHDP. Split across many jobs for wall-clock speedup.
+REAL_START = int(os.environ.get('REAL_START', 0))
+REAL_END   = int(os.environ.get('REAL_END',   100))
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
@@ -252,7 +255,8 @@ def main():
     hlgauss_sigma  = float(cfg.get('hlgauss_sigma', 0.2))
     print(f'[bootstrap] ckpt={CKPT}')
     print(f'[bootstrap] step={step}  J={cfg["J"]}  y_scaling={y_scaling_mode}  '
-          f'loss={loss_type}  MALC_B={MALC_B}  MALC_MAX_K={MALC_MAX_K}  workers={N_WORKERS}')
+          f'loss={loss_type}  MALC_B={MALC_B}  MALC_MAX_K={MALC_MAX_K}  workers={N_WORKERS}  '
+          f'realizations=[{REAL_START}, {REAL_END})')
     print(f'[bootstrap] edges: [{edges[0].item():.3f}, {edges[-1].item():.3f}]  '
           f'bw={((edges[-1]-edges[0])/cfg["J"]).item():.4f}')
 
@@ -277,7 +281,7 @@ def main():
     try:
         rows = []
         t0 = time.time()
-        for r in range(min(N_REAL, 100)):
+        for r in range(REAL_START, min(REAL_END, 100)):
             row = evaluate(r, model, edges, cfg['J'], cfg['num_features'],
                            y_scaling_mode, pool)
             np.savez(os.path.join(OUT, f'r{r:03d}.npz'),
