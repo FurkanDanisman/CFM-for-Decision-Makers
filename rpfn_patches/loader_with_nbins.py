@@ -36,9 +36,17 @@ def load_pretrained_in_context_model_with_nbins(
     revision: Optional[str] = None,
     sigma: float = 0.5,
     nbins_override: Optional[int] = None,
+    head_reinit: bool = False,
 ):
     """Same signature as causalpfn.models.load_pretrained_in_context_model,
-    plus optional `nbins_override`."""
+    plus optional `nbins_override` and `head_reinit`.
+
+    - nbins_override: replaces the final head with a new-nbins Linear (see below).
+    - head_reinit: re-initialises the final head IN PLACE at the ckpt's native
+      nbins (backbone stays warmstarted; head becomes random). Used to isolate
+      the effect of head warmstart while keeping architecture identical to the
+      ckpt. Ignored if nbins_override is set (that already re-inits the head).
+    """
     from causalpfn.models import load_pretrained_in_context_model
 
     # Base call — always warmstart from the ckpt at its native nbins.
@@ -51,6 +59,21 @@ def load_pretrained_in_context_model_with_nbins(
     )
 
     if nbins_override is None:
+        if head_reinit:
+            backbone = model.model
+            old_final = backbone.head[2]
+            has_bias = old_final.bias is not None
+            device = old_final.weight.device
+            dtype = old_final.weight.dtype
+            new_final = nn.Linear(old_final.in_features, old_final.out_features, bias=has_bias)
+            new_final.to(device=device, dtype=dtype)
+            nn.init.kaiming_uniform_(new_final.weight, a=(5 ** 0.5))
+            if has_bias:
+                nn.init.zeros_(new_final.bias)
+            backbone.head[2] = new_final
+            print(f'[head-reinit] head[2] re-initialised at native shape '
+                  f'({old_final.in_features}, {old_final.out_features}); '
+                  f'backbone kept warmstarted.')
         return model
 
     # Surgery: replace the final classification head Linear at new nbins.
