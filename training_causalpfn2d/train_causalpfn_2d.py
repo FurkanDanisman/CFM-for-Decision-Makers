@@ -72,6 +72,16 @@ HLGAUSS_SIGMA  = float(os.environ.get('HLGAUSS_SIGMA', 0.2))
 assert Y_SCALING_MODE in ('pooled_std', 'uwyk_minmax'), Y_SCALING_MODE
 assert LOSS_TYPE      in ('density',    'hlgauss'),     LOSS_TYPE
 
+# Head warmstart mode (applied AFTER the backbone warmstart block below):
+#   'random' — leave the 2D head at PyTorch's default random init (current default).
+#   'tile'   — downsample TabDPT's 1D head bin weights (1024 → J) and tile them
+#              into the 2D interior J² block so the joint starts as p_TabDPT(Y0) ×
+#              p_TabDPT(Y1). Small N(0, 0.01) noise added to break exact
+#              separability. Auxiliary n_out rows are copied verbatim. The 13
+#              region/tail rows stay at random init.
+HEAD_WARMSTART_MODE = os.environ.get('HEAD_WARMSTART_MODE', 'random').lower()
+assert HEAD_WARMSTART_MODE in ('random', 'tile'), HEAD_WARMSTART_MODE
+
 # Optimizer -- matches conf/optimizer/schedulefree_adamw.yaml.
 LR            = float(os.environ.get('LR', 5e-4))
 WEIGHT_DECAY  = float(os.environ.get('WEIGHT_DECAY', 0.05))
@@ -157,6 +167,105 @@ def build_optimizer(params):
     return AdamWScheduleFree(
         params, lr=LR, betas=(BETA1, BETA2), weight_decay=WEIGHT_DECAY,
         warmup_steps=WARMUP_STEPS,
+    )
+
+
+def _tile_init_2d_head_from_tabdpt_1d(model, tabdpt_sd, J, n_out=10, noise_std=0.01):
+    """Tile-init model.backbone.head[2] from TabDPT's 1D head.
+
+    Layout details:
+      - TabDPT's head[2] is Linear(ninp, n_out + 1024). Split into:
+          * rows [:n_out]         → auxiliary (non-bin) outputs
+          * rows [n_out:n_out+1024] → 1D bin logits over J_tab=1024 bins
+      - Our 2D head[2] is Linear(ninp, n_out + J^2 + 13). Split into:
+          * rows [:n_out]           → auxiliary
+          * rows [n_out:n_out+J^2]   → interior joint bin logits over J*J pairs
+          * rows [n_out+J^2:]        → 9 region weights + 4 tail scales (13 total)
+
+    Tile-init procedure:
+      1. Copy TabDPT's auxiliary n_out rows → our aux slice verbatim.
+      2. Downsample TabDPT's 1024 bin rows → J bin rows via mean-pool (clean
+         divide required; 1024/J must be an integer).
+      3. For each (i0, i1) with 0 <= i0, i1 < J:
+           W_2d[n_out + i0*J + i1] = W_1d_down[i0] + W_1d_down[i1] + N(0, noise_std)
+         Same for bias. Softmax over these logits gives approximately
+         p_TabDPT(Y0=i0) * p_TabDPT(Y1=i1) — independent marginals init.
+      4. Leave the last 13 region/tail rows at their random init.
+
+    Raises ValueError if 1024 doesn't divide evenly by J (mean-pool needs a clean
+    ratio). For non-clean J values (e.g., 100), refuse rather than silently
+    approximate.
+    """
+    key_w = 'head.2.weight'
+    key_b = 'head.2.bias'
+    if key_w not in tabdpt_sd:
+        raise KeyError(f'[tile-init] TabDPT state_dict missing {key_w!r}')
+
+    W_tab = tabdpt_sd[key_w]   # (n_out + 1024, ninp)
+    b_tab = tabdpt_sd.get(key_b)   # (n_out + 1024,) or None
+    total_tab = W_tab.shape[0]
+    nbins_tab = total_tab - n_out
+    if nbins_tab <= 0:
+        raise ValueError(
+            f'[tile-init] TabDPT head has out_features={total_tab} but n_out={n_out} '
+            f'leaves no bin rows.'
+        )
+    if nbins_tab % J != 0:
+        raise ValueError(
+            f'[tile-init] TabDPT nbins={nbins_tab} not divisible by J={J}. '
+            f'Mean-pool requires a clean divide. Pick J | {nbins_tab}.'
+        )
+
+    ninp = W_tab.shape[1]
+    chunk = nbins_tab // J
+
+    # Split TabDPT's head into aux + bins.
+    W_aux_tab  = W_tab[:n_out, :]                       # (n_out, ninp)
+    W_bins_tab = W_tab[n_out : n_out + nbins_tab, :]    # (1024, ninp)
+    # Mean-pool bin rows to J.
+    W_bins_down = W_bins_tab.reshape(J, chunk, ninp).mean(dim=1)   # (J, ninp)
+
+    if b_tab is not None:
+        b_aux_tab  = b_tab[:n_out]                       # (n_out,)
+        b_bins_tab = b_tab[n_out : n_out + nbins_tab]    # (1024,)
+        b_bins_down = b_bins_tab.reshape(J, chunk).mean(dim=1)     # (J,)
+
+    # Tile into 2D interior block. Order matches how the trainer/loss unpacks
+    # inner logits: reshape(-1, J, J) with axis 0 = Y_do0, axis 1 = Y_do1
+    # (see model_causalpfn_2d.py forward → losses/BarDistribution2D.py).
+    # Flat index (i0, i1) → i0*J + i1.
+    W_2d_int = W_bins_down.unsqueeze(1) + W_bins_down.unsqueeze(0)   # (J, J, ninp)
+    W_2d_int = W_2d_int.reshape(J * J, ninp)
+    if b_tab is not None:
+        b_2d_int = (b_bins_down.unsqueeze(1) + b_bins_down.unsqueeze(0)).reshape(J * J)
+
+    # Additive noise to break exact separability.
+    W_2d_int = W_2d_int + torch.randn_like(W_2d_int) * noise_std
+    if b_tab is not None:
+        b_2d_int = b_2d_int + torch.randn_like(b_2d_int) * noise_std
+
+    # Assign into model's head[2]. Move to matching device/dtype.
+    head_final = model.backbone.head[2]
+    device = head_final.weight.device
+    dtype  = head_final.weight.dtype
+    total_ours = head_final.out_features
+    if total_ours < n_out + J * J:
+        raise ValueError(
+            f'[tile-init] model head has out_features={total_ours} < '
+            f'n_out({n_out}) + J^2({J*J}); cannot fit tile-init.'
+        )
+    with torch.no_grad():
+        head_final.weight[:n_out, :] = W_aux_tab.to(device=device, dtype=dtype)
+        head_final.weight[n_out : n_out + J * J, :] = W_2d_int.to(device=device, dtype=dtype)
+        if b_tab is not None and head_final.bias is not None:
+            head_final.bias[:n_out] = b_aux_tab.to(device=device, dtype=dtype)
+            head_final.bias[n_out : n_out + J * J] = b_2d_int.to(device=device, dtype=dtype)
+
+    print(
+        f'[tile-init] head[2]: copied {n_out} aux rows, downsampled '
+        f'{nbins_tab} → {J} bin rows (chunk={chunk}), tiled to '
+        f'{J*J} interior 2D rows; last {total_ours - n_out - J*J} region/tail rows '
+        f'stay at random init. noise_std={noise_std}.'
     )
 
 
@@ -540,6 +649,16 @@ def main():
                 )
             print(f'[warmstart] VERIFIED: backbone.{_probe_key} matches ckpt exactly  '
                   f'(L2={_want.norm().item():.4f}, n_elems={_want.numel()})')
+
+            # ── Optional: tile-init 2D head from TabDPT's 1D head ──────
+            # Runs AFTER the backbone warmstart succeeds. Uses the raw `sd`
+            # dict (BEFORE shape-filter) because head.2.weight was filtered
+            # out (shape mismatch: TabDPT is [n_out+1024, ninp], ours is
+            # [n_out + J^2 + 13, ninp]). Requires J | 1024.
+            if HEAD_WARMSTART_MODE == 'tile':
+                _tile_init_2d_head_from_tabdpt_1d(
+                    model, sd, J=J, n_out=N_OUT, noise_std=0.01,
+                )
         except Exception as e:
             # RuntimeError from our own abort should NOT be swallowed — that
             # defeats the whole point of the verification. Only swallow
