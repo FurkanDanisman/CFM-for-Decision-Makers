@@ -104,16 +104,56 @@ def _scale_y(y):
 
 
 def build_anc_full(F, n_real):
+    """Three-state ancestor matrix matching the training convention (verified
+    against Graphs4CausalFoundationModels reproduce-realcause-results branch,
+    src/priordata_processing/Datasets/InterventionalDataset.py L998-1002).
+
+    Training-time anc matrices have entries in {-1, 0, +1}:
+      +1: known ancestor
+      -1: known NOT ancestor
+       0: unknown (only set when hide_fraction_matrix > 0)
+
+    Under 'full-graph' knowledge (Lalonde/ACIC/IHDP downstream), the model
+    should see -1 wherever we KNOW there's no ancestral relation. The prior
+    version left those entries at 0 which reads as "I don't know" — that's
+    what's been hurting anc-mode results on Lalonde/ACIC.
+
+    Assumed structure: T→Y, X_i→T, X_i→Y for i in real features. Then:
+      * Y↛T (Y not ancestor of T)
+      * T↛X_i, Y↛X_i (T, Y not ancestors of features)
+      * self-loops → -1 (irreflexive ancestor)
+      * feature↔feature: TRULY UNKNOWN → 0 (we have no prior on covariate DAG)
+      * padded slots → -1 (matches training)
+    """
     A = np.zeros((F + 2, F + 2), dtype=np.float32)
     T_idx, Y_idx, feat_off = 0, 1, 2
+
+    # ── Known ancestor edges (+1) ────────────────────────────────
     A[T_idx, Y_idx] = 1.0
     for i in range(n_real):
         A[feat_off + i, T_idx] = 1.0
         A[feat_off + i, Y_idx] = 1.0
+
+    # ── Known NON-ancestor edges (-1) ────────────────────────────
+    A[Y_idx, T_idx] = -1.0                       # Y is not ancestor of T
+    for i in range(n_real):
+        A[T_idx, feat_off + i] = -1.0            # T is not ancestor of X_i
+        A[Y_idx, feat_off + i] = -1.0            # Y is not ancestor of X_i
+    # Irreflexive: self is not own ancestor.
+    A[T_idx, T_idx] = -1.0
+    A[Y_idx, Y_idx] = -1.0
+    for i in range(n_real):
+        A[feat_off + i, feat_off + i] = -1.0
+
+    # feature-to-feature (X_i, X_j for i != j) intentionally left at 0
+    # (unknown) — we have no domain prior on the covariate DAG.
+
+    # ── Padded feature slots (masked out) ───────────────────────
     for i in range(n_real, F):
         A[feat_off + i, :] = -1.0
         A[:, feat_off + i] = -1.0
         A[feat_off + i, feat_off + i] = -1.0
+
     return A
 
 
