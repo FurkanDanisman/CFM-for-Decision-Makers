@@ -1,0 +1,204 @@
+% ============================================================================
+%   references.bib — verified 2026-08-31
+%   Each entry includes a URL for independent verification.
+% ============================================================================
+
+% --- Books ------------------------------------------------------------------
+
+@book{pearl2009,
+  title     = {Causality: Models, Reasoning and Inference},
+  edition   = {2},
+  author    = {Pearl, Judea},
+  publisher = {Cambridge University Press},
+  address   = {Cambridge},
+  year      = {2009},
+  isbn      = {978-0521895606},
+  url       = {https://www.cambridge.org/9780521895606}
+}
+
+@book{peters,
+  title     = {Elements of Causal Inference: Foundations and Learning Algorithms},
+  series    = {Adaptive Computation and Machine Learning Series},
+  author    = {Peters, Jonas and Janzing, Dominik and Sch{\"o}lkopf, Bernhard},
+  publisher = {The MIT Press},
+  address   = {Cambridge, MA, USA},
+  year      = {2017},
+  isbn      = {978-0262037310},
+  url       = {https://mitpress.mit.edu/9780262037310/elements-of-causal-inference/}
+}
+
+@book{hernan2020,
+  title     = {Causal Inference: What If},
+  author    = {Hern{\'a}n, Miguel A. and Robins, James M.},
+  publisher = {Chapman \& Hall/CRC},
+  address   = {Boca Raton},
+  year      = {2020},
+  url       = {https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/}
+}
+
+@book{spirtes2000,
+  title     = {Causation, Prediction, and Search},
+  edition   = {2},
+  author    = {Spirtes, Peter and Glymour, Clark and Scheines, Richard},
+  publisher = {MIT Press},
+  address   = {Cambridge, MA, USA},
+  year      = {2000},
+  isbn      = {978-0262194402},
+  url       = {https://mitpress.mit.edu/9780262194402/causation-prediction-and-search/}
+}
+
+% --- Foundational econometrics / causal ML ---------------------------------
+
+@article{chernozhukov2018,
+  title   = {Double/Debiased Machine Learning for Treatment and Structural Parameters},
+  author  = {Chernozhukov, Victor and Chetverikov, Denis and Demirer, Mert and
+             Duflo, Esther and Hansen, Christian and Newey, Whitney and
+             Robins, James},
+  journal = {The Econometrics Journal},
+  volume  = {21},
+  number  = {1},
+  pages   = {C1--C68},
+  year    = {2018},
+  doi     = {10.1111/ectj.12097},
+  url     = {https://academic.oup.com/ectj/article/21/1/C1/5056401},
+  note    = {arXiv preprint at \url{https://arxiv.org/abs/1608.00060}}
+}
+
+@article{wager2018,
+  title   = {Estimation and Inference of Heterogeneous Treatment Effects using Random Forests},
+  author  = {Wager, Stefan and Athey, Susan},
+  journal = {Journal of the American Statistical Association},
+  volume  = {113},
+  number  = {523},
+  pages   = {1228--1242},
+  year    = {2018},
+  doi     = {10.1080/01621459.2017.1319839},
+  url     = {https://www.tandfonline.com/doi/full/10.1080/01621459.2017.1319839},
+  note    = {arXiv preprint at \url{https://arxiv.org/abs/1510.04342}}
+}
+
+% --- PFN foundation ---------------------------------------------------------
+
+@inproceedings{muller2022pfn,
+  title     = {Transformers Can Do {B}ayesian Inference},
+  author    = {M{\"u}ller, Samuel and Hollmann, Noah and Pineda Arango, Sebastian and
+               Grabocka, Josif and Hutter, Frank},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  url       = {https://openreview.net/forum?id=KSugKcbNf9},
+  note      = {arXiv preprint at \url{https://arxiv.org/abs/2112.10510}}
+}
+
+@article{hollmann2022tabpfn,
+  title   = {{TabPFN}: A Transformer That Solves Small Tabular Classification Problems in a Second},
+  author  = {Hollmann, Noah and M{\"u}ller, Samuel and Eggensperger, Katharina and Hutter, Frank},
+  journal = {arXiv preprint},
+  year    = {2022},
+  eprint  = {2207.01848},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url     = {https://arxiv.org/abs/2207.01848},
+  note    = {Also presented at ICLR 2023}
+}
+
+% Alias for the uppercase-key form used in some \cite{TABPFN} calls.
+@article{TABPFN,
+  title   = {{TabPFN}: A Transformer That Solves Small Tabular Classification Problems in a Second},
+  author  = {Hollmann, Noah and M{\"u}ller, Samuel and Eggensperger, Katharina and Hutter, Frank},
+  journal = {arXiv preprint},
+  year    = {2022},
+  eprint  = {2207.01848},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url     = {https://arxiv.org/abs/2207.01848},
+  note    = {Also presented at ICLR 2023}
+}
+
+% --- Causal Foundation Models (the four papers we compare against) ---------
+
+@inproceedings{dopfn,
+  title     = {{Do-PFN}: In-Context Learning for Causal Effect Estimation},
+  author    = {Robertson, Jake and Reuter, Arik and Guo, Siyuan and Hollmann, Noah and
+               Hutter, Frank and Sch{\"o}lkopf, Bernhard},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {38},
+  pages     = {174811--174848},
+  year      = {2025},
+  publisher = {Curran Associates, Inc.},
+  doi       = {10.52202/085713-5814},
+  url       = {https://proceedings.neurips.cc/paper_files/paper/2025/hash/ff997469ac66cf893c4183efeb22212a-Abstract-Conference.html}
+}
+
+% CausalPFN by Balazadeh et al 2025 (vdblm/CausalPFN on GitHub, arXiv 2506.07918)
+% NOTE: earlier bib had this key pointing at Ma et al (CausalFM) — that was wrong.
+@article{causalpfn,
+  title   = {{CausalPFN}: Amortized Causal Effect Estimation via In-Context Learning},
+  author  = {Balazadeh, Vahid and Kamkari, Hamidreza and Thomas, Valentin and Li, Benson and
+             Ma, Junwei and Cresswell, Jesse C. and Krishnan, Rahul G.},
+  journal = {arXiv preprint},
+  year    = {2025},
+  eprint  = {2506.07918},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url     = {https://arxiv.org/abs/2506.07918},
+  note    = {Code: \url{https://github.com/vdblm/CausalPFN}}
+}
+
+@misc{uwyk,
+  title         = {Use What You Know: Causal Foundation Models with Partial Graphs},
+  author        = {Reuter, Arik and Dhir, Anish and Diaconu, Cristiana and Robertson, Jake and
+                   Ossen, Ole and Hutter, Frank and Weller, Adrian and van der Wilk, Mark and
+                   Sch{\"o}lkopf, Bernhard},
+  year          = {2026},
+  eprint        = {2602.14972},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2602.14972}
+}
+
+% Alias for the uppercase-key form used in some \cite{UWYK} calls.
+@misc{UWYK,
+  title         = {Use What You Know: Causal Foundation Models with Partial Graphs},
+  author        = {Reuter, Arik and Dhir, Anish and Diaconu, Cristiana and Robertson, Jake and
+                   Ossen, Ole and Hutter, Frank and Weller, Adrian and van der Wilk, Mark and
+                   Sch{\"o}lkopf, Bernhard},
+  year          = {2026},
+  eprint        = {2602.14972},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2602.14972}
+}
+
+@inproceedings{ma2026causalfm,
+  title     = {Foundation Models for Causal Inference via Prior-Data Fitted Networks},
+  author    = {Ma, Yuchen and Frauen, Dennis and Javurek, Emil and Feuerriegel, Stefan},
+  booktitle = {The Fourteenth International Conference on Learning Representations (ICLR)},
+  year      = {2026},
+  url       = {https://openreview.net/forum?id=d2L1ndOKjq}
+}
+
+% --- Benchmark ---------------------------------------------------------------
+
+@article{neal2020realcause,
+  title   = {{RealCause}: Realistic Causal Inference Benchmarking},
+  author  = {Neal, Brady and Huang, Chin-Wei and Raghupathi, Sunand},
+  journal = {arXiv preprint},
+  year    = {2020},
+  eprint  = {2011.15007},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ML},
+  url     = {https://arxiv.org/abs/2011.15007}
+}
+
+% --- Author's own MALC paper (please verify / update citation) --------------
+%
+% draft.tex references \citet{danisman2026malc}. If this is your own MALC paper,
+% please fill in the title, coauthors, venue, and URL below. Placeholder kept
+% so the bibliography compiles; user should update before submission.
+%
+@unpublished{danisman2026malc,
+  title  = {MALC: Mixture of log-concave densities for binned data (placeholder — please update)},
+  author = {Danisman, Furkan and Others, TBD},
+  year   = {2026},
+  note   = {PLACEHOLDER — update with real title, coauthors, and URL/venue}
+}
