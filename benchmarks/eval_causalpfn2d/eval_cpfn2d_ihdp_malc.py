@@ -44,6 +44,17 @@ MALC_B    = int(os.environ.get('MALC_B',    1000))
 MALC_MAX_K = int(os.environ.get('MALC_MAX_K', 5))
 N_EVAL    = int(os.environ.get('N_EVAL',    100))    # MALC density-eval grid size
 N_WORKERS = int(os.environ.get('N_WORKERS', os.environ.get('SLURM_CPUS_PER_TASK', 8)))
+# Y-standardization mode used AT EVAL (independent of training-time mode):
+#   'pooled'  — one (shift, scale) pair from all context Y (matches training,
+#               the default and safest choice)
+#   'per_arm' — CausalPFN-reference style: (y0s, y0sc) from T=0 context units,
+#               (y1s, y1sc) from T=1 context units. Context Y standardised
+#               row-by-row using its own arm's stats; each marginal
+#               un-standardised by its own arm. Slightly OOD w.r.t. training
+#               (bimodal-Y task tasks compress to unimodal ~N(0,1)) but
+#               preserves counterfactual bin-resolution on IHDP.
+Y_STD_MODE_EVAL = os.environ.get('Y_STD_MODE_EVAL', 'pooled').lower()
+assert Y_STD_MODE_EVAL in ('pooled', 'per_arm'), Y_STD_MODE_EVAL
 # Range of realizations this job evaluates: [REAL_START, REAL_END).
 # Default = [0, 100) — full IHDP. Split across many jobs for wall-clock speedup.
 REAL_START = int(os.environ.get('REAL_START', 0))
@@ -107,11 +118,11 @@ def _std_X(Xtr, Xte, eps=1e-8):
 
 # ── Method 1: 1D MALC on marginals ──────────────────────────────────────
 def cate_1d_malc(p_mat, centers):
-    """1D MALC on the two marginals of p_mat → CATE mean.
+    """1D MALC on the two marginals of p_mat.
 
     p_mat: (J, J) with axis 0 = Y_do0, axis 1 = Y_do1 (our convention).
     centers: (J,) bin centres on the standardised scale.
-    Returns scalar CATE_std.
+    Returns (e_y0_std, e_y1_std) — caller un-standardises (pooled vs per-arm).
     """
     p_marg0 = p_mat.sum(axis=1)    # Y_do0 marginal (Y_do1 summed out)
     p_marg1 = p_mat.sum(axis=0)    # Y_do1 marginal (Y_do0 summed out)
@@ -122,22 +133,21 @@ def cate_1d_malc(p_mat, centers):
     smooth1 = malc_1d_cvxpy(p_marg1)
     e_y0 = float((centers * smooth0).sum())
     e_y1 = float((centers * smooth1).sum())
-    return e_y1 - e_y0
+    return e_y0, e_y1
 
 
 # ── Method 2: 2D MALC (parallel worker) ─────────────────────────────────
 def _cate_2d_malc_worker(args):
-    """Worker: fit 2D MALC on p_mat, return TWO CATE means from the same fit:
+    """Worker: fit 2D MALC on p_mat, return per-axis marginal means (std-scale)
+    AND the diagonal-path CATE (std-scale, only meaningful under a SHARED
+    Y-scale, so caller ignores this in per_arm eval mode).
 
-    (a) MARGINAL path: marginalise smoothed joint on each axis → E[Y_do_t].
-        CATE_marg = E[Y_do1] − E[Y_do0].
+    (a) MARGINAL path: marginalise smoothed joint on each axis → E[Y_do_t]_std.
+        Caller un-standardises with pooled or per-arm stats.
     (b) DIAGONAL path: p(τ) = ∫ f(y0, y0+τ) dy0 via linear interp on the
-        fine (y0, y1) grid, then E[τ] = ∫ τ · p(τ) dτ.
-
-    By linearity of expectation the two should agree exactly. Numerically
-    they can differ because (a) does two 1D integrations and (b) does a
-    2D shear+integration. Any residual gap tells us how much
-    discretization bias each path carries at the chosen n_eval.
+        fine (y0, y1) grid, then E[τ] = ∫ τ · p(τ) dτ. This is CATE on the
+        joint's standardised scale directly. Only valid when both axes
+        share a scale (pooled_std eval).
 
     n_eval is the grid size for evaluating the fitted continuous density.
     Higher n_eval → tighter numerical integration (reduces discretisation
@@ -164,7 +174,7 @@ def _cate_2d_malc_worker(args):
             seed=seed, parallel=False,
         )
     except Exception as e:
-        return i, float('nan'), float('nan'), str(e)
+        return i, float('nan'), float('nan'), float('nan'), str(e)
 
     # Fine density grid: rows = Y_do1 (ys), cols = Y_do0 (xs) per the transpose.
     xs, ys, dens = eval_grid_2d(fit, n_eval=n_eval)
@@ -179,7 +189,6 @@ def _cate_2d_malc_worker(args):
     if s1 > 0: marg_y = marg_y / s1
     e_y0 = float((xs * marg_x).sum() * dx)
     e_y1 = float((ys * marg_y).sum() * dy)
-    cate_marg = e_y1 - e_y0
 
     # ── (b) DIAGONAL PATH ──
     # τ grid spans the full possible range [ymin - ymax, ymax - ymin] with the
@@ -209,32 +218,59 @@ def _cate_2d_malc_worker(args):
     if s_tau > 0: p_tau = p_tau / s_tau
     cate_diag = float((tau_grid * p_tau).sum() * dtau)
 
-    return i, cate_marg, cate_diag, None
+    return i, e_y0, e_y1, cate_diag, None
 
 
 @torch.no_grad()
 def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J, edges,
-                   y_scaling_mode='pooled_std'):
-    """Return (p_mats: (N_q, J, J) numpy, y_shift, y_scale)."""
-    X_ctx = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
-    T_ctx = torch.from_numpy(T_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
-    y_ctx_raw = torch.from_numpy(Y_ctx_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)
-    X_q = torch.from_numpy(X_q.astype(np.float32)).unsqueeze(0).to(DEVICE)
+                   y_scaling_mode='pooled_std', y_std_mode_eval='pooled'):
+    """Return (p_mats: (N_q, J, J) numpy, stats dict).
 
-    if y_scaling_mode == 'uwyk_minmax':
+    stats dict fields depend on y_std_mode_eval:
+      'pooled'  → {'mode': 'pooled', 'shift': float, 'scale': float}
+      'per_arm' → {'mode': 'per_arm', 'y0s': float, 'y0sc': float,
+                                       'y1s': float, 'y1sc': float}
+    """
+    X_ctx_t = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
+    T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
+    y_ctx_raw = torch.from_numpy(Y_ctx_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)
+    X_q_t   = torch.from_numpy(X_q.astype(np.float32)).unsqueeze(0).to(DEVICE)
+
+    stats = {}
+    if y_std_mode_eval == 'per_arm':
+        # CausalPFN-reference recipe: T=0 rows standardised by (y0s, y0sc);
+        # T=1 rows by (y1s, y1sc). Overrides the model's train-time scaling mode.
+        t_flat = T_ctx_t.reshape(-1)
+        y_flat = y_ctx_raw.reshape(-1)
+        y0 = y_flat[t_flat < 0.5]
+        y1 = y_flat[t_flat > 0.5]
+        y0s  = float(y0.mean().item()) if y0.numel() else 0.0
+        y0sc = float(y0.std().clamp(min=1e-6).item()) if y0.numel() else 1.0
+        y1s  = float(y1.mean().item()) if y1.numel() else 0.0
+        y1sc = float(y1.std().clamp(min=1e-6).item()) if y1.numel() else 1.0
+        y_ctx_std = torch.where(
+            T_ctx_t > 0.5,
+            (y_ctx_raw - y1s) / y1sc,
+            (y_ctx_raw - y0s) / y0sc,
+        )
+        stats.update(mode='per_arm', y0s=y0s, y0sc=y0sc, y1s=y1s, y1sc=y1sc)
+    elif y_scaling_mode == 'uwyk_minmax':
         y_lo = y_ctx_raw.amin(dim=1, keepdim=True)
         y_hi = y_ctx_raw.amax(dim=1, keepdim=True)
         y_shift = 0.5 * (y_lo + y_hi)
         y_scale = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
-    else:
+        y_ctx_std = (y_ctx_raw - y_shift) / y_scale
+        stats.update(mode='pooled', shift=float(y_shift.item()), scale=float(y_scale.item()))
+    else:  # 'pooled_std' — matches training
         y_shift = y_ctx_raw.mean(dim=1, keepdim=True)
         y_scale = y_ctx_raw.std(dim=1, keepdim=True).clamp(min=1e-6)
-    y_ctx_std = (y_ctx_raw - y_shift) / y_scale
+        y_ctx_std = (y_ctx_raw - y_shift) / y_scale
+        stats.update(mode='pooled', shift=float(y_shift.item()), scale=float(y_scale.item()))
 
-    logits   = model._forward_logits(X_ctx, T_ctx, y_ctx_std, X_q)   # (1, N_q, nbins_2d)
+    logits   = model._forward_logits(X_ctx_t, T_ctx_t, y_ctx_std, X_q_t)   # (1, N_q, nbins_2d)
     interior = logits[..., : J * J]
     p_mats   = torch.softmax(interior, dim=-1).reshape(1, -1, J, J).squeeze(0).cpu().numpy()
-    return p_mats, float(y_shift.item()), float(y_scale.item())
+    return p_mats, stats
 
 
 def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
@@ -250,44 +286,58 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
     X_tr_s, X_te_s = _std_X(X_tr, X_te)
     X_tr_p = _pad(X_tr_s, F); X_te_p = _pad(X_te_s, F)
 
-    p_mats, y_shift, y_scale = forward_pmats(
+    p_mats, stats = forward_pmats(
         model, X_tr_p, T_tr, y_tr, X_te_p, J, edges,
-        y_scaling_mode=y_scaling_mode,
+        y_scaling_mode=y_scaling_mode, y_std_mode_eval=Y_STD_MODE_EVAL,
     )
     edges_np = edges.cpu().numpy().astype(np.float64)
     centres  = 0.5 * (edges_np[:-1] + edges_np[1:])
     N_q      = p_mats.shape[0]
 
     # ── Method 1: 1D MALC per query (fast, sequential) ────────────
-    cate_1d = np.empty(N_q)
+    e_y0_1d_std = np.empty(N_q)
+    e_y1_1d_std = np.empty(N_q)
     t_1d0 = time.time()
     for q in range(N_q):
-        cate_1d[q] = cate_1d_malc(p_mats[q].astype(np.float64), centres)
+        e0, e1 = cate_1d_malc(p_mats[q].astype(np.float64), centres)
+        e_y0_1d_std[q] = e0; e_y1_1d_std[q] = e1
     t_1d = time.time() - t_1d0
 
     # ── Method 2: 2D MALC per query (slow, parallelised) ──────────
-    # Worker returns BOTH marginal-path CATE and diagonal-path CATE.
     import hashlib
     seeds = [int(hashlib.md5(f'r{realization}q{q}'.encode()).hexdigest()[:8], 16) % (10**8)
              for q in range(N_q)]
     tasks = [(q, p_mats[q].astype(np.float64), edges_np, MALC_B, MALC_MAX_K,
               seeds[q], N_EVAL)
              for q in range(N_q)]
-    cate_2d_marg = np.full(N_q, np.nan)
-    cate_2d_diag = np.full(N_q, np.nan)
+    e_y0_2d_std = np.full(N_q, np.nan)
+    e_y1_2d_std = np.full(N_q, np.nan)
+    cate_2d_diag_std = np.full(N_q, np.nan)
     n_fail  = 0
     t_2d0 = time.time()
-    for i, cate_m, cate_d, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
-        cate_2d_marg[i] = cate_m
-        cate_2d_diag[i] = cate_d
-        if err is not None or not np.isfinite(cate_m):
+    for i, e0, e1, cate_d, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
+        e_y0_2d_std[i] = e0
+        e_y1_2d_std[i] = e1
+        cate_2d_diag_std[i] = cate_d
+        if err is not None or not np.isfinite(e0):
             n_fail += 1
     t_2d = time.time() - t_2d0
 
-    # Un-standardise to raw Y units.
-    cate_1d_raw       = cate_1d * y_scale
-    cate_2d_marg_raw  = cate_2d_marg * y_scale
-    cate_2d_diag_raw  = cate_2d_diag * y_scale
+    # ── Un-standardise to raw Y units ─────────────────────────────
+    if stats['mode'] == 'per_arm':
+        # E[Y_do0] in T=0 arm's units; E[Y_do1] in T=1 arm's units.
+        # Diag path assumes shared scale → not meaningful under per_arm; leave nan.
+        y0s, y0sc = stats['y0s'], stats['y0sc']
+        y1s, y1sc = stats['y1s'], stats['y1sc']
+        cate_1d_raw      = (e_y1_1d_std * y1sc + y1s) - (e_y0_1d_std * y0sc + y0s)
+        cate_2d_marg_raw = (e_y1_2d_std * y1sc + y1s) - (e_y0_2d_std * y0sc + y0s)
+        cate_2d_diag_raw = np.full(N_q, np.nan)
+    else:  # pooled
+        y_scale = stats['scale']
+        # Note: shift cancels in the difference, so we only need y_scale.
+        cate_1d_raw      = (e_y1_1d_std - e_y0_1d_std) * y_scale
+        cate_2d_marg_raw = (e_y1_2d_std - e_y0_2d_std) * y_scale
+        cate_2d_diag_raw = cate_2d_diag_std * y_scale
 
     def _pehe(cate):
         m = np.isfinite(cate)
@@ -297,13 +347,14 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
         return pehe, err, ate
 
-    pehe_1d,     err_1d,     ate_1d     = _pehe(cate_1d_raw)
-    pehe_2d_m,   err_2d_m,   ate_2d_m   = _pehe(cate_2d_marg_raw)
-    pehe_2d_d,   err_2d_d,   ate_2d_d   = _pehe(cate_2d_diag_raw)
+    pehe_1d,   err_1d,   ate_1d   = _pehe(cate_1d_raw)
+    pehe_2d_m, err_2d_m, ate_2d_m = _pehe(cate_2d_marg_raw)
+    pehe_2d_d, err_2d_d, ate_2d_d = _pehe(cate_2d_diag_raw)
 
     return {
         'dataset': 'IHDP', 'realization': realization,
         'true_ate': true_ate,
+        'y_std_mode_eval': stats['mode'],
         'pehe_1d_malc':      pehe_1d,   'err_1d_malc':      err_1d,   'ate_1d_malc':      ate_1d,
         'pehe_2d_malc_marg': pehe_2d_m, 'err_2d_malc_marg': err_2d_m, 'ate_2d_malc_marg': ate_2d_m,
         'pehe_2d_malc_diag': pehe_2d_d, 'err_2d_malc_diag': err_2d_d, 'ate_2d_malc_diag': ate_2d_d,
@@ -320,7 +371,8 @@ def main():
     loss_type      = cfg.get('loss_type',      'density')
     hlgauss_sigma  = float(cfg.get('hlgauss_sigma', 0.2))
     print(f'[bootstrap] ckpt={CKPT}')
-    print(f'[bootstrap] step={step}  J={cfg["J"]}  y_scaling={y_scaling_mode}  '
+    print(f'[bootstrap] step={step}  J={cfg["J"]}  y_scaling(train)={y_scaling_mode}  '
+          f'y_std_mode_eval={Y_STD_MODE_EVAL}  '
           f'loss={loss_type}  MALC_B={MALC_B}  MALC_MAX_K={MALC_MAX_K}  workers={N_WORKERS}  '
           f'realizations=[{REAL_START}, {REAL_END})')
     print(f'[bootstrap] edges: [{edges[0].item():.3f}, {edges[-1].item():.3f}]  '
@@ -370,7 +422,8 @@ def main():
         if v.size == 0: return float('nan'), float('nan')
         return v.mean(), v.std(ddof=1) / np.sqrt(len(v))
 
-    print(f'\n══ IHDP summary (n={len(rows)}, step={step}, MALC_B={MALC_B}, N_EVAL={N_EVAL}) ══')
+    print(f'\n══ IHDP summary (n={len(rows)}, step={step}, MALC_B={MALC_B}, '
+          f'N_EVAL={N_EVAL}, y_std_mode_eval={Y_STD_MODE_EVAL}) ══')
     for k in ('pehe_1d_malc', 'err_1d_malc',
               'pehe_2d_malc_marg', 'err_2d_malc_marg',
               'pehe_2d_malc_diag', 'err_2d_malc_diag'):

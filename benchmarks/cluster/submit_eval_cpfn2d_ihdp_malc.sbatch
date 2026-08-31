@@ -40,9 +40,13 @@ export OUT="${OUT:-$DEPLOY_ROOT/results_cpfn2d_ihdp_malc_${STEP_TAG}}"
 # MALC knobs (overridable via --export)
 export MALC_B="${MALC_B:-1000}"
 export MALC_MAX_K="${MALC_MAX_K:-5}"
+export N_EVAL="${N_EVAL:-100}"
 export N_WORKERS="${SLURM_CPUS_PER_TASK:-8}"
 export REAL_START="${REAL_START:-0}"
 export REAL_END="${REAL_END:-100}"
+# Eval-time Y standardisation mode: 'pooled' (default, matches training) or
+# 'per_arm' (CausalPFN-reference recipe — per-arm mean/std at eval only).
+export Y_STD_MODE_EVAL="${Y_STD_MODE_EVAL:-pooled}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 # BLAS threads capped at 1 — each MALC worker will spawn its own math. Otherwise
@@ -56,6 +60,6 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn2d MALC IHDP eval"
 echo "  CKPT=$CKPT"
 echo "  OUT=$OUT"
-echo "  MALC_B=$MALC_B  MALC_MAX_K=$MALC_MAX_K  N_WORKERS=$N_WORKERS  realizations=[$REAL_START,$REAL_END)"
+echo "  MALC_B=$MALC_B  MALC_MAX_K=$MALC_MAX_K  N_EVAL=$N_EVAL  N_WORKERS=$N_WORKERS  Y_STD_MODE_EVAL=$Y_STD_MODE_EVAL  realizations=[$REAL_START,$REAL_END)"
 python -u "$REPO/benchmarks/eval_causalpfn2d/eval_cpfn2d_ihdp_malc.py"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
