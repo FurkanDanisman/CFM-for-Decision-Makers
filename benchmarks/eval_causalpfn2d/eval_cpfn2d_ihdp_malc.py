@@ -42,6 +42,7 @@ OUT       = os.environ.get('OUT', './results_cpfn2d_ihdp_malc')
 CAUSALPFN = os.environ['CAUSALPFN']
 MALC_B    = int(os.environ.get('MALC_B',    1000))
 MALC_MAX_K = int(os.environ.get('MALC_MAX_K', 5))
+N_EVAL    = int(os.environ.get('N_EVAL',    100))    # MALC density-eval grid size
 N_WORKERS = int(os.environ.get('N_WORKERS', os.environ.get('SLURM_CPUS_PER_TASK', 8)))
 # Range of realizations this job evaluates: [REAL_START, REAL_END).
 # Default = [0, 100) — full IHDP. Split across many jobs for wall-clock speedup.
@@ -126,16 +127,26 @@ def cate_1d_malc(p_mat, centers):
 
 # ── Method 2: 2D MALC (parallel worker) ─────────────────────────────────
 def _cate_2d_malc_worker(args):
-    """Worker: fit 2D MALC on p_mat, return CATE mean via linearity.
+    """Worker: fit 2D MALC on p_mat, return TWO CATE means from the same fit:
 
-    We compute means by marginalising the smoothed joint. By linearity
-    of expectation this equals ∫τ·p(τ)dτ from the diagonal projection —
-    same number, no need for the extra step.
+    (a) MARGINAL path: marginalise smoothed joint on each axis → E[Y_do_t].
+        CATE_marg = E[Y_do1] − E[Y_do0].
+    (b) DIAGONAL path: p(τ) = ∫ f(y0, y0+τ) dy0 via linear interp on the
+        fine (y0, y1) grid, then E[τ] = ∫ τ · p(τ) dτ.
+
+    By linearity of expectation the two should agree exactly. Numerically
+    they can differ because (a) does two 1D integrations and (b) does a
+    2D shear+integration. Any residual gap tells us how much
+    discretization bias each path carries at the chosen n_eval.
+
+    n_eval is the grid size for evaluating the fitted continuous density.
+    Higher n_eval → tighter numerical integration (reduces discretisation
+    bias on marginal means too).
     """
-    i, p_mat_np, edges_np, malc_B, malc_max_K, seed = args
+    i, p_mat_np, edges_np, malc_B, malc_max_K, seed, n_eval = args
 
     # Reimport paths inside worker (Pool.spawn does not inherit sys.path).
-    import os, sys, hashlib
+    import os, sys
     import numpy as np
     _repo_src = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     _malc_dir = os.path.join(_repo_src, 'MALC')
@@ -153,20 +164,52 @@ def _cate_2d_malc_worker(args):
             seed=seed, parallel=False,
         )
     except Exception as e:
-        return i, float('nan'), str(e)
+        return i, float('nan'), float('nan'), str(e)
 
-    # Marginals of the smoothed density → means.
-    n_eval = 100
+    # Fine density grid: rows = Y_do1 (ys), cols = Y_do0 (xs) per the transpose.
     xs, ys, dens = eval_grid_2d(fit, n_eval=n_eval)
     dx = xs[1] - xs[0]; dy = ys[1] - ys[0]
-    marg_x = dens.sum(axis=0) * dy       # Y_do0 marginal (after transpose convention)
-    marg_y = dens.sum(axis=1) * dx       # Y_do1 marginal
-    s0 = marg_x.sum() * dx; s1 = marg_y.sum() * dy
+
+    # ── (a) MARGINAL PATH ──
+    marg_x = dens.sum(axis=0) * dy       # marginal of Y_do0 (cols)
+    marg_y = dens.sum(axis=1) * dx       # marginal of Y_do1 (rows)
+    s0 = marg_x.sum() * dx
+    s1 = marg_y.sum() * dy
     if s0 > 0: marg_x = marg_x / s0
     if s1 > 0: marg_y = marg_y / s1
     e_y0 = float((xs * marg_x).sum() * dx)
     e_y1 = float((ys * marg_y).sum() * dy)
-    return i, float(e_y1 - e_y0), None
+    cate_marg = e_y1 - e_y0
+
+    # ── (b) DIAGONAL PATH ──
+    # τ grid spans the full possible range [ymin - ymax, ymax - ymin] with the
+    # same resolution as the y-axis grids.
+    tau_min = float(ys[0] - xs[-1])
+    tau_max = float(ys[-1] - xs[0])
+    tau_grid = np.linspace(tau_min, tau_max, n_eval)
+    dtau = tau_grid[1] - tau_grid[0]
+
+    # For each τ, integrate along y0 with y1 = y0 + τ (linear interp in y1).
+    p_tau = np.zeros_like(tau_grid)
+    for k, t in enumerate(tau_grid):
+        y1_at = xs + t
+        valid = (y1_at >= ys[0]) & (y1_at <= ys[-1])
+        if not valid.any():
+            continue
+        col_idx = np.arange(len(xs))[valid]       # cols we're using
+        rf = (y1_at[valid] - ys[0]) / dy
+        rlo = np.clip(np.floor(rf).astype(int), 0, len(ys) - 2)
+        rhi = rlo + 1
+        whi = rf - rlo; wlo = 1.0 - whi
+        # dens[row, col] = f(y0=xs[col], y1=ys[row]); interp along y1 axis:
+        f_interp = wlo * dens[rlo, col_idx] + whi * dens[rhi, col_idx]
+        p_tau[k] = f_interp.sum() * dx
+
+    s_tau = p_tau.sum() * dtau
+    if s_tau > 0: p_tau = p_tau / s_tau
+    cate_diag = float((tau_grid * p_tau).sum() * dtau)
+
+    return i, cate_marg, cate_diag, None
 
 
 @torch.no_grad()
@@ -223,23 +266,28 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
     t_1d = time.time() - t_1d0
 
     # ── Method 2: 2D MALC per query (slow, parallelised) ──────────
+    # Worker returns BOTH marginal-path CATE and diagonal-path CATE.
     import hashlib
     seeds = [int(hashlib.md5(f'r{realization}q{q}'.encode()).hexdigest()[:8], 16) % (10**8)
              for q in range(N_q)]
-    tasks = [(q, p_mats[q].astype(np.float64), edges_np, MALC_B, MALC_MAX_K, seeds[q])
+    tasks = [(q, p_mats[q].astype(np.float64), edges_np, MALC_B, MALC_MAX_K,
+              seeds[q], N_EVAL)
              for q in range(N_q)]
-    cate_2d = np.full(N_q, np.nan)
+    cate_2d_marg = np.full(N_q, np.nan)
+    cate_2d_diag = np.full(N_q, np.nan)
     n_fail  = 0
     t_2d0 = time.time()
-    for i, cate, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
-        cate_2d[i] = cate
-        if err is not None or not np.isfinite(cate):
+    for i, cate_m, cate_d, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
+        cate_2d_marg[i] = cate_m
+        cate_2d_diag[i] = cate_d
+        if err is not None or not np.isfinite(cate_m):
             n_fail += 1
     t_2d = time.time() - t_2d0
 
     # Un-standardise to raw Y units.
-    cate_1d_raw = cate_1d * y_scale
-    cate_2d_raw = cate_2d * y_scale
+    cate_1d_raw       = cate_1d * y_scale
+    cate_2d_marg_raw  = cate_2d_marg * y_scale
+    cate_2d_diag_raw  = cate_2d_diag * y_scale
 
     def _pehe(cate):
         m = np.isfinite(cate)
