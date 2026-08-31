@@ -65,8 +65,13 @@ from malc_2d import MALC_2D, eval_grid_2d  # noqa: E402
 # `benchmarks` here resolves to CausalPFN's package (path order), so
 # `from benchmarks.l2_ihdp.methods_densities import malc_1d_cvxpy` fails
 # with ModuleNotFoundError. Load our copy directly by file path.
+# Also add benchmarks/l2_ihdp/ to sys.path so methods_densities' sibling
+# imports (`from l2 import resample_onto`) resolve.
 import importlib.util as _iutil  # noqa: E402
-_methods_path = os.path.join(REPO_SRC, 'benchmarks', 'l2_ihdp', 'methods_densities.py')
+_l2_ihdp_dir = os.path.join(REPO_SRC, 'benchmarks', 'l2_ihdp')
+if _l2_ihdp_dir not in sys.path:
+    sys.path.insert(0, _l2_ihdp_dir)
+_methods_path = os.path.join(_l2_ihdp_dir, 'methods_densities.py')
 _spec = _iutil.spec_from_file_location('rpfn_methods_densities', _methods_path)
 _methods_densities = _iutil.module_from_spec(_spec)
 _spec.loader.exec_module(_methods_densities)
