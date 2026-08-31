@@ -74,6 +74,13 @@ from utils.graph_utils import propagate_ancestor_knowledge  # noqa: E402  # UWYK
 # distribution shift on the input the soft-attention-bias params were
 # calibrated for. Toggle via env var; default ON (match training).
 PROPAGATE_ANC = os.environ.get('PROPAGATE_ANC', '1') == '1'
+# Assume features are independent confounders: fill in -1 at X_i ↔ X_j
+# for i != j. Propagate can't derive these (no +1 chain triggers them).
+# Training SCMs typically produce mostly independent covariates so the
+# anc matrix has -1s there — leaving 0 at eval creates a distribution
+# shift proportional to n_real^2 (small for Lalonde n_real=8, huge for
+# ACIC n_real=50).
+INDEP_FEATURES = os.environ.get('INDEP_FEATURES', '1') == '1'
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -125,6 +132,16 @@ def build_anc_full(F, n_real):
         A[feat_off + i, :] = -1.0
         A[:, feat_off + i] = -1.0
         A[feat_off + i, feat_off + i] = -1.0
+
+    if INDEP_FEATURES:
+        # X_i and X_j (i != j) are assumed independent → neither is ancestor
+        # of the other → both A[2+i, 2+j] and A[2+j, 2+i] = -1. Set BEFORE
+        # propagate so it can chain from these too.
+        feat_off = 2
+        for i in range(n_real):
+            for j in range(n_real):
+                if i != j:
+                    A[feat_off + i, feat_off + j] = -1.0
 
     if PROPAGATE_ANC:
         # Fill in -1s at antisymmetric reverse edges + diagonal, and any
