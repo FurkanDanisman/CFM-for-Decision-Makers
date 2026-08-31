@@ -279,7 +279,10 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     if apply_psid_balance:
         X_tr_raw, T_tr, y_tr_raw = psid_balance_subsample(X_tr_raw, T_tr, y_tr_raw)
 
-    n_real = X_tr_raw.shape[1]
+    # Clamp n_real to F: _pad_features TRUNCATES when the dataset has more
+    # covariates than the model was trained on (ACIC: 55 vs F=50). Everything
+    # past index F is dropped, so it never enters the adjacency matrix.
+    n_real = min(X_tr_raw.shape[1], F)
     X_tr_std, X_te_std = _standardize_train_test(X_tr_raw, X_te_raw)
     X_tr = _pad_features(X_tr_std, F)
     X_te = _pad_features(X_te_std, F)
