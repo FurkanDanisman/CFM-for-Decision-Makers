@@ -82,6 +82,22 @@ PROPAGATE_ANC = os.environ.get('PROPAGATE_ANC', '1') == '1'
 # ACIC n_real=50).
 INDEP_FEATURES = os.environ.get('INDEP_FEATURES', '0') == '1'
 
+# Scale the learned soft-attention-bias params at inference. Smaller values
+# soften the anc-induced attention shift: bias_edge=learned*scale means the
+# +boost applied at anc edges is scale× smaller. Purpose: preserve some
+# Y-self and T-self attention mass that anc otherwise crushes to near-zero,
+# which the diagnostic identified as the mechanism through which anc
+# degrades PEHE on ACIC/CPS. scale=1.0 = no change (default).
+BIAS_EDGE_SCALE = float(os.environ.get('BIAS_EDGE_SCALE', '1.0'))
+
+# Override the null_t_intv value at query time. Default '' = use the learned
+# null token (current behavior). If set to a numeric string like '0.5', the
+# query T slot uses that constant value instead of the learned null. Purpose:
+# test whether providing a specific T value at query (mimicking the 1D head's
+# T_intv-conditioning) restores information that the null_t_intv doesn't
+# carry.
+T_INTV_OVERRIDE = os.environ.get('T_INTV_OVERRIDE', '')
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -242,6 +258,21 @@ def load_model(ckpt_path):
           f'loaded={len(kept)}/{len(ref)}  step={ck.get("step")}', flush=True)
     if len(missing) > 5:
         raise RuntimeError(f'[load_model] ABORT: {len(missing)} missing keys')
+
+    # Apply BIAS_EDGE_SCALE at eval — multiply learned soft-attention-bias
+    # params in-place. Both edge and no_edge biases scaled together so the
+    # ratio between them is preserved (only the overall magnitude of the
+    # anc-induced attention shift changes).
+    if abs(BIAS_EDGE_SCALE - 1.0) > 1e-6:
+        n_scaled = 0
+        with torch.no_grad():
+            for name, p in model.named_parameters():
+                if name.endswith('bias_edge') or name.endswith('bias_no_edge'):
+                    p.mul_(BIAS_EDGE_SCALE)
+                    n_scaled += 1
+        print(f'[load_model] scaled {n_scaled} bias_edge/bias_no_edge params '
+              f'by {BIAS_EDGE_SCALE}', flush=True)
+
     model.eval()
     return model, cfg
 
@@ -285,7 +316,16 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     X_intv = torch.from_numpy(X_test.astype(np.float32)).unsqueeze(0).to(DEVICE)
     adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)
 
-    out = model(X_obs, T_obs, Y_obs, X_intv, adj_t)
+    # T_INTV_OVERRIDE: if set, feed a specific T_intv value at query instead
+    # of the learned null_t_intv. Otherwise (default) the model's forward
+    # fills in null_t_intv itself.
+    if T_INTV_OVERRIDE:
+        t_val = float(T_INTV_OVERRIDE)
+        M = X_intv.shape[1]
+        T_intv = torch.full((1, M, 1), t_val, dtype=X_intv.dtype, device=DEVICE)
+        out = model(X_obs, T_obs, Y_obs, X_intv, adj_t, T_intv=T_intv)
+    else:
+        out = model(X_obs, T_obs, Y_obs, X_intv, adj_t)
     logits = out['predictions'] if isinstance(out, dict) else out
     interior = logits[..., : J * J]
     p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
