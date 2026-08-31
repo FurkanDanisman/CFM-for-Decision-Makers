@@ -297,14 +297,18 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
         return pehe, err, ate
 
-    pehe_1d, err_1d, ate_1d = _pehe(cate_1d_raw)
-    pehe_2d, err_2d, ate_2d = _pehe(cate_2d_raw)
+    pehe_1d,     err_1d,     ate_1d     = _pehe(cate_1d_raw)
+    pehe_2d_m,   err_2d_m,   ate_2d_m   = _pehe(cate_2d_marg_raw)
+    pehe_2d_d,   err_2d_d,   ate_2d_d   = _pehe(cate_2d_diag_raw)
 
     return {
         'dataset': 'IHDP', 'realization': realization,
         'true_ate': true_ate,
-        'pehe_1d_malc': pehe_1d, 'err_1d_malc': err_1d, 'ate_1d_malc': ate_1d,
-        'pehe_2d_malc': pehe_2d, 'err_2d_malc': err_2d, 'ate_2d_malc': ate_2d,
+        'pehe_1d_malc':      pehe_1d,   'err_1d_malc':      err_1d,   'ate_1d_malc':      ate_1d,
+        'pehe_2d_malc_marg': pehe_2d_m, 'err_2d_malc_marg': err_2d_m, 'ate_2d_malc_marg': ate_2d_m,
+        'pehe_2d_malc_diag': pehe_2d_d, 'err_2d_malc_diag': err_2d_d, 'ate_2d_malc_diag': ate_2d_d,
+        # Backwards-compat aliases (older aggregation scripts use these names):
+        'pehe_2d_malc': pehe_2d_m, 'err_2d_malc': err_2d_m, 'ate_2d_malc': ate_2d_m,
         't_1d_sec': t_1d, 't_2d_sec': t_2d, 'n_2d_fail': int(n_fail),
     }
 
@@ -352,9 +356,9 @@ def main():
             print(
                 f'r={r:03d}  '
                 f'1D-MALC: pehe={row["pehe_1d_malc"]:6.3f} err={row["err_1d_malc"]:5.3f}  |  '
-                f'2D-MALC: pehe={row["pehe_2d_malc"]:6.3f} err={row["err_2d_malc"]:5.3f}  '
+                f'2D-marg: pehe={row["pehe_2d_malc_marg"]:6.3f} err={row["err_2d_malc_marg"]:5.3f}  |  '
+                f'2D-diag: pehe={row["pehe_2d_malc_diag"]:6.3f} err={row["err_2d_malc_diag"]:5.3f}  '
                 f'(t_1d={row["t_1d_sec"]:.1f}s  t_2d={row["t_2d_sec"]:.1f}s  '
-                f'fail={row["n_2d_fail"]}/{int(row.get("t_2d_sec", 0) > 0)}  '
                 f'elapsed={time.time()-t0:.0f}s)',
                 flush=True,
             )
@@ -366,10 +370,12 @@ def main():
         if v.size == 0: return float('nan'), float('nan')
         return v.mean(), v.std(ddof=1) / np.sqrt(len(v))
 
-    print(f'\n══ IHDP summary (n={len(rows)}, step={step}, MALC_B={MALC_B}) ══')
-    for k in ('pehe_1d_malc', 'err_1d_malc', 'pehe_2d_malc', 'err_2d_malc'):
+    print(f'\n══ IHDP summary (n={len(rows)}, step={step}, MALC_B={MALC_B}, N_EVAL={N_EVAL}) ══')
+    for k in ('pehe_1d_malc', 'err_1d_malc',
+              'pehe_2d_malc_marg', 'err_2d_malc_marg',
+              'pehe_2d_malc_diag', 'err_2d_malc_diag'):
         m, s = _ms(k)
-        print(f'  {k:15s} = {m:8.3f} ± {s:6.3f}')
+        print(f'  {k:20s} = {m:8.3f} ± {s:6.3f}')
 
 
 if __name__ == '__main__':
