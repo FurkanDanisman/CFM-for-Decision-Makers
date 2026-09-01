@@ -237,6 +237,21 @@ def build_anc_ty_only(F, n_real):
     return A
 
 
+def build_anc_ty_antisym(F, n_real):
+    """T→Y = +1 AND Y→T = -1 explicitly. Diagonal 0, all X↔X 0, all X↔T
+    and X↔Y 0. Padded features -1 on their rows/cols. No propagation
+    (independent of PROPAGATE_ANC env var)."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    T_idx, Y_idx, feat_off = 0, 1, 2
+    A[T_idx, Y_idx] = 1.0
+    A[Y_idx, T_idx] = -1.0
+    for i in range(n_real, F):
+        A[feat_off + i, :] = -1.0
+        A[:, feat_off + i] = -1.0
+        A[feat_off + i, feat_off + i] = -1.0
+    return A
+
+
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
 def psid_balance_subsample(X_train, t_train, y_train):
     """all T=1 + up to 500 T=0 sampled with np.random.seed(42), shuffle with
@@ -491,6 +506,9 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     if ANC_MODE == 'ty_only':
         _mode_list = (('ty',    build_anc_ty_only(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'ty_antisym':
+        _mode_list = (('tyx',   build_anc_ty_antisym(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
     else:
         _mode_list = (('anc',   build_anc_full(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
@@ -542,7 +560,7 @@ def main():
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         # Mode-agnostic printing: 'anc' or 'ty' depending on ANC_MODE.
-        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else 'anc'
+        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
         print(
             f'r={r:03d}  '
             f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
