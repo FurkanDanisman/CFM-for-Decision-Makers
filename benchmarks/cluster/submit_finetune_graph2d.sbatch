@@ -51,8 +51,12 @@ export WARMUP_FRAC=0.1
 export MIN_LR_RATIO=0.1
 export GRAD_CLIP=1.0
 
-# ── FINE-TUNE: extend N_STEPS from 50000 to 55000 (5000 additional) ──
-export N_STEPS=55000
+# ── FINE-TUNE: extend N_STEPS from 50000 to 60000 (10000 additional).
+# With XGB probabilities boosted to [0.5, 0.4, 0.08, 0.02] (~50% XGB
+# tasks per step), 10k fine-tune steps ≈ ~650 effective XGB task-units,
+# matching the ~610 units the reproduce branch's original config gave
+# over its 50k-step training.
+export N_STEPS=60000
 
 export MICROBATCH=2
 export GRAD_ACCUM=16
