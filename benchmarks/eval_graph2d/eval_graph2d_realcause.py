@@ -785,6 +785,9 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v6b_only':
         _mode_list = (('v6b',   build_anc_v6b(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v6a_only':
+        _mode_list = (('v6a',   build_anc_v6a(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
     elif ANC_MODE == 'all_combos':
         # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
         # Diagonal always 0; padded region always -1.
@@ -913,6 +916,7 @@ def main():
                         'v4a' if ANC_MODE == 'v4a_only' else
                         'v5a' if ANC_MODE == 'v5a_only' else
                         'v5b' if ANC_MODE == 'v5b_only' else
+                        'v6a' if ANC_MODE == 'v6a_only' else
                         'v6b' if ANC_MODE == 'v6b_only' else 'anc')
             print(
                 f'r={r:03d}  '
