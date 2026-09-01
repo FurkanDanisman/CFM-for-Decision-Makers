@@ -425,10 +425,10 @@ def main():
             rows.append(row)
             print(
                 f'r={r:03d}  '
-                f'raw: pehe={row["pehe_raw_mean"]:6.3f}  |  '
-                f'1D-MALC: pehe={row["pehe_1d_malc"]:6.3f}  |  '
-                f'2D-marg: pehe={row["pehe_2d_malc_marg"]:6.3f}  |  '
-                f'2D-diag: pehe={row["pehe_2d_malc_diag"]:6.3f}  '
+                f'raw:   pehe={row["pehe_raw_mean"]:6.3f} err={row["err_raw_mean"]:5.3f}  |  '
+                f'1D-MALC: pehe={row["pehe_1d_malc"]:6.3f} err={row["err_1d_malc"]:5.3f}  |  '
+                f'2D-marg: pehe={row["pehe_2d_malc_marg"]:6.3f} err={row["err_2d_malc_marg"]:5.3f}  |  '
+                f'2D-diag: pehe={row["pehe_2d_malc_diag"]:6.3f} err={row["err_2d_malc_diag"]:5.3f}  '
                 f'(t_1d={row["t_1d_sec"]:.1f}s  t_2d={row["t_2d_sec"]:.1f}s  '
                 f'elapsed={time.time()-t0:.0f}s)',
                 flush=True,
