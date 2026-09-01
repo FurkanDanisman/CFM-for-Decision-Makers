@@ -732,6 +732,9 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v5b_only':
         _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v6b_only':
+        _mode_list = (('v6b',   build_anc_v6b(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
     elif ANC_MODE == 'focus3':
         _mode_list = (
             ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
@@ -837,7 +840,8 @@ def main():
                         'tyx' if ANC_MODE == 'ty_antisym' else
                         'v4a' if ANC_MODE == 'v4a_only' else
                         'v5a' if ANC_MODE == 'v5a_only' else
-                        'v5b' if ANC_MODE == 'v5b_only' else 'anc')
+                        'v5b' if ANC_MODE == 'v5b_only' else
+                        'v6b' if ANC_MODE == 'v6b_only' else 'anc')
             print(
                 f'r={r:03d}  '
                 f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
