@@ -55,6 +55,10 @@ N_WORKERS = int(os.environ.get('N_WORKERS', os.environ.get('SLURM_CPUS_PER_TASK'
 #               preserves counterfactual bin-resolution on IHDP.
 Y_STD_MODE_EVAL = os.environ.get('Y_STD_MODE_EVAL', 'pooled').lower()
 assert Y_STD_MODE_EVAL in ('pooled', 'per_arm'), Y_STD_MODE_EVAL
+# When 1, skip both 1D-MALC and 2D-MALC computations; only compute raw
+# center-of-mass CATE. Fast (~1s/realization vs ~10s with MALC). Use for
+# quick apples-to-apples comparison against CausalPFN's raw-mean protocol.
+SKIP_MALC = os.environ.get('SKIP_MALC', '0') == '1'
 # Range of realizations this job evaluates: [REAL_START, REAL_END).
 # Default = [0, 100) — full IHDP. Split across many jobs for wall-clock speedup.
 REAL_START = int(os.environ.get('REAL_START', 0))
@@ -309,33 +313,45 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         e_y1_raw_std[q] = float((centres * p_marg1).sum())
 
     # ── Method 1: 1D MALC per query (fast, sequential) ────────────
-    e_y0_1d_std = np.empty(N_q)
-    e_y1_1d_std = np.empty(N_q)
-    t_1d0 = time.time()
-    for q in range(N_q):
-        e0, e1 = cate_1d_malc(p_mats[q].astype(np.float64), centres)
-        e_y0_1d_std[q] = e0; e_y1_1d_std[q] = e1
-    t_1d = time.time() - t_1d0
+    if SKIP_MALC:
+        e_y0_1d_std = np.full(N_q, np.nan)
+        e_y1_1d_std = np.full(N_q, np.nan)
+        t_1d = 0.0
+    else:
+        e_y0_1d_std = np.empty(N_q)
+        e_y1_1d_std = np.empty(N_q)
+        t_1d0 = time.time()
+        for q in range(N_q):
+            e0, e1 = cate_1d_malc(p_mats[q].astype(np.float64), centres)
+            e_y0_1d_std[q] = e0; e_y1_1d_std[q] = e1
+        t_1d = time.time() - t_1d0
 
     # ── Method 2: 2D MALC per query (slow, parallelised) ──────────
-    import hashlib
-    seeds = [int(hashlib.md5(f'r{realization}q{q}'.encode()).hexdigest()[:8], 16) % (10**8)
-             for q in range(N_q)]
-    tasks = [(q, p_mats[q].astype(np.float64), edges_np, MALC_B, MALC_MAX_K,
-              seeds[q], N_EVAL)
-             for q in range(N_q)]
-    e_y0_2d_std = np.full(N_q, np.nan)
-    e_y1_2d_std = np.full(N_q, np.nan)
-    cate_2d_diag_std = np.full(N_q, np.nan)
-    n_fail  = 0
-    t_2d0 = time.time()
-    for i, e0, e1, cate_d, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
-        e_y0_2d_std[i] = e0
-        e_y1_2d_std[i] = e1
-        cate_2d_diag_std[i] = cate_d
-        if err is not None or not np.isfinite(e0):
-            n_fail += 1
-    t_2d = time.time() - t_2d0
+    if SKIP_MALC:
+        e_y0_2d_std = np.full(N_q, np.nan)
+        e_y1_2d_std = np.full(N_q, np.nan)
+        cate_2d_diag_std = np.full(N_q, np.nan)
+        n_fail = 0
+        t_2d = 0.0
+    else:
+        import hashlib
+        seeds = [int(hashlib.md5(f'r{realization}q{q}'.encode()).hexdigest()[:8], 16) % (10**8)
+                 for q in range(N_q)]
+        tasks = [(q, p_mats[q].astype(np.float64), edges_np, MALC_B, MALC_MAX_K,
+                  seeds[q], N_EVAL)
+                 for q in range(N_q)]
+        e_y0_2d_std = np.full(N_q, np.nan)
+        e_y1_2d_std = np.full(N_q, np.nan)
+        cate_2d_diag_std = np.full(N_q, np.nan)
+        n_fail  = 0
+        t_2d0 = time.time()
+        for i, e0, e1, cate_d, err in pool.imap_unordered(_cate_2d_malc_worker, tasks, chunksize=1):
+            e_y0_2d_std[i] = e0
+            e_y1_2d_std[i] = e1
+            cate_2d_diag_std[i] = cate_d
+            if err is not None or not np.isfinite(e0):
+                n_fail += 1
+        t_2d = time.time() - t_2d0
 
     # ── Un-standardise to raw Y units ─────────────────────────────
     if stats['mode'] == 'per_arm':
