@@ -106,6 +106,17 @@ T_INTV_OVERRIDE = os.environ.get('T_INTV_OVERRIDE', '')
 # eval, though our model wasn't trained with clipping. Default None (off).
 X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 
+# Random-subsample context to this size if it exceeds. Matches reproduce
+# branch's PreprocessingGraphConditionedPFN._pad_or_truncate_samples
+# (max_number_train_samples_per_dataset=1000 in their config, is_train=True
+# path uses np.random.choice with replace=False). Our training used
+# N_CONTEXT_TRAIN=1000; feeding full context on ACIC (4321)/CPS (14500)/
+# PSID (14500) at eval means 4-14× more context than training saw.
+# Default '' = no subsampling (current behavior). Set e.g. '1000' to
+# match training context size.
+EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
+EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -386,6 +397,19 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
 
     if apply_psid_balance:
         X_tr_raw, T_tr, y_tr_raw = psid_balance_subsample(X_tr_raw, T_tr, y_tr_raw)
+
+    # Match reproduce branch's max_number_train_samples_per_dataset by
+    # random-subsampling context if it exceeds EVAL_MAX_CONTEXT. Deterministic
+    # per-realization seed so the same context is picked every run.
+    if EVAL_MAX_CONTEXT:
+        cap = int(EVAL_MAX_CONTEXT)
+        n_ctx = X_tr_raw.shape[0]
+        if n_ctx > cap:
+            rng = np.random.default_rng(EVAL_CONTEXT_SEED + realization)
+            idx = rng.choice(n_ctx, cap, replace=False)
+            X_tr_raw = X_tr_raw[idx]; T_tr = T_tr[idx]; y_tr_raw = y_tr_raw[idx]
+            print(f'  [context-subsample] r={realization}  {n_ctx} → {cap} '
+                  f'(seed={EVAL_CONTEXT_SEED + realization})', flush=True)
 
     # Clamp n_real to F: _pad_features TRUNCATES when the dataset has more
     # covariates than the model was trained on (ACIC: 55 vs F=50). Everything
