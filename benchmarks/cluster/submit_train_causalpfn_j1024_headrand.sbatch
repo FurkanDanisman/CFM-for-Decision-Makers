@@ -90,6 +90,16 @@ STEP_CKPT_EVERY="${STEP_CKPT_EVERY:-2000}"
 STEP_CKPT_ROOT="${STEP_CKPT_ROOT:-$OUT_DIR/step_checkpoints}"
 mkdir -p "$STEP_CKPT_ROOT"
 
+# COMPILE=0 → append `compile=false` to hydra CLI (disables torch.compile).
+# Use when torch inductor hits a bug on this pytorch build (see paper 2-day
+# H100 estimate assumes compile=true).
+COMPILE="${COMPILE:-1}"
+COMPILE_ARGS=()
+if [ "$COMPILE" = "0" ]; then
+    COMPILE_ARGS+=(compile=false)
+    echo "[compile] disabled via COMPILE=0"
+fi
+
 # A1 rigor: originals (max_epochs=2048, num_model_updates=128 → 262 144 steps).
 # Resume: the checkpoint at latest.pt (per-epoch) carries actual_step so
 # trainer picks up the counter exactly.
@@ -118,6 +128,7 @@ python -u train.py \
     sigma="$SIGMA" \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$STEP_CKPT_ROOT" \
+    "${COMPILE_ARGS[@]}" \
     "${RESUME_ARGS[@]}" &
 CHILD=$!
 wait "$CHILD"
