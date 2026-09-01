@@ -4,9 +4,12 @@ suite (IHDP, ACIC, Lalonde CPS, Lalonde PSID, Lalonde PSID-balanced).
 Per realization we run inference under TWO adjacency modes and derive CATE
 under TWO estimators, giving 4 numbers per realization:
 
-  * adjacency modes
-      - anc:   true graph (T→Y, all real X→T, all real X→Y); padded slots -1
-      - noanc: adjacency zeroed everywhere (padded slots still -1)
+  * adjacency modes (both built by build_adjacency_matrix, which mirrors UWYK's
+    dofm_full_conditioning.py::build_adjacency_matrix verbatim)
+      - anc:   graph_mode=ANC_MODE, default "full_graph"
+               (T→Y, all real X→T, all real X→Y); padded slots -1
+      - noanc: graph_mode="all_unknown"
+               (adjacency zeroed everywhere; padded slots still -1)
   * estimators (both on the marginals p_y0 = p.sum(-1), p_y1 = p.sum(-2))
       - raw: E[Y] = Σ_j centres[j] · p[j]
       - em:  fixed-point Gaussian correction (see MALC/malc_2d.py::_em_mean_2d;
@@ -63,24 +66,6 @@ from benchmarks import (  # noqa: E402
     RealCauseLalondePSIDDataset,
 )
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
-from utils.graph_utils import propagate_ancestor_knowledge  # noqa: E402  # UWYK
-
-# Match training-time anc matrix distribution: after building the +1
-# ancestor edges we assert, run propagate_ancestor_knowledge to fill in
-# the -1s at (a) diagonal (irreflexive), (b) antisymmetric reverse edges,
-# and derive any transitive +1s. This is the SAME function training uses
-# (PairedInterventionalDataset.py:754). If we skip this step, our eval
-# matrix has 0 at positions where training would have -1, which is a
-# distribution shift on the input the soft-attention-bias params were
-# calibrated for. Toggle via env var; default ON (match training).
-PROPAGATE_ANC = os.environ.get('PROPAGATE_ANC', '1') == '1'
-# Assume features are independent confounders: fill in -1 at X_i ↔ X_j
-# for i != j. Propagate can't derive these (no +1 chain triggers them).
-# Training SCMs typically produce mostly independent covariates so the
-# anc matrix has -1s there — leaving 0 at eval creates a distribution
-# shift proportional to n_real^2 (small for Lalonde n_real=8, huge for
-# ACIC n_real=50).
-INDEP_FEATURES = os.environ.get('INDEP_FEATURES', '0') == '1'
 
 # Scale the learned soft-attention-bias params at inference. Smaller values
 # soften the anc-induced attention shift: bias_edge=learned*scale means the
@@ -117,12 +102,12 @@ X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
 
-# Anc-content probe. Default 'full' = original T→Y + X→T + X→Y +1 edges.
-# 'ty_only' = only T→Y = +1; X→T and X→Y left as 0 (unknown). Tests whether
-# the model's degradation is caused by over-attending to the X→T/X→Y edges
-# specifically. In 'ty_only' mode the results dict uses key `pehe_raw_ty`
-# (and `pehe_em_ty`, etc.) instead of `pehe_raw_anc`.
-ANC_MODE = os.environ.get('ANC_MODE', 'full')
+# Graph-knowledge mode for the positive ("anc") condition. Takes the same mode
+# names as UWYK's dofm_full_conditioning.py: 'full_graph' (default),
+# 't_to_y_only', 'x_to_t_only', 'x_to_y_only', 'all_unknown'. The baseline
+# ("noanc") condition is always 'all_unknown'. Result keys stay `*_anc` /
+# `*_noanc` regardless of which positive mode is selected.
+ANC_MODE = os.environ.get('ANC_MODE', 'full_graph')
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -173,212 +158,64 @@ def _scale_y(y):
     return (2.0 * (y - ymin) / yrange - 1.0).astype(np.float32), ymin, yrange
 
 
-def build_anc_full(F, n_real):
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    T_idx, Y_idx, feat_off = 0, 1, 2
-    A[T_idx, Y_idx] = 1.0
-    for i in range(n_real):
-        A[feat_off + i, T_idx] = 1.0
-        A[feat_off + i, Y_idx] = 1.0
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
+def build_adjacency_matrix(model_n_features, n_real_features, graph_mode="full_graph"):
+    """Build adjacency matrix based on graph knowledge mode.
 
-    if INDEP_FEATURES:
-        # X_i and X_j (i != j) are assumed independent → neither is ancestor
-        # of the other → both A[2+i, 2+j] and A[2+j, 2+i] = -1. Set BEFORE
-        # propagate so it can chain from these too.
-        feat_off = 2
-        for i in range(n_real):
-            for j in range(n_real):
-                if i != j:
-                    A[feat_off + i, feat_off + j] = -1.0
+    Mirrors UWYK's dofm_full_conditioning.py::build_adjacency_matrix verbatim
+    (g4cfm/RealCauseEval/run_baselines/dofm_full_conditioning.py) so the graph
+    supplied to the model here is bit-identical to what the reproduce branch
+    feeds its own model.
 
-    if PROPAGATE_ANC:
-        # Fill in -1s at antisymmetric reverse edges + diagonal, and any
-        # transitive +1s. Restricted to the REAL submatrix so we don't
-        # perturb the padded -1s.
-        import torch as _torch
-        real_n = 2 + n_real
-        real_block = _torch.from_numpy(A[:real_n, :real_n].copy())
-        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
-        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
-    return A
+    Convention: index 0 = treatment T, index 1 = outcome Y, indices 2..F+1 =
+    covariates. Entries are -1 (known non-ancestor), 0 (unknown), +1 (known
+    ancestor). No propagation is applied, matching UWYK.
+    """
+    # Initialize all as unknown (0)
+    adjacency_matrix = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
 
+    T_idx = 0
+    Y_idx = 1
+    feature_offset = 2  # Features start at position 2
 
-def build_anc_none(F, n_real):
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    feat_off = 2
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
-    return A
+    if graph_mode == "all_unknown":
+        msg = "ALL UNKNOWN (no graph information provided)"
+    elif graph_mode == "t_to_y_only":
+        adjacency_matrix[T_idx, Y_idx] = 1.0
+        msg = "T->Y=1 only"
+    elif graph_mode == "x_to_t_only":
+        adjacency_matrix[T_idx, Y_idx] = 1.0
+        for i in range(n_real_features):
+            adjacency_matrix[feature_offset + i, T_idx] = 1.0
+        msg = "T->Y=1, X->T=1, X->Y=0"
+    elif graph_mode == "x_to_y_only":
+        adjacency_matrix[T_idx, Y_idx] = 1.0
+        for i in range(n_real_features):
+            adjacency_matrix[feature_offset + i, Y_idx] = 1.0
+        msg = "T->Y=1, X->T=0, X->Y=1"
+    elif graph_mode == "full_graph":
+        adjacency_matrix[T_idx, Y_idx] = 1.0
+        for i in range(n_real_features):
+            adjacency_matrix[feature_offset + i, T_idx] = 1.0
+            adjacency_matrix[feature_offset + i, Y_idx] = 1.0
+        msg = "T->Y=1, X->T=1, X->Y=1 (full graph)"
+    else:
+        raise ValueError(f"Unknown graph_mode: {graph_mode}")
 
+    # PADDED features: Set all edges to -1 (no edge)
+    for i in range(n_real_features, model_n_features):
+        feat_idx = feature_offset + i
+        adjacency_matrix[feat_idx, :] = -1.0
+        adjacency_matrix[:, feat_idx] = -1.0
+        adjacency_matrix[feat_idx, feat_idx] = -1.0
 
-def build_anc_ty_only(F, n_real):
-    """T→Y only anc. Real block is 0 except A[T,Y]=+1. Padded features −1
-    on their rows/cols like the other modes. Probes whether the model's
-    trouble is over-attending to X→T / X→Y edges specifically."""
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    T_idx, Y_idx, feat_off = 0, 1, 2
-    A[T_idx, Y_idx] = 1.0
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
-    if PROPAGATE_ANC:
-        from utils.graph_utils import propagate_ancestor_knowledge  # noqa: E402
-        real_n = 2 + n_real
-        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
-        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
-        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
-    return A
+    # Called once per realization per mode; log each distinct mode only once.
+    _seen = getattr(build_adjacency_matrix, '_seen_modes', set())
+    if graph_mode not in _seen:
+        _seen.add(graph_mode)
+        build_adjacency_matrix._seen_modes = _seen
+        print(f"Graph knowledge: {msg}", flush=True)
 
-
-def build_anc_ty_antisym(F, n_real):
-    """T→Y = +1 AND Y→T = -1 explicitly. Diagonal 0, all X↔X 0, all X↔T
-    and X↔Y 0. Padded features -1 on their rows/cols. No propagation
-    (independent of PROPAGATE_ANC env var)."""
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    T_idx, Y_idx, feat_off = 0, 1, 2
-    A[T_idx, Y_idx] = 1.0
-    A[Y_idx, T_idx] = -1.0
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
-    return A
-
-
-def _padded_neg1_only(F, n_real):
-    """Common helper: return a matrix with padded rows/cols all -1 and
-    the real block untouched (all 0). Caller adds their real-block edges."""
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    feat_off = 2
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
-    return A
-
-
-# ── Variant builders (all no-propagate, all padded region -1) ──────────
-def build_anc_v1a(F, n_real):
-    """v1a: T→Y = +1. Rest of real block 0."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    return A
-
-
-def build_anc_v1b(F, n_real):
-    """v1b: T→Y = +1, Y→T = -1. Rest of real block 0."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    A[1, 0] = -1.0
-    return A
-
-
-def build_anc_v2a(F, n_real):
-    """v2a: T→Y = +1, all X→T = +1. Rest of real block 0."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    for i in range(n_real):
-        A[2 + i, 0] = 1.0
-    return A
-
-
-def build_anc_v2b(F, n_real):
-    """v2b: T→Y = +1, all X→T = +1, Y→T = -1, all T→X = -1. Rest 0."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    A[1, 0] = -1.0
-    for i in range(n_real):
-        A[2 + i, 0] = 1.0
-        A[0, 2 + i] = -1.0
-    return A
-
-
-def build_anc_v3a(F, n_real):
-    """v3a: T→Y = +1, all X→T = +1, all X→Y = +1. Rest of real block 0.
-    (= build_anc_full without propagation.)"""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    for i in range(n_real):
-        A[2 + i, 0] = 1.0
-        A[2 + i, 1] = 1.0
-    return A
-
-
-def build_anc_v3b(F, n_real):
-    """v3b: v3a + all reverses = -1 (Y→T=-1, T→X=-1, Y→X=-1). Rest 0.
-    Same +1 layout as build_anc_full; -1s asserted explicitly (no propagate)."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    A[1, 0] = -1.0
-    for i in range(n_real):
-        A[2 + i, 0] = 1.0    # X→T
-        A[2 + i, 1] = 1.0    # X→Y
-        A[0, 2 + i] = -1.0   # T→X (reverse)
-        A[1, 2 + i] = -1.0   # Y→X (reverse)
-    return A
-
-
-def build_anc_v3c(F, n_real):
-    """v3c: v3b + diagonal -1 on the real block (T,Y,X_real all self-loop -1).
-    Equivalent to what build_anc_full + propagate produces on unconfoundedness
-    edges — but constructed explicitly here without calling propagate."""
-    A = build_anc_v3b(F, n_real)
-    real_n = 2 + n_real
-    for i in range(real_n):
-        A[i, i] = -1.0
-    return A
-
-
-def build_anc_diag(F, n_real):
-    """diag-only: diagonal of the real block is -1. Rest of real block 0.
-    Padded rows/cols still -1."""
-    A = _padded_neg1_only(F, n_real)
-    real_n = 2 + n_real
-    for i in range(real_n):
-        A[i, i] = -1.0
-    return A
-
-
-def build_anc_v4a(F, n_real):
-    """v4a: v3a MINUS T→Y edge. So X→T = +1 and X→Y = +1, but A[T,Y] = 0.
-    Rest of real block 0. Probes whether our model is degraded specifically
-    by the T→Y=+1 assertion, or by the X→T / X→Y edges."""
-    A = _padded_neg1_only(F, n_real)
-    for i in range(n_real):
-        A[2 + i, 0] = 1.0
-        A[2 + i, 1] = 1.0
-    return A
-
-
-def build_anc_v5a(F, n_real):
-    """v5a: X→Y = +1 only. T untouched: T→Y = 0. Rest of real block 0.
-    Padded -1. Probes whether asserting only the X→Y (outcome regression)
-    edges helps, without asserting any T-related edges."""
-    A = _padded_neg1_only(F, n_real)
-    for i in range(n_real):
-        A[2 + i, 1] = 1.0
-    return A
-
-
-def build_anc_v5b(F, n_real):
-    """v5b: v3a but with X↔T swapped: X→T = 0 (normal direct edge removed),
-    T→X = -1 (assert reverse edge). Keeps T→Y=+1 and X→Y=+1. Rest of real
-    block 0. Padded -1. Probes whether asserting non-directionality of X↔T
-    via reverse instead of forward edge changes behavior."""
-    A = _padded_neg1_only(F, n_real)
-    A[0, 1] = 1.0
-    for i in range(n_real):
-        # NO X→T = +1 (v3a would have this)
-        A[2 + i, 1] = 1.0    # X→Y = +1 (kept from v3a)
-        A[0, 2 + i] = -1.0   # T→X = -1 (asymmetric assertion)
-    return A
+    return adjacency_matrix
 
 
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
@@ -666,39 +503,8 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     Y_obs = y_scaled.reshape(-1, 1)
 
     results = {}
-    if ANC_MODE == 'ty_only':
-        _mode_list = (('ty',    build_anc_ty_only(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'ty_antisym':
-        _mode_list = (('tyx',   build_anc_ty_antisym(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v4a_only':
-        _mode_list = (('v4a',   build_anc_v4a(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v5a_only':
-        _mode_list = (('v5a',   build_anc_v5a(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v5b_only':
-        _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'all_variants':
-        _mode_list = (
-            ('v1a',   build_anc_v1a(F, n_real)),
-            ('v1b',   build_anc_v1b(F, n_real)),
-            ('v2a',   build_anc_v2a(F, n_real)),
-            ('v2b',   build_anc_v2b(F, n_real)),
-            ('v3a',   build_anc_v3a(F, n_real)),
-            ('v3b',   build_anc_v3b(F, n_real)),
-            ('v3c',   build_anc_v3c(F, n_real)),
-            ('v4a',   build_anc_v4a(F, n_real)),
-            ('v5a',   build_anc_v5a(F, n_real)),
-            ('v5b',   build_anc_v5b(F, n_real)),
-            ('noanc', build_anc_none(F, n_real)),
-            ('diag',  build_anc_diag(F, n_real)),
-        )
-    else:
-        _mode_list = (('anc',   build_anc_full(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
+    _mode_list = (('anc',   build_adjacency_matrix(F, n_real, ANC_MODE)),
+                  ('noanc', build_adjacency_matrix(F, n_real, 'all_unknown')))
     for mode, adj in _mode_list:
         p_y0, p_y1 = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate_raw_scaled, cate_em_scaled = cate_from_marginals(p_y0, p_y1, J)
@@ -746,29 +552,15 @@ def main():
         rows.append(row)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
-        # Mode-agnostic printing: 'anc' | 'ty' | 'tyx' | 'v*' depending on ANC_MODE.
-        if ANC_MODE == 'all_variants':
-            # Compact one-line summary for all variants
-            parts = []
-            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
-                p = row.get(f'pehe_raw_{tag}', float('nan'))
-                parts.append(f'{tag}={p:6.3f}')
-            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
-        else:
-            _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
-                        'tyx' if ANC_MODE == 'ty_antisym' else
-                        'v4a' if ANC_MODE == 'v4a_only' else
-                        'v5a' if ANC_MODE == 'v5a_only' else
-                        'v5b' if ANC_MODE == 'v5b_only' else 'anc')
-            print(
-                f'r={r:03d}  '
-                f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
-                f'em-{_pos_tag}: pehe={row[f"pehe_em_{_pos_tag}"]:6.3f} err={row[f"err_em_{_pos_tag}"]:5.3f}  |  '
-                f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
-                f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
-                f'({time.time()-t0:.0f}s)',
-                flush=True,
-            )
+        print(
+            f'r={r:03d}  '
+            f'raw-anc: pehe={row["pehe_raw_anc"]:6.3f} err={row["err_raw_anc"]:5.3f}  |  '
+            f'em-anc: pehe={row["pehe_em_anc"]:6.3f} err={row["err_em_anc"]:5.3f}  |  '
+            f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
+            f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
+            f'({time.time()-t0:.0f}s)',
+            flush=True,
+        )
 
     def ms(k):
         v = np.array([r[k] for r in rows if np.isfinite(r[k])])
@@ -776,20 +568,10 @@ def main():
         return v.mean(), v.std(ddof=1) / np.sqrt(len(v)), int(v.size)
 
     print(f'\n══ {DATASET} summary (n={len(rows)}) ══')
-    if ANC_MODE == 'all_variants':
-        keys = []
-        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
-            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
-    else:
-        _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
-                    'tyx' if ANC_MODE == 'ty_antisym' else
-                    'v4a' if ANC_MODE == 'v4a_only' else
-                    'v5a' if ANC_MODE == 'v5a_only' else
-                    'v5b' if ANC_MODE == 'v5b_only' else 'anc')
-        keys = [f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
-                f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
-                'pehe_raw_noanc', 'err_raw_noanc',
-                'pehe_em_noanc',  'err_em_noanc']
+    keys = ['pehe_raw_anc', 'err_raw_anc',
+            'pehe_em_anc',  'err_em_anc',
+            'pehe_raw_noanc', 'err_raw_noanc',
+            'pehe_em_noanc',  'err_em_noanc']
     for k in keys:
         m, s, n = ms(k)
         print(f'  {k:20s} = {m:8.3f} ± {s:6.3f}   (n={n})')

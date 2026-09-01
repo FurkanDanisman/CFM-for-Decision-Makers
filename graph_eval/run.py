@@ -26,13 +26,15 @@ def main() -> int:
                         help='Output directory for per-realization *.npz files')
     parser.add_argument('--max-context', type=int, default=1000,
                         help='Context subsample cap per realization (default 1000)')
-    parser.add_argument('--propagate', type=int, default=1, choices=(0, 1),
-                        help='Apply propagate_ancestor_knowledge to anc matrix (default 1)')
     parser.add_argument('--max-realizations', type=int, default=None,
                         help='Cap number of realizations (default: all)')
-    parser.add_argument('--anc-mode', default='full',
-                        choices=('full', 'ty_only', 'ty_antisym', 'all_variants'),
-                        help='Anc matrix content variant (default: full)')
+    parser.add_argument('--anc-mode', default='full_graph',
+                        choices=('full_graph', 't_to_y_only', 'x_to_t_only',
+                                 'x_to_y_only', 'all_unknown'),
+                        help='Graph knowledge mode for the "anc" condition, using '
+                             'UWYK dofm_full_conditioning.py mode names '
+                             '(default: full_graph). The "noanc" condition is '
+                             'always all_unknown.')
     parser.add_argument('--uwyk',
                         default=os.environ.get('UWYK'),
                         help='Path to UWYK repo root (or set UWYK env var)')
@@ -58,7 +60,6 @@ def main() -> int:
     os.environ['UWYK']              = os.path.abspath(args.uwyk)
     os.environ['CAUSALPFN']         = os.path.abspath(args.causalpfn)
     os.environ['EVAL_MAX_CONTEXT']  = str(args.max_context)
-    os.environ['PROPAGATE_ANC']     = str(args.propagate)
     os.environ['ANC_MODE']          = args.anc_mode
     if args.max_realizations is not None:
         os.environ['MAX_REAL'] = str(args.max_realizations)
