@@ -357,6 +357,30 @@ def build_anc_v4a(F, n_real):
     return A
 
 
+def build_anc_v5a(F, n_real):
+    """v5a: X→Y = +1 only. T untouched: T→Y = 0. Rest of real block 0.
+    Padded -1. Probes whether asserting only the X→Y (outcome regression)
+    edges helps, without asserting any T-related edges."""
+    A = _padded_neg1_only(F, n_real)
+    for i in range(n_real):
+        A[2 + i, 1] = 1.0
+    return A
+
+
+def build_anc_v5b(F, n_real):
+    """v5b: v3a but with X↔T swapped: X→T = 0 (normal direct edge removed),
+    T→X = -1 (assert reverse edge). Keeps T→Y=+1 and X→Y=+1. Rest of real
+    block 0. Padded -1. Probes whether asserting non-directionality of X↔T
+    via reverse instead of forward edge changes behavior."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    for i in range(n_real):
+        # NO X→T = +1 (v3a would have this)
+        A[2 + i, 1] = 1.0    # X→Y = +1 (kept from v3a)
+        A[0, 2 + i] = -1.0   # T→X = -1 (asymmetric assertion)
+    return A
+
+
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
 def psid_balance_subsample(X_train, t_train, y_train):
     """all T=1 + up to 500 T=0 sampled with np.random.seed(42), shuffle with
@@ -617,6 +641,12 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v4a_only':
         _mode_list = (('v4a',   build_anc_v4a(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v5a_only':
+        _mode_list = (('v5a',   build_anc_v5a(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v5b_only':
+        _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
     elif ANC_MODE == 'all_variants':
         _mode_list = (
             ('v1a',   build_anc_v1a(F, n_real)),
@@ -627,6 +657,8 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             ('v3b',   build_anc_v3b(F, n_real)),
             ('v3c',   build_anc_v3c(F, n_real)),
             ('v4a',   build_anc_v4a(F, n_real)),
+            ('v5a',   build_anc_v5a(F, n_real)),
+            ('v5b',   build_anc_v5b(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
             ('diag',  build_anc_diag(F, n_real)),
         )
@@ -684,14 +716,16 @@ def main():
         if ANC_MODE == 'all_variants':
             # Compact one-line summary for all variants
             parts = []
-            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','noanc','diag'):
+            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
-                        'v4a' if ANC_MODE == 'v4a_only' else 'anc')
+                        'v4a' if ANC_MODE == 'v4a_only' else
+                        'v5a' if ANC_MODE == 'v5a_only' else
+                        'v5b' if ANC_MODE == 'v5b_only' else 'anc')
             print(
                 f'r={r:03d}  '
                 f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
@@ -710,7 +744,7 @@ def main():
     print(f'\n══ {DATASET} summary (n={len(rows)}) ══')
     if ANC_MODE == 'all_variants':
         keys = []
-        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','noanc','diag'):
+        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
     else:
         _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
