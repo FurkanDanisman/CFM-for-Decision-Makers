@@ -399,6 +399,18 @@ def build_anc_v6a(F, n_real):
     return A
 
 
+def build_anc_v6b(F, n_real):
+    """v6b: same as v6a (all -1s from unconfoundedness) but with diagonal = 0.
+    Only Y→T=-1, Y→X_i=-1, T→X_i=-1. No self-loop assertion. No +1 edges.
+    Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[1, 0] = -1.0   # Y→T = -1
+    for i in range(n_real):
+        A[1, 2 + i] = -1.0   # Y→X_i
+        A[0, 2 + i] = -1.0   # T→X_i
+    return A
+
+
 def build_anc_v7a(F, n_real):
     """v7a: T→Y=+1 AND diagonal=-1. Rest of real block 0. Padded -1."""
     A = _padded_neg1_only(F, n_real)
@@ -727,6 +739,14 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s
             ('noanc', build_anc_none(F, n_real)),
         )
+    elif ANC_MODE == 'focus4':
+        _mode_list = (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s, diag -1
+            ('v6b',   build_anc_v6b(F, n_real)),   # all -1s, no +1s, diag 0
+            ('noanc', build_anc_none(F, n_real)),
+        )
     elif ANC_MODE == 'all_variants':
         _mode_list = (
             ('v1a',   build_anc_v1a(F, n_real)),
@@ -806,6 +826,12 @@ def main():
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'focus4':
+            parts = []
+            for tag in ('v7a','v7b','v6a','v6b','noanc'):
+                p = row.get(f'pehe_raw_{tag}', float('nan'))
+                parts.append(f'{tag}={p:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
@@ -835,6 +861,10 @@ def main():
     elif ANC_MODE == 'focus3':
         keys = []
         for tag in ('v7a','v7b','v6a','noanc'):
+            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'focus4':
+        keys = []
+        for tag in ('v7a','v7b','v6a','v6b','noanc'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
     else:
         _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
