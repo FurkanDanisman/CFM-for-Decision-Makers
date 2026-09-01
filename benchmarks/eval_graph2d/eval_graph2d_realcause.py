@@ -501,7 +501,10 @@ def main():
 
     rows = []
     t0 = time.time()
-    for r in range(ds.n_tables):
+    # MAX_REAL: cap number of realizations (e.g. MAX_REAL=1 for a fast
+    # diagnostic run of a single realization per dataset).
+    _cap = int(os.environ.get('MAX_REAL', ds.n_tables))
+    for r in range(min(ds.n_tables, _cap)):
         row = evaluate(r, ds, model, J, F, apply_psid_balance)
         rows.append(row)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
