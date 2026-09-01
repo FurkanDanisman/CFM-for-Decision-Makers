@@ -120,6 +120,7 @@ python -u train.py \
     hydra.run.dir="$OUT_DIR/hydra_run" \
     +callbacks@callbacks.checkpoint=checkpoint \
     callbacks.checkpoint.checkpoint_root="$OUT_DIR/checkpoints" \
+    callbacks.checkpoint.checkpoint_dir_name=run \
     callbacks.checkpoint.frequency=1 \
     callbacks.checkpoint.top_k=10000 \
     ~callbacks.eval_cate \
