@@ -294,6 +294,20 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
     centres  = 0.5 * (edges_np[:-1] + edges_np[1:])
     N_q      = p_mats.shape[0]
 
+    # ── Method 0: raw center-of-mass on marginals (no smoothing) ──
+    # E[Y_do0] and E[Y_do1] directly from the softmax marginals — same
+    # protocol as CausalPFN's published raw-mean CATE and their eval_v0
+    # minimal script. Gives us an apples-to-apples pehe_raw for comparing
+    # against 1D CausalPFN checkpoints. Fast (< 1s for 100 queries).
+    e_y0_raw_std = np.empty(N_q)
+    e_y1_raw_std = np.empty(N_q)
+    for q in range(N_q):
+        p_mat = p_mats[q].astype(np.float64)
+        p_marg0 = p_mat.sum(axis=1)   # p(Y_do0)
+        p_marg1 = p_mat.sum(axis=0)   # p(Y_do1)
+        e_y0_raw_std[q] = float((centres * p_marg0).sum())
+        e_y1_raw_std[q] = float((centres * p_marg1).sum())
+
     # ── Method 1: 1D MALC per query (fast, sequential) ────────────
     e_y0_1d_std = np.empty(N_q)
     e_y1_1d_std = np.empty(N_q)
@@ -329,12 +343,14 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         # Diag path assumes shared scale → not meaningful under per_arm; leave nan.
         y0s, y0sc = stats['y0s'], stats['y0sc']
         y1s, y1sc = stats['y1s'], stats['y1sc']
+        cate_raw_mean    = (e_y1_raw_std * y1sc + y1s) - (e_y0_raw_std * y0sc + y0s)
         cate_1d_raw      = (e_y1_1d_std * y1sc + y1s) - (e_y0_1d_std * y0sc + y0s)
         cate_2d_marg_raw = (e_y1_2d_std * y1sc + y1s) - (e_y0_2d_std * y0sc + y0s)
         cate_2d_diag_raw = np.full(N_q, np.nan)
     else:  # pooled
         y_scale = stats['scale']
         # Note: shift cancels in the difference, so we only need y_scale.
+        cate_raw_mean    = (e_y1_raw_std - e_y0_raw_std) * y_scale
         cate_1d_raw      = (e_y1_1d_std - e_y0_1d_std) * y_scale
         cate_2d_marg_raw = (e_y1_2d_std - e_y0_2d_std) * y_scale
         cate_2d_diag_raw = cate_2d_diag_std * y_scale
@@ -347,6 +363,7 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
         return pehe, err, ate
 
+    pehe_raw,  err_raw,  ate_raw  = _pehe(cate_raw_mean)
     pehe_1d,   err_1d,   ate_1d   = _pehe(cate_1d_raw)
     pehe_2d_m, err_2d_m, ate_2d_m = _pehe(cate_2d_marg_raw)
     pehe_2d_d, err_2d_d, ate_2d_d = _pehe(cate_2d_diag_raw)
@@ -355,6 +372,7 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         'dataset': 'IHDP', 'realization': realization,
         'true_ate': true_ate,
         'y_std_mode_eval': stats['mode'],
+        'pehe_raw_mean':     pehe_raw,  'err_raw_mean':     err_raw,  'ate_raw_mean':     ate_raw,
         'pehe_1d_malc':      pehe_1d,   'err_1d_malc':      err_1d,   'ate_1d_malc':      ate_1d,
         'pehe_2d_malc_marg': pehe_2d_m, 'err_2d_malc_marg': err_2d_m, 'ate_2d_malc_marg': ate_2d_m,
         'pehe_2d_malc_diag': pehe_2d_d, 'err_2d_malc_diag': err_2d_d, 'ate_2d_malc_diag': ate_2d_d,
@@ -407,9 +425,10 @@ def main():
             rows.append(row)
             print(
                 f'r={r:03d}  '
-                f'1D-MALC: pehe={row["pehe_1d_malc"]:6.3f} err={row["err_1d_malc"]:5.3f}  |  '
-                f'2D-marg: pehe={row["pehe_2d_malc_marg"]:6.3f} err={row["err_2d_malc_marg"]:5.3f}  |  '
-                f'2D-diag: pehe={row["pehe_2d_malc_diag"]:6.3f} err={row["err_2d_malc_diag"]:5.3f}  '
+                f'raw: pehe={row["pehe_raw_mean"]:6.3f}  |  '
+                f'1D-MALC: pehe={row["pehe_1d_malc"]:6.3f}  |  '
+                f'2D-marg: pehe={row["pehe_2d_malc_marg"]:6.3f}  |  '
+                f'2D-diag: pehe={row["pehe_2d_malc_diag"]:6.3f}  '
                 f'(t_1d={row["t_1d_sec"]:.1f}s  t_2d={row["t_2d_sec"]:.1f}s  '
                 f'elapsed={time.time()-t0:.0f}s)',
                 flush=True,
@@ -424,7 +443,8 @@ def main():
 
     print(f'\n══ IHDP summary (n={len(rows)}, step={step}, MALC_B={MALC_B}, '
           f'N_EVAL={N_EVAL}, y_std_mode_eval={Y_STD_MODE_EVAL}) ══')
-    for k in ('pehe_1d_malc', 'err_1d_malc',
+    for k in ('pehe_raw_mean',     'err_raw_mean',
+              'pehe_1d_malc',      'err_1d_malc',
               'pehe_2d_malc_marg', 'err_2d_malc_marg',
               'pehe_2d_malc_diag', 'err_2d_malc_diag'):
         m, s = _ms(k)
