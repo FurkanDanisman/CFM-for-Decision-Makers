@@ -325,6 +325,17 @@ def build_anc_v3b(F, n_real):
     return A
 
 
+def build_anc_v3c(F, n_real):
+    """v3c: v3b + diagonal -1 on the real block (T,Y,X_real all self-loop -1).
+    Equivalent to what build_anc_full + propagate produces on unconfoundedness
+    edges — but constructed explicitly here without calling propagate."""
+    A = build_anc_v3b(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
 def build_anc_diag(F, n_real):
     """diag-only: diagonal of the real block is -1. Rest of real block 0.
     Padded rows/cols still -1."""
@@ -600,6 +611,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             ('v2b',   build_anc_v2b(F, n_real)),
             ('v3a',   build_anc_v3a(F, n_real)),
             ('v3b',   build_anc_v3b(F, n_real)),
+            ('v3c',   build_anc_v3c(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
             ('diag',  build_anc_diag(F, n_real)),
         )
@@ -657,7 +669,7 @@ def main():
         if ANC_MODE == 'all_variants':
             # Compact one-line summary for all variants
             parts = []
-            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','noanc','diag'):
+            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','noanc','diag'):
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
@@ -681,7 +693,7 @@ def main():
     print(f'\n══ {DATASET} summary (n={len(rows)}) ══')
     if ANC_MODE == 'all_variants':
         keys = []
-        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','noanc','diag'):
+        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','noanc','diag'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
     else:
         _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
