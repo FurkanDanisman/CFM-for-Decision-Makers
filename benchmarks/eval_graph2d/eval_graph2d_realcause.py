@@ -117,6 +117,13 @@ X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
 
+# Anc-content probe. Default 'full' = original T→Y + X→T + X→Y +1 edges.
+# 'ty_only' = only T→Y = +1; X→T and X→Y left as 0 (unknown). Tests whether
+# the model's degradation is caused by over-attending to the X→T/X→Y edges
+# specifically. In 'ty_only' mode the results dict uses key `pehe_raw_ty`
+# (and `pehe_em_ty`, etc.) instead of `pehe_raw_anc`.
+ANC_MODE = os.environ.get('ANC_MODE', 'full')
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -207,6 +214,26 @@ def build_anc_none(F, n_real):
         A[feat_off + i, :] = -1.0
         A[:, feat_off + i] = -1.0
         A[feat_off + i, feat_off + i] = -1.0
+    return A
+
+
+def build_anc_ty_only(F, n_real):
+    """T→Y only anc. Real block is 0 except A[T,Y]=+1. Padded features −1
+    on their rows/cols like the other modes. Probes whether the model's
+    trouble is over-attending to X→T / X→Y edges specifically."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    T_idx, Y_idx, feat_off = 0, 1, 2
+    A[T_idx, Y_idx] = 1.0
+    for i in range(n_real, F):
+        A[feat_off + i, :] = -1.0
+        A[:, feat_off + i] = -1.0
+        A[feat_off + i, feat_off + i] = -1.0
+    if PROPAGATE_ANC:
+        from utils.graph_utils import propagate_ancestor_knowledge  # noqa: E402
+        real_n = 2 + n_real
+        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
+        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
+        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
     return A
 
 
@@ -461,8 +488,13 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     Y_obs = y_scaled.reshape(-1, 1)
 
     results = {}
-    for mode, adj in (('anc',   build_anc_full(F, n_real)),
-                       ('noanc', build_anc_none(F, n_real))):
+    if ANC_MODE == 'ty_only':
+        _mode_list = (('ty',    build_anc_ty_only(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
+    else:
+        _mode_list = (('anc',   build_anc_full(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
+    for mode, adj in _mode_list:
         p_y0, p_y1 = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate_raw_scaled, cate_em_scaled = cate_from_marginals(p_y0, p_y1, J)
         # Un-scale to raw Y units. (2 * cate_scaled / 2) * yrange / 2 = cate_scaled * yrange / 2.
@@ -509,10 +541,12 @@ def main():
         rows.append(row)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
+        # Mode-agnostic printing: 'anc' or 'ty' depending on ANC_MODE.
+        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else 'anc'
         print(
             f'r={r:03d}  '
-            f'raw-anc: pehe={row["pehe_raw_anc"]:6.3f} err={row["err_raw_anc"]:5.3f}  |  '
-            f'em-anc: pehe={row["pehe_em_anc"]:6.3f} err={row["err_em_anc"]:5.3f}  |  '
+            f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
+            f'em-{_pos_tag}: pehe={row[f"pehe_em_{_pos_tag}"]:6.3f} err={row[f"err_em_{_pos_tag}"]:5.3f}  |  '
             f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
             f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
             f'({time.time()-t0:.0f}s)',
@@ -524,9 +558,10 @@ def main():
         if v.size < 2: return float('nan'), float('nan'), int(v.size)
         return v.mean(), v.std(ddof=1) / np.sqrt(len(v)), int(v.size)
 
+    _pos_tag = 'ty' if ANC_MODE == 'ty_only' else 'anc'
     print(f'\n══ {DATASET} summary (n={len(rows)}) ══')
-    for k in ('pehe_raw_anc', 'err_raw_anc',
-              'pehe_em_anc',  'err_em_anc',
+    for k in (f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
+              f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
               'pehe_raw_noanc', 'err_raw_noanc',
               'pehe_em_noanc',  'err_em_noanc'):
         m, s, n = ms(k)
