@@ -115,7 +115,10 @@ X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 # Default '' = no subsampling (current behavior). Set e.g. '1000' to
 # match training context size.
 EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
-EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
+EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
+# PSID-bal subsampling seed (was hardcoded to 42 to match reproduce branch).
+# Now env-controlled with default 1.
+PSID_BAL_SEED = int(os.environ.get('PSID_BAL_SEED', '1'))
 
 # Anc-content probe. Default 'full' = original T→Y + X→T + X→Y +1 edges.
 # 'ty_only' = only T→Y = +1; X→T and X→Y left as 0 (unknown). Tests whether
@@ -497,17 +500,17 @@ def psid_balance_subsample(X_train, t_train, y_train):
     n_control = X_ct.shape[0]
     n_keep = min(500, n_control)
     if n_control > n_keep:
-        np.random.seed(42)
+        np.random.seed(PSID_BAL_SEED)
         idx = np.random.choice(n_control, n_keep, replace=False)
         X_ct = X_ct[idx]; t_ct = t_ct[idx]; y_ct = y_ct[idx]
-        print(f'[PSID-bal] kept {X_tr.shape[0]} treated, sampled {n_keep}/{n_control} controls',
-              flush=True)
+        print(f'[PSID-bal] kept {X_tr.shape[0]} treated, sampled {n_keep}/{n_control} controls '
+              f'(seed={PSID_BAL_SEED})', flush=True)
     else:
         print(f'[PSID-bal] kept {X_tr.shape[0]} treated, all {n_control} controls',
               flush=True)
 
     X = np.vstack([X_tr, X_ct]); t = np.concatenate([t_tr, t_ct]); y = np.concatenate([y_tr, y_ct])
-    perm = np.random.RandomState(42).permutation(X.shape[0])
+    perm = np.random.RandomState(PSID_BAL_SEED).permutation(X.shape[0])
     return X[perm], t[perm], y[perm]
 
 
