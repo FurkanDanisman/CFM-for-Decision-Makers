@@ -747,7 +747,11 @@ def main():
         for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
     else:
-        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
+        _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
+                    'tyx' if ANC_MODE == 'ty_antisym' else
+                    'v4a' if ANC_MODE == 'v4a_only' else
+                    'v5a' if ANC_MODE == 'v5a_only' else
+                    'v5b' if ANC_MODE == 'v5b_only' else 'anc')
         keys = [f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
                 f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
                 'pehe_raw_noanc', 'err_raw_noanc',
