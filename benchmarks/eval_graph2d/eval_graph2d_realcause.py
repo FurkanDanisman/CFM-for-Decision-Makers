@@ -614,6 +614,9 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'ty_antisym':
         _mode_list = (('tyx',   build_anc_ty_antisym(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v4a_only':
+        _mode_list = (('v4a',   build_anc_v4a(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
     elif ANC_MODE == 'all_variants':
         _mode_list = (
             ('v1a',   build_anc_v1a(F, n_real)),
@@ -686,7 +689,9 @@ def main():
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
         else:
-            _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
+            _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
+                        'tyx' if ANC_MODE == 'ty_antisym' else
+                        'v4a' if ANC_MODE == 'v4a_only' else 'anc')
             print(
                 f'r={r:03d}  '
                 f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
