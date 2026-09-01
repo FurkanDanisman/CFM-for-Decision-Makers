@@ -107,6 +107,15 @@ STEP_CKPT_EVERY="${STEP_CKPT_EVERY:-2000}"
 STEP_CKPT_ROOT="${STEP_CKPT_ROOT:-$OUT_DIR/step_checkpoints}"
 mkdir -p "$STEP_CKPT_ROOT"
 
+# COMPILE=0 → append `compile=false` to hydra CLI (disables torch.compile).
+# Use when torch inductor hits a bug on this pytorch build.
+COMPILE="${COMPILE:-1}"
+COMPILE_ARGS=()
+if [ "$COMPILE" = "0" ]; then
+    COMPILE_ARGS+=(compile=false)
+    echo "[compile] disabled via COMPILE=0"
+fi
+
 # Resume-on-requeue: latest.pt carries actual_step so counter picks up exactly.
 RESUME_ARGS=()
 FOUND_LATEST="$(find "$OUT_DIR/checkpoints" -maxdepth 2 -name latest.pt 2>/dev/null | head -1 || true)"
@@ -133,6 +142,7 @@ python -u train.py \
     +model.obj.y_scaling_mode="$Y_SCALING_MODE" \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$STEP_CKPT_ROOT" \
+    "${COMPILE_ARGS[@]}" \
     "${RESUME_ARGS[@]}" &
 CHILD=$!
 wait "$CHILD"
