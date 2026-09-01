@@ -399,6 +399,41 @@ def build_anc_v6a(F, n_real):
     return A
 
 
+def build_anc_combo(F, n_real, code):
+    """Parameterized anc builder. code = 3-char string of {P, N, B, O} for
+    edges [T→Y, X→T, X→Y]:
+      - P: assert +1 in ancestor direction only
+      - N: assert -1 in reverse direction only
+      - B: both (+1 in ancestor direction, -1 in reverse)
+      - O: omit (leave as 0)
+    Diagonal is 0 (user's spec: 'diag = 0 or -1 does not affect that representation').
+    Padded region: -1."""
+    assert len(code) == 3 and all(c in 'PNBO' for c in code), f'bad code: {code}'
+    A = _padded_neg1_only(F, n_real)
+    T_idx, Y_idx = 0, 1
+    # Edge 1: T→Y
+    c = code[0]
+    if c in ('P', 'B'):
+        A[T_idx, Y_idx] = 1.0
+    if c in ('N', 'B'):
+        A[Y_idx, T_idx] = -1.0
+    # Edge 2: X_i → T for all real i
+    c = code[1]
+    for i in range(n_real):
+        if c in ('P', 'B'):
+            A[2 + i, T_idx] = 1.0
+        if c in ('N', 'B'):
+            A[T_idx, 2 + i] = -1.0
+    # Edge 3: X_i → Y for all real i
+    c = code[2]
+    for i in range(n_real):
+        if c in ('P', 'B'):
+            A[2 + i, Y_idx] = 1.0
+        if c in ('N', 'B'):
+            A[Y_idx, 2 + i] = -1.0
+    return A
+
+
 def build_anc_v6b(F, n_real):
     """v6b: same as v6a (all -1s from unconfoundedness) but with diagonal = 0.
     Only Y→T=-1, Y→X_i=-1, T→X_i=-1. No self-loop assertion. No +1 edges.
@@ -735,6 +770,11 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v6b_only':
         _mode_list = (('v6b',   build_anc_v6b(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'all_combos':
+        # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
+        # Diagonal always 0; padded region always -1.
+        _codes = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
+        _mode_list = tuple((code, build_anc_combo(F, n_real, code)) for code in _codes)
     elif ANC_MODE == 'focus3':
         _mode_list = (
             ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
@@ -835,6 +875,12 @@ def main():
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'all_combos':
+            _tags_all = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
+            # 64 tags is too long for one line — print just the min-PEHE tag
+            best = min(_tags_all, key=lambda t: row.get(f'pehe_raw_{t}', float('inf')))
+            print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
+                  f'OOO(noanc) pehe={row["pehe_raw_OOO"]:6.3f}  ({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
@@ -870,6 +916,10 @@ def main():
         keys = []
         for tag in ('v7a','v7b','v6a','v6b','noanc'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'all_combos':
+        keys = []
+        for tag in [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']:
+            keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
     else:
         _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                     'tyx' if ANC_MODE == 'ty_antisym' else
