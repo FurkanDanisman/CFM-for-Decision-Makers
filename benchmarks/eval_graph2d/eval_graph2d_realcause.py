@@ -116,9 +116,9 @@ X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 # match training context size.
 EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
-# PSID-bal subsampling seed (was hardcoded to 42 to match reproduce branch).
-# Now env-controlled with default 1.
-PSID_BAL_SEED = int(os.environ.get('PSID_BAL_SEED', '1'))
+# PSID-bal subsampling seed. Kept at 42 (matches reproduce branch).
+# Env-controllable but default preserves reproduce-branch consistency.
+PSID_BAL_SEED = int(os.environ.get('PSID_BAL_SEED', '42'))
 
 # Anc-content probe. Default 'full' = original T→Y + X→T + X→Y +1 edges.
 # 'ty_only' = only T→Y = +1; X→T and X→Y left as 0 (unknown). Tests whether
