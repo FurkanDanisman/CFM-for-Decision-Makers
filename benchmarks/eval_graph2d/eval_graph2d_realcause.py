@@ -98,6 +98,14 @@ BIAS_EDGE_SCALE = float(os.environ.get('BIAS_EDGE_SCALE', '1.0'))
 # carry.
 T_INTV_OVERRIDE = os.environ.get('T_INTV_OVERRIDE', '')
 
+# 99% quantile outlier clipping on X features at eval, matching the
+# reproduce-branch preprocessing (best_model_config.yaml: remove_outliers=true,
+# outlier_quantile=0.99). Their training AND eval both clip; ours does
+# neither. This eval-time clipping is a partial compensation attempt —
+# brings our eval input distribution closer to what their model sees at
+# eval, though our model wasn't trained with clipping. Default None (off).
+X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -124,6 +132,16 @@ def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
 
 
 def _standardize_train_test(X_train, X_test, eps=1e-8):
+    # Optional 99% quantile clipping (matches their preprocessing_config.
+    # remove_outliers=true, outlier_quantile=0.99 in
+    # best_model_config.yaml). Bounds computed on X_train per-column,
+    # applied to BOTH train and test (same as their pipeline).
+    if X_CLIP_QUANTILE:
+        q = float(X_CLIP_QUANTILE)
+        lo = np.quantile(X_train, 1.0 - q, axis=0, keepdims=True)
+        hi = np.quantile(X_train, q,       axis=0, keepdims=True)
+        X_train = np.clip(X_train, lo, hi)
+        X_test  = np.clip(X_test,  lo, hi)
     mu = X_train.mean(axis=0, keepdims=True)
     sd = X_train.std(axis=0, keepdims=True)
     sd = np.where(sd < eps, eps, sd)
