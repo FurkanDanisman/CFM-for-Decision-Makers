@@ -86,12 +86,29 @@ def build_uwyk_eval(F, n_real):
 
 
 def build_v4a(F, n_real):
-    """v4a: v3a MINUS T→Y edge. X→T = +1, X→Y = +1, but A[T,Y] = 0.
-    Probes whether the T→Y=+1 assertion is what our model can't use."""
+    """v4a: v3a MINUS T→Y edge. X→T = +1, X→Y = +1, but A[T,Y] = 0."""
     A = _padded_neg1_only(F, n_real)
     for i in range(n_real):
         A[2 + i, 0] = 1.0
         A[2 + i, 1] = 1.0
+    return A
+
+
+def build_v5a(F, n_real):
+    """v5a: X→Y = +1 only. T untouched. Rest 0."""
+    A = _padded_neg1_only(F, n_real)
+    for i in range(n_real):
+        A[2 + i, 1] = 1.0
+    return A
+
+
+def build_v5b(F, n_real):
+    """v5b: v3a with X↔T swapped — X→T = 0, T→X = -1. T→Y=+1, X→Y=+1 kept."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    for i in range(n_real):
+        A[2 + i, 1] = 1.0
+        A[0, 2 + i] = -1.0
     return A
 
 
@@ -101,6 +118,8 @@ BUILDERS = {
     'v3b':  build_v3b,
     'v3c':  build_v3c,
     'v4a':  build_v4a,
+    'v5a':  build_v5a,
+    'v5b':  build_v5b,
 }
 
 
