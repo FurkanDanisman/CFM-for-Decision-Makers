@@ -86,7 +86,7 @@ from causalpfn.models.model import TabDPTLongContextModel  # noqa: E402
 _REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _REPO_SRC not in sys.path:
     sys.path.insert(0, _REPO_SRC)
-from losses.BarDistribution2D import total_params, neg_log_prob_2d, neg_log_prob_2d_hlgauss  # noqa: E402
+from losses.BarDistribution2D import total_params, make_edges, neg_log_prob_2d, neg_log_prob_2d_hlgauss  # noqa: E402
 
 
 class CausalPFN2DHead(nn.Module):
@@ -119,6 +119,38 @@ class CausalPFN2DHead(nn.Module):
         self.loss_type      = loss_type
         self.hlgauss_sigma  = float(hlgauss_sigma)
 
+        # ── STEP-CKPT / A1 PATCH ─────────────────────────────────────────────
+        # Bin edges baked in as a buffer so the trainer never needs to pass
+        # `edges`. Deterministic given (J, y_scaling_mode):
+        #   pooled_std  → grid [-10, +10]  (matches CausalPFN's vmin/vmax)
+        #   uwyk_minmax → grid [-1, +1]    (targets already in [-1, +1])
+        if y_scaling_mode == 'pooled_std':
+            _edge_lo, _edge_hi = -10.0, 10.0
+        else:  # uwyk_minmax
+            _edge_lo, _edge_hi = -1.0, 1.0
+        self.register_buffer('edges', make_edges(J, y_min=_edge_lo, y_max=_edge_hi))
+
+        # model_config: same shape as InContextModel.model_config so
+        # Checkpoint callback can save+restore it verbatim and the resume
+        # path in train.py can reconstruct us via hydra.
+        self.model_config = {
+            'model_type': 'cpfn2d',
+            'model': {
+                'J': J,
+                'num_features': num_features,
+                'ninp': ninp,
+                'nhid': nhid,
+                'nhead': nhead,
+                'nlayers': nlayers,
+                'dropout': dropout,
+                'n_out': n_out,
+                'nbins': self.nbins_2d,
+            },
+            'y_scaling_mode': y_scaling_mode,
+            'loss_type':      loss_type,
+            'hlgauss_sigma':  self.hlgauss_sigma,
+        }
+
         # Backbone sees (T | X) as one flat vector, so its num_features = X + 1.
         self.backbone = TabDPTLongContextModel(
             dropout=dropout,
@@ -130,6 +162,8 @@ class CausalPFN2DHead(nn.Module):
             num_features=num_features + 1,
             nbins=self.nbins_2d,
         )
+        # Alias for InContextModel-style code that does `model.model.state_dict()`.
+        self.model = self.backbone
 
         # Learned null token filling the T-column at query positions. Init near
         # zero (below the {0,1} training T-values); backprop is free to move it.
@@ -141,6 +175,21 @@ class CausalPFN2DHead(nn.Module):
             f'{n_out + self.nbins_2d}  (using last {self.nbins_2d} as 2D-head logits, J={J})'
         )
 
+    def get_param_groups(self):
+        """Mirror InContextModel.get_param_groups: backbone transformer gets
+        weight_decay, everything else (head, null_t_intv) gets none.
+        Matches CausalPFN's schedule-free AdamW convention."""
+        return [
+            {"params": self.backbone.transformer_encoder.parameters()},
+            {
+                "params": [
+                    p for name, p in self.backbone.named_parameters()
+                    if not name.startswith("transformer_encoder")
+                ] + [self.null_t_intv],
+                "weight_decay": 0.0,
+            },
+        ]
+
     def _forward_logits(
         self,
         X_context: torch.Tensor,   # (B, N_ctx, F)
@@ -151,9 +200,18 @@ class CausalPFN2DHead(nn.Module):
         """Returns joint-head logits at query positions, shape (B, N_q, nbins_2d)."""
         B, N_ctx, F = X_context.shape
         N_q = X_query.shape[1]
-        assert F == self.num_features, (
-            f'X_context has {F} features, model constructed for {self.num_features}'
-        )
+
+        # ── A1 PATCH ──  Pad/truncate X to self.num_features so the backbone's
+        # input dim stays at (num_features + 1) regardless of what the DataLoader
+        # produces. Mirrors InContextModel.prepare_input → pad_x behavior so
+        # this class drops into CausalPFN's train.py unchanged.
+        if F < self.num_features:
+            pad = self.num_features - F
+            X_context = torch.nn.functional.pad(X_context, (0, pad), value=0.0)
+            X_query   = torch.nn.functional.pad(X_query,   (0, pad), value=0.0)
+        elif F > self.num_features:
+            X_context = X_context[..., : self.num_features]
+            X_query   = X_query[...,   : self.num_features]
 
         if t_context.dim() == 3:
             t_context = t_context.squeeze(-1)
@@ -211,9 +269,20 @@ class CausalPFN2DHead(nn.Module):
         X_query:   torch.Tensor,   # (B, N_q,   F)
         E_y0_query: torch.Tensor,  # (B, N_q)
         E_y1_query: torch.Tensor,  # (B, N_q)
-        edges: torch.Tensor,       # (J+1,)  set by the trainer based on scaling mode
+        edges: torch.Tensor | None = None,   # optional override; default self.edges
     ) -> torch.Tensor:
-        """Returns per-task loss vector (B,) — trainer applies valid_mask + mean."""
+        """Returns per-task loss vector (B,) — trainer applies valid_mask + mean.
+
+        The `edges` argument is optional and defaults to the buffer registered
+        at __init__ time. This lets CausalPFN's trainer call us with the same
+        (X_context, t_context, y_context, X_query, E_y0_query, E_y1_query)
+        signature as InContextModel — no `edges` kwarg needed — while our
+        historical trainer (which passed edges explicitly) still works
+        untouched.
+        """
+        if edges is None:
+            edges = self.edges
+
         # Per-task Y-scaling. Two modes:
         #   pooled_std   → (y - pooled_mean) / pooled_std   ; edges [-10, +10]
         #   uwyk_minmax  → (y - shift) / scale to [-1, +1]  ; edges [-1, +1]

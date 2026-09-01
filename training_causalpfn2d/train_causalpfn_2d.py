@@ -118,6 +118,13 @@ CHECKPOINT_DIR    = os.environ.get('CHECKPOINT_DIR', './checkpoints_causalpfn2d'
 CHECKPOINT_EVERY  = int(os.environ.get('CHECKPOINT_EVERY', 2000))
 RESUME            = os.environ.get('RESUME', '1') == '1'
 
+# When enabled, match CausalPFN trainer semantics: if a step's grad-norm is
+# 0/inf/NaN, discard it (zero grads, do NOT call opt.step()) and do NOT
+# advance the step counter. Only successful optimizer updates count. Off by
+# default to preserve historical behavior of existing runs; turn on for any
+# run where the trajectory must align 1:1 with CausalPFN's own trainer.
+SKIP_BAD_GRADS   = os.environ.get('SKIP_BAD_GRADS', '0') == '1'
+
 # Logging
 LOG_EVERY        = int(os.environ.get('LOG_EVERY', 100))
 LOSS_WARN_THRESH = float(os.environ.get('LOSS_WARN_THRESH', 1e3))
@@ -761,7 +768,12 @@ def main():
         if DEVICE.type == 'cuda':
             torch.cuda.synchronize()
 
-    for step in range(start + 1, N_STEPS + 1):
+    # When SKIP_BAD_GRADS is on, `step` is a manually-advanced counter that
+    # only ticks after a successful optimizer.step() (matches CausalPFN
+    # trainer semantics). Otherwise use the plain for-loop range.
+    step = start
+    while step < N_STEPS:
+        step += 1
         opt.zero_grad(set_to_none=True)
         # Tensor accumulator so we don't sync every microbatch. Only .item()
         # the sum once per LOG_EVERY, when we actually print it.
@@ -798,7 +810,19 @@ def main():
             accum_loss_t = accum_loss_t + loss.detach()
 
         if do_profile: _cuda_sync(); t_opt = time.time()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+        if SKIP_BAD_GRADS:
+            gn = float(grad_norm)
+            skip_local = (gn == 0.0) or math.isinf(gn) or math.isnan(gn)
+            skip_flag = torch.tensor(skip_local, device=DEVICE, dtype=torch.uint8)
+            if using_dist:
+                dist.all_reduce(skip_flag, op=dist.ReduceOp.MAX)
+            if bool(skip_flag.item()):
+                opt.zero_grad(set_to_none=True)
+                if is_main:
+                    print(f'[Warning step={step}] non-finite/empty gradients — skipping update.', flush=True)
+                step -= 1  # roll back counter so this attempt does not count
+                continue
         opt.step()
         if do_profile:
             _cuda_sync()
