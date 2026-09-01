@@ -399,15 +399,15 @@ def build_anc_v6a(F, n_real):
     return A
 
 
-def build_anc_combo(F, n_real, code):
+def build_anc_combo(F, n_real, code, diag_neg=False):
     """Parameterized anc builder. code = 3-char string of {P, N, B, O} for
     edges [T→Y, X→T, X→Y]:
       - P: assert +1 in ancestor direction only
       - N: assert -1 in reverse direction only
       - B: both (+1 in ancestor direction, -1 in reverse)
       - O: omit (leave as 0)
-    Diagonal is 0 (user's spec: 'diag = 0 or -1 does not affect that representation').
-    Padded region: -1."""
+    diag_neg: if True, set real-block diagonal to -1. Else 0.
+    Padded region: always -1."""
     assert len(code) == 3 and all(c in 'PNBO' for c in code), f'bad code: {code}'
     A = _padded_neg1_only(F, n_real)
     T_idx, Y_idx = 0, 1
@@ -431,7 +431,22 @@ def build_anc_combo(F, n_real, code):
             A[2 + i, Y_idx] = 1.0
         if c in ('N', 'B'):
             A[Y_idx, 2 + i] = -1.0
+    if diag_neg:
+        for i in range(2 + n_real):
+            A[i, i] = -1.0
     return A
+
+
+def _three_edge_54_tags_and_codes(F, n_real):
+    """Return list of (tag, adj) for all 27 three-edge codes × 2 diag choices.
+    Tag format: {code}{diag_suffix} where suffix = '' for diag=0 or 'n' for diag=-1.
+    Example: 'PPP' (diag=0), 'PPPn' (diag=-1). 54 total."""
+    codes3 = [a + b + c for a in 'PNB' for b in 'PNB' for c in 'PNB']  # 27
+    out = []
+    for code in codes3:
+        out.append((code,      build_anc_combo(F, n_real, code, diag_neg=False)))
+        out.append((code + 'n', build_anc_combo(F, n_real, code, diag_neg=True)))
+    return out
 
 
 def build_anc_v6b(F, n_real):
@@ -775,6 +790,11 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
         # Diagonal always 0; padded region always -1.
         _codes = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
         _mode_list = tuple((code, build_anc_combo(F, n_real, code)) for code in _codes)
+    elif ANC_MODE == 'three_edge_all':
+        # All 27 three-edge combos (P|N|B for each of T→Y, X→T, X→Y) × 2 diag
+        # choices = 54 variants. All 3 edges asserted (no O). Tags use 'n'
+        # suffix for diag=-1 variant (e.g., PPP vs PPPn).
+        _mode_list = tuple(_three_edge_54_tags_and_codes(F, n_real))
     elif ANC_MODE == 'focus3':
         _mode_list = (
             ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
@@ -881,6 +901,12 @@ def main():
             best = min(_tags_all, key=lambda t: row.get(f'pehe_raw_{t}', float('inf')))
             print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
                   f'OOO(noanc) pehe={row["pehe_raw_OOO"]:6.3f}  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'three_edge_all':
+            _tags_all = [c + s for c in [a+b+d for a in 'PNB' for b in 'PNB' for d in 'PNB']
+                                for s in ('', 'n')]
+            best = min(_tags_all, key=lambda t: row.get(f'pehe_raw_{t}', float('inf')))
+            print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
+                  f'({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
@@ -919,6 +945,11 @@ def main():
     elif ANC_MODE == 'all_combos':
         keys = []
         for tag in [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']:
+            keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
+    elif ANC_MODE == 'three_edge_all':
+        keys = []
+        for tag in [c + s for c in [a+b+d for a in 'PNB' for b in 'PNB' for d in 'PNB']
+                          for s in ('', 'n')]:
             keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
     else:
         _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
