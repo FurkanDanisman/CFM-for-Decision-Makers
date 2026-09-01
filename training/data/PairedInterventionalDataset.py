@@ -242,13 +242,17 @@ DEFAULT_SCM_CONFIG = {
     "graph_edge_prob": {"distribution": "beta", "distribution_parameters": {"alpha": 2.0, "beta": 3.0}},
     "graph_seed": {"distribution": "discrete_uniform", "distribution_parameters": {"low": 0, "high": 100000}},
     "xgboost_prob": {
-        # Match reproduce-realcause-results best_model_config.yaml exactly:
-        # 90% pure MLP, 10% xgboost_prob=0.1, ~1% at 0.2, ~0.1% at 0.3.
-        # Previous [1.0, 0.0, 0.0, 0.0] was WRONG — never exposed the model
-        # to XGB-generated mechanisms, plausibly why anc-mode fails on
-        # ACIC/CPS which have tree-like relationships.
+        # FINE-TUNE BOOSTED. Reproduce branch uses [0.9, 0.1, 0.01, 0.001]
+        # (~10% XGB tasks) over 50k training steps → ~610 effective XGB
+        # units. To match that total exposure in a 10k fine-tune from
+        # step_50000, we bump the XGB share ~5× to [0.5, 0.4, 0.08, 0.02]
+        # (~50% XGB tasks × 10k steps → ~650 XGB units). Keeps 50% pure-MLP
+        # so the model retains its existing MLP-mechanism handling.
+        # Previous value [1.0, 0.0, 0.0, 0.0] was WRONG — never exposed the
+        # model to XGB-generated (tree-like, discontinuous) mechanisms,
+        # plausibly why anc-mode fails on ACIC/CPS.
         "distribution": "categorical",
-        "distribution_parameters": {"choices": [0.0, 0.1, 0.2, 0.3], "probabilities": [0.9, 0.1, 0.01, 0.001]},
+        "distribution_parameters": {"choices": [0.0, 0.1, 0.2, 0.3], "probabilities": [0.5, 0.4, 0.08, 0.02]},
     },
     "mechanism_seed": {"distribution": "discrete_uniform", "distribution_parameters": {"low": 0, "high": 100000}},
     "mlp_nonlins": {"value": "tabicl"},
