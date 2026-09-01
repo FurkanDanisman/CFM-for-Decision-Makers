@@ -242,8 +242,13 @@ DEFAULT_SCM_CONFIG = {
     "graph_edge_prob": {"distribution": "beta", "distribution_parameters": {"alpha": 2.0, "beta": 3.0}},
     "graph_seed": {"distribution": "discrete_uniform", "distribution_parameters": {"low": 0, "high": 100000}},
     "xgboost_prob": {
+        # Match reproduce-realcause-results best_model_config.yaml exactly:
+        # 90% pure MLP, 10% xgboost_prob=0.1, ~1% at 0.2, ~0.1% at 0.3.
+        # Previous [1.0, 0.0, 0.0, 0.0] was WRONG — never exposed the model
+        # to XGB-generated mechanisms, plausibly why anc-mode fails on
+        # ACIC/CPS which have tree-like relationships.
         "distribution": "categorical",
-        "distribution_parameters": {"choices": [0.0, 0.1, 0.2, 0.3], "probabilities": [1.0, 0.0, 0.0, 0.0]},
+        "distribution_parameters": {"choices": [0.0, 0.1, 0.2, 0.3], "probabilities": [0.9, 0.1, 0.01, 0.001]},
     },
     "mechanism_seed": {"distribution": "discrete_uniform", "distribution_parameters": {"low": 0, "high": 100000}},
     "mlp_nonlins": {"value": "tabicl"},
@@ -721,7 +726,16 @@ class PairedInterventionalDataset(Dataset):
         Y_do1 = 2.0 * (Y_do1_raw - ymin) / rng - 1.0
 
         if X_obs_raw.shape[1] > 0:
-            X_obs_s, X_intv_s = _standardize(X_obs_raw, X_intv_raw, eps=self.epsilon)
+            # 99% quantile outlier clipping BEFORE standardization to match
+            # reproduce-realcause-results preprocessing_config.remove_outliers=true,
+            # outlier_quantile=0.99. Bounds are computed on X_obs_raw and applied
+            # to BOTH obs and intv (same convention as _clip_outliers). Previously
+            # this function was defined but never called; that's the gap that
+            # left our training feature distribution differing from theirs.
+            X_obs_raw_clipped = _clip_outliers(X_obs_raw, q=self.outlier_q)
+            X_intv_raw_clipped = _clip_outliers(X_intv_raw, q=self.outlier_q)
+            X_obs_s, X_intv_s = _standardize(X_obs_raw_clipped, X_intv_raw_clipped,
+                                             eps=self.epsilon)
         else:
             X_obs_s = X_obs_raw
             X_intv_s = X_intv_raw
