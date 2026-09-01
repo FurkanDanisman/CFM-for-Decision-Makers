@@ -381,6 +381,45 @@ def build_anc_v5b(F, n_real):
     return A
 
 
+def build_anc_v6a(F, n_real):
+    """v6a: no +1 edges anywhere. All -1s from unconfoundedness:
+      - Diagonal (self-loops) = -1
+      - Y→T = -1 (T causes Y, not the other way)
+      - Y→X_i = -1 for all real X (Y is downstream)
+      - T→X_i = -1 for all real X (T is downstream)
+    Everything else in real block = 0. Padded region -1."""
+    A = _padded_neg1_only(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    A[1, 0] = -1.0   # Y→T = -1
+    for i in range(n_real):
+        A[1, 2 + i] = -1.0   # Y→X_i
+        A[0, 2 + i] = -1.0   # T→X_i
+    return A
+
+
+def build_anc_v7a(F, n_real):
+    """v7a: T→Y=+1 AND diagonal=-1. Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
+def build_anc_v7b(F, n_real):
+    """v7b: T→Y=+1, Y→T=-1, diagonal=-1. Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    A[1, 0] = -1.0
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
 def psid_balance_subsample(X_train, t_train, y_train):
     """all T=1 + up to 500 T=0 sampled with np.random.seed(42), shuffle with
@@ -681,6 +720,13 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v5b_only':
         _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'focus3':
+        _mode_list = (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s
+            ('noanc', build_anc_none(F, n_real)),
+        )
     elif ANC_MODE == 'all_variants':
         _mode_list = (
             ('v1a',   build_anc_v1a(F, n_real)),
@@ -754,6 +800,12 @@ def main():
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'focus3':
+            parts = []
+            for tag in ('v7a','v7b','v6a','noanc'):
+                p = row.get(f'pehe_raw_{tag}', float('nan'))
+                parts.append(f'{tag}={p:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
@@ -779,6 +831,10 @@ def main():
     if ANC_MODE == 'all_variants':
         keys = []
         for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
+            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'focus3':
+        keys = []
+        for tag in ('v7a','v7b','v6a','noanc'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
     else:
         _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
