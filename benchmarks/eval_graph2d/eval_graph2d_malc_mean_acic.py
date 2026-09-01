@@ -38,15 +38,21 @@ EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 MALC_DIR = os.path.join(REPO_SRC, 'MALC')
-for p in (REPO_SRC, MALC_DIR, UWYK, UWYK + '/src', CAUSALPFN, CAUSALPFN + '/src'):
+L2_IHDP_DIR = os.path.join(REPO_SRC, 'benchmarks', 'l2_ihdp')
+# Order matters: put R-PFN root FIRST so its top-level packages resolve first;
+# put l2_ihdp on the path directly so we can `import methods_densities` without
+# shadowing conflicts with CausalPFN's own `benchmarks` package.
+for p in (REPO_SRC, MALC_DIR, L2_IHDP_DIR, UWYK, UWYK + '/src', CAUSALPFN, CAUSALPFN + '/src'):
     if os.path.isdir(p) and p not in sys.path:
         sys.path.insert(0, p)
 
-from benchmarks import ACIC2016Dataset  # noqa: E402
+from benchmarks import ACIC2016Dataset  # noqa: E402  (resolves to CausalPFN's benchmarks)
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
 from losses.BarDistribution2D import fit_malc_inner  # noqa: E402
 from malc_2d import dmalc_2d  # noqa: E402
-from benchmarks.l2_ihdp.methods_densities import malc_1d_cvxpy  # noqa: E402
+# Direct import from the l2_ihdp dir (added to sys.path above) — avoids
+# collision with CausalPFN's benchmarks package which shadows our own.
+from methods_densities import malc_1d_cvxpy  # noqa: E402
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
