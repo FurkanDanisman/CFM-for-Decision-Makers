@@ -252,6 +252,89 @@ def build_anc_ty_antisym(F, n_real):
     return A
 
 
+def _padded_neg1_only(F, n_real):
+    """Common helper: return a matrix with padded rows/cols all -1 and
+    the real block untouched (all 0). Caller adds their real-block edges."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    feat_off = 2
+    for i in range(n_real, F):
+        A[feat_off + i, :] = -1.0
+        A[:, feat_off + i] = -1.0
+        A[feat_off + i, feat_off + i] = -1.0
+    return A
+
+
+# ── Variant builders (all no-propagate, all padded region -1) ──────────
+def build_anc_v1a(F, n_real):
+    """v1a: T→Y = +1. Rest of real block 0."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    return A
+
+
+def build_anc_v1b(F, n_real):
+    """v1b: T→Y = +1, Y→T = -1. Rest of real block 0."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    A[1, 0] = -1.0
+    return A
+
+
+def build_anc_v2a(F, n_real):
+    """v2a: T→Y = +1, all X→T = +1. Rest of real block 0."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    for i in range(n_real):
+        A[2 + i, 0] = 1.0
+    return A
+
+
+def build_anc_v2b(F, n_real):
+    """v2b: T→Y = +1, all X→T = +1, Y→T = -1, all T→X = -1. Rest 0."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    A[1, 0] = -1.0
+    for i in range(n_real):
+        A[2 + i, 0] = 1.0
+        A[0, 2 + i] = -1.0
+    return A
+
+
+def build_anc_v3a(F, n_real):
+    """v3a: T→Y = +1, all X→T = +1, all X→Y = +1. Rest of real block 0.
+    (= build_anc_full without propagation.)"""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    for i in range(n_real):
+        A[2 + i, 0] = 1.0
+        A[2 + i, 1] = 1.0
+    return A
+
+
+def build_anc_v3b(F, n_real):
+    """v3b: v3a + all reverses = -1 (Y→T=-1, T→X=-1, Y→X=-1). Rest 0.
+    Same +1 layout as build_anc_full; -1s asserted explicitly (no propagate)."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    A[1, 0] = -1.0
+    for i in range(n_real):
+        A[2 + i, 0] = 1.0    # X→T
+        A[2 + i, 1] = 1.0    # X→Y
+        A[0, 2 + i] = -1.0   # T→X (reverse)
+        A[1, 2 + i] = -1.0   # Y→X (reverse)
+    return A
+
+
+def build_anc_diag(F, n_real):
+    """diag-only: diagonal of the real block is -1. Rest of real block 0.
+    Padded rows/cols still -1."""
+    A = _padded_neg1_only(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
 def psid_balance_subsample(X_train, t_train, y_train):
     """all T=1 + up to 500 T=0 sampled with np.random.seed(42), shuffle with
@@ -509,6 +592,17 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'ty_antisym':
         _mode_list = (('tyx',   build_anc_ty_antisym(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'all_variants':
+        _mode_list = (
+            ('v1a',   build_anc_v1a(F, n_real)),
+            ('v1b',   build_anc_v1b(F, n_real)),
+            ('v2a',   build_anc_v2a(F, n_real)),
+            ('v2b',   build_anc_v2b(F, n_real)),
+            ('v3a',   build_anc_v3a(F, n_real)),
+            ('v3b',   build_anc_v3b(F, n_real)),
+            ('noanc', build_anc_none(F, n_real)),
+            ('diag',  build_anc_diag(F, n_real)),
+        )
     else:
         _mode_list = (('anc',   build_anc_full(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
@@ -559,29 +653,43 @@ def main():
         rows.append(row)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
-        # Mode-agnostic printing: 'anc' or 'ty' depending on ANC_MODE.
-        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
-        print(
-            f'r={r:03d}  '
-            f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
-            f'em-{_pos_tag}: pehe={row[f"pehe_em_{_pos_tag}"]:6.3f} err={row[f"err_em_{_pos_tag}"]:5.3f}  |  '
-            f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
-            f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
-            f'({time.time()-t0:.0f}s)',
-            flush=True,
-        )
+        # Mode-agnostic printing: 'anc' | 'ty' | 'tyx' | 'v*' depending on ANC_MODE.
+        if ANC_MODE == 'all_variants':
+            # Compact one-line summary for all variants
+            parts = []
+            for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','noanc','diag'):
+                p = row.get(f'pehe_raw_{tag}', float('nan'))
+                parts.append(f'{tag}={p:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        else:
+            _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
+            print(
+                f'r={r:03d}  '
+                f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
+                f'em-{_pos_tag}: pehe={row[f"pehe_em_{_pos_tag}"]:6.3f} err={row[f"err_em_{_pos_tag}"]:5.3f}  |  '
+                f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
+                f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
+                f'({time.time()-t0:.0f}s)',
+                flush=True,
+            )
 
     def ms(k):
         v = np.array([r[k] for r in rows if np.isfinite(r[k])])
         if v.size < 2: return float('nan'), float('nan'), int(v.size)
         return v.mean(), v.std(ddof=1) / np.sqrt(len(v)), int(v.size)
 
-    _pos_tag = 'ty' if ANC_MODE == 'ty_only' else 'anc'
     print(f'\n══ {DATASET} summary (n={len(rows)}) ══')
-    for k in (f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
-              f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
-              'pehe_raw_noanc', 'err_raw_noanc',
-              'pehe_em_noanc',  'err_em_noanc'):
+    if ANC_MODE == 'all_variants':
+        keys = []
+        for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','noanc','diag'):
+            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    else:
+        _pos_tag = 'ty' if ANC_MODE == 'ty_only' else ('tyx' if ANC_MODE == 'ty_antisym' else 'anc')
+        keys = [f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
+                f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
+                'pehe_raw_noanc', 'err_raw_noanc',
+                'pehe_em_noanc',  'err_em_noanc']
+    for k in keys:
         m, s, n = ms(k)
         print(f'  {k:20s} = {m:8.3f} ± {s:6.3f}   (n={n})')
 
