@@ -555,6 +555,40 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
                 print(f'[eval-diag] X_intv shape={tuple(X_intv.shape)}  '
                       f'min={float(X_intv.min()):.3f} max={float(X_intv.max()):.3f}', flush=True)
 
+    # ── MATCH_UWYK_PADDING ── replicate UWYK's _pad_or_truncate_samples
+    # (is_train=False) behavior at eval: batch queries to max_n_test=1000,
+    # pad each batch's tail with zero rows, forward, drop padded predictions.
+    # UWYK's reproduce config uses max_number_test_samples_per_dataset=1000.
+    _max_n_test = int(os.environ.get('MATCH_UWYK_PADDING', '0'))
+    if _max_n_test > 0:
+        M_real = X_intv.shape[1]
+        F_dim = X_intv.shape[2]
+        p_y0_all, p_y1_all = [], []
+        for start in range(0, M_real, _max_n_test):
+            end = min(start + _max_n_test, M_real)
+            n_batch_real = end - start
+            X_intv_batch = X_intv[:, start:end, :]
+            if n_batch_real < _max_n_test:
+                pad_rows = _max_n_test - n_batch_real
+                zero_pad = torch.zeros((1, pad_rows, F_dim), dtype=X_intv.dtype, device=DEVICE)
+                X_intv_batch = torch.cat([X_intv_batch, zero_pad], dim=1)
+            if T_INTV_OVERRIDE:
+                t_val = float(T_INTV_OVERRIDE)
+                T_intv_batch = torch.full((1, _max_n_test, 1), t_val,
+                                          dtype=X_intv.dtype, device=DEVICE)
+                out = model(X_obs, T_obs, Y_obs, X_intv_batch, adj_t, T_intv=T_intv_batch)
+            else:
+                out = model(X_obs, T_obs, Y_obs, X_intv_batch, adj_t)
+            logits = out['predictions'] if isinstance(out, dict) else out
+            interior = logits[..., : J * J]
+            p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
+            p_y0_batch = p.sum(dim=-1).squeeze(0).cpu().numpy()   # (max_n_test, J)
+            p_y1_batch = p.sum(dim=-2).squeeze(0).cpu().numpy()
+            # Drop padded rows before appending
+            p_y0_all.append(p_y0_batch[:n_batch_real])
+            p_y1_all.append(p_y1_batch[:n_batch_real])
+        return np.concatenate(p_y0_all, axis=0), np.concatenate(p_y1_all, axis=0)
+
     # T_INTV_OVERRIDE: if set, feed a specific T_intv value at query instead
     # of the learned null_t_intv. Otherwise (default) the model's forward
     # fills in null_t_intv itself.
