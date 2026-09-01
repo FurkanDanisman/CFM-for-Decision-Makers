@@ -345,6 +345,45 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     X_intv = torch.from_numpy(X_test.astype(np.float32)).unsqueeze(0).to(DEVICE)
     adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)
 
+    # ── EVAL DIAGNOSTIC ── dump anc-matrix + tensor stats on first forward
+    # per dataset (opt-in via EVAL_DIAG=1). Verifies that what the model
+    # actually receives matches the training-time distribution: values
+    # strictly in {-1, 0, +1}, correct shape, propagate applied, X in the
+    # right scale, Y in the right scale.
+    if os.environ.get('EVAL_DIAG', '0') == '1':
+        with torch.no_grad():
+            a = adj_t.detach().cpu()
+            _mode_tag = 'anc' if bool((a > 0).any()) else 'noanc'
+            _seen = getattr(marginals_from_forward, '_diag_seen', set())
+            _key = (DATASET, _mode_tag)
+            if _key not in _seen:
+                _seen.add(_key)
+                marginals_from_forward._diag_seen = _seen
+                uniq, counts = torch.unique(a, return_counts=True)
+                uniq_dict = {float(v): int(c) for v, c in zip(uniq.tolist(), counts.tolist())}
+                other_mask = ~((a == -1) | (a == 0) | (a == +1))
+                print(f'\n[eval-diag] ══ DATASET={DATASET}  MODE={_mode_tag} ══', flush=True)
+                print(f'[eval-diag] adj shape={tuple(a.shape)}  dtype={a.dtype}', flush=True)
+                print(f'[eval-diag]   min={float(a.min()):.4f}  max={float(a.max()):.4f}', flush=True)
+                print(f'[eval-diag]   frac_neg1={float((a==-1).float().mean()):.4f}  '
+                      f'frac_zero={float((a==0).float().mean()):.4f}  '
+                      f'frac_pos1={float((a==+1).float().mean()):.4f}', flush=True)
+                print(f'[eval-diag]   OUT_OF_SET_count={int(other_mask.sum())}   '
+                      f'(should be 0; if >0 we have a bug)', flush=True)
+                print(f'[eval-diag]   unique-values-counts={uniq_dict}', flush=True)
+                _r = min(a.shape[-1], 8)
+                print(f'[eval-diag]   adj[:{_r},:{_r}] =\n{a[0, :_r, :_r].numpy()}', flush=True)
+                print(f'[eval-diag] X_obs  shape={tuple(X_obs.shape)}  '
+                      f'min={float(X_obs.min()):.3f} max={float(X_obs.max()):.3f} '
+                      f'mean={float(X_obs.mean()):.3f} std={float(X_obs.std()):.3f}', flush=True)
+                print(f'[eval-diag] Y_obs  shape={tuple(Y_obs.shape)}  '
+                      f'min={float(Y_obs.min()):.3f} max={float(Y_obs.max()):.3f} '
+                      f'mean={float(Y_obs.mean()):.3f} std={float(Y_obs.std()):.3f}', flush=True)
+                print(f'[eval-diag] T_obs  shape={tuple(T_obs.shape)}  '
+                      f'unique={torch.unique(T_obs).tolist()}', flush=True)
+                print(f'[eval-diag] X_intv shape={tuple(X_intv.shape)}  '
+                      f'min={float(X_intv.min()):.3f} max={float(X_intv.max()):.3f}', flush=True)
+
     # T_INTV_OVERRIDE: if set, feed a specific T_intv value at query instead
     # of the learned null_t_intv. Otherwise (default) the model's forward
     # fills in null_t_intv itself.
