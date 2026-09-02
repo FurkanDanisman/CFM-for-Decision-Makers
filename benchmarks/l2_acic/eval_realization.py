@@ -74,6 +74,11 @@ def main() -> int:
     ap.add_argument('--checkpoint10', default=os.environ.get('CHECKPOINT10', ''))
     ap.add_argument('--checkpoint-dopfn-bb',
                      default=os.environ.get('CHECKPOINT_DOPFN_BB', ''))
+    ap.add_argument('--checkpoint-graph2d',
+                     default=os.environ.get('CHECKPOINT_GRAPH2D', ''))
+    ap.add_argument('--graph2d-anc-mode',
+                     default=os.environ.get('GRAPH2D_ANC_MODE', 'v6a'),
+                     choices=['v6a', 'noanc', 'full'])
     ap.add_argument('--restrict-features', type=int, default=0)   # unused for ACIC
     ap.add_argument('--acic-cache-dir',
                      default=os.environ.get('ACIC_CACHE_DIR', ''))
@@ -91,7 +96,7 @@ def main() -> int:
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    allowed = {'ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb'}
+    allowed = {'ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb', 'ours_graph2d'}
     assert all(m in allowed for m in methods), f'bad methods: {methods}'
 
     if not args.repo:
@@ -142,7 +147,7 @@ def main() -> int:
     p_tau_true = true_cate_per_query(truth)
     p_ate_true = true_ate_barycenter(p_tau_true, wasserstein_barycenter_1d)
 
-    RUN_ORDER = ['ours_fn50', 'ours_dopfn_bb', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
+    RUN_ORDER = ['ours_fn50', 'ours_dopfn_bb', 'ours_graph2d', 'dopfn', 'uwyk_noanc', 'uwyk_anc']
     method_out = {}
 
     def _cache_path(m):
@@ -178,6 +183,9 @@ def main() -> int:
         elif m == 'ours_dopfn_bb':
             method_out[m] = ihdp_ev._run_ours_dopfn_bb(
                 cd, args.checkpoint_dopfn_bb, truth, args, n_ctx)
+        elif m == 'ours_graph2d':
+            method_out[m] = ihdp_ev._run_ours_graph2d(
+                cd, args.checkpoint_graph2d, truth, args, n_ctx)
         elif m == 'dopfn':
             method_out[m] = ihdp_ev._run_dopfn(cd, truth, args, n_ctx)
         elif m == 'uwyk_noanc':

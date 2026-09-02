@@ -25,6 +25,9 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoin
 UWYK_PREDICTIVE_CKPT_DIR="${UWYK_PREDICTIVE_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional}"
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
 CHECKPOINT10="${CHECKPOINT10:-$REPO/checkpoints_dopfn/step_50000_final.pt}"
+CHECKPOINT_DOPFN_BB="${CHECKPOINT_DOPFN_BB:-}"
+CHECKPOINT_GRAPH2D="${CHECKPOINT_GRAPH2D:-}"
+GRAPH2D_ANC_MODE="${GRAPH2D_ANC_MODE:-v6a}"
 N_CONTEXT="${N_CONTEXT:-0}"                    # 0 = use full training set
 MALC_B="${MALC_B:-100}"
 MALC_MAX_K="${MALC_MAX_K:-1}"
@@ -47,21 +50,24 @@ export PYTHONUNBUFFERED=1
 mkdir -p "$(dirname "$OUT")"
 
 python "$REPO/benchmarks/l2_ihdp/eval_realization.py" \
-    --realization    "$REALIZATION" \
-    --out            "$OUT" \
-    --repo           "$REPO" \
-    --causalpfn      "$CAUSALPFN" \
-    --dopfn          "$DOPFN" \
-    --uwyk-src       "$UWYK_SRC" \
-    --uwyk-ckpt-dir  "$UWYK_CKPT_DIR" \
+    --realization        "$REALIZATION" \
+    --out                "$OUT" \
+    --repo               "$REPO" \
+    --causalpfn          "$CAUSALPFN" \
+    --dopfn              "$DOPFN" \
+    --uwyk-src           "$UWYK_SRC" \
+    --uwyk-ckpt-dir      "$UWYK_CKPT_DIR" \
     --uwyk-predictive-ckpt-dir "$UWYK_PREDICTIVE_CKPT_DIR" \
-    --checkpoint50   "$CHECKPOINT50" \
-    --checkpoint10   "$CHECKPOINT10" \
-    --n-context      "$N_CONTEXT" \
-    --malc-B         "$MALC_B" \
-    --malc-max-K     "$MALC_MAX_K" \
-    --n-eval         "$N_EVAL" \
-    --uwyk-n-samples "$UWYK_N_SAMPLES" \
-    --methods        "$METHODS"
+    --checkpoint50       "$CHECKPOINT50" \
+    --checkpoint10       "$CHECKPOINT10" \
+    --checkpoint-dopfn-bb "$CHECKPOINT_DOPFN_BB" \
+    --checkpoint-graph2d "$CHECKPOINT_GRAPH2D" \
+    --graph2d-anc-mode   "$GRAPH2D_ANC_MODE" \
+    --n-context          "$N_CONTEXT" \
+    --malc-B             "$MALC_B" \
+    --malc-max-K         "$MALC_MAX_K" \
+    --n-eval             "$N_EVAL" \
+    --uwyk-n-samples     "$UWYK_N_SAMPLES" \
+    --methods            "$METHODS"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE r=$REALIZATION"
