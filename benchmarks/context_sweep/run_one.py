@@ -160,10 +160,13 @@ def main():
                      help='ipfn = InterventionalPFN checkpoint (default); '
                           'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint; '
                           'graph2d = GraphConditioned2DHead (needs --anc-mode).')
-    ap.add_argument('--anc-mode',     choices=['v6a', 'noanc'], default='v6a',
-                     help='For --backbone graph2d: v6a = "all -1s" unconfoundedness '
-                          'anc matrix, noanc = padded-only (real block all zero). '
-                          'Matches ANC_MODE=v6a_only in eval_graph2d_realcause.py.')
+    ap.add_argument('--anc-mode',     choices=['v6a', 'noanc', 'full'], default='v6a',
+                     help='For --backbone graph2d: '
+                          'v6a   = "all -1s" reverse-edge unconfoundedness matrix; '
+                          'noanc = padded-only (real block zero); '
+                          'full  = UWYK-Ancestral encoding — T→Y=+1, X_i→T=+1, '
+                                 'X_i→Y=+1 (matches build_ancestral_adjacency in '
+                                 'benchmarks/methods/uwyk.py and the paper table).')
     ap.add_argument('--ours-max-n-train', type=int, default=1000,
                      help='ours_pipeline clusters context into ≤this-size blocks '
                           'when N_train exceeds it (default 1000). Pass a value ≥ '
