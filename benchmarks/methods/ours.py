@@ -308,7 +308,8 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
         # padded region: -1 on rows/cols and diagonal
         for i in range(n_real, F):
             A[2 + i, :] = -1.0; A[:, 2 + i] = -1.0; A[2 + i, 2 + i] = -1.0
-        if getattr(args, 'anc_mode', 'v6a') == 'v6a':
+        _mode = getattr(args, 'anc_mode', 'v6a')
+        if _mode == 'v6a':
             # v6a: real-block diagonal -1, Y→T = -1, Y→X_i / T→X_i = -1
             for i in range(2 + n_real):
                 A[i, i] = -1.0
@@ -316,6 +317,15 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
             for i in range(n_real):
                 A[1, 2 + i] = -1.0
                 A[0, 2 + i] = -1.0
+        elif _mode == 'full':
+            # UWYK-Ancestral: forward +1 edges T→Y, X_i→T, X_i→Y (matches
+            # benchmarks/methods/uwyk.py:build_ancestral_adjacency, i.e. the
+            # encoding UWYK's paper uses for its "Anc" row).
+            A[0, 1] = 1.0
+            for i in range(n_real):
+                A[2 + i, 0] = 1.0
+                A[2 + i, 1] = 1.0
+        # else 'noanc': real block stays all zero
         _adj_np = A
 
     def _uwyk_hierarchical_cluster(X_train, max_n_train, random_state=42):
