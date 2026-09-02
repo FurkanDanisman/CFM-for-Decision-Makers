@@ -109,6 +109,13 @@ def _sample_scm(source, seed, N, n_test, uwyk_src, causalpfn_root):
     elif source == 'poly':
         # scm_polynomial loads causalpfn's PolynomialDataset by file path
         # to sidestep sys.path collisions with our own R-PFN benchmarks/.
+        # BUT causalpfn.benchmarks.base does `from causalpfn.synthetic import ...`
+        # which needs the causalpfn package itself on sys.path.
+        _cpfn_src = os.path.join(causalpfn_root, 'src') if causalpfn_root else ''
+        if _cpfn_src and os.path.isdir(_cpfn_src) and _cpfn_src not in sys.path:
+            sys.path.insert(0, _cpfn_src)
+        if causalpfn_root and causalpfn_root not in sys.path:
+            sys.path.insert(0, causalpfn_root)
         from scm_polynomial import sample_as_cate_dataset
         return sample_as_cate_dataset(scm_seed=seed, n_context=N, n_test=n_test,
                                        causalpfn_root=causalpfn_root)
