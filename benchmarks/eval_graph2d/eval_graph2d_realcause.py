@@ -89,6 +89,25 @@ from losses.BarDistribution2D import (  # noqa: E402
 # TAIL_MASS=0 restores the old interior-only behaviour for A/B comparison.
 TAIL_MASS = os.environ.get('TAIL_MASS', '1') == '1'
 
+# ── Real-block diagonal ───────────────────────────────────────────────────
+# The model adds the identity to the adjacency before turning it into
+# attention biases (PartialGraphConditionedInterventionalPFN.py:984):
+#     A = clamp(A + I, -1, 1)
+# so the diagonal you supply is NOT read literally:
+#     you write -1  ->  +I -> 0   -> no self-bias      <- what training emits
+#     you write  0  ->  +I -> +1  -> +bias_edge        <- what we emit
+# Training always ends with propagate_ancestor_knowledge, which forces the
+# diagonal to -1 (graph_utils.py:220,280), so the model has never seen a
+# self-bias. Leaving the real-block diagonal at 0 gives every one of the
+# n_real+2 real tokens an out-of-distribution positive boost on its own
+# attention, in every feature-attention layer and head.
+#
+# UWYK's own eval scripts have this same gap (dofm_no_clustering.py:29-53),
+# so DEFAULT IS OFF: the replica stays bit-identical to what the reproduce
+# branch feeds its model. FIX_DIAG=1 writes the training-correct -1 instead.
+# It is applied to BOTH graph modes, so the control arm stays clean.
+FIX_DIAG = os.environ.get('FIX_DIAG', '0') == '1'
+
 # Scale the learned soft-attention-bias params at inference. Smaller values
 # soften the anc-induced attention shift: bias_edge=learned*scale means the
 # +boost applied at anc edges is scale× smaller. Purpose: preserve some
@@ -207,12 +226,20 @@ def build_adjacency_matrix(model_n_features, n_real_features, graph_mode="full_g
         adjacency_matrix[:, feat_idx] = -1.0
         adjacency_matrix[feat_idx, feat_idx] = -1.0
 
+    # REAL block diagonal: -1 ("not its own ancestor") is what training emits,
+    # and is the only value that yields no self-attention bias. See FIX_DIAG.
+    # Safe after the padded loop: that loop only touches padded indices.
+    if FIX_DIAG:
+        for i in range(feature_offset + n_real_features):
+            adjacency_matrix[i, i] = -1.0
+
     # Called once per realization per mode; log each distinct mode only once.
     _seen = getattr(build_adjacency_matrix, '_seen_modes', set())
     if graph_mode not in _seen:
         _seen.add(graph_mode)
         build_adjacency_matrix._seen_modes = _seen
-        print(f"Graph knowledge: {msg}", flush=True)
+        _diag = 'real-diag=-1 (FIX_DIAG)' if FIX_DIAG else 'real-diag=0 (UWYK-faithful)'
+        print(f"Graph knowledge: {msg}  [{_diag}]", flush=True)
 
     return adjacency_matrix
 
