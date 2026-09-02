@@ -159,17 +159,7 @@ def _scale_y(y):
 
 
 def build_adjacency_matrix(model_n_features, n_real_features, graph_mode="full_graph"):
-    """Build adjacency matrix based on graph knowledge mode.
-
-    Mirrors UWYK's dofm_full_conditioning.py::build_adjacency_matrix verbatim
-    (g4cfm/RealCauseEval/run_baselines/dofm_full_conditioning.py) so the graph
-    supplied to the model here is bit-identical to what the reproduce branch
-    feeds its own model.
-
-    Convention: index 0 = treatment T, index 1 = outcome Y, indices 2..F+1 =
-    covariates. Entries are -1 (known non-ancestor), 0 (unknown), +1 (known
-    ancestor). No propagation is applied, matching UWYK.
-    """
+    """Build adjacency matrix based on graph knowledge mode."""
     # Initialize all as unknown (0)
     adjacency_matrix = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
 
@@ -179,19 +169,6 @@ def build_adjacency_matrix(model_n_features, n_real_features, graph_mode="full_g
 
     if graph_mode == "all_unknown":
         msg = "ALL UNKNOWN (no graph information provided)"
-    elif graph_mode == "t_to_y_only":
-        adjacency_matrix[T_idx, Y_idx] = 1.0
-        msg = "T->Y=1 only"
-    elif graph_mode == "x_to_t_only":
-        adjacency_matrix[T_idx, Y_idx] = 1.0
-        for i in range(n_real_features):
-            adjacency_matrix[feature_offset + i, T_idx] = 1.0
-        msg = "T->Y=1, X->T=1, X->Y=0"
-    elif graph_mode == "x_to_y_only":
-        adjacency_matrix[T_idx, Y_idx] = 1.0
-        for i in range(n_real_features):
-            adjacency_matrix[feature_offset + i, Y_idx] = 1.0
-        msg = "T->Y=1, X->T=0, X->Y=1"
     elif graph_mode == "full_graph":
         adjacency_matrix[T_idx, Y_idx] = 1.0
         for i in range(n_real_features):
