@@ -65,6 +65,12 @@ def main():
     ap.add_argument('--q', type=int, default=None,
                      help='Skip candidate search and plot this query directly. '
                           'Requires --r too.')
+    ap.add_argument('--split', action='store_true',
+                     help='Save one figure per method (individual plots) instead of '
+                          'a single combined subplot grid. Bare panels: axes kept, '
+                          'no title / axis labels / legend.')
+    ap.add_argument('--split-legend', action='store_true',
+                     help='With --split, show the legend on the Do-PFN-bb panel only.')
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.join(args.repo, 'benchmarks', 'l2_ihdp'))
@@ -341,11 +347,10 @@ def main():
         n_rows = (n + n_cols - 1) // n_cols
 
         # ─── Panel 1: Marginals ────────────────────────────────────────
-        fig, axes = plt.subplots(n_rows, n_cols,
-                                   figsize=(5.4 * n_cols, 3.6 * n_rows),
-                                   squeeze=False)
-        for k, (label, key) in enumerate(method_list):
-            ax = axes[k // n_cols][k % n_cols]
+        tau_true = dens['mu1'] - dens['mu0']
+        suffix = f'_top{rank}' if args.top_k > 1 else ''
+
+        def _draw_marginal(ax, label, key, show_legend):
             ax.plot(Y_PLOT, truth_y0, color='red', ls=':', lw=1.7)
             ax.plot(Y_PLOT, truth_y1, color='red', ls=':', lw=1.7)
             for mu in (dens['mu0'], dens['mu1']):
@@ -354,9 +359,9 @@ def main():
                          markeredgecolor='white', markeredgewidth=1.0, zorder=6)
             p0 = method_y0[key]; p1 = method_y1[key]
             ax.plot(Y_PLOT, p0, color=PALETTE['do0'], lw=1.9,
-                     label=r'$p(Y_{do0})$' if k == 0 else None)
+                     label=r'$p(Y_{do0})$' if show_legend else None)
             ax.plot(Y_PLOT, p1, color=PALETTE['do1'], lw=1.9,
-                     label=r'$p(Y_{do1})$' if k == 0 else None)
+                     label=r'$p(Y_{do1})$' if show_legend else None)
             E0 = _est_mean(Y_PLOT, p0); E1 = _est_mean(Y_PLOT, p1)
             ax.plot(E0, float(np.interp(E0, Y_PLOT, p0)), 'o',
                      color=PALETTE['do0'], markersize=9,
@@ -365,23 +370,44 @@ def main():
                      color=PALETTE['do1'], markersize=9,
                      markeredgecolor='white', markeredgewidth=1.0, zorder=5)
             ax.set_title(label, fontsize=11)
-            if k // n_cols == n_rows - 1: ax.set_xlabel(r'$Y$  (scaled)')
-            if k %  n_cols == 0:          ax.set_ylabel('density')
             ax.set_xlim(-1.0, 1.0)
             ax.grid(alpha=0.25)
-            if k == 0: ax.legend(fontsize=9, loc='upper right')
-        for k in range(n, n_rows * n_cols):
-            axes[k // n_cols][k % n_cols].set_visible(False)
-        tau_true = dens['mu1'] - dens['mu0']
-        fig.suptitle(f'{args.dataset.upper()} r={r} q={q}   '
-                      f'$\\tau_{{true}}$={tau_true:+.2f}   —   marginals vs TRUE',
-                      fontsize=12, y=1.0)
-        fig.tight_layout(rect=[0, 0, 1, 0.985])
-        suffix = f'_top{rank}' if args.top_k > 1 else ''
-        outpng = f'{args.out}{suffix}_marginals.png'
-        fig.savefig(outpng, dpi=140, bbox_inches='tight')
-        plt.close(fig)
-        print(f'[saved] {outpng}')
+            if show_legend: ax.legend(fontsize=9, loc='upper right')
+
+        if getattr(args, 'split', False):
+            # One figure (and one file) per method. Bare panels: real axes
+            # (ticks + numbers) kept, but no title / no axis-label text / no
+            # legend. Legend only on Do-PFN-bb if --split-legend is passed.
+            for k, (label, key) in enumerate(method_list):
+                fig, ax = plt.subplots(figsize=(5.4, 3.6))
+                want_legend = getattr(args, 'split_legend', False) and key == 'bb'
+                _draw_marginal(ax, label, key, show_legend=want_legend)
+                ax.set_title('')                    # drop per-method title
+                fig.tight_layout()
+                safe = label.replace('=', '').replace('-', '').replace(' ', '')
+                outpng = f'{args.out}{suffix}_marginals_{safe}.png'
+                fig.savefig(outpng, dpi=300, bbox_inches='tight')
+                plt.close(fig)
+                print(f'[saved] {outpng}')
+        else:
+            fig, axes = plt.subplots(n_rows, n_cols,
+                                       figsize=(5.4 * n_cols, 3.6 * n_rows),
+                                       squeeze=False)
+            for k, (label, key) in enumerate(method_list):
+                ax = axes[k // n_cols][k % n_cols]
+                _draw_marginal(ax, label, key, show_legend=(k == 0))
+                if k // n_cols == n_rows - 1: ax.set_xlabel(r'$Y$  (scaled)')
+                if k %  n_cols == 0:          ax.set_ylabel('density')
+            for k in range(n, n_rows * n_cols):
+                axes[k // n_cols][k % n_cols].set_visible(False)
+            fig.suptitle(f'{args.dataset.upper()} r={r} q={q}   '
+                          f'$\\tau_{{true}}$={tau_true:+.2f}   —   marginals vs TRUE',
+                          fontsize=12, y=1.0)
+            fig.tight_layout(rect=[0, 0, 1, 0.985])
+            outpng = f'{args.out}{suffix}_marginals.png'
+            fig.savefig(outpng, dpi=140, bbox_inches='tight')
+            plt.close(fig)
+            print(f'[saved] {outpng}')
 
         # ─── Panel 2: CATE (per query, single r/q) ─────────────────────
         # Orange fill for method, red dotted truth, dot at both means.
