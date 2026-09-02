@@ -22,6 +22,8 @@ CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 CHECKPOINT50="${CHECKPOINT50:-$REPO/checkpoints/step_50000_final.pt}"
+CHECKPOINT_GRAPH2D="${CHECKPOINT_GRAPH2D:-}"
+GRAPH2D_ANC_MODE="${GRAPH2D_ANC_MODE:-v6a}"
 CHECKPOINT_DOPFN_BB="${CHECKPOINT_DOPFN_BB:-$DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step_200000.pt}"
 N_CONTEXT="${N_CONTEXT:-0}"
 MALC_B="${MALC_B:-100}"
@@ -55,6 +57,8 @@ python "$REPO/benchmarks/l2_acic/eval_realization.py" \
     --uwyk-ckpt-dir      "$UWYK_CKPT_DIR" \
     --checkpoint50       "$CHECKPOINT50" \
     --checkpoint-dopfn-bb "$CHECKPOINT_DOPFN_BB" \
+    --checkpoint-graph2d "$CHECKPOINT_GRAPH2D" \
+    --graph2d-anc-mode   "$GRAPH2D_ANC_MODE" \
     --n-context          "$N_CONTEXT" \
     --malc-B             "$MALC_B" \
     --malc-max-K         "$MALC_MAX_K" \
