@@ -50,15 +50,18 @@ def build_meta_dataset():
 
 
 def main():
+    from torch.utils.data import DataLoader
     print(f'[bootstrap] instantiating BackdoorDGPMetaDataset ({N_TASKS} tasks × {N_SAMPLES} samples)', flush=True)
     ds = build_meta_dataset()
+    # BackdoorDGPMetaDataset is an IterableDataset — must iterate via DataLoader
+    loader = DataLoader(ds, batch_size=1, num_workers=0)
+    it = iter(loader)
 
     ys_std_all = []
     max_per_task = []
     for t in range(N_TASKS):
-        # Sample one task via __getitem__ (returns dict with 'y' key)
-        batch = ds[t]
-        y = np.asarray(batch['y']).reshape(-1).astype(np.float64)
+        batch = next(it)
+        y = np.asarray(batch['y']).reshape(-1).astype(np.float64)  # (1, N) → (N,)
         mu = y.mean(); sd = max(y.std(), 1e-6)
         y_std = (y - mu) / sd
         ys_std_all.append(y_std)
