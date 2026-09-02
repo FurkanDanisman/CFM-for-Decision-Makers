@@ -74,7 +74,9 @@ N_SCMS_TOTAL="${N_SCMS_TOTAL:-500}"
 N_SCMS_PER_TASK="${N_SCMS_PER_TASK:-50}"
 OURS_ONLY_FLAG=""
 [ "${OURS_ONLY:-0}" = "1" ] && OURS_ONLY_FLAG="--ours-only"
-BACKBONE="${BACKBONE:-ipfn}"                        # ipfn | dopfn_bb
+BACKBONE="${BACKBONE:-ipfn}"                        # ipfn | dopfn_bb | graph2d
+ANC_MODE="${ANC_MODE:-v6a}"                          # v6a | noanc  (only if BACKBONE=graph2d)
+OURS_MAX_N_TRAIN="${OURS_MAX_N_TRAIN:-1000}"         # ≥ N_context disables 1000-cluster cap
 MALC_B="${MALC_B:-500}"                              # MALC bootstrap draws
 MALC_MAX_K="${MALC_MAX_K:-3}"                        # MALC mixture max K
 Y_LOG_TRANSFORM="${Y_LOG_TRANSFORM:-0}"              # 1 → log(y - y_min + 1) inference
@@ -137,6 +139,8 @@ for SEED in $(seq "$SEED_START" "$SEED_END"); do
         --dopfn         "$DOPFN" \
         --workers       "$WORKERS" \
         --backbone      "$BACKBONE" \
+        --anc-mode      "$ANC_MODE" \
+        --ours-max-n-train "$OURS_MAX_N_TRAIN" \
         --malc-B        "$MALC_B" \
         --malc-max-K    "$MALC_MAX_K" \
         --y-winsorize   "$Y_WINSORIZE" \
