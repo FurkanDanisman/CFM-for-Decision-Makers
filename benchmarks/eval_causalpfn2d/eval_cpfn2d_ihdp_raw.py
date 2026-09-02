@@ -157,9 +157,22 @@ def _load_state_dict_safe(model, sd):
 
 def main():
     ck = torch.load(CKPT, map_location=DEVICE, weights_only=False)
-    cfg = ck['config']
-    edges = ck['edges']
-    step = ck.get('step', 'unknown')
+    # Two checkpoint layouts:
+    #   (a) custom trainer  → ck['config'] flat, ck['edges'] tensor, ck['step']
+    #   (b) CausalPFN step-ckpt → ck['model_config'] nested, edges lives
+    #       in ck['model_state_dict']['edges'], step in ck['actual_step']
+    if 'config' in ck:
+        cfg = ck['config']
+        edges = ck['edges']
+        step = ck.get('step', 'unknown')
+    else:
+        mc = ck['model_config']
+        cfg = dict(mc['model'])
+        cfg['y_scaling_mode'] = mc.get('y_scaling_mode', 'pooled_std')
+        cfg['loss_type']      = mc.get('loss_type',      'density')
+        cfg['hlgauss_sigma']  = float(mc.get('hlgauss_sigma', 0.2))
+        edges = ck['model_state_dict']['edges']
+        step = ck.get('actual_step', 'unknown')
 
     print(f'[bootstrap] ckpt={CKPT}')
     print(f'[bootstrap] step={step}  J={cfg["J"]}  num_features={cfg["num_features"]}')
