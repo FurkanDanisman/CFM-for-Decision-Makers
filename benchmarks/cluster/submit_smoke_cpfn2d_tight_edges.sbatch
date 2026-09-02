@@ -107,7 +107,7 @@ python -u train.py \
     callbacks.checkpoint.frequency=1 \
     callbacks.checkpoint.top_k=10000 \
     ~callbacks.eval_cate \
-    trainer.max_epochs=1 \
+    trainer.max_epochs=1000 \
     trainer.num_model_updates="$N_STEPS" \
     model.obj._target_=rpfn_patches.cpfn2d_loader.load_cpfn2d_from_tabdpt \
     model.obj.ckpt_path="$WARMSTART_LOCAL" \
