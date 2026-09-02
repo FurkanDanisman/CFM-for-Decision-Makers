@@ -400,7 +400,21 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
 
 def main():
     ck = torch.load(CKPT, map_location=DEVICE, weights_only=False)
-    cfg = ck['config']; edges = ck['edges']; step = ck.get('step', '?')
+    # Two checkpoint layouts:
+    #   (a) custom trainer  → ck['config'] flat, ck['edges'] tensor, ck['step']
+    #   (b) CausalPFN step-ckpt → ck['model_config'] nested, edges lives inside
+    #       ck['model_state_dict']['edges'], step in ck['actual_step']
+    if 'config' in ck:
+        cfg = ck['config']; edges = ck['edges']
+        step = ck.get('step', '?')
+    else:
+        mc = ck['model_config']
+        cfg = dict(mc['model'])
+        cfg['y_scaling_mode'] = mc.get('y_scaling_mode', 'pooled_std')
+        cfg['loss_type']      = mc.get('loss_type',      'density')
+        cfg['hlgauss_sigma']  = float(mc.get('hlgauss_sigma', 0.2))
+        edges = ck['model_state_dict']['edges']
+        step = ck.get('actual_step', '?')
     y_scaling_mode = cfg.get('y_scaling_mode', 'pooled_std')
     loss_type      = cfg.get('loss_type',      'density')
     hlgauss_sigma  = float(cfg.get('hlgauss_sigma', 0.2))
