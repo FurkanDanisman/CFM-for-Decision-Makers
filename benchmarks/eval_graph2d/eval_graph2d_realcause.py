@@ -115,7 +115,10 @@ X_CLIP_QUANTILE = os.environ.get('X_CLIP_QUANTILE', '')  # e.g. '0.99'
 # Default '' = no subsampling (current behavior). Set e.g. '1000' to
 # match training context size.
 EVAL_MAX_CONTEXT = os.environ.get('EVAL_MAX_CONTEXT', '')
-EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
+EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
+# PSID-bal subsampling seed. Kept at 42 (matches reproduce branch).
+# Env-controllable but default preserves reproduce-branch consistency.
+PSID_BAL_SEED = int(os.environ.get('PSID_BAL_SEED', '42'))
 
 # Anc-content probe. Default 'full' = original T→Y + X→T + X→Y +1 edges.
 # 'ty_only' = only T→Y = +1; X→T and X→Y left as 0 (unknown). Tests whether
@@ -381,6 +384,107 @@ def build_anc_v5b(F, n_real):
     return A
 
 
+def build_anc_v6a(F, n_real):
+    """v6a: no +1 edges anywhere. All -1s from unconfoundedness:
+      - Diagonal (self-loops) = -1
+      - Y→T = -1 (T causes Y, not the other way)
+      - Y→X_i = -1 for all real X (Y is downstream)
+      - T→X_i = -1 for all real X (T is downstream)
+    Everything else in real block = 0. Padded region -1."""
+    A = _padded_neg1_only(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    A[1, 0] = -1.0   # Y→T = -1
+    for i in range(n_real):
+        A[1, 2 + i] = -1.0   # Y→X_i
+        A[0, 2 + i] = -1.0   # T→X_i
+    return A
+
+
+def build_anc_combo(F, n_real, code, diag_neg=False):
+    """Parameterized anc builder. code = 3-char string of {P, N, B, O} for
+    edges [T→Y, X→T, X→Y]:
+      - P: assert +1 in ancestor direction only
+      - N: assert -1 in reverse direction only
+      - B: both (+1 in ancestor direction, -1 in reverse)
+      - O: omit (leave as 0)
+    diag_neg: if True, set real-block diagonal to -1. Else 0.
+    Padded region: always -1."""
+    assert len(code) == 3 and all(c in 'PNBO' for c in code), f'bad code: {code}'
+    A = _padded_neg1_only(F, n_real)
+    T_idx, Y_idx = 0, 1
+    # Edge 1: T→Y
+    c = code[0]
+    if c in ('P', 'B'):
+        A[T_idx, Y_idx] = 1.0
+    if c in ('N', 'B'):
+        A[Y_idx, T_idx] = -1.0
+    # Edge 2: X_i → T for all real i
+    c = code[1]
+    for i in range(n_real):
+        if c in ('P', 'B'):
+            A[2 + i, T_idx] = 1.0
+        if c in ('N', 'B'):
+            A[T_idx, 2 + i] = -1.0
+    # Edge 3: X_i → Y for all real i
+    c = code[2]
+    for i in range(n_real):
+        if c in ('P', 'B'):
+            A[2 + i, Y_idx] = 1.0
+        if c in ('N', 'B'):
+            A[Y_idx, 2 + i] = -1.0
+    if diag_neg:
+        for i in range(2 + n_real):
+            A[i, i] = -1.0
+    return A
+
+
+def _three_edge_54_tags_and_codes(F, n_real):
+    """Return list of (tag, adj) for all 27 three-edge codes × 2 diag choices.
+    Tag format: {code}{diag_suffix} where suffix = '' for diag=0 or 'n' for diag=-1.
+    Example: 'PPP' (diag=0), 'PPPn' (diag=-1). 54 total."""
+    codes3 = [a + b + c for a in 'PNB' for b in 'PNB' for c in 'PNB']  # 27
+    out = []
+    for code in codes3:
+        out.append((code,      build_anc_combo(F, n_real, code, diag_neg=False)))
+        out.append((code + 'n', build_anc_combo(F, n_real, code, diag_neg=True)))
+    return out
+
+
+def build_anc_v6b(F, n_real):
+    """v6b: same as v6a (all -1s from unconfoundedness) but with diagonal = 0.
+    Only Y→T=-1, Y→X_i=-1, T→X_i=-1. No self-loop assertion. No +1 edges.
+    Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[1, 0] = -1.0   # Y→T = -1
+    for i in range(n_real):
+        A[1, 2 + i] = -1.0   # Y→X_i
+        A[0, 2 + i] = -1.0   # T→X_i
+    return A
+
+
+def build_anc_v7a(F, n_real):
+    """v7a: T→Y=+1 AND diagonal=-1. Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
+def build_anc_v7b(F, n_real):
+    """v7b: T→Y=+1, Y→T=-1, diagonal=-1. Rest of real block 0. Padded -1."""
+    A = _padded_neg1_only(F, n_real)
+    A[0, 1] = 1.0
+    A[1, 0] = -1.0
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
 # ── PSID-balanced subsample (mirrors dofm_psid_balanced.py verbatim) ────
 def psid_balance_subsample(X_train, t_train, y_train):
     """all T=1 + up to 500 T=0 sampled with np.random.seed(42), shuffle with
@@ -396,17 +500,17 @@ def psid_balance_subsample(X_train, t_train, y_train):
     n_control = X_ct.shape[0]
     n_keep = min(500, n_control)
     if n_control > n_keep:
-        np.random.seed(42)
+        np.random.seed(PSID_BAL_SEED)
         idx = np.random.choice(n_control, n_keep, replace=False)
         X_ct = X_ct[idx]; t_ct = t_ct[idx]; y_ct = y_ct[idx]
-        print(f'[PSID-bal] kept {X_tr.shape[0]} treated, sampled {n_keep}/{n_control} controls',
-              flush=True)
+        print(f'[PSID-bal] kept {X_tr.shape[0]} treated, sampled {n_keep}/{n_control} controls '
+              f'(seed={PSID_BAL_SEED})', flush=True)
     else:
         print(f'[PSID-bal] kept {X_tr.shape[0]} treated, all {n_control} controls',
               flush=True)
 
     X = np.vstack([X_tr, X_ct]); t = np.concatenate([t_tr, t_ct]); y = np.concatenate([y_tr, y_ct])
-    perm = np.random.RandomState(42).permutation(X.shape[0])
+    perm = np.random.RandomState(PSID_BAL_SEED).permutation(X.shape[0])
     return X[perm], t[perm], y[perm]
 
 
@@ -681,6 +785,37 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     elif ANC_MODE == 'v5b_only':
         _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v6b_only':
+        _mode_list = (('v6b',   build_anc_v6b(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'v6a_only':
+        _mode_list = (('v6a',   build_anc_v6a(F, n_real)),
+                      ('noanc', build_anc_none(F, n_real)))
+    elif ANC_MODE == 'all_combos':
+        # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
+        # Diagonal always 0; padded region always -1.
+        _codes = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
+        _mode_list = tuple((code, build_anc_combo(F, n_real, code)) for code in _codes)
+    elif ANC_MODE == 'three_edge_all':
+        # All 27 three-edge combos (P|N|B for each of T→Y, X→T, X→Y) × 2 diag
+        # choices = 54 variants. All 3 edges asserted (no O). Tags use 'n'
+        # suffix for diag=-1 variant (e.g., PPP vs PPPn).
+        _mode_list = tuple(_three_edge_54_tags_and_codes(F, n_real))
+    elif ANC_MODE == 'focus3':
+        _mode_list = (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s
+            ('noanc', build_anc_none(F, n_real)),
+        )
+    elif ANC_MODE == 'focus4':
+        _mode_list = (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s, diag -1
+            ('v6b',   build_anc_v6b(F, n_real)),   # all -1s, no +1s, diag 0
+            ('noanc', build_anc_none(F, n_real)),
+        )
     elif ANC_MODE == 'all_variants':
         _mode_list = (
             ('v1a',   build_anc_v1a(F, n_real)),
@@ -754,12 +889,38 @@ def main():
                 p = row.get(f'pehe_raw_{tag}', float('nan'))
                 parts.append(f'{tag}={p:6.3f}')
             print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'focus3':
+            parts = []
+            for tag in ('v7a','v7b','v6a','noanc'):
+                p = row.get(f'pehe_raw_{tag}', float('nan'))
+                parts.append(f'{tag}={p:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'focus4':
+            parts = []
+            for tag in ('v7a','v7b','v6a','v6b','noanc'):
+                p = row.get(f'pehe_raw_{tag}', float('nan'))
+                parts.append(f'{tag}={p:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'all_combos':
+            _tags_all = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
+            # 64 tags is too long for one line — print just the min-PEHE tag
+            best = min(_tags_all, key=lambda t: row.get(f'pehe_raw_{t}', float('inf')))
+            print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
+                  f'OOO(noanc) pehe={row["pehe_raw_OOO"]:6.3f}  ({time.time()-t0:.0f}s)', flush=True)
+        elif ANC_MODE == 'three_edge_all':
+            _tags_all = [c + s for c in [a+b+d for a in 'PNB' for b in 'PNB' for d in 'PNB']
+                                for s in ('', 'n')]
+            best = min(_tags_all, key=lambda t: row.get(f'pehe_raw_{t}', float('inf')))
+            print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
+                  f'({time.time()-t0:.0f}s)', flush=True)
         else:
             _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                         'tyx' if ANC_MODE == 'ty_antisym' else
                         'v4a' if ANC_MODE == 'v4a_only' else
                         'v5a' if ANC_MODE == 'v5a_only' else
-                        'v5b' if ANC_MODE == 'v5b_only' else 'anc')
+                        'v5b' if ANC_MODE == 'v5b_only' else
+                        'v6a' if ANC_MODE == 'v6a_only' else
+                        'v6b' if ANC_MODE == 'v6b_only' else 'anc')
             print(
                 f'r={r:03d}  '
                 f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
@@ -780,6 +941,23 @@ def main():
         keys = []
         for tag in ('v1a','v1b','v2a','v2b','v3a','v3b','v3c','v4a','v5a','v5b','noanc','diag'):
             keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'focus3':
+        keys = []
+        for tag in ('v7a','v7b','v6a','noanc'):
+            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'focus4':
+        keys = []
+        for tag in ('v7a','v7b','v6a','v6b','noanc'):
+            keys += [f'pehe_raw_{tag}', f'err_raw_{tag}', f'pehe_em_{tag}', f'err_em_{tag}']
+    elif ANC_MODE == 'all_combos':
+        keys = []
+        for tag in [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']:
+            keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
+    elif ANC_MODE == 'three_edge_all':
+        keys = []
+        for tag in [c + s for c in [a+b+d for a in 'PNB' for b in 'PNB' for d in 'PNB']
+                          for s in ('', 'n')]:
+            keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
     else:
         _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
                     'tyx' if ANC_MODE == 'ty_antisym' else
