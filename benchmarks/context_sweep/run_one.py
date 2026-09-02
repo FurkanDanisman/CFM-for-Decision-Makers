@@ -112,10 +112,22 @@ def _sample_scm(source, seed, N, n_test, uwyk_src, causalpfn_root):
         # BUT causalpfn.benchmarks.base does `from causalpfn.synthetic import ...`
         # which needs the causalpfn package itself on sys.path.
         _cpfn_src = os.path.join(causalpfn_root, 'src') if causalpfn_root else ''
+        # ── EVICT any stale/half-initialised causalpfn module in sys.modules ──
+        # (a previous import chain may have cached a stub or partial module).
+        for _name in list(sys.modules):
+            if _name == 'causalpfn' or _name.startswith('causalpfn.'):
+                del sys.modules[_name]
         if _cpfn_src and os.path.isdir(_cpfn_src) and _cpfn_src not in sys.path:
             sys.path.insert(0, _cpfn_src)
         if causalpfn_root and causalpfn_root not in sys.path:
             sys.path.insert(0, causalpfn_root)
+        # DEBUG: log what we did so failed runs are diagnosable
+        _sync = getattr(_sample_scm, '_diag_printed', False)
+        if not _sync:
+            print(f'[poly-load] causalpfn_root={causalpfn_root!r}', flush=True)
+            print(f'[poly-load] cpfn_src exists={os.path.isdir(_cpfn_src) if _cpfn_src else False}', flush=True)
+            print(f'[poly-load] sys.path[:5]={sys.path[:5]}', flush=True)
+            _sample_scm._diag_printed = True
         from scm_polynomial import sample_as_cate_dataset
         return sample_as_cate_dataset(scm_seed=seed, n_context=N, n_test=n_test,
                                        causalpfn_root=causalpfn_root)
