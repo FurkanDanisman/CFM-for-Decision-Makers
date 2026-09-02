@@ -32,6 +32,7 @@ Usage:
 """
 from __future__ import annotations
 import argparse
+import math
 import os
 import sys
 import time
@@ -66,6 +67,27 @@ from benchmarks import (  # noqa: E402
     RealCauseLalondePSIDDataset,
 )
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
+from losses.BarDistribution2D import (  # noqa: E402
+    N_REGIONS, SOFTPLUS_FLOOR,
+    R_INNER, R_L0, R_R0, R_L1, R_R1, R_L0L1, R_L0R1, R_R0L1, R_R0R1,
+)
+
+# ── Tail mass ─────────────────────────────────────────────────────────────
+# The head is a 9-region mixture (see losses/BarDistribution2D.py):
+#   logits[      : J*J    ] -> softmax -> p_mat : density SHAPE INSIDE the grid
+#   logits[ J*J  : J*J+9  ] -> softmax -> w     : mass in each of the 9 regions
+#   logits[ J*J+9:        ] -> 4 half-Gaussian tail scales (sL0,sR0,sL1,sR1)
+#
+# p_mat is a softmax, so it sums to 1 BY CONSTRUCTION -- it is the density
+# conditional on landing inside the grid, NOT the marginal. The probability of
+# actually being inside is w[R_INNER], a separate output. Reading only p_mat
+# asserts w[R_INNER]==1, silently deletes all out-of-grid mass, and truncates
+# E[Y] toward the centre -- worst exactly for large-|CATE| queries, which are
+# the ones PEHE weights most.
+#
+# TAIL_MASS=1 (default) reconstructs the full mixture marginal.
+# TAIL_MASS=0 restores the old interior-only behaviour for A/B comparison.
+TAIL_MASS = os.environ.get('TAIL_MASS', '1') == '1'
 
 # Scale the learned soft-attention-bias params at inference. Smaller values
 # soften the anc-induced attention shift: bias_edge=learned*scale means the
@@ -288,7 +310,22 @@ def load_model(ckpt_path):
               f'by {BIAS_EDGE_SCALE}', flush=True)
 
     model.eval()
-    return model, cfg
+
+    # Bin edges are part of the model's meaning: they map bucket indices back
+    # to outcome values, and they set bin_width, which scales the tail sigmas.
+    # Training fits them once and saves them (train_graph_2d.py::save_checkpoint),
+    # so read them rather than reconstructing.
+    _e = ck.get('edges', None)
+    if _e is None:
+        edges = np.linspace(-1.0, 1.0, cfg['J'] + 1, dtype=np.float64)
+        print(f"[load_model] WARNING: checkpoint has no 'edges' key; "
+              f"falling back to linspace(-1, 1, {cfg['J'] + 1})", flush=True)
+    else:
+        edges = np.asarray(_e.cpu() if hasattr(_e, 'cpu') else _e, dtype=np.float64)
+        print(f'[load_model] edges from ckpt: [{edges[0]:.6f}, {edges[-1]:.6f}]  '
+              f'n={len(edges)}  bin_width={(edges[-1] - edges[0]) / cfg["J"]:.6g}', flush=True)
+
+    return model, cfg, edges
 
 
 # ── EM-mean (ported from eval_cpfn2d_ihdp_em.py::_em_mean_1d) ───────────
@@ -319,10 +356,125 @@ def _marginal_stats(p, grid):
     return mu_mid, sigma
 
 
+
+# ── 9-region mixture -> per-arm marginal decomposition ────────────────────
+_HALFNORM_MEAN = math.sqrt(2.0 / math.pi)   # E|N(0,1)|
+
+
+def _norm_rows(v):
+    """Normalise the last axis to sum to 1."""
+    return v / v.sum(-1, keepdim=True).clamp_min(1e-45)
+
+
+def _decompose_head(logits, J, edges):
+    """Split raw head output into a per-arm marginal decomposition.
+
+    Returns (arm0, arm1) for Y_do0 / Y_do1. Each is a dict of numpy arrays
+    with leading query dim:
+
+        p     (M, J)  in-grid density shape, normalised to sum 1
+        w_in  (M,)    P(this arm's outcome lands inside the grid)
+        w_lo  (M,)    P(below grid)   m_lo (M,)  its conditional mean
+        w_hi  (M,)    P(above grid)   m_hi (M,)  its conditional mean
+
+    with w_in + w_lo + w_hi == 1, so
+
+        E[Y] = w_in * E[Y | inside] + w_lo * m_lo + w_hi * m_hi
+
+    Region -> arm mapping (see losses/BarDistribution2D.py region table):
+      Y_do0 inside : R_INNER, R_L1, R_R1     below : R_L0, R_L0L1, R_L0R1
+      Y_do1 inside : R_INNER, R_L0, R_R0     below : R_L1, R_L0L1, R_R0L1
+    In the mixed regions the in-grid shape is the boundary row/column of
+    p_mat, matching how neg_log_prob_2d builds those conditionals.
+
+    Approximation: in the four corner regions the loss uses a rho-coupled
+    bivariate half-Gaussian, whose per-axis marginal is not exactly a
+    half-normal. We use the half-normal mean anyway -- exact at rho=0
+    (verified against Monte Carlo), and corner weights are typically small.
+    """
+    JJ = J * J
+    p_mat = torch.softmax(logits[..., :JJ].float(), dim=-1)
+    p_mat = p_mat.reshape(*logits.shape[:-1], J, J)
+
+    def _np(t):
+        return t.squeeze(0).cpu().numpy()
+
+    if not TAIL_MASS:
+        # Legacy: assert w[R_INNER] == 1 and drop everything outside the grid.
+        ones = torch.ones(p_mat.shape[:-2], device=p_mat.device)
+        zeros = torch.zeros_like(ones)
+        legacy = lambda pg: dict(p=_np(pg), w_in=_np(ones),
+                                 w_lo=_np(zeros), m_lo=_np(zeros),
+                                 w_hi=_np(zeros), m_hi=_np(zeros))
+        return legacy(p_mat.sum(-1)), legacy(p_mat.sum(-2))
+
+    w = torch.softmax(logits[..., JJ:JJ + N_REGIONS].float(), dim=-1)
+    tail_raw = logits[..., JJ + N_REGIONS:].float()
+
+    lo, hi = float(edges[0]), float(edges[-1])
+    bin_width = (hi - lo) / J
+    sig = bin_width * (torch.nn.functional.softplus(tail_raw) + SOFTPLUS_FLOOR)
+    sL0, sR0, sL1, sR1 = sig[..., 0], sig[..., 1], sig[..., 2], sig[..., 3]
+
+    # ---- Y_do0: sum over the Y_do1 axis ----
+    p0 = (w[..., R_INNER, None] * p_mat.sum(-1)
+          + w[..., R_L1, None] * _norm_rows(p_mat[..., :, 0])
+          + w[..., R_R1, None] * _norm_rows(p_mat[..., :, -1]))
+    arm0 = dict(
+        p=_np(_norm_rows(p0)),
+        w_in=_np(w[..., R_INNER] + w[..., R_L1] + w[..., R_R1]),
+        w_lo=_np(w[..., R_L0] + w[..., R_L0L1] + w[..., R_L0R1]),
+        w_hi=_np(w[..., R_R0] + w[..., R_R0L1] + w[..., R_R0R1]),
+        m_lo=_np(lo - sL0 * _HALFNORM_MEAN),
+        m_hi=_np(hi + sR0 * _HALFNORM_MEAN),
+    )
+
+    # ---- Y_do1: sum over the Y_do0 axis ----
+    p1 = (w[..., R_INNER, None] * p_mat.sum(-2)
+          + w[..., R_L0, None] * _norm_rows(p_mat[..., 0, :])
+          + w[..., R_R0, None] * _norm_rows(p_mat[..., -1, :]))
+    arm1 = dict(
+        p=_np(_norm_rows(p1)),
+        w_in=_np(w[..., R_INNER] + w[..., R_L0] + w[..., R_R0]),
+        w_lo=_np(w[..., R_L1] + w[..., R_L0L1] + w[..., R_R0L1]),
+        w_hi=_np(w[..., R_R1] + w[..., R_L0R1] + w[..., R_R0R1]),
+        m_lo=_np(lo - sL1 * _HALFNORM_MEAN),
+        m_hi=_np(hi + sR1 * _HALFNORM_MEAN),
+    )
+    return arm0, arm1
+
+
+def _slice_arm(a, n):
+    return {k: v[:n] for k, v in a.items()}
+
+
+def _cat_arms(parts):
+    return {k: np.concatenate([a[k] for a in parts], axis=0) for k in parts[0]}
+
+
+def _log_tail_mass(arm0, arm1, adj):
+    """Once per (dataset, mode): report how much mass sits outside the grid.
+
+    If the two adjacency modes differ here, the interior-only bug was a
+    DIFFERENTIAL error between them, not a common-mode one.
+    """
+    mode = 'anc' if bool((adj > 0).any()) else 'noanc'
+    seen = getattr(_log_tail_mass, '_seen', set())
+    key = (DATASET, mode, TAIL_MASS)
+    if key in seen:
+        return
+    seen.add(key)
+    _log_tail_mass._seen = seen
+    print(f'[tail-mass] {DATASET:<9} mode={mode:<5} TAIL_MASS={int(TAIL_MASS)}  '
+          f'mean w_in: y0={arm0["w_in"].mean():.4f} y1={arm1["w_in"].mean():.4f}  |  '
+          f'out-of-grid: y0={1 - arm0["w_in"].mean():.4f} y1={1 - arm1["w_in"].mean():.4f}',
+          flush=True)
+
+
 @torch.no_grad()
-def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj, J):
-    """Run one forward pass; return per-query (p_y0, p_y1) numpy arrays of
-    shape (N_q, J)."""
+def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj, J, edges):
+    """Run one forward pass; return the per-arm marginal decomposition
+    (arm0, arm1) described in _decompose_head."""
     B = 1
     X_obs = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE)
@@ -394,14 +546,13 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
             else:
                 out = model(X_obs, T_obs, Y_obs, X_intv_batch, adj_t)
             logits = out['predictions'] if isinstance(out, dict) else out
-            interior = logits[..., : J * J]
-            p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
-            p_y0_batch = p.sum(dim=-1).squeeze(0).cpu().numpy()   # (max_n_test, J)
-            p_y1_batch = p.sum(dim=-2).squeeze(0).cpu().numpy()
+            a0_batch, a1_batch = _decompose_head(logits, J, edges)
             # Drop padded rows before appending
-            p_y0_all.append(p_y0_batch[:n_batch_real])
-            p_y1_all.append(p_y1_batch[:n_batch_real])
-        return np.concatenate(p_y0_all, axis=0), np.concatenate(p_y1_all, axis=0)
+            p_y0_all.append(_slice_arm(a0_batch, n_batch_real))
+            p_y1_all.append(_slice_arm(a1_batch, n_batch_real))
+        arm0, arm1 = _cat_arms(p_y0_all), _cat_arms(p_y1_all)
+        _log_tail_mass(arm0, arm1, adj)
+        return arm0, arm1
 
     # T_INTV_OVERRIDE: if set, feed a specific T_intv value at query instead
     # of the learned null_t_intv. Otherwise (default) the model's forward
@@ -414,37 +565,41 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     else:
         out = model(X_obs, T_obs, Y_obs, X_intv, adj_t)
     logits = out['predictions'] if isinstance(out, dict) else out
-    interior = logits[..., : J * J]
-    p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
-    p_y0 = p.sum(dim=-1).squeeze(0).cpu().numpy()
-    p_y1 = p.sum(dim=-2).squeeze(0).cpu().numpy()
-    return p_y0, p_y1
+    arm0, arm1 = _decompose_head(logits, J, edges)
+    _log_tail_mass(arm0, arm1, adj)
+    return arm0, arm1
 
 
-def cate_from_marginals(p_y0, p_y1, J):
-    """Return (cate_raw, cate_em) on the [-1, 1] scale."""
-    edges   = np.linspace(-1.0, 1.0, J + 1, dtype=np.float64)
+def _arm_mean(arm, edges, centres, use_em):
+    """E[Y] for one arm under the full 9-region mixture.
+
+    Both estimators only ever supply E[Y | inside the grid]; the tail terms
+    are added identically on top, so 'raw' vs 'em' stays a like-for-like
+    comparison of how the in-grid mean is computed.
+    """
+    p = arm['p']
+    if use_em:
+        e_in = np.empty(p.shape[0])
+        for q in range(p.shape[0]):
+            mu, sg = _marginal_stats(p[q], edges)
+            e_in[q] = _em_mean_1d(p[q], edges, sg, mu)
+    else:
+        e_in = (p * centres[None, :]).sum(axis=-1)
+    return arm['w_in'] * e_in + arm['w_lo'] * arm['m_lo'] + arm['w_hi'] * arm['m_hi']
+
+
+def cate_from_marginals(arm0, arm1, J, edges):
+    """Return (cate_raw, cate_em) on the model's (scaled) outcome axis."""
+    edges   = np.asarray(edges, dtype=np.float64)
     centres = 0.5 * (edges[:-1] + edges[1:])
 
-    # Raw mean: center-of-mass.
-    e_y0_raw = (p_y0 * centres[None, :]).sum(axis=-1)
-    e_y1_raw = (p_y1 * centres[None, :]).sum(axis=-1)
-    cate_raw = e_y1_raw - e_y0_raw
-
-    # EM mean: per-query per-arm fixed-point Gaussian correction.
-    N_q = p_y0.shape[0]
-    e_y0_em = np.empty(N_q); e_y1_em = np.empty(N_q)
-    for q in range(N_q):
-        mu0, s0 = _marginal_stats(p_y0[q], edges)
-        mu1, s1 = _marginal_stats(p_y1[q], edges)
-        e_y0_em[q] = _em_mean_1d(p_y0[q], edges, s0, mu0)
-        e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
-    cate_em = e_y1_em - e_y0_em
+    cate_raw = _arm_mean(arm1, edges, centres, False) - _arm_mean(arm0, edges, centres, False)
+    cate_em  = _arm_mean(arm1, edges, centres, True)  - _arm_mean(arm0, edges, centres, True)
 
     return cate_raw.astype(np.float32), cate_em.astype(np.float32)
 
 
-def evaluate(realization, ds, model, J, F, apply_psid_balance):
+def evaluate(realization, ds, model, J, F, apply_psid_balance, edges):
     cate_ds = ds[realization][0]
     X_tr_raw = np.asarray(cate_ds.X_train, dtype=np.float32)
     T_tr     = np.asarray(cate_ds.t_train, dtype=np.float32).reshape(-1)
@@ -483,8 +638,8 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     _mode_list = (('anc',   build_adjacency_matrix(F, n_real, ANC_MODE)),
                   ('noanc', build_adjacency_matrix(F, n_real, 'all_unknown')))
     for mode, adj in _mode_list:
-        p_y0, p_y1 = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
-        cate_raw_scaled, cate_em_scaled = cate_from_marginals(p_y0, p_y1, J)
+        arm0, arm1 = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J, edges)
+        cate_raw_scaled, cate_em_scaled = cate_from_marginals(arm0, arm1, J, edges)
         # Un-scale to raw Y units. (2 * cate_scaled / 2) * yrange / 2 = cate_scaled * yrange / 2.
         for method, cate_scaled in (('raw', cate_raw_scaled), ('em', cate_em_scaled)):
             cate = cate_scaled * yrange / 2.0
@@ -515,7 +670,7 @@ def main():
     print(f'[bootstrap] {DATASET} n_tables={ds.n_tables}  psid_bal={apply_psid_balance}',
           flush=True)
 
-    model, cfg = load_model(CKPT)
+    model, cfg, edges = load_model(CKPT)
     J = cfg['J']; F = cfg['num_features']
     print(f'[bootstrap] J={J}  F={F}', flush=True)
 
@@ -525,7 +680,7 @@ def main():
     # diagnostic run of a single realization per dataset).
     _cap = int(os.environ.get('MAX_REAL', ds.n_tables))
     for r in range(min(ds.n_tables, _cap)):
-        row = evaluate(r, ds, model, J, F, apply_psid_balance)
+        row = evaluate(r, ds, model, J, F, apply_psid_balance, edges)
         rows.append(row)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
