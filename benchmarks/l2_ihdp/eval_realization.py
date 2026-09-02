@@ -85,6 +85,15 @@ def main() -> int:
     ap.add_argument('--checkpoint-dopfn-bb',
                      default=os.environ.get('CHECKPOINT_DOPFN_BB', ''),
                      help='Ours model built on DoPFN backbone (PerFeatureTransformer)')
+    ap.add_argument('--checkpoint-graph2d',
+                     default=os.environ.get('CHECKPOINT_GRAPH2D', ''),
+                     help='GraphConditioned2DHead checkpoint (e.g. checkpoints_graph2d/step_50000.pt). '
+                          'Requires --uwyk-src on PYTHONPATH because model_graph_2d imports '
+                          'models.PartialGraphConditionedInterventionalPFN from UWYK.')
+    ap.add_argument('--graph2d-anc-mode', default=os.environ.get('GRAPH2D_ANC_MODE', 'v6a'),
+                     choices=['v6a', 'noanc', 'full'],
+                     help='Anc adjacency to pass to graph2d during inference. Default v6a '
+                          '(all -1s unconfoundedness). Matches ANC_MODE in eval_graph2d_realcause.py.')
     ap.add_argument('--y-scaling', default=os.environ.get('Y_SCALING', 'min_max'),
                      choices=['min_max', 'std'],
                      help='Y-scaling scheme for ours_densities (only). min_max = legacy '
@@ -101,7 +110,8 @@ def main() -> int:
     args = ap.parse_args()
 
     methods = [m.strip() for m in args.methods.split(',') if m.strip()]
-    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'uwyk_anc', 'uwyk_predictive', 'dopfn', 'ours_dopfn_bb'}
+    assert all(m in {'ours_fn50', 'ours_fn10', 'uwyk_noanc', 'uwyk_anc',
+                     'uwyk_predictive', 'dopfn', 'ours_dopfn_bb', 'ours_graph2d'}
                 for m in methods), f'bad methods: {methods}'
     if args.restrict_features > 0:
         allowed = {'dopfn', 'ours_fn10', 'ours_dopfn_bb'}
@@ -192,8 +202,8 @@ def main() -> int:
     # imports of Do-PFN (which has its own `utils` package with different
     # symbols). Run UWYK last so downstream imports never encounter its
     # cruft.
-    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'dopfn',
-                  'uwyk_noanc', 'uwyk_anc', 'uwyk_predictive']
+    RUN_ORDER = ['ours_fn50', 'ours_fn10', 'ours_dopfn_bb', 'ours_graph2d',
+                  'dopfn', 'uwyk_noanc', 'uwyk_anc', 'uwyk_predictive']
     method_out: dict[str, dict[str, np.ndarray]] = {}
     for m in RUN_ORDER:
         if m not in methods:
@@ -205,6 +215,9 @@ def main() -> int:
         elif m == 'ours_dopfn_bb':
             method_out[m] = _run_ours_dopfn_bb(
                 cd, args.checkpoint_dopfn_bb, truth, args, n_ctx)
+        elif m == 'ours_graph2d':
+            method_out[m] = _run_ours_graph2d(
+                cd, args.checkpoint_graph2d, truth, args, n_ctx)
         elif m == 'dopfn':
             method_out[m] = _run_dopfn(cd, truth, args, n_ctx)
         elif m == 'uwyk_noanc':
@@ -527,6 +540,98 @@ def _run_ours_dopfn_bb(cd, ckpt_path, truth, args, n_ctx):
     return d
 
 
+def _build_graph2d_adj(F: int, n_real: int, mode: str = 'v6a') -> np.ndarray:
+    """Anc adjacency for GraphConditioned2DHead. Mirrors build_anc_v6a in
+    eval_graph2d_realcause.py so the L2 eval uses the same adjacency the
+    realcause and context_sweep evals use."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    for i in range(n_real, F):
+        A[2 + i, :] = -1.0; A[:, 2 + i] = -1.0; A[2 + i, 2 + i] = -1.0
+    if mode == 'v6a':
+        for i in range(2 + n_real):
+            A[i, i] = -1.0
+        A[1, 0] = -1.0
+        for i in range(n_real):
+            A[1, 2 + i] = -1.0
+            A[0, 2 + i] = -1.0
+    elif mode == 'full':
+        A[0, 1] = 1.0
+        for i in range(n_real):
+            A[2 + i, 0] = 1.0
+            A[2 + i, 1] = 1.0
+    return A
+
+
+class _Graph2dAdjWrapper(torch.nn.Module):
+    """Wrap GraphConditioned2DHead so its 5-arg forward looks 4-arg to
+    ours_densities. adj is fixed at wrap time (per-realization)."""
+    def __init__(self, model, adj_t):
+        super().__init__()
+        self.model = model
+        self.adj_t = adj_t   # (1, F+2, F+2) tensor on same device
+
+    def __call__(self, X_ctx, T_ctx, Y_ctx, X_qry):
+        return self.model(X_ctx, T_ctx, Y_ctx, X_qry, self.adj_t)
+
+
+def _run_ours_graph2d(cd, ckpt_path, truth, args, n_ctx):
+    """Load GraphConditioned2DHead + wrap with a fixed anc adj matrix,
+    then run through the same ours_densities pipeline."""
+    # graph2d imports models.PartialGraphConditionedInterventionalPFN from UWYK
+    sys.path.insert(0, args.uwyk_src)
+    for _name in list(sys.modules):
+        if _name == 'models' or _name.startswith('models.'):
+            del sys.modules[_name]
+
+    from training_graph2d.model_graph_2d import GraphConditioned2DHead
+    from losses.BarDistribution2D import fit_malc_inner
+    from malc_2d import dmalc_2d
+    from methods_densities import ours_densities
+
+    print(f'[ours-graph2d] loading {ckpt_path}', flush=True)
+    ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+    cfg = ckpt['config']; J = cfg['J']
+    edges_np = ckpt['edges'].cpu().numpy()
+    bin_width = float(edges_np[1] - edges_np[0])
+    num_features = cfg['num_features']
+    model = GraphConditioned2DHead(
+        num_features=num_features,
+        d_model=cfg['d_model'], depth=cfg['depth'],
+        heads_feat=cfg['heads'], heads_samp=cfg['heads'],
+        dropout=0.0, hidden_mult=cfg['hidden_mult'],
+        normalize_features=True,
+        n_sample_attention_sink_rows=10,
+        n_feature_attention_sink_cols=0,
+        J=J,
+    ).eval()
+    model.load_state_dict(ckpt['model_state_dict'], strict=False)
+
+    # Build v6a adj for this realization (F from cfg, n_real from cd.X_train)
+    F = num_features
+    n_real = int(min(cd.X_train.shape[1], F))
+    adj_np = _build_graph2d_adj(F, n_real, mode=args.graph2d_anc_mode)
+    adj_t = torch.from_numpy(adj_np).unsqueeze(0)
+    print(f'[ours-graph2d] anc_mode={args.graph2d_anc_mode}  n_real={n_real}  F={F}',
+          flush=True)
+
+    wrapped = _Graph2dAdjWrapper(model, adj_t)
+
+    t0 = time.time()
+    d = ours_densities(
+        cd, wrapped, edges_np, J, bin_width, num_features,
+        y_min=truth.y_min, y_rng=truth.y_rng,
+        malc_B=args.malc_B, malc_max_K=args.malc_max_K, n_eval=args.n_eval,
+        n_context=n_ctx,
+        fit_malc_inner=fit_malc_inner, dmalc_2d=dmalc_2d,
+        y_scaling=args.y_scaling,
+        std_target=args.std_target,
+        marginals_from_2d=args.marginals_from_2d,
+    )
+    print(f'[ours-graph2d] done in {time.time() - t0:.1f}s   '
+          f'(marginals_from_2d={args.marginals_from_2d})', flush=True)
+    return d
+
+
 def _run_uwyk_noanc(cd, truth, args, n_ctx):
     from methods_densities import uwyk_noanc_densities
 
@@ -819,7 +924,9 @@ def _require_paths(args, methods) -> None:
         ('DOPFN',     args.dopfn,     True),
         ('CHECKPOINT50', args.checkpoint50, 'ours_fn50' in methods),
         ('CHECKPOINT10', args.checkpoint10, 'ours_fn10' in methods),
-        ('UWYK_SRC',      args.uwyk_src,      need_uwyk),
+        ('CHECKPOINT_DOPFN_BB', args.checkpoint_dopfn_bb, 'ours_dopfn_bb' in methods),
+        ('CHECKPOINT_GRAPH2D',  args.checkpoint_graph2d,  'ours_graph2d' in methods),
+        ('UWYK_SRC',      args.uwyk_src,      need_uwyk or 'ours_graph2d' in methods),
         ('UWYK_CKPT_DIR', args.uwyk_ckpt_dir, need_uwyk_ck),
         ('UWYK_PREDICTIVE_CKPT_DIR', args.uwyk_predictive_ckpt_dir, need_uwyk_pred),
     ]:
