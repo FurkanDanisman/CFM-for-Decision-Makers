@@ -174,7 +174,9 @@ def load_2d(ckpt_path):
 def arm_means_2d(model, X_ctx, T_ctx, y_ctx_raw, X_q, F, J, edges_np, y_scaling_mode):
     X_ctx_t = torch.from_numpy(X_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
     T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32)).unsqueeze(0).to(DEVICE)
-    Y_ctx_t = torch.from_numpy(y_ctx_raw.astype(np.float32).reshape(1, -1, 1)).to(DEVICE)
+    # y_context must be (B, N_ctx) 2D — _forward_logits does `y_src = y.transpose(0,1)`
+    # and the backbone expects (N_ctx, B). A (B, N_ctx, 1) tensor breaks it.
+    Y_ctx_t = torch.from_numpy(y_ctx_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)  # (1, N_ctx)
     X_q_t   = torch.from_numpy(X_q.astype(np.float32)).unsqueeze(0).to(DEVICE)
 
     if y_scaling_mode == 'uwyk_minmax':
@@ -182,7 +184,7 @@ def arm_means_2d(model, X_ctx, T_ctx, y_ctx_raw, X_q, F, J, edges_np, y_scaling_
         sh = 0.5 * (y_lo + y_hi); sc = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
     else:
         sh = Y_ctx_t.mean(dim=1, keepdim=True); sc = Y_ctx_t.std(dim=1, keepdim=True).clamp(min=1e-6)
-    y_std = (Y_ctx_t - sh) / sc
+    y_std = (Y_ctx_t - sh) / sc  # (1, N_ctx)
     scale = float(sc.item()); shift = float(sh.item())
 
     logits = model._forward_logits(X_ctx_t, T_ctx_t, y_std, X_q_t)
