@@ -183,10 +183,11 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
         y_std = (Y_ctx_r - sh) / sc
         stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item())}
 
-    logits = model._forward_logits(X_ctx_t, T_ctx_t, y_std, X_q_t)
+    logits = model._forward_logits(X_ctx_t, T_ctx_t, y_std, X_q_t)  # (1, N_q, J²+9+4)
     interior = logits[..., : J * J]
     p_mats = torch.softmax(interior, dim=-1).reshape(1, -1, J, J).squeeze(0).cpu().numpy()
-    return p_mats.astype(np.float64), stats
+    logits_np = logits.squeeze(0).float().cpu().numpy()             # (N_q, J²+9+4)
+    return p_mats.astype(np.float64), logits_np, stats
 
 
 def cate_raw_and_em(p_mats, edges_np):
@@ -230,18 +231,22 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
     X_tr_std, X_te_std = _standardize_train_test(X_tr, X_te)
     X_tr_p = _pad_features(X_tr_std, F); X_te_p = _pad_features(X_te_std, F)
 
-    p_mats, stats = forward_pmats(model, X_tr_p, T_tr, y_tr, X_te_p, J,
-                                   y_scaling_mode, Y_STD_MODE_EVAL)
+    from full_mixture_mean import full_mixture_mean
+    p_mats, logits_np, stats = forward_pmats(model, X_tr_p, T_tr, y_tr, X_te_p, J,
+                                              y_scaling_mode, Y_STD_MODE_EVAL)
     e_y0_raw, e_y1_raw, e_y0_em, e_y1_em = cate_raw_and_em(p_mats, edges_np)
+    e_y0_full, e_y1_full = full_mixture_mean(logits_np, J, edges_np)
 
     if stats['mode'] == 'per_arm':
         y0s, y0sc = stats['y0s'], stats['y0sc']; y1s, y1sc = stats['y1s'], stats['y1sc']
-        cate_raw = (e_y1_raw * y1sc + y1s) - (e_y0_raw * y0sc + y0s)
-        cate_em  = (e_y1_em  * y1sc + y1s) - (e_y0_em  * y0sc + y0s)
+        cate_raw  = (e_y1_raw  * y1sc + y1s) - (e_y0_raw  * y0sc + y0s)
+        cate_em   = (e_y1_em   * y1sc + y1s) - (e_y0_em   * y0sc + y0s)
+        cate_full = (e_y1_full * y1sc + y1s) - (e_y0_full * y0sc + y0s)
     else:
         sc = stats['scale']
-        cate_raw = (e_y1_raw - e_y0_raw) * sc
-        cate_em  = (e_y1_em  - e_y0_em ) * sc
+        cate_raw  = (e_y1_raw  - e_y0_raw ) * sc
+        cate_em   = (e_y1_em   - e_y0_em  ) * sc
+        cate_full = (e_y1_full - e_y0_full) * sc
 
     def _pehe(cate):
         pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
@@ -251,10 +256,12 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
 
     p_r, e_r, a_r = _pehe(cate_raw)
     p_e, e_e, a_e = _pehe(cate_em)
+    p_f, e_f, a_f = _pehe(cate_full)
     return {
         'dataset': DATASET, 'realization': r, 'true_ate': true_ate,
-        'pehe_raw': p_r, 'err_raw': e_r, 'ate_raw': a_r,
-        'pehe_em':  p_e, 'err_em':  e_e, 'ate_em':  a_e,
+        'pehe_raw':  p_r, 'err_raw':  e_r, 'ate_raw':  a_r,
+        'pehe_em':   p_e, 'err_em':   e_e, 'ate_em':   a_e,
+        'pehe_full': p_f, 'err_full': e_f, 'ate_full': a_f,
     }
 
 
@@ -281,7 +288,8 @@ def main():
         np.savez(os.path.join(OUT, f'{tag}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         print(f'r={r:03d}  raw: pehe={row["pehe_raw"]:6.3f} err={row["err_raw"]:5.3f}  |  '
-              f'em: pehe={row["pehe_em"]:6.3f} err={row["err_em"]:5.3f}  '
+              f'em: pehe={row["pehe_em"]:6.3f} err={row["err_em"]:5.3f}  |  '
+              f'full: pehe={row["pehe_full"]:6.3f} err={row["err_full"]:5.3f}  '
               f'(true_ate={row["true_ate"]:+6.3f}, {time.time()-t0:.0f}s)', flush=True)
 
     def _ms(k):
@@ -290,7 +298,7 @@ def main():
             else (float('nan'), float('nan'), 0)
 
     print(f'\n══ {DATASET} summary  (n={len(rows)}) ══')
-    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em'):
+    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em', 'pehe_full', 'err_full'):
         m, s, _ = _ms(k)
         print(f'  {k:10s} = {m:8.3f} ± {s:6.3f}')
 

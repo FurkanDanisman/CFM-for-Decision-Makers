@@ -611,8 +611,11 @@ def _marginal_stats(p, grid):
 
 @torch.no_grad()
 def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj, J):
-    """Run one forward pass; return per-query (p_y0, p_y1) numpy arrays of
-    shape (N_q, J)."""
+    """Run one forward pass; return per-query (p_y0, p_y1, logits_np).
+
+    - p_y0, p_y1: (N_q, J)  inner-marginals (softmax over J² then marginalise)
+    - logits_np:  (N_q, J²+9+4)  FULL head output, needed by full-mixture mean
+    """
     B = 1
     X_obs = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE)
@@ -667,7 +670,7 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     if _max_n_test > 0:
         M_real = X_intv.shape[1]
         F_dim = X_intv.shape[2]
-        p_y0_all, p_y1_all = [], []
+        p_y0_all, p_y1_all, logits_all = [], [], []
         for start in range(0, M_real, _max_n_test):
             end = min(start + _max_n_test, M_real)
             n_batch_real = end - start
@@ -688,10 +691,14 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
             p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
             p_y0_batch = p.sum(dim=-1).squeeze(0).cpu().numpy()   # (max_n_test, J)
             p_y1_batch = p.sum(dim=-2).squeeze(0).cpu().numpy()
+            logits_batch = logits.squeeze(0).float().cpu().numpy()  # (max_n_test, J²+9+4)
             # Drop padded rows before appending
             p_y0_all.append(p_y0_batch[:n_batch_real])
             p_y1_all.append(p_y1_batch[:n_batch_real])
-        return np.concatenate(p_y0_all, axis=0), np.concatenate(p_y1_all, axis=0)
+            logits_all.append(logits_batch[:n_batch_real])
+        return (np.concatenate(p_y0_all, axis=0),
+                np.concatenate(p_y1_all, axis=0),
+                np.concatenate(logits_all, axis=0))
 
     # T_INTV_OVERRIDE: if set, feed a specific T_intv value at query instead
     # of the learned null_t_intv. Otherwise (default) the model's forward
@@ -708,11 +715,18 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
     p_y0 = p.sum(dim=-1).squeeze(0).cpu().numpy()
     p_y1 = p.sum(dim=-2).squeeze(0).cpu().numpy()
-    return p_y0, p_y1
+    logits_np = logits.squeeze(0).float().cpu().numpy()   # (N_q, J²+9+4)
+    return p_y0, p_y1, logits_np
 
 
-def cate_from_marginals(p_y0, p_y1, J):
-    """Return (cate_raw, cate_em) on the [-1, 1] scale."""
+def cate_from_marginals(p_y0, p_y1, J, logits_np=None):
+    """Return (cate_raw, cate_em, cate_full) on the [-1, 1] scale.
+
+    - raw:  inner-only marginal center-of-mass  (drops tail region mass)
+    - em:   Gaussian-corrected inner marginal fixed-point mean
+    - full: mean over the full 9-region mixture density   (requires logits_np;
+            returns nan array if logits_np is None)
+    """
     edges   = np.linspace(-1.0, 1.0, J + 1, dtype=np.float64)
     centres = 0.5 * (edges[:-1] + edges[1:])
 
@@ -731,7 +745,23 @@ def cate_from_marginals(p_y0, p_y1, J):
         e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
     cate_em = e_y1_em - e_y0_em
 
-    return cate_raw.astype(np.float32), cate_em.astype(np.float32)
+    # Full 9-region mixture mean (integrates over ℝ², not just inner).
+    if logits_np is not None:
+        # Local sys.path hack — full_mixture_mean lives in benchmarks/eval_causalpfn2d/
+        import sys, os as _os
+        _fm_dir = _os.path.abspath(_os.path.join(
+            _os.path.dirname(__file__), '..', 'eval_causalpfn2d'))
+        if _fm_dir not in sys.path:
+            sys.path.insert(0, _fm_dir)
+        from full_mixture_mean import full_mixture_mean
+        e_y0_full, e_y1_full = full_mixture_mean(logits_np, J, edges)
+        cate_full = e_y1_full - e_y0_full
+    else:
+        cate_full = np.full(N_q, np.nan)
+
+    return (cate_raw.astype(np.float32),
+            cate_em.astype(np.float32),
+            cate_full.astype(np.float32))
 
 
 def evaluate(realization, ds, model, J, F, apply_psid_balance):
@@ -835,10 +865,14 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
         _mode_list = (('anc',   build_anc_full(F, n_real)),
                       ('noanc', build_anc_none(F, n_real)))
     for mode, adj in _mode_list:
-        p_y0, p_y1 = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
-        cate_raw_scaled, cate_em_scaled = cate_from_marginals(p_y0, p_y1, J)
+        p_y0, p_y1, logits_np = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
+        cate_raw_scaled, cate_em_scaled, cate_full_scaled = cate_from_marginals(
+            p_y0, p_y1, J, logits_np=logits_np,
+        )
         # Un-scale to raw Y units. (2 * cate_scaled / 2) * yrange / 2 = cate_scaled * yrange / 2.
-        for method, cate_scaled in (('raw', cate_raw_scaled), ('em', cate_em_scaled)):
+        for method, cate_scaled in (('raw',  cate_raw_scaled),
+                                     ('em',   cate_em_scaled),
+                                     ('full', cate_full_scaled)):
             cate = cate_scaled * yrange / 2.0
             pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
             ate_hat = float(cate.mean())
