@@ -54,6 +54,20 @@ def _load_ours(args):
         m = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).to(DEVICE).eval()
         m.load_state_dict(ckpt['model_state_dict'])
         NUM_FEATURES = -1
+    elif getattr(args, 'backbone', 'ipfn') == 'graph2d':
+        from training_graph2d.model_graph_2d import GraphConditioned2DHead
+        NUM_FEATURES = cfg['num_features']
+        m = GraphConditioned2DHead(
+            num_features=NUM_FEATURES,
+            d_model=cfg['d_model'], depth=cfg['depth'],
+            heads_feat=cfg['heads'], heads_samp=cfg['heads'],
+            dropout=0.0, hidden_mult=cfg['hidden_mult'],
+            normalize_features=True,
+            n_sample_attention_sink_rows=10,
+            n_feature_attention_sink_cols=0,
+            J=J,
+        ).to(DEVICE).eval()
+        m.load_state_dict(ckpt['model_state_dict'], strict=False)
     else:
         from models.InterventionalPFN import InterventionalPFN
         NUM_FEATURES = cfg['num_features']
@@ -109,9 +123,18 @@ def main():
     ap.add_argument('--malc-max-K',   type=int, default=3)
     ap.add_argument('--n-eval',       type=int, default=200)
     ap.add_argument('--workers',      type=int, default=1)
-    ap.add_argument('--backbone',     choices=['ipfn', 'dopfn_bb'], default='ipfn',
+    ap.add_argument('--backbone',     choices=['ipfn', 'dopfn_bb', 'graph2d'], default='ipfn',
                      help='ipfn = InterventionalPFN checkpoint (default); '
-                          'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint.')
+                          'dopfn_bb = DoPFN-backbone-with-2D-head checkpoint; '
+                          'graph2d = GraphConditioned2DHead (needs --anc-mode).')
+    ap.add_argument('--anc-mode',     choices=['v6a', 'noanc'], default='v6a',
+                     help='For --backbone graph2d: v6a = "all -1s" unconfoundedness '
+                          'anc matrix, noanc = padded-only (real block all zero). '
+                          'Matches ANC_MODE=v6a_only in eval_graph2d_realcause.py.')
+    ap.add_argument('--ours-max-n-train', type=int, default=1000,
+                     help='ours_pipeline clusters context into ≤this-size blocks '
+                          'when N_train exceeds it (default 1000). Pass a value ≥ '
+                          'N_context to disable clustering entirely for large-N runs.')
     ap.add_argument('--y-log-transform', action='store_true',
                      help='Apply log(y - y_min + 1) transform at inference '
                           '(NaNs MALC/EM fields; raw-mean only).')

@@ -295,6 +295,29 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
     RANDOM_STATE  = 42
     N_train = int(Xtr_s.shape[0])
 
+    # ── graph2d support: build an anc adjacency matrix and pass to forward ──
+    # For backbone=graph2d we forward as model(X, T, Y, X_q, adj_t). Anc modes:
+    #   v6a   — no +1 edges. -1 on diagonal, Y→T, Y→X_i, T→X_i. Padded region -1.
+    #   noanc — padded region -1 only; real block all zero.
+    is_graph2d = (getattr(args, 'backbone', 'ipfn') == 'graph2d')
+    _adj_np = None
+    if is_graph2d:
+        F = int(NUM_FEATURES) if NUM_FEATURES > 0 else int(Xtr_s.shape[1])
+        n_real = int(min(Xtr.shape[1], F))
+        A = np.zeros((F + 2, F + 2), dtype=np.float32)
+        # padded region: -1 on rows/cols and diagonal
+        for i in range(n_real, F):
+            A[2 + i, :] = -1.0; A[:, 2 + i] = -1.0; A[2 + i, 2 + i] = -1.0
+        if getattr(args, 'anc_mode', 'v6a') == 'v6a':
+            # v6a: real-block diagonal -1, Y→T = -1, Y→X_i / T→X_i = -1
+            for i in range(2 + n_real):
+                A[i, i] = -1.0
+            A[1, 0] = -1.0
+            for i in range(n_real):
+                A[1, 2 + i] = -1.0
+                A[0, 2 + i] = -1.0
+        _adj_np = A
+
     def _uwyk_hierarchical_cluster(X_train, max_n_train, random_state=42):
         from sklearn.cluster import KMeans
         N = X_train.shape[0]
@@ -390,7 +413,11 @@ def ours_pipeline(cate_dataset, our_model, edges_np, J, bin_width, NUM_FEATURES,
             queries = te_idx[start:stop]
             Xte_chunk = torch.from_numpy(Xte_s[queries]).unsqueeze(0)
             with torch.no_grad():
-                pred_chunk = our_model(Xtr_t, tt_t, yt_t, Xte_chunk)['predictions'][0]
+                if is_graph2d and _adj_np is not None:
+                    adj_t = torch.from_numpy(_adj_np).unsqueeze(0)
+                    pred_chunk = our_model(Xtr_t, tt_t, yt_t, Xte_chunk, adj_t)['predictions'][0]
+                else:
+                    pred_chunk = our_model(Xtr_t, tt_t, yt_t, Xte_chunk)['predictions'][0]
             for j in range(pred_chunk.shape[0]):
                 p_mat, *_ = unpack_pred(pred_chunk[j], J, bin_width)
                 p_np = p_mat.detach().cpu().numpy().astype(np.float32)
