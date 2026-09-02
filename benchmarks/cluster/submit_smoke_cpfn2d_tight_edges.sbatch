@@ -81,6 +81,15 @@ echo "  OUT_DIR=$OUT_DIR"
 # COMPILE=0 disables torch.compile (safer for short smoke).
 COMPILE_ARGS=(compile=false)
 
+# Resume-on-restart: if there's a latest.pt in this OUT_DIR from a previous
+# invocation, pick up from actual_step there.
+RESUME_ARGS=()
+FOUND_LATEST="$(find "$OUT_DIR/checkpoints" -maxdepth 2 -name latest.pt 2>/dev/null | head -1 || true)"
+if [ -n "$FOUND_LATEST" ]; then
+    RESUME_ARGS+=(resume_training=enabled resume_training.checkpoint_path="$FOUND_LATEST")
+    echo "[resume] found $FOUND_LATEST"
+fi
+
 cd "$CAUSALPFN"
 python -u train.py \
     +experiment=simple_configuration \
@@ -104,6 +113,7 @@ python -u train.py \
     +model.obj.edge_hi="$EDGE_HI" \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$OUT_DIR/step_checkpoints" \
-    "${COMPILE_ARGS[@]}"
+    "${COMPILE_ARGS[@]}" \
+    "${RESUME_ARGS[@]}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
