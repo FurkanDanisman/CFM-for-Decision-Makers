@@ -68,6 +68,7 @@ python "$REPO/benchmarks/l2_ihdp/eval_realization.py" \
     --malc-max-K         "$MALC_MAX_K" \
     --n-eval             "$N_EVAL" \
     --uwyk-n-samples     "$UWYK_N_SAMPLES" \
-    --methods            "$METHODS"
+    --methods            "$METHODS" \
+    $( [ "${MARGINALS_FROM_2D:-0}" = "1" ] && echo "--marginals-from-2d" )
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE r=$REALIZATION"

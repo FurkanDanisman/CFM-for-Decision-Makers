@@ -65,6 +65,7 @@ python "$REPO/benchmarks/l2_acic/eval_realization.py" \
     --n-eval             "$N_EVAL" \
     --uwyk-n-samples     "$UWYK_N_SAMPLES" \
     --methods            "$METHODS" \
-    --acic-cache-dir     "$ACIC_CACHE_DIR"
+    --acic-cache-dir     "$ACIC_CACHE_DIR" \
+    $( [ "${MARGINALS_FROM_2D:-0}" = "1" ] && echo "--marginals-from-2d" )
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE r=$REALIZATION"
