@@ -55,6 +55,10 @@ def _load_ours(args):
         m.load_state_dict(ckpt['model_state_dict'])
         NUM_FEATURES = -1
     elif getattr(args, 'backbone', 'ipfn') == 'graph2d':
+        # training_graph2d.model_graph_2d imports models.PartialGraphConditionedInterventionalPFN
+        # from UWYK's source tree — so UWYK_SRC must be on sys.path before the import.
+        if getattr(args, 'uwyk_src', None) and args.uwyk_src not in sys.path:
+            sys.path.insert(0, args.uwyk_src)
         from training_graph2d.model_graph_2d import GraphConditioned2DHead
         NUM_FEATURES = cfg['num_features']
         m = GraphConditioned2DHead(
