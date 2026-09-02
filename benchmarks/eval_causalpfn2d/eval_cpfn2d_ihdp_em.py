@@ -94,15 +94,17 @@ def _pad_features(X: np.ndarray, F: int) -> np.ndarray:
 @torch.no_grad()
 def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J,
                      y_scaling_mode='pooled_std'):
-    """Return (cate_raw, cate_em) per query, in raw Y units.
+    """Return (cate_raw, cate_em, cate_full) per query, in raw Y units.
 
-    Both share the same forward + interior marginalisation; they only
-    differ in how the 1D expected value is derived from p_y0 / p_y1.
+    All three share the same forward pass, they only differ in mean recipe:
+      - raw:  inner-only marginal, Σ centers · p_marg          (inner mass renormalised to 1)
+      - em:   Gaussian-corrected inner marginal mean
+      - full: mean under the FULL 9-region mixture (inner + edges + corners)
+              using w_reg + tail_scales alongside the inner grid.
 
-    y_scaling_mode must match how the model was trained:
-      - pooled_std: y_scaled = (y - pooled_mean) / pooled_std
-      - uwyk_minmax: y_scaled = (y - (min+max)/2) / ((max-min)/2)
+    y_scaling_mode must match how the model was trained.
     """
+    from full_mixture_mean import full_mixture_mean  # local import to avoid path fuss
     X_ctx = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     t_ctx = torch.from_numpy(T_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     y_ctx_raw = torch.from_numpy(Y_train_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)
@@ -111,31 +113,34 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J,
     if y_scaling_mode == 'uwyk_minmax':
         y_lo = y_ctx_raw.amin(dim=1, keepdim=True)
         y_hi = y_ctx_raw.amax(dim=1, keepdim=True)
-        y_mean = 0.5 * (y_lo + y_hi)           # shift
-        y_std  = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)  # scale
+        y_mean = 0.5 * (y_lo + y_hi)
+        y_std  = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
     else:  # pooled_std
         y_mean = y_ctx_raw.mean(dim=1, keepdim=True)
         y_std  = y_ctx_raw.std(dim=1, keepdim=True).clamp(min=1e-6)
     y_ctx_std = (y_ctx_raw - y_mean) / y_std
 
-    logits = model._forward_logits(X_ctx, t_ctx, y_ctx_std, X_q)
-    interior = logits[..., : J * J]
-    p = torch.softmax(interior, dim=-1).reshape(1, -1, J, J)      # (1, N_q, J, J)
+    # Full head output (J² + 9 + 4). Keep it — full-mixture mean needs all of it.
+    logits_all = model._forward_logits(X_ctx, t_ctx, y_ctx_std, X_q)  # (1, N_q, J²+9+4)
+    logits_np  = logits_all.squeeze(0).float().cpu().numpy()          # (N_q, J²+9+4)
 
-    # 1D marginals
-    p_y0 = p.sum(dim=-1).squeeze(0).cpu().numpy()                 # (N_q, J)
-    p_y1 = p.sum(dim=-2).squeeze(0).cpu().numpy()                 # (N_q, J)
+    interior = logits_all[..., : J * J]
+    p = torch.softmax(interior, dim=-1).reshape(1, -1, J, J)          # (1, N_q, J, J)
+    p_y0 = p.sum(dim=-1).squeeze(0).cpu().numpy()                     # (N_q, J)
+    p_y1 = p.sum(dim=-2).squeeze(0).cpu().numpy()                     # (N_q, J)
 
     edges_np = edges.cpu().numpy().astype(np.float64)
-    centres = 0.5 * (edges_np[:-1] + edges_np[1:])                # (J,)
+    centres = 0.5 * (edges_np[:-1] + edges_np[1:])                    # (J,)
 
     N_q = p_y0.shape[0]
     y_mean_scalar = float(y_mean.item())
     y_std_scalar  = float(y_std.item())
 
-    e0_raw = (p_y0 * centres[None, :]).sum(axis=-1)               # (N_q,)
+    # ── raw: inner-only ───────────────────────────────────────────────
+    e0_raw = (p_y0 * centres[None, :]).sum(axis=-1)
     e1_raw = (p_y1 * centres[None, :]).sum(axis=-1)
 
+    # ── em: Gaussian-corrected inner marginal ─────────────────────────
     e0_em = np.empty(N_q); e1_em = np.empty(N_q)
     for q in range(N_q):
         mu0_mid, sig0 = _marginal_stats(p_y0[q], edges_np)
@@ -143,10 +148,16 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J,
         e0_em[q] = _em_mean_1d(p_y0[q], edges_np, sig0, mu0_mid)
         e1_em[q] = _em_mean_1d(p_y1[q], edges_np, sig1, mu1_mid)
 
-    # Un-standardise both back to raw Y units.
-    cate_raw = (e1_raw - e0_raw) * y_std_scalar                   # (N_q,)  (mean cancels)
-    cate_em  = (e1_em  - e0_em ) * y_std_scalar
-    return cate_raw.astype(np.float32), cate_em.astype(np.float32)
+    # ── full: 9-region mixture mean over ℝ² ────────────────────────────
+    e0_full, e1_full = full_mixture_mean(logits_np, J, edges_np)
+
+    # Un-standardise (shift cancels in cate).
+    cate_raw  = (e1_raw  - e0_raw ) * y_std_scalar
+    cate_em   = (e1_em   - e0_em  ) * y_std_scalar
+    cate_full = (e1_full - e0_full) * y_std_scalar
+    return (cate_raw.astype(np.float32),
+            cate_em.astype(np.float32),
+            cate_full.astype(np.float32))
 
 
 def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
@@ -163,8 +174,10 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
     X_tr_p = _pad_features(X_tr_std, F)
     X_te_p = _pad_features(X_te_std, F)
 
-    cate_raw, cate_em = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p, edges, J,
-                                         y_scaling_mode=y_scaling_mode)
+    cate_raw, cate_em, cate_full = cate_raw_and_em(
+        model, X_tr_p, T_tr, y_tr, X_te_p, edges, J,
+        y_scaling_mode=y_scaling_mode,
+    )
 
     def _pehe_err(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
@@ -172,8 +185,9 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
         err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
         return pehe, err, ate
 
-    pehe_raw, err_raw, ate_raw = _pehe_err(cate_raw)
-    pehe_em,  err_em,  ate_em  = _pehe_err(cate_em)
+    pehe_raw,  err_raw,  ate_raw  = _pehe_err(cate_raw)
+    pehe_em,   err_em,   ate_em   = _pehe_err(cate_em)
+    pehe_full, err_full, ate_full = _pehe_err(cate_full)
 
     return {
         'dataset': 'IHDP',
@@ -181,6 +195,7 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
         'true_ate': true_ate,
         'pehe_raw':  pehe_raw,  'err_raw':  err_raw,  'ate_raw':  ate_raw,
         'pehe_em':   pehe_em,   'err_em':   err_em,   'ate_em':   ate_em,
+        'pehe_full': pehe_full, 'err_full': err_full, 'ate_full': ate_full,
     }
 
 
@@ -248,8 +263,9 @@ def main():
         all_rows.append(row)
         print(
             f'r={r:03d}  '
-            f'raw: pehe={row["pehe_raw"]:6.3f} err={row["err_raw"]:5.3f}  |  '
-            f'em:  pehe={row["pehe_em"]:6.3f} err={row["err_em"]:5.3f}  '
+            f'raw:  pehe={row["pehe_raw"]:6.3f} err={row["err_raw"]:5.3f}  |  '
+            f'em:   pehe={row["pehe_em"]:6.3f} err={row["err_em"]:5.3f}  |  '
+            f'full: pehe={row["pehe_full"]:6.3f} err={row["err_full"]:5.3f}  '
             f'(true_ate={row["true_ate"]:+5.2f}, {time.time()-t0:.0f}s)',
             flush=True,
         )
@@ -258,7 +274,7 @@ def main():
         v = np.array([r[k] for r in all_rows]); return v.mean(), v.std(ddof=1) / np.sqrt(len(v))
 
     print(f'\n══ IHDP summary (n={len(all_rows)}, step={step}) ══')
-    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em'):
+    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em', 'pehe_full', 'err_full'):
         m, s = _ms(k)
         print(f'  {k:12s} = {m:8.3f} ± {s:6.3f}')
 
