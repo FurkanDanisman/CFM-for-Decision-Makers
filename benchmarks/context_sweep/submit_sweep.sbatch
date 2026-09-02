@@ -119,6 +119,11 @@ export OMP_NUM_THREADS="$WORKERS"
 export MKL_NUM_THREADS="$WORKERS"
 export OPENBLAS_NUM_THREADS="$WORKERS"
 export PYTHONUNBUFFERED=1
+# Add sitecustomize.py stub-finder for missing packages (faiss, etc.) so
+# `import causalpfn` doesn't fail on Alliance Canada. The shim provides a
+# MagicMock for faiss; causalpfn imports it at module load but never calls
+# faiss functions in the code paths this sweep exercises.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 for SEED in $(seq "$SEED_START" "$SEED_END"); do
     OUT_FILE="$OUTDIR/${SOURCE}_seed$(printf '%04d' "$SEED")_N$(printf '%06d' "$N_CTX").npz"
