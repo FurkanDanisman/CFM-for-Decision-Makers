@@ -59,6 +59,13 @@ def load_cpfn2d_from_tabdpt(
     y_scaling_mode: str = 'pooled_std',
     loss_type: str = 'hlgauss',
     hlgauss_sigma: float = 0.32,
+    # Optional inner-region edge overrides. If left None, uses the mode's
+    # default ([-10, +10] for pooled_std, [-1, +1] for uwyk_minmax). Passing
+    # e.g. edge_lo=-3, edge_hi=3 tightens the inner region under pooled_std
+    # so the 9-region tail head sees the ~0.8% of training samples with
+    # |y_std| > 3 and actually learns those params.
+    edge_lo: Optional[float] = None,
+    edge_hi: Optional[float] = None,
     # `sigma` accepted for hydra-side interface parity with
     # load_pretrained_in_context_model (which is called with `sigma=...`
     # from the same experiment config). Ignored — we use hlgauss_sigma.
@@ -96,6 +103,8 @@ def load_cpfn2d_from_tabdpt(
         y_scaling_mode=y_scaling_mode,
         loss_type=loss_type,
         hlgauss_sigma=hlgauss_sigma,
+        edge_lo=edge_lo,
+        edge_hi=edge_hi,
     )
 
     # Load the TabDPT backbone from the same ckpt CausalPFN uses.

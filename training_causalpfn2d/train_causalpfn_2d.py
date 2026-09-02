@@ -470,10 +470,16 @@ def main():
     # ── Edges depend on Y_SCALING_MODE ────────────────────────────────
     # pooled_std  → y_scaled = (y - pooled_mean) / pooled_std, edges [-10, +10]
     # uwyk_minmax → y_scaled = (y - shift) / scale ∈ [-1, +1],  edges [-1, +1]
+    #
+    # Env override: EDGE_LO / EDGE_HI let us tighten the inner region without
+    # touching the code, e.g. EDGE_LO=-3 EDGE_HI=3 forces the 99.2%-of-mass
+    # region and activates the 9-region tail head for the remaining 0.8%.
     if Y_SCALING_MODE == 'uwyk_minmax':
         _edge_lo, _edge_hi = -1.0, 1.0
     else:
         _edge_lo, _edge_hi = -10.0, 10.0
+    _edge_lo = float(os.environ.get('EDGE_LO', _edge_lo))
+    _edge_hi = float(os.environ.get('EDGE_HI', _edge_hi))
     edges = make_edges(J, y_min=_edge_lo, y_max=_edge_hi).to(DEVICE)
     _log(f'[edges] Y_SCALING_MODE={Y_SCALING_MODE}  LOSS_TYPE={LOSS_TYPE}'
          f'{"  HLGAUSS_SIGMA=" + str(HLGAUSS_SIGMA) if LOSS_TYPE == "hlgauss" else ""}')

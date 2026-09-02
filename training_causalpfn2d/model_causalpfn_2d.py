@@ -106,6 +106,8 @@ class CausalPFN2DHead(nn.Module):
         y_scaling_mode: str = 'pooled_std',   # 'pooled_std' | 'uwyk_minmax'
         loss_type: str = 'density',            # 'density' | 'hlgauss'
         hlgauss_sigma: float = 0.2,            # only used when loss_type='hlgauss'
+        edge_lo: float | None = None,          # optional override for inner-region lo
+        edge_hi: float | None = None,          # optional override for inner-region hi
     ):
         super().__init__()
         self.J = J
@@ -121,14 +123,21 @@ class CausalPFN2DHead(nn.Module):
 
         # ── STEP-CKPT / A1 PATCH ─────────────────────────────────────────────
         # Bin edges baked in as a buffer so the trainer never needs to pass
-        # `edges`. Deterministic given (J, y_scaling_mode):
+        # `edges`. Deterministic given (J, y_scaling_mode) by default:
         #   pooled_std  → grid [-10, +10]  (matches CausalPFN's vmin/vmax)
         #   uwyk_minmax → grid [-1, +1]    (targets already in [-1, +1])
+        # Optional (edge_lo, edge_hi) override lets a caller tighten the inner
+        # region (e.g. [-3, +3] under pooled_std) so the 9-region tail head
+        # actually gets activated for the ~0.8% of training samples outside.
         if y_scaling_mode == 'pooled_std':
-            _edge_lo, _edge_hi = -10.0, 10.0
+            _default_lo, _default_hi = -10.0, 10.0
         else:  # uwyk_minmax
-            _edge_lo, _edge_hi = -1.0, 1.0
+            _default_lo, _default_hi = -1.0, 1.0
+        _edge_lo = _default_lo if edge_lo is None else float(edge_lo)
+        _edge_hi = _default_hi if edge_hi is None else float(edge_hi)
         self.register_buffer('edges', make_edges(J, y_min=_edge_lo, y_max=_edge_hi))
+        self.edge_lo = _edge_lo
+        self.edge_hi = _edge_hi
 
         # model_config: same shape as InContextModel.model_config so
         # Checkpoint callback can save+restore it verbatim and the resume
@@ -145,6 +154,8 @@ class CausalPFN2DHead(nn.Module):
                 'dropout': dropout,
                 'n_out': n_out,
                 'nbins': self.nbins_2d,
+                'edge_lo': _edge_lo,
+                'edge_hi': _edge_hi,
             },
             'y_scaling_mode': y_scaling_mode,
             'loss_type':      loss_type,
