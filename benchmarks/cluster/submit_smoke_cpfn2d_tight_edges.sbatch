@@ -81,13 +81,20 @@ echo "  OUT_DIR=$OUT_DIR"
 # COMPILE=0 disables torch.compile (safer for short smoke).
 COMPILE_ARGS=(compile=false)
 
-# Resume-on-restart: if there's a latest.pt in this OUT_DIR from a previous
-# invocation, pick up from actual_step there.
+# Resume-on-restart:
+#   1. Prefer latest.pt from CausalPFN's per-epoch Checkpoint callback.
+#   2. If that doesn't exist (short smoke didn't complete an epoch), fall back
+#      to the highest-numbered step_XXXX.pt from the step-ckpt patch.
 RESUME_ARGS=()
 FOUND_LATEST="$(find "$OUT_DIR/checkpoints" -maxdepth 2 -name latest.pt 2>/dev/null | head -1 || true)"
+if [ -z "$FOUND_LATEST" ]; then
+    FOUND_LATEST="$(ls -1 "$OUT_DIR/step_checkpoints/run"/step_*.pt 2>/dev/null | sort -V | tail -1 || true)"
+fi
 if [ -n "$FOUND_LATEST" ]; then
     RESUME_ARGS+=(resume_training=enabled resume_training.checkpoint_path="$FOUND_LATEST")
     echo "[resume] found $FOUND_LATEST"
+else
+    echo "[resume] no prior checkpoint — starting from scratch"
 fi
 
 cd "$CAUSALPFN"
