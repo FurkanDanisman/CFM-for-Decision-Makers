@@ -67,10 +67,18 @@ class SCMCaseStudyDataset:
 
     def __init__(self, case_study: str,
                  data_root: str | None = None,
-                 n_train: int | None = None):
+                 n_train: int | None = None,
+                 true_ate_shift: float | None = None):
         if case_study not in _CASE_STUDIES:
             raise ValueError(f'{case_study!r} not in {_CASE_STUDIES}')
         self.case_study = case_study
+        # DGP-level shift: add `true_ate_shift` to Y wherever T=1 (observational)
+        # AND to true_cate. Result: ATE_true shifts by +true_ate_shift on every
+        # realization → never near zero → rel-err denominator well-defined.
+        # Controlled by env var SCM_TRUE_ATE_SHIFT (default 0 = no shift).
+        if true_ate_shift is None:
+            true_ate_shift = float(os.environ.get('SCM_TRUE_ATE_SHIFT', '0.0'))
+        self.true_ate_shift = float(true_ate_shift)
         self.data_root = data_root or os.environ.get(
             'DOPFN_DATA_ROOT',
             '/scratch/furkanbd/rpfn_bench_kit/external/dopfn/data/prior_sampling',
@@ -138,6 +146,14 @@ class SCMCaseStudyDataset:
 
         X_train = x[tr_idx, 1:]; t_train = x[tr_idx, 0]; y_train = y[tr_idx]
         X_test  = x[te_idx, 1:]
+
+        # Apply DGP shift: treated units get +shift in Y (observational);
+        # true CATE = Y1 - Y0 also gets +shift (since we shift Y1 branch).
+        if self.true_ate_shift != 0.0:
+            treated_mask = t_train > 0.5
+            y_train = y_train.copy()
+            y_train[treated_mask] += self.true_ate_shift
+            cate_true = cate_true + self.true_ate_shift
 
         return _CATE_Slice(
             X_train=X_train.astype(np.float32),
