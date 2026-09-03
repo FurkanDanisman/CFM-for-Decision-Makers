@@ -177,33 +177,62 @@ def build_adjacency_matrix(model_n_features, n_real_features, graph_mode):
 
 
 def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
-    """Call UWYK's own predict_cate() method — verbatim what the wrapper
-    ships. It uses raw binary T_intv (1.0 / 0.0), inverse_transform=False
-    per arm, then applies _inverse_transform_cate to the difference.
+    """VERBATIM copy of the reproduce-realcause-results branch's
+    dofm_no_clustering.py pipeline (verified to reproduce Table 1 exactly).
+
+    Steps:
+    1. Target-encode T with mean(Y|T=0), mean(Y|T=1).
+    2. wrapper.fit(X, T_encoded, Y).
+    3. Two wrapper.predict() calls with target-encoded T_intv, inverse=True.
+    4. CATE = y_pred_1 - y_pred_0.
+
+    Note: this needs the CORRECT checkpoint from
+    `experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt`
+    NOT the `experiments/checkpoints/model/best_model.pt` (which is a
+    different experiment's ckpt and produces ~0 predictions here).
     """
     X_train = np.asarray(cate_dataset.X_train, dtype=np.float32)
-    t_train = np.asarray(cate_dataset.t_train, dtype=np.float32).reshape(-1, 1)
-    y_train = np.asarray(cate_dataset.y_train, dtype=np.float32).reshape(-1, 1)
-    X_test  = np.asarray(cate_dataset.X_test,  dtype=np.float32)
+    t_train_orig = np.asarray(cate_dataset.t_train, dtype=np.float32)
+    t_train_orig = t_train_orig.reshape(-1, 1) if t_train_orig.ndim == 1 else t_train_orig
+    y_train_orig = np.asarray(cate_dataset.y_train, dtype=np.float32)
+    y_train_orig = y_train_orig.reshape(-1, 1) if y_train_orig.ndim == 1 else y_train_orig
+    X_test = np.asarray(cate_dataset.X_test, dtype=np.float32)
+    y_train = y_train_orig
+    n_test = X_test.shape[0]
+
+    # Target-encode T with mean(Y|T)
+    t_flat = t_train_orig.flatten(); y_flat = y_train.flatten()
+    mean_y_t0 = float(y_flat[t_flat == 0].mean())
+    mean_y_t1 = float(y_flat[t_flat == 1].mean())
+    t_train = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
+    t_intv_0_encoded = mean_y_t0
+    t_intv_1_encoded = mean_y_t1
 
     n_features_orig = X_train.shape[1]
     model_n_features = model.model.num_features
     n_real_features = min(n_features_orig, model_n_features)
 
-    # Fit wrapper's preprocessing state on RAW binary T (0/1)
     model.fit(X_train, t_train, y_train)
 
     adjacency_matrix = build_adjacency_matrix_for_case(
         DATASET, model_n_features, n_real_features, graph_mode)
 
-    # Wrapper's own predict_cate — handles the arm-difference math correctly
-    cate_pred = model.predict_cate(
+    T_intv_1 = np.full((n_test, 1), t_intv_1_encoded, dtype=np.float32)
+    y_pred_1 = model.predict(
         X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-        X_intv=X_test,
+        X_intv=X_test, T_intv=T_intv_1,
         adjacency_matrix=adjacency_matrix,
-        prediction_type='mean',
+        prediction_type='mean', inverse_transform=True,
     )
-    return np.asarray(cate_pred, dtype=np.float32).reshape(-1)
+    T_intv_0 = np.full((n_test, 1), t_intv_0_encoded, dtype=np.float32)
+    y_pred_0 = model.predict(
+        X_obs=X_train, T_obs=t_train, Y_obs=y_train,
+        X_intv=X_test, T_intv=T_intv_0,
+        adjacency_matrix=adjacency_matrix,
+        prediction_type='mean', inverse_transform=True,
+    )
+    cate_pred = np.asarray(y_pred_1 - y_pred_0, dtype=np.float32).reshape(-1)
+    return cate_pred
 
 
 def main():
