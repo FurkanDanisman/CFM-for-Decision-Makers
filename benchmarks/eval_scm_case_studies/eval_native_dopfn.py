@@ -29,6 +29,22 @@ sys.path.insert(0, REPO_SRC)
 sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))   # top-level import
 sys.path.insert(0, DOPFN_ROOT)
 
+# DoPFN's base.py calls sklearn.utils.check_array with keyword
+# `ensure_all_finite=` which was removed in sklearn ≥1.6 (replaced by
+# `ensure_all_finite=` → `ensure_2d=`/`force_all_finite=`). Monkey-patch
+# check_array to accept and drop the removed kwarg.
+import sklearn.utils as _sku  # noqa: E402
+_orig_ca = _sku.check_array
+def _patched_check_array(*a, **kw):
+    if 'ensure_all_finite' in kw:
+        # Map to the current equivalent `force_all_finite`
+        kw.setdefault('force_all_finite', kw.pop('ensure_all_finite'))
+    return _orig_ca(*a, **kw)
+_sku.check_array = _patched_check_array
+# Also patch in the sklearn.utils.validation namespace (where check_array lives)
+import sklearn.utils.validation as _skuv  # noqa: E402
+_skuv.check_array = _patched_check_array
+
 from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
 # DoPFNRegressor loads artifacts by relative path, so cwd matters.
