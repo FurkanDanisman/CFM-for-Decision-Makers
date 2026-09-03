@@ -98,8 +98,7 @@ class SCMCaseStudyDataset:
         return len(self.pkl_paths)
 
     def _load_one(self, r: int) -> _CATE_Slice:
-        with open(self.pkl_paths[r], 'rb') as f:
-            ds = pickle.load(f)
+        ds = _pickle_load_with_dopfn_shim(self.pkl_paths[r])
         x = np.asarray(ds.x, dtype=np.float32)      # (N, d+1), T in col 0
         y = np.asarray(ds.y, dtype=np.float32).reshape(-1)
         N = x.shape[0]
@@ -152,6 +151,50 @@ class SCMCaseStudyDataset:
         """Return (cate_ds, ate_ds). ate_ds unused by our eval scripts."""
         cate = self._load_one(r)
         return cate, None
+
+
+def _pickle_load_with_dopfn_shim(pkl_path: str):
+    """The pkl unpickles a DoPFN `datasets.InterventionalDataset` object.
+    Our shims stub `datasets` with MagicMock so causalpfn imports work — that
+    breaks pickle here. Temporarily install the REAL DoPFN datasets module,
+    load, then restore the shim.
+    """
+    import sys as _sys
+    dopfn_root = os.environ.get('DOPFN_ROOT') or os.environ.get('DOPFN')
+    if not dopfn_root:
+        # Try to infer from DOPFN_DATA_ROOT (which is dopfn/data/prior_sampling)
+        d = os.environ.get('DOPFN_DATA_ROOT', '')
+        if 'data/prior_sampling' in d:
+            dopfn_root = d.split('/data/prior_sampling')[0]
+    if not dopfn_root or not os.path.isdir(dopfn_root):
+        raise RuntimeError(
+            'DOPFN_ROOT env var must point to the DoPFN repo root to unpickle '
+            'case-study data (has a `datasets/` package). Got: '
+            f'{dopfn_root!r}'
+        )
+
+    saved_datasets = _sys.modules.pop('datasets', None)
+    saved_submods = {k: _sys.modules.pop(k) for k in list(_sys.modules)
+                      if k.startswith('datasets.')}
+    inserted = False
+    if dopfn_root not in _sys.path:
+        _sys.path.insert(0, dopfn_root); inserted = True
+    try:
+        import importlib
+        importlib.import_module('datasets')            # real DoPFN datasets
+        with open(pkl_path, 'rb') as f:
+            obj = pickle.load(f)
+    finally:
+        # Restore the shimmed datasets so downstream causalpfn imports keep working
+        _sys.modules.pop('datasets', None)
+        for k in list(_sys.modules):
+            if k.startswith('datasets.'): _sys.modules.pop(k)
+        if inserted and dopfn_root in _sys.path:
+            _sys.path.remove(dopfn_root)
+        if saved_datasets is not None:
+            _sys.modules['datasets'] = saved_datasets
+        _sys.modules.update(saved_submods)
+    return obj
 
 
 def _cate_from_paired_rows(X_te: np.ndarray, T_te: np.ndarray, Y_te: np.ndarray) -> np.ndarray:
