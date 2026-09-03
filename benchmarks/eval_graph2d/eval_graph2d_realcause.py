@@ -38,9 +38,12 @@ from scipy.stats import norm
 
 
 parser = argparse.ArgumentParser()
+_SCM_CASES = ('Observed_Confounder', 'Observed_Mediator',
+              'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+              'Frontdoor_Criterion', 'Backdoor_Criterion')
 parser.add_argument('--dataset', type=str,
                     default=os.environ.get('DATASET', 'IHDP'),
-                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'))
+                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal') + _SCM_CASES)
 args, _ = parser.parse_known_args()
 DATASET = args.dataset
 
@@ -140,6 +143,12 @@ def get_dataset(name):
         return RealCauseLalondeCPSDataset()
     if name in ('PSID', 'PSID_bal'):
         return RealCauseLalondePSIDDataset()
+    if name in _SCM_CASES:
+        import sys as _sys
+        _rp_bench = os.path.join(REPO_SRC, 'benchmarks')
+        if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
+        from scm_case_study_dataset import SCMCaseStudyDataset
+        return SCMCaseStudyDataset(name)
     raise ValueError(name)
 
 
@@ -736,14 +745,19 @@ def cate_from_marginals(p_y0, p_y1, J, logits_np=None):
     cate_raw = e_y1_raw - e_y0_raw
 
     # EM mean: per-query per-arm fixed-point Gaussian correction.
-    N_q = p_y0.shape[0]
-    e_y0_em = np.empty(N_q); e_y1_em = np.empty(N_q)
-    for q in range(N_q):
-        mu0, s0 = _marginal_stats(p_y0[q], edges)
-        mu1, s1 = _marginal_stats(p_y1[q], edges)
-        e_y0_em[q] = _em_mean_1d(p_y0[q], edges, s0, mu0)
-        e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
-    cate_em = e_y1_em - e_y0_em
+    # Skipped if SKIP_EM=1 (default fast path for SCM case studies).
+    if os.environ.get('SKIP_EM', '0') == '1':
+        e_y0_em = e_y0_raw.copy(); e_y1_em = e_y1_raw.copy()
+        cate_em = cate_raw.copy()
+    else:
+        N_q = p_y0.shape[0]
+        e_y0_em = np.empty(N_q); e_y1_em = np.empty(N_q)
+        for q in range(N_q):
+            mu0, s0 = _marginal_stats(p_y0[q], edges)
+            mu1, s1 = _marginal_stats(p_y1[q], edges)
+            e_y0_em[q] = _em_mean_1d(p_y0[q], edges, s0, mu0)
+            e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
+        cate_em = e_y1_em - e_y0_em
 
     # Full 9-region mixture mean (integrates over ℝ², not just inner).
     if logits_np is not None:
@@ -876,7 +890,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             cate = cate_scaled * yrange / 2.0
             pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
             ate_hat = float(cate.mean())
-            err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+            err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
             results[f'pehe_{method}_{mode}'] = pehe
             results[f'err_{method}_{mode}']  = err_ate
             results[f'ate_{method}_{mode}']  = ate_hat

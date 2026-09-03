@@ -129,8 +129,12 @@ def main():
     ap.add_argument('--causalpfn',       required=True)
     ap.add_argument('--checkpoint',      required=True,
                     help='Path to DoPFN-backbone checkpoint (.pt with model_state_dict + config + edges).')
+    _SCM_CASES = ['Observed_Confounder', 'Observed_Mediator',
+                   'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+                   'Frontdoor_Criterion', 'Backdoor_Criterion']
     ap.add_argument('--dataset', default='IHDP',
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal', 'law_race', 'sales'],
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal',
+                             'law_race', 'sales'] + _SCM_CASES,
                     help='Which benchmark dataset to eval on. IHDP/ACIC/CPS/PSID/PSIDbal '
                          'expose cd.true_cate directly; law_race and sales are Do-PFN '
                          'semi-real (Kusner et al. 2017 / retail sales), split via '
@@ -215,6 +219,9 @@ def main():
 
     _install_dopfn_datasets_shim(args.dopfn)
     sys.path.insert(0, args.causalpfn)
+    _causalpfn_src = os.path.join(args.causalpfn, 'src')
+    if os.path.isdir(_causalpfn_src) and _causalpfn_src not in sys.path:
+        sys.path.insert(0, _causalpfn_src)
     from benchmarks import (IHDPDataset, ACIC2016Dataset,
                               RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset)
     _LOADERS = {
@@ -226,6 +233,12 @@ def main():
         # as benchmarks/run_one.py::apply_balanced (seed per realization).
         'PSIDbal': lambda: RealCauseLalondePSIDDataset(),
     }
+    if args.dataset in _SCM_CASES:
+        import sys as _sys
+        _rp_bench = os.path.join(args.repo, 'benchmarks')
+        if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
+        from scm_case_study_dataset import SCMCaseStudyDataset
+        _LOADERS[args.dataset] = lambda: SCMCaseStudyDataset(args.dataset)
     if args.dataset in ('law_race', 'sales'):
         # Do-PFN semi-real dataset — different interface (splits via
         # ds.generate_valid_split). Import DoPFN's `datasets` module fresh
@@ -619,7 +632,7 @@ def main():
         # (matches benchmarks/uwyk_direct_repro.py:146). Predicting 0 CATE
         # yields eps_ATE = 1. Guard denominator for near-zero true ATE.
         _ate_true = float(true_cate_raw.mean())
-        _ate_denom = max(abs(_ate_true), 1e-9)
+        _ate_denom = max(abs(_ate_true), 0.1)
         eps_ate_raw       = float(abs(cate_pred_raw.mean()      - _ate_true) / _ate_denom)
         eps_ate_full      = float(abs(cate_pred_em.mean()       - _ate_true) / _ate_denom)
         eps_ate_malc_raw  = float(abs(cate_pred_malc_raw.mean() - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')

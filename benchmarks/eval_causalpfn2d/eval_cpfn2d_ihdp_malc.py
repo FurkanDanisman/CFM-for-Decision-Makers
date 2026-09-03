@@ -376,7 +376,7 @@ def evaluate(realization, model, edges, J, F, y_scaling_mode, pool):
         if not m.any(): return float('nan'), float('nan'), float('nan')
         pehe = float(np.sqrt(np.mean((cate[m] - true_cate[m]) ** 2)))
         ate  = float(cate[m].mean())
-        err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+        err  = abs(ate - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate
 
     pehe_raw,  err_raw,  ate_raw  = _pehe(cate_raw_mean)

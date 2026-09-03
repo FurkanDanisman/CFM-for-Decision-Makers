@@ -165,7 +165,7 @@ def main():
     ours_cate = np.asarray(ours['ours_mean'], dtype=float)
     ours_ate = float(np.mean(ours_cate))
     pehe = float(np.sqrt(np.mean((ours_cate - true_cate) ** 2)))
-    eps_ate = float(abs(ours_ate - true_ate) / max(abs(true_ate), 1e-9))
+    eps_ate = float(abs(ours_ate - true_ate) / max(abs(true_ate), 0.1))
 
     out = dict(
         dataset=args.dataset,
@@ -226,7 +226,7 @@ def main():
         if dp_cate is not None:
             dp_ate = float(np.mean(dp_cate))
             dp_pehe = float(np.sqrt(np.mean((dp_cate - true_cate) ** 2)))
-            dp_eps  = float(abs(dp_ate - true_ate) / max(abs(true_ate), 1e-9))
+            dp_eps  = float(abs(dp_ate - true_ate) / max(abs(true_ate), 0.1))
             out['pehe_dopfn'] = dp_pehe
             out['err_dopfn']  = dp_eps
             out['dopfn_ate']  = dp_ate

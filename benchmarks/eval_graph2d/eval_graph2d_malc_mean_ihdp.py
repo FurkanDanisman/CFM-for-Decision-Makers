@@ -9,6 +9,8 @@ Estimators per (realization, mode):
   - em:       fixed-point Gaussian correction on p_marg
   - malc_1d:  fit 1D log-concave MLE to each marginal, mean of smoothed
   - malc_2d:  fit 2D MALC to p_mat, diagonal-integrate → p(τ), mean of p(τ)
+              — parallelised across queries via multiprocessing (matches
+              eval_cpfn2d_ihdp_malc.py). ~N_WORKERS× speedup over sequential.
 
 Env vars:
     CKPT              (required) graph2d checkpoint
@@ -18,9 +20,12 @@ Env vars:
     MALC_B            default 1000
     MALC_MAX_K        default 3
     MALC_N_EVAL       default 101
+    N_WORKERS         default = SLURM_CPUS_PER_TASK
     EVAL_MAX_CONTEXT  default '' — context subsample cap
     EVAL_CONTEXT_SEED default '42' — context subsample seed
-    MAX_REAL          default '' — cap on n_tables (for smoke tests)
+    MAX_REAL          default '' — cap on n_tables
+    REAL_START        default 0
+    REAL_END          default n_tables
 """
 from __future__ import annotations
 import os
@@ -37,9 +42,12 @@ CAUSALPFN = os.environ['CAUSALPFN']
 MALC_B      = int(os.environ.get('MALC_B', '1000'))
 MALC_MAX_K  = int(os.environ.get('MALC_MAX_K', '3'))
 MALC_N_EVAL = int(os.environ.get('MALC_N_EVAL', '101'))
+N_WORKERS   = int(os.environ.get('N_WORKERS', os.environ.get('SLURM_CPUS_PER_TASK', 8)))
 EVAL_MAX_CONTEXT  = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '42'))
 MAX_REAL          = os.environ.get('MAX_REAL', '')
+REAL_START        = int(os.environ.get('REAL_START', 0))
+REAL_END_ENV      = os.environ.get('REAL_END', '')
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 MALC_DIR = os.path.join(REPO_SRC, 'MALC')
@@ -48,7 +56,7 @@ for p in (REPO_SRC, MALC_DIR, L2_IHDP_DIR, UWYK, UWYK + '/src', CAUSALPFN, CAUSA
     if os.path.isdir(p) and p not in sys.path:
         sys.path.insert(0, p)
 
-from benchmarks import IHDPDataset  # noqa: E402  (resolves to CausalPFN's benchmarks)
+from benchmarks import IHDPDataset  # noqa: E402
 from training_graph2d.model_graph_2d import GraphConditioned2DHead  # noqa: E402
 from losses.BarDistribution2D import fit_malc_inner  # noqa: E402
 from malc_2d import dmalc_2d  # noqa: E402
@@ -82,7 +90,6 @@ def build_anc_v6a(F, n_real):
 
 
 def build_anc_noanc(F, n_real):
-    """No unconfoundedness knowledge; padded rows/cols still -1."""
     return _padded_neg1_only(F, n_real)
 
 
@@ -160,8 +167,67 @@ def forward_pmat(model, X_train, T_train, Y_train_scaled, X_test, adj, J):
     return p_mat.astype(np.float64)
 
 
-def cate_estimators(p_mat, J, edges_scaled):
-    """(N_q, J, J) → 4 CATE arrays each length N_q (on scaled y)."""
+# ── 2D MALC worker for multiprocessing pool ─────────────────────────────
+def _malc2d_worker(args):
+    """Worker: fit 2D MALC on p_mat and diagonal-integrate to CATE mean.
+
+    Returns (idx, cate_val, err_str_or_None).
+    """
+    idx, p_mat_np, edges_np, malc_B, malc_max_K, seed, n_eval = args
+
+    import os, sys
+    import numpy as np
+    _repo_src = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    _malc_dir = os.path.join(_repo_src, 'MALC')
+    _l2_dir   = os.path.join(_repo_src, 'benchmarks', 'l2_ihdp')
+    for _p in (_repo_src, _malc_dir, _l2_dir):
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+    from losses.BarDistribution2D import fit_malc_inner
+    from malc_2d import dmalc_2d
+
+    try:
+        fit = fit_malc_inner(
+            p_mat_np.T, edges_np, edges_np,
+            B_fit=malc_B, B_select=malc_B, max_K=malc_max_K,
+            seed=seed, parallel=False,
+        )
+        xs = np.linspace(edges_np[0], edges_np[-1], n_eval)
+        ys = np.linspace(edges_np[0], edges_np[-1], n_eval)
+        XX, YY = np.meshgrid(xs, ys, indexing='xy')
+        eval_pts = np.column_stack([XX.ravel(), YY.ravel()])
+        density = dmalc_2d(fit, eval_pts).reshape(len(xs), len(ys))
+        dy0 = xs[1] - xs[0]
+        tau_grid = np.linspace(ys[0] - xs[-1], ys[-1] - xs[0], 401)
+        dtau = tau_grid[1] - tau_grid[0]
+        p_tau = np.zeros_like(tau_grid)
+        for k, t in enumerate(tau_grid):
+            y1 = xs + t
+            v = (y1 >= ys[0]) & (y1 <= ys[-1])
+            if not np.any(v):
+                continue
+            col = np.clip(np.searchsorted(xs, xs[v]), 0, len(xs) - 1)
+            rf = (y1[v] - ys[0]) / (ys[1] - ys[0])
+            rlo = np.clip(np.floor(rf).astype(int), 0, len(ys) - 2)
+            rhi = rlo + 1
+            whi = rf - rlo; wlo = 1.0 - whi
+            f = wlo * density[rlo, col] + whi * density[rhi, col]
+            p_tau[k] = float(f.sum()) * dy0
+        s = p_tau.sum() * dtau
+        if s > 0:
+            p_tau /= s
+            return idx, float((p_tau * tau_grid).sum() * dtau), None
+        return idx, float('nan'), 's<=0'
+    except Exception as e:
+        return idx, float('nan'), str(e)
+
+
+def cate_estimators(p_mat, J, edges_scaled, pool):
+    """(N_q, J, J) → 4 CATE arrays each length N_q (on scaled y).
+
+    raw/em/malc1d computed sequentially (fast).
+    malc2d parallelised across queries via `pool`.
+    """
     N_q = p_mat.shape[0]
     centres = 0.5 * (edges_scaled[:-1] + edges_scaled[1:])
 
@@ -185,50 +251,21 @@ def cate_estimators(p_mat, J, edges_scaled):
         e1_m = float((p1_malc * centres).sum())
         cate_malc1d[q] = e1_m - e0_m
 
-    xs = np.linspace(edges_scaled[0], edges_scaled[-1], MALC_N_EVAL)
-    ys = np.linspace(edges_scaled[0], edges_scaled[-1], MALC_N_EVAL)
-    XX, YY = np.meshgrid(xs, ys, indexing='xy')
-    eval_pts = np.column_stack([XX.ravel(), YY.ravel()])
-    dy0 = xs[1] - xs[0]
-    tau_grid = np.linspace(ys[0] - xs[-1], ys[-1] - xs[0], 401)
-    dtau = tau_grid[1] - tau_grid[0]
-
-    cate_malc2d = np.empty(N_q)
-    for q in range(N_q):
-        try:
-            fit = fit_malc_inner(
-                p_mat[q].T, edges_scaled, edges_scaled,
-                B_fit=MALC_B, B_select=MALC_B, max_K=MALC_MAX_K,
-                seed=(q * 31 + 17) % (10 ** 8), parallel=False,
-            )
-            density = dmalc_2d(fit, eval_pts).reshape(len(xs), len(ys))
-            p_tau = np.zeros_like(tau_grid)
-            for k, t in enumerate(tau_grid):
-                y1 = xs + t
-                v = (y1 >= ys[0]) & (y1 <= ys[-1])
-                if not np.any(v):
-                    continue
-                col = np.clip(np.searchsorted(xs, xs[v]), 0, len(xs) - 1)
-                rf = (y1[v] - ys[0]) / (ys[1] - ys[0])
-                rlo = np.clip(np.floor(rf).astype(int), 0, len(ys) - 2)
-                rhi = rlo + 1
-                whi = rf - rlo; wlo = 1.0 - whi
-                f = wlo * density[rlo, col] + whi * density[rhi, col]
-                p_tau[k] = float(f.sum()) * dy0
-            s = p_tau.sum() * dtau
-            if s > 0:
-                p_tau /= s
-                cate_malc2d[q] = float((p_tau * tau_grid).sum() * dtau)
-            else:
-                cate_malc2d[q] = float('nan')
-        except Exception as e:
-            print(f'  [MALC2D fail r={q}: {e}]', flush=True)
-            cate_malc2d[q] = float('nan')
+    tasks = [(q, p_mat[q], edges_scaled, MALC_B, MALC_MAX_K,
+              (q * 31 + 17) % (10 ** 8), MALC_N_EVAL) for q in range(N_q)]
+    cate_malc2d = np.full(N_q, np.nan)
+    n_fail = 0
+    for idx, val, err in pool.imap_unordered(_malc2d_worker, tasks, chunksize=1):
+        cate_malc2d[idx] = val
+        if err is not None or not np.isfinite(val):
+            n_fail += 1
+    if n_fail:
+        print(f'  [MALC2D: {n_fail}/{N_q} failed]', flush=True)
 
     return cate_raw, cate_em, cate_malc1d, cate_malc2d
 
 
-def evaluate_realization(r, ds, model, J, F):
+def evaluate_realization(r, ds, model, J, F, pool):
     cate_ds = ds[r][0]
     X_tr_raw = np.asarray(cate_ds.X_train, dtype=np.float32)
     T_tr     = np.asarray(cate_ds.t_train, dtype=np.float32).reshape(-1)
@@ -256,13 +293,13 @@ def evaluate_realization(r, ds, model, J, F):
     for mode, adj in (('v6a',   build_anc_v6a(F, n_real)),
                       ('noanc', build_anc_noanc(F, n_real))):
         p_mat = forward_pmat(model, X_tr, T_tr, Y_obs, X_te, adj, J)
-        c_raw, c_em, c_malc1d, c_malc2d = cate_estimators(p_mat, J, edges_scaled)
+        c_raw, c_em, c_malc1d, c_malc2d = cate_estimators(p_mat, J, edges_scaled, pool)
         for name, cate_scaled in (('raw', c_raw), ('em', c_em),
                                     ('malc1d', c_malc1d), ('malc2d', c_malc2d)):
             cate = cate_scaled * yrange / 2.0
             pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
             ate_hat = float(np.nanmean(cate))
-            err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+            err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
             row[f'pehe_{name}_{mode}'] = pehe
             row[f'err_{name}_{mode}']  = err
     return row
@@ -270,24 +307,38 @@ def evaluate_realization(r, ds, model, J, F):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    print(f'[bootstrap] ckpt={CKPT}  out={OUT}  MALC_B={MALC_B}  seed={EVAL_CONTEXT_SEED}', flush=True)
+    print(f'[bootstrap] ckpt={CKPT}  out={OUT}  MALC_B={MALC_B}  seed={EVAL_CONTEXT_SEED}  '
+          f'N_WORKERS={N_WORKERS}', flush=True)
     model, cfg = load_model(CKPT)
     J = cfg['J']; F = cfg['num_features']
     ds = IHDPDataset()
-    n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
-    print(f'[bootstrap] IHDP n_tables={ds.n_tables}  running={n}  J={J}  F={F}', flush=True)
-    rows = []
-    t0 = time.time()
-    for r in range(n):
-        row = evaluate_realization(r, ds, model, J, F)
-        rows.append(row)
-        np.savez(os.path.join(OUT, f'IHDP_r{r:03d}.npz'),
-                 **{k: np.array(v) for k, v in row.items()})
-        parts = []
-        for est in ('raw', 'em', 'malc1d', 'malc2d'):
-            for mode in ('v6a', 'noanc'):
-                parts.append(f'{est[:6]}-{mode[:5]}={row[f"pehe_{est}_{mode}"]:6.3f}')
-        print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+
+    n_total = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
+    r_start = REAL_START
+    r_end   = int(REAL_END_ENV) if REAL_END_ENV else n_total
+    r_end   = min(r_end, n_total)
+    print(f'[bootstrap] IHDP n_tables={ds.n_tables}  running=[{r_start},{r_end})  J={J}  F={F}',
+          flush=True)
+
+    import multiprocessing as mp
+    ctx = mp.get_context('spawn')
+    pool = ctx.Pool(N_WORKERS)
+    try:
+        rows = []
+        t0 = time.time()
+        for r in range(r_start, r_end):
+            row = evaluate_realization(r, ds, model, J, F, pool)
+            rows.append(row)
+            np.savez(os.path.join(OUT, f'IHDP_r{r:03d}.npz'),
+                     **{k: np.array(v) for k, v in row.items()})
+            parts = []
+            for est in ('raw', 'em', 'malc1d', 'malc2d'):
+                for mode in ('v6a', 'noanc'):
+                    parts.append(f'{est[:6]}-{mode[:5]}={row[f"pehe_{est}_{mode}"]:6.3f}')
+            print(f'r={r:03d}  ' + '  '.join(parts) + f'  ({time.time()-t0:.0f}s)', flush=True)
+    finally:
+        pool.close()
+        pool.join()
 
     def ms(k):
         v = np.array([r[k] for r in rows if np.isfinite(r[k])])

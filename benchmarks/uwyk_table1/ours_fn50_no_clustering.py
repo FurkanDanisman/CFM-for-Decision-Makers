@@ -293,7 +293,7 @@ def evaluate_realization(model, cfg, dataset_cls, r: int,
 
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
     ate_hat = float(cate.mean())
-    ate_rel_err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+    ate_rel_err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
     return dict(
         pehe=pehe,
         ate_rel_err=ate_rel_err,

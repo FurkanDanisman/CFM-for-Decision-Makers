@@ -87,7 +87,7 @@ def main() -> int:
         cate_raw = (E_y1 - E_y0) * y_rng_over_2       # (Q,) in raw Y units
         ate_raw  = float(cate_raw.mean())
         pehe = float(np.sqrt(np.mean((cate_raw - true_cate_raw) ** 2)))
-        eps  = float(abs(ate_raw - true_ate_raw) / max(abs(true_ate_raw), 1e-9))
+        eps  = float(abs(ate_raw - true_ate_raw) / max(abs(true_ate_raw), 0.1))
         pehe_raw.append(pehe); eps_raw.append(eps)
 
     if n_missing_raw_input:

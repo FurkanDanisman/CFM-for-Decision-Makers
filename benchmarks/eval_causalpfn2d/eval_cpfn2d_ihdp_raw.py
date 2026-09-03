@@ -110,7 +110,7 @@ def evaluate(realization: int, model, edges, J, F):
     cate = cate_raw_mean(model, X_tr_p, T_tr, y_tr, X_te_p, edges, J)
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
     ate_hat = float(cate.mean())
-    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
 
     return {
         'dataset': 'IHDP',
