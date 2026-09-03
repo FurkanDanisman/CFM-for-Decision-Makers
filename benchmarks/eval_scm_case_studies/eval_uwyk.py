@@ -177,64 +177,33 @@ def build_adjacency_matrix(model_n_features, n_real_features, graph_mode):
 
 
 def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
-    """VERBATIM copy of dofm_full_conditioning.py::dofm_full_conditioning_pipeline
-    (see benchmarks/uwyk_direct_repro.py:49-99)."""
+    """Call UWYK's own predict_cate() method — verbatim what the wrapper
+    ships. It uses raw binary T_intv (1.0 / 0.0), inverse_transform=False
+    per arm, then applies _inverse_transform_cate to the difference.
+    """
     X_train = np.asarray(cate_dataset.X_train, dtype=np.float32)
-    t_train_orig = np.asarray(cate_dataset.t_train, dtype=np.float32)
-    t_train_orig = t_train_orig.reshape(-1, 1) if t_train_orig.ndim == 1 else t_train_orig
-    y_train_orig = np.asarray(cate_dataset.y_train, dtype=np.float32)
-    y_train_orig = y_train_orig.reshape(-1, 1) if y_train_orig.ndim == 1 else y_train_orig
-    X_test = np.asarray(cate_dataset.X_test, dtype=np.float32)
-    y_train = y_train_orig
-
-    n_train = X_train.shape[0]; n_test = X_test.shape[0]
-
-    # T encoding: default = target-encode with mean Y per arm (UWYK paper).
-    # Env UWYK_T_ENCODING=raw → pass binary T unchanged (works when Y scale
-    # is unusual and target-encoded values fall outside UWYK's training
-    # distribution). Try 'raw' first if paper encoding collapses.
-    t_encoding = os.environ.get('UWYK_T_ENCODING', 'target').lower()
-    t_flat = t_train_orig.flatten(); y_flat = y_train.flatten()
-    mean_y_t0 = float(y_flat[t_flat == 0].mean())
-    mean_y_t1 = float(y_flat[t_flat == 1].mean())
-    if t_encoding == 'raw':
-        t_train = t_train_orig.astype(np.float32)
-        t_intv_0_encoded = 0.0
-        t_intv_1_encoded = 1.0
-    else:  # 'target'
-        t_train = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
-        t_intv_0_encoded = mean_y_t0
-        t_intv_1_encoded = mean_y_t1
-    print(f'[uwyk] t_encoding={t_encoding}  T_intv_0={t_intv_0_encoded:+.4f}  '
-          f'T_intv_1={t_intv_1_encoded:+.4f}  Δ={t_intv_1_encoded-t_intv_0_encoded:+.4f}',
-          flush=True)
+    t_train = np.asarray(cate_dataset.t_train, dtype=np.float32).reshape(-1, 1)
+    y_train = np.asarray(cate_dataset.y_train, dtype=np.float32).reshape(-1, 1)
+    X_test  = np.asarray(cate_dataset.X_test,  dtype=np.float32)
 
     n_features_orig = X_train.shape[1]
     model_n_features = model.model.num_features
     n_real_features = min(n_features_orig, model_n_features)
 
-    # Wrapper does its own fit → internal preprocessing state
+    # Fit wrapper's preprocessing state on RAW binary T (0/1)
     model.fit(X_train, t_train, y_train)
 
     adjacency_matrix = build_adjacency_matrix_for_case(
         DATASET, model_n_features, n_real_features, graph_mode)
 
-    T_intv_1 = np.full((n_test, 1), t_intv_1_encoded, dtype=np.float32)
-    y_pred_1 = model.predict(
+    # Wrapper's own predict_cate — handles the arm-difference math correctly
+    cate_pred = model.predict_cate(
         X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-        X_intv=X_test, T_intv=T_intv_1,
+        X_intv=X_test,
         adjacency_matrix=adjacency_matrix,
-        prediction_type='mean', inverse_transform=True,
+        prediction_type='mean',
     )
-    T_intv_0 = np.full((n_test, 1), t_intv_0_encoded, dtype=np.float32)
-    y_pred_0 = model.predict(
-        X_obs=X_train, T_obs=t_train, Y_obs=y_train,
-        X_intv=X_test, T_intv=T_intv_0,
-        adjacency_matrix=adjacency_matrix,
-        prediction_type='mean', inverse_transform=True,
-    )
-    cate_pred = np.asarray(y_pred_1 - y_pred_0, dtype=np.float32).reshape(-1)
-    return cate_pred
+    return np.asarray(cate_pred, dtype=np.float32).reshape(-1)
 
 
 def main():
