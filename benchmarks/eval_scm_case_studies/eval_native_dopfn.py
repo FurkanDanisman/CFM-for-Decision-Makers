@@ -15,6 +15,7 @@ Env vars:
 from __future__ import annotations
 import argparse, os, sys, time
 import numpy as np
+import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default=os.environ.get('DATASET', 'Observed_Confounder'))
@@ -64,11 +65,13 @@ def evaluate(r: int, ds: SCMCaseStudyDataset):
     X_test_full = np.hstack([np.zeros((cate_ds.X_test.shape[0], 1), dtype=np.float32),
                               cate_ds.X_test])   # T-col placeholder (predict_cate handles both)
 
-    # DoPFNRegressor.fit() expects X with T in col 0; predict_cate does the do(1)-do(0) diff
+    # DoPFNRegressor.fit() expects X with T in col 0; predict_cate does the do(1)-do(0) diff.
+    # predict_cate internally calls X.cpu().detach().numpy(), so pass a torch tensor.
     os.chdir(DOPFN_ROOT)
     try:
         model.fit(X_train_full, y_train)
-        cate_pred = model.predict_cate(X_test_full)
+        X_test_t = torch.from_numpy(X_test_full.astype(np.float32))
+        cate_pred = model.predict_cate(X_test_t)
     finally:
         os.chdir(_prev_cwd)
 
