@@ -71,9 +71,10 @@ def _load_uwyk():
                 cfg_p = os.path.join(UWYK_CKPT_DIR, 'best_model_config.yaml')
         assert os.path.isfile(ck_p),  f'UWYK ckpt missing: {ck_p}'
         assert os.path.isfile(cfg_p), f'UWYK config missing: {cfg_p}'
-        print(f'[uwyk] loading  ckpt={ck_p}  cfg={cfg_p}', flush=True)
+        _dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f'[uwyk] loading  ckpt={ck_p}  cfg={cfg_p}  device={_dev}', flush=True)
         m = pre_mod.PreprocessingGraphConditionedPFN(
-            config_path=cfg_p, checkpoint_path=ck_p, device='cpu', verbose=False,
+            config_path=cfg_p, checkpoint_path=ck_p, device=_dev, verbose=False,
             random_state=42, use_clustering=False,
         ).load()
     finally:
