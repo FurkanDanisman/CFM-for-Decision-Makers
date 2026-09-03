@@ -26,9 +26,10 @@ MAX_REAL  = os.environ.get('MAX_REAL', '')
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
+sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))   # top-level import
 sys.path.insert(0, DOPFN_ROOT)
 
-from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
+from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
 # DoPFNRegressor loads artifacts by relative path, so cwd matters.
 _prev_cwd = os.getcwd()
