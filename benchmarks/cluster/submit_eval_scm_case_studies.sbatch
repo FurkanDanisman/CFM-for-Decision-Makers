@@ -2,7 +2,7 @@
 #SBATCH --job-name=scm-cs-eval
 #SBATCH --output=logs_scm_case_studies/eval_%A_%a.out
 #SBATCH --error=logs_scm_case_studies/eval_%A_%a.err
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
@@ -46,7 +46,10 @@ export DOPFN_DATA_ROOT="${DOPFN_DATA_ROOT:-$DEPLOY_ROOT/external/dopfn/data/prio
 # (they carry DoPFN's `datasets.InterventionalDataset` class refs).
 export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN_DATA_ROOT%/data/prior_sampling}}"
 
-[ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
+# dopfn_native uses DoPFNRegressor().__init__ artifacts — no ckpt needed
+if [ "$MODEL" != "dopfn_native" ]; then
+    [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
+fi
 
 case "$SLURM_ARRAY_TASK_ID" in
     0) DATASET=Observed_Confounder              ;;
