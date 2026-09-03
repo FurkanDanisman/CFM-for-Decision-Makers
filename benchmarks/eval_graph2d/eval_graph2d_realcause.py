@@ -359,6 +359,36 @@ def build_anc_v3d(F, n_real):
     return A
 
 
+def build_anc_v3e(F, n_real):
+    """v3e: v3a (T→Y=+1, X→T=+1, X→Y=+1, rest 0) + diagonal -1 on real block.
+    No reverse edges asserted."""
+    A = build_anc_v3a(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = -1.0
+    return A
+
+
+def build_anc_v3f(F, n_real):
+    """v3f: v3a (T→Y=+1, X→T=+1, X→Y=+1, rest 0) + diagonal +1 on real block.
+    No reverse edges asserted."""
+    A = build_anc_v3a(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = 1.0
+    return A
+
+
+def build_anc_v6c(F, n_real):
+    """v6c: our v6a anc info (all -1s from unconfoundedness) + diagonal +1.
+    v6b has diag=0, v6a has diag=-1, v6c has diag=+1."""
+    A = build_anc_v6a(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = 1.0
+    return A
+
+
 def build_anc_diag(F, n_real):
     """diag-only: diagonal of the real block is -1. Rest of real block 0.
     Padded rows/cols still -1."""
@@ -848,6 +878,20 @@ def build_mode_list(F, n_real, anc_mode=None):
             ('v3c',   build_anc_v3c(F, n_real)),
             ('v3d',   build_anc_v3d(F, n_real)),
             ('v6a',   build_anc_v6a(F, n_real)),
+            ('noanc', build_anc_none(F, n_real)),
+        )
+    if anc_mode == 'v3_v6_extended':
+        # Extended sweep: v3a-v3f + v6a/v6b/v6c + noanc
+        return (
+            ('v3a',   build_anc_v3a(F, n_real)),
+            ('v3b',   build_anc_v3b(F, n_real)),
+            ('v3c',   build_anc_v3c(F, n_real)),
+            ('v3d',   build_anc_v3d(F, n_real)),
+            ('v3e',   build_anc_v3e(F, n_real)),
+            ('v3f',   build_anc_v3f(F, n_real)),
+            ('v6a',   build_anc_v6a(F, n_real)),
+            ('v6b',   build_anc_v6b(F, n_real)),
+            ('v6c',   build_anc_v6c(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
         )
     if anc_mode == 'all_variants':

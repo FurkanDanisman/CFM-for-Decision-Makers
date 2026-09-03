@@ -115,22 +115,53 @@ def build_anc_v3c(F, n_real):
 
 
 def build_anc_v3d(F, n_real):
+    """v3d: v3b + diag=+1."""
     A = build_anc_v3b(F, n_real)
     for i in range(2 + n_real): A[i, i] = 1.0
     return A
 
 
-def build_anc_v6a(F, n_real):
-    """v6a: no +1 anywhere. All -1s from unconfoundedness."""
+def build_anc_v3e(F, n_real):
+    """v3e: v3a + diag=-1 (no reverse edges asserted)."""
+    A = build_anc_v3a(F, n_real)
+    for i in range(2 + n_real): A[i, i] = -1.0
+    return A
+
+
+def build_anc_v3f(F, n_real):
+    """v3f: v3a + diag=+1 (no reverse edges asserted)."""
+    A = build_anc_v3a(F, n_real)
+    for i in range(2 + n_real): A[i, i] = 1.0
+    return A
+
+
+def _build_anc_v6_core(F, n_real):
+    """v6 core: reverse-only -1 edges from unconfoundedness (Y→T, T→X, Y→X = -1).
+    Padded slots -1. Diagonal NOT set here — subclasses (v6a/v6b/v6c) set it."""
     A = _padded_neg1(F, n_real)
-    real_n = 2 + n_real
-    for i in range(real_n):
-        A[i, i] = -1.0
-        # reverse of the T→Y, X→T, X→Y edges
-    A[1, 0] = -1.0   # Y→T = -1
+    A[1, 0] = -1.0                                # Y → T = -1
     for i in range(n_real):
-        A[0, 2 + i] = -1.0   # T→X = -1
-        A[1, 2 + i] = -1.0   # Y→X = -1
+        A[0, 2 + i] = -1.0                        # T → X = -1
+        A[1, 2 + i] = -1.0                        # Y → X = -1
+    return A
+
+
+def build_anc_v6a(F, n_real):
+    """v6a: v6-core + diag=-1."""
+    A = _build_anc_v6_core(F, n_real)
+    for i in range(2 + n_real): A[i, i] = -1.0
+    return A
+
+
+def build_anc_v6b(F, n_real):
+    """v6b: v6-core + diag=0."""
+    return _build_anc_v6_core(F, n_real)
+
+
+def build_anc_v6c(F, n_real):
+    """v6c: v6-core + diag=+1."""
+    A = _build_anc_v6_core(F, n_real)
+    for i in range(2 + n_real): A[i, i] = 1.0
     return A
 
 
@@ -139,7 +170,11 @@ _ADJ_BUILDERS = {
     'v3b':   build_anc_v3b,
     'v3c':   build_anc_v3c,
     'v3d':   build_anc_v3d,
+    'v3e':   build_anc_v3e,
+    'v3f':   build_anc_v3f,
     'v6a':   build_anc_v6a,
+    'v6b':   build_anc_v6b,
+    'v6c':   build_anc_v6c,
     'noanc': build_anc_none,
 }
 
