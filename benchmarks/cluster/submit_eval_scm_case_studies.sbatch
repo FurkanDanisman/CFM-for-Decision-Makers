@@ -78,8 +78,10 @@ case "$MODEL" in
     uwyk)
         SCRIPT="$REPO/benchmarks/eval_scm_case_studies/eval_uwyk.py"
         export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
-        # UWYK_CKPT_DIR must point to the directory holding best_model.pt (or final_model_with_bardist.pt)
         export UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$(dirname "$CKPT")}"
+        # Explicit .pt / .yaml paths (avoids the fragile filename-guessing fallback):
+        export UWYK_CKPT="${UWYK_CKPT:-$CKPT}"
+        export UWYK_CONFIG="${UWYK_CONFIG:-}"
         export ANC_MODE="${UWYK_ANC_MODE:-noanc}"
         ;;
     *) echo "unknown MODEL=$MODEL" >&2; exit 3 ;;
