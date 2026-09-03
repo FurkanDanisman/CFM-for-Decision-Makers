@@ -80,6 +80,10 @@ case "$MODEL" in
         DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
         EXTRA_ARGS="--repo $REPO --dopfn $DOPFN_ROOT --causalpfn $CAUSALPFN --checkpoint $CKPT --dataset $DATASET --out $OUT/summary.npz"
         ;;
+    fn50)
+        # fn=50: InterventionalPFN architecture (distinct from cpfn2d).
+        SCRIPT="$REPO/benchmarks/eval_scm_case_studies/eval_fn50.py"
+        ;;
     uwyk)
         SCRIPT="$REPO/benchmarks/eval_scm_case_studies/eval_uwyk.py"
         export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
