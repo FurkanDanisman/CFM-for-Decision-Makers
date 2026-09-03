@@ -1,19 +1,18 @@
 """UWYK eval on the 6 synthetic case studies — PEHE + ATE err.
 
-Uses the RAW underlying UWYK model (PartialGraphConditionedInterventionalPFN)
-via the wrapper's .model attribute — bypasses the sklearn wrapper's
-preprocessing which was collapsing predictions to zero on non-standard
-inputs. Follows the same forward pattern as eval_graph2d_realcause.py:
+Calls PartialGraphConditionedInterventionalPFN forward directly (via
+wrapper.model) using the SAME preprocessing the sklearn wrapper does:
 
-  - X padded with 0 to model.num_features
-  - Adj matrix (F+2, F+2) with real block + -1 around padded slots
-  - Y scaled to [-1, 1] via y_min/y_rng of the training Y
-  - Model forward with (X_obs, T_obs, Y_obs, X_intv, adj_t)
-  - Concat both do(0) + do(1) queries → one forward pass
-  - Extract 1D nbins marginal, compute mean, un-scale, subtract
+- X-standardize (mean/std on TRAIN X) then 0-pad to model.num_features
+- Y-scale to [-1, 1] via y_min/y_max
+- Adj (F+2, F+2): real block has T→Y = +1, X→T = +1, X→Y = +1;
+  padded feature slots get -1 on rows/cols/diag
+- TWO separate forwards (T=1 arm, T=0 arm) — do NOT concat
+- Get scaled mean via wrapper.bar_distribution.mean(out['predictions'])
+- CATE = (arm1 − arm0) × y_range / 2   (y_min cancels)
 
-Env vars: DATASET, OUT, UWYK_SRC, UWYK_CKPT, UWYK_CONFIG (or UWYK_CKPT_DIR),
-          ANC_MODE (noanc|anc), MAX_REAL, DOPFN_DATA_ROOT
+Env: DATASET, OUT, UWYK_SRC, UWYK_CKPT, UWYK_CONFIG (or UWYK_CKPT_DIR),
+     ANC_MODE (noanc|anc), MAX_REAL, DOPFN_DATA_ROOT
 """
 from __future__ import annotations
 import argparse, os, sys, time, importlib
@@ -43,7 +42,6 @@ from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-# ── UWYK model load (via wrapper.model — the underlying transformer) ──────
 def _load_uwyk():
     saved = {}
     for name in list(sys.modules):
@@ -85,128 +83,96 @@ def _load_uwyk():
     return wrapper
 
 
-def _pad_features(X, F):
-    if X.shape[1] == F: return X
-    if X.shape[1] > F:  return X[:, :F]
-    return np.hstack([X, np.zeros((X.shape[0], F - X.shape[1]), dtype=X.dtype)])
-
-
-def _standardize_train_test(Xtr, Xte, eps=1e-8):
-    mu = Xtr.mean(0, keepdims=True); sd = Xtr.std(0, keepdims=True) + eps
-    return (Xtr - mu) / sd, (Xte - mu) / sd
-
-
-def _scale_y(y_train):
-    """[-1, 1] scaling via y_min/y_max of training Y. Returns scaled y + (y_min, y_rng)."""
-    y = np.asarray(y_train, dtype=np.float32).reshape(-1)
-    y_min = float(y.min()); y_max = float(y.max())
-    y_rng = max(y_max - y_min, 1e-6)
-    y_scaled = 2.0 * (y - y_min) / y_rng - 1.0
-    return y_scaled.reshape(-1, 1), y_min, y_rng
-
-
-def _build_anc_none(F, n_real):
-    """Real block all 0, padded slots -1 (rows + cols + diagonal)."""
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    feat_off = 2
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
-    return A
-
-
-def _build_anc_full(F, n_real):
-    """+1 for T→Y and each real X→T, X→Y; propagate; -1 around padded slots."""
+def _build_adj(F, n_real, anc_mode):
+    """(F+2, F+2) adjacency. Order: [T=0, Y=1, X_0 ... X_{F-1}].
+    noanc: real block all 0, padded slots -1
+    anc:   T→Y=+1, X_i→T=+1, X_i→Y=+1 for real; padded slots -1
+    """
     A = np.zeros((F + 2, F + 2), dtype=np.float32)
     T_idx, Y_idx, feat_off = 0, 1, 2
-    A[T_idx, Y_idx] = 1.0
-    for i in range(n_real):
-        A[feat_off + i, T_idx] = 1.0
-        A[feat_off + i, Y_idx] = 1.0
-    # Padded slots: -1
+    if anc_mode == 'anc':
+        A[T_idx, Y_idx] = 1.0
+        for i in range(n_real):
+            A[feat_off + i, T_idx] = 1.0
+            A[feat_off + i, Y_idx] = 1.0
+    # padded feature slots → -1 rows + cols + diagonal
     for i in range(n_real, F):
         A[feat_off + i, :] = -1.0
         A[:, feat_off + i] = -1.0
         A[feat_off + i, feat_off + i] = -1.0
-    # Propagate ancestor knowledge to fill entailed entries
-    try:
-        from utils.graph_utils import propagate_ancestor_knowledge
-        real_n = 2 + n_real
-        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
-        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
-        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
-    except Exception:
-        pass
     return A
+
+
+def _standardize_and_pad(X_train, X_test, F):
+    """Compute (mean, std) on TRAIN X (real cols), pad to F with zeros
+    (padded cols have mean=0, std=1 so they stay zero after standardization)."""
+    L = X_train.shape[1]
+    mean = np.zeros((1, F), dtype=np.float32); mean[0, :L] = X_train.mean(0)
+    std  = np.ones ((1, F), dtype=np.float32); std [0, :L] = X_train.std(0) + 1e-8
+    Xtr_p = np.zeros((X_train.shape[0], F), dtype=np.float32); Xtr_p[:, :L] = X_train
+    Xte_p = np.zeros((X_test .shape[0], F), dtype=np.float32); Xte_p[:, :L] = X_test
+    Xtr_s = (Xtr_p - mean) / std
+    Xte_s = (Xte_p - mean) / std
+    return Xtr_s, Xte_s
 
 
 @torch.no_grad()
-def _cate_uwyk_raw(model, X_train, T_train, y_train, X_test, anc_mode):
-    """Raw forward via wrapper.model — bypass sklearn wrapper preprocessing."""
-    underlying = model.model                # PartialGraphConditionedInterventionalPFN
+def _cate_uwyk(wrapper, X_train, T_train, y_train, X_test, anc_mode):
+    underlying = wrapper.model
+    bd = wrapper.bar_distribution
     F = underlying.num_features
     n_real = X_train.shape[1]
 
-    # 1. X: standardise then 0-pad
-    X_tr_s, X_te_s = _standardize_train_test(X_train.astype(np.float32),
-                                              X_test.astype(np.float32))
-    X_tr = _pad_features(X_tr_s, F)
-    X_te = _pad_features(X_te_s, F)
+    # X: standardize + 0-pad to F
+    Xtr_s, Xte_s = _standardize_and_pad(X_train.astype(np.float32),
+                                         X_test.astype(np.float32), F)
 
-    # 2. Y scaled to [-1, 1]
-    Y_scaled, y_min, y_rng = _scale_y(y_train)
+    # Y: [-1, 1] scaling via TRAIN y_min / y_max
+    y_min = float(y_train.min()); y_max = float(y_train.max())
+    y_rng = max(y_max - y_min, 1e-8)
+    Y_scaled = (2.0 * (y_train.astype(np.float32) - y_min) / y_rng - 1.0)
 
-    # 3. Adj: -1 around padded slots
-    adj = _build_anc_none(F, n_real) if anc_mode == 'noanc' else _build_anc_full(F, n_real)
+    # Adj (F+2, F+2)
+    adj = _build_adj(F, n_real, anc_mode)
 
-    # 4. Concat both arms into one forward
-    M = X_te.shape[0]
-    X_intv_np = np.vstack([X_te, X_te]).astype(np.float32)
-    T_intv_np = np.concatenate([np.zeros(M, dtype=np.float32),
-                                 np.ones(M, dtype=np.float32)])
+    # Tensors — shapes: X(1,N,F), T(1,N,1), Y(1,N,1), Xq(1,M,F), Tq(1,M,1), adj(1,F+2,F+2)
+    X_obs = torch.from_numpy(Xtr_s).unsqueeze(0).to(DEVICE)
+    T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE)
+    Y_obs = torch.from_numpy(Y_scaled).reshape(1, -1, 1).to(DEVICE)
+    X_intv = torch.from_numpy(Xte_s).unsqueeze(0).to(DEVICE)
+    adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)
 
-    X_obs = torch.from_numpy(X_tr).unsqueeze(0).to(DEVICE)                            # (1, N, F)
-    T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE) # (1, N, 1)
-    Y_obs = torch.from_numpy(Y_scaled).unsqueeze(0).to(DEVICE)                        # (1, N, 1)
-    X_int = torch.from_numpy(X_intv_np).unsqueeze(0).to(DEVICE)                       # (1, 2M, F)
-    T_int = torch.from_numpy(T_intv_np).reshape(1, -1, 1).to(DEVICE)                  # (1, 2M, 1)
-    adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)                              # (1, F+2, F+2)
+    def _arm(t_val):
+        T_intv = torch.full((1, X_test.shape[0], 1), float(t_val),
+                             dtype=torch.float32, device=DEVICE)
+        out = underlying(X_obs, T_obs, Y_obs, X_intv, T_intv, adj_t)
+        pred = out['predictions'] if isinstance(out, dict) else out   # (1, M, num_bars+extras)
+        # Use BarDistribution mean — same as wrapper does
+        mean = bd.mean(pred).squeeze(0).cpu().numpy()                  # (M,) in scaled Y
+        return mean
 
-    # Forward — UWYK's underlying takes (X_obs, T_obs, Y_obs, X_intv, T_intv, adjacency_matrix)
-    out = underlying(X_obs, T_obs, Y_obs, X_int, T_int, adj_t)
-    logits = out['predictions'] if isinstance(out, dict) else out
-    logits = logits.squeeze(0).float().cpu().numpy()   # (2M, nbins)
+    e0_scaled = _arm(0.0)
+    e1_scaled = _arm(1.0)
 
-    # BarDistribution mean per query
-    nbins = logits.shape[-1]
-    # Bin centers on [-1, 1] with `nbins` bins
-    edges = np.linspace(-1.0, 1.0, nbins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    p = np.exp(logits - logits.max(axis=-1, keepdims=True))
-    p = p / p.sum(axis=-1, keepdims=True)
-    e_scaled = (p * centers).sum(axis=-1)               # (2M,) mean in [-1,1]
-
-    # Un-scale to raw Y
-    e_raw = (e_scaled + 1.0) * 0.5 * y_rng + y_min
-    e0 = e_raw[:M]; e1 = e_raw[M:]
-    return (e1 - e0).astype(np.float32)
+    # CATE inverse: scaled_diff × y_range / 2  (y_min cancels)
+    cate = (e1_scaled - e0_scaled) * (y_rng / 2.0)
+    return cate.astype(np.float32)
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
     ds = SCMCaseStudyDataset(DATASET)
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
-    print(f'[bootstrap] UWYK-raw {ANC_MODE}  {DATASET}  n={n}', flush=True)
-    model = _load_uwyk()
+    print(f'[bootstrap] UWYK {ANC_MODE}  {DATASET}  n={n}', flush=True)
+    wrapper = _load_uwyk()
 
     rows = []; t0 = time.time()
     for r in range(n):
         cate_ds, _ = ds[r]
         try:
-            cate_pred = _cate_uwyk_raw(model,
-                                        cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
-                                        cate_ds.X_test, ANC_MODE)
+            cate_pred = _cate_uwyk(wrapper,
+                                    cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
+                                    cate_ds.X_test, ANC_MODE)
         except Exception as e:
             print(f'r={r:03d}  ERROR: {type(e).__name__}: {e}', flush=True)
             continue
@@ -224,7 +190,7 @@ def main():
 
     def _ms(k):
         v = np.array([r[k] for r in rows]); return v.mean(), v.std(ddof=1)/np.sqrt(len(v))
-    print(f'\n══ {DATASET}  UWYK-raw-{ANC_MODE}  n={len(rows)} ══')
+    print(f'\n══ {DATASET}  UWYK-{ANC_MODE}  n={len(rows)} ══')
     for k in ('pehe_raw', 'err_raw'):
         m, s = _ms(k); print(f'  {k:10s} = {m:8.3f} ± {s:6.3f}')
 
