@@ -32,7 +32,15 @@ ANC_MODE      = os.environ.get('ANC_MODE', 'noanc').lower()
 MAX_REAL      = os.environ.get('MAX_REAL', '')
 assert ANC_MODE in ('noanc', 'anc'), ANC_MODE
 
-# Map our anc_mode → UWYK's graph_mode
+# Two ways to spec adjacency:
+#   1. ANC_VARIANT env var → composable: noanc / paper_anc / paper_anc_sa /
+#      full / full_sa / only_neg1_sa. Applied via build_case_adj().
+#   2. Legacy ANC_MODE = noanc / anc — kept for backward compat; maps to
+#      build_adjacency_matrix_for_case with graph_mode.
+ANC_VARIANT = os.environ.get('ANC_VARIANT', '').lower()
+_VALID_VARIANTS = ('noanc', 'paper_anc', 'paper_anc_sa', 'full', 'full_sa', 'only_neg1_sa')
+if ANC_VARIANT and ANC_VARIANT not in _VALID_VARIANTS:
+    raise SystemExit(f'ANC_VARIANT={ANC_VARIANT!r} invalid; pick from {_VALID_VARIANTS}')
 GRAPH_MODE = 'all_unknown' if ANC_MODE == 'noanc' else 'full_graph'
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -91,6 +99,83 @@ def _pad_negatives(A, feat_off, n_real, model_n_features):
         A[:, idx] = -1.0
         A[idx, idx] = -1.0
     return A
+
+
+def _case_ancestor_pairs(case_study, n_real):
+    """Return list of (parent_idx, child_idx) for the +1 edges of each case's
+    true DAG. Indices: T=0, Y=1, X_i=2+i.
+
+    Composable with variant transforms:
+      paper_anc      = just these +1s
+      paper_anc_sa   = paper_anc + diag=-1
+      full           = paper_anc + reverse of each edge as -1
+      full_sa        = full + diag=-1
+      only_neg1_sa   = drop all +1s, keep reverse -1s + diag=-1 (v6a-style)
+    """
+    T, Y, off = 0, 1, 2
+    pairs = []
+
+    if case_study in ('Observed_Confounder', 'Backdoor_Criterion'):
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((off + i, T))     # X_i → T
+            pairs.append((off + i, Y))     # X_i → Y
+
+    elif case_study == 'Observed_Mediator':
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((T, off + i))     # T → X_i (X is downstream)
+            pairs.append((off + i, Y))     # X_i → Y
+
+    elif case_study == 'Observed_Mediator_and_Confounder':
+        pairs.append((T, Y))
+        if n_real >= 1:                    # X_0 confounder
+            pairs.append((off + 0, T)); pairs.append((off + 0, Y))
+        for i in range(1, n_real):         # X_i≥1 mediator
+            pairs.append((T, off + i)); pairs.append((off + i, Y))
+
+    elif case_study == 'Unobserved_Confounder':
+        pairs.append((T, Y))               # only T → Y (X carries no info)
+
+    elif case_study == 'Frontdoor_Criterion':
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((T, off + i)); pairs.append((off + i, Y))
+
+    else:
+        raise ValueError(f'unknown case_study: {case_study}')
+
+    return pairs
+
+
+def build_case_adj(case_study, model_n_features, n_real, variant):
+    """Compose the case's ancestor pairs into one of 6 named variants:
+      noanc          — real block 0, padded -1
+      paper_anc      — ancestor +1s only
+      paper_anc_sa   — ancestor +1s + diag=-1
+      full           — ancestor +1s + reverses=-1
+      full_sa        — full + diag=-1
+      only_neg1_sa   — reverses=-1 + diag=-1 (no +1s; v6a-style, case-specific)
+    """
+    A = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
+    T, Y, off = 0, 1, 2
+
+    if variant == 'noanc':
+        return _pad_negatives(A, off, n_real, model_n_features)
+
+    pairs = _case_ancestor_pairs(case_study, n_real)
+    want_pos      = variant in ('paper_anc', 'paper_anc_sa', 'full', 'full_sa')
+    want_reverses = variant in ('full', 'full_sa', 'only_neg1_sa')
+    want_diag     = variant in ('paper_anc_sa', 'full_sa', 'only_neg1_sa')
+
+    if want_pos:
+        for (p, c) in pairs: A[p, c] = 1.0
+    if want_reverses:
+        for (p, c) in pairs: A[c, p] = -1.0
+    if want_diag:
+        for i in range(2 + n_real): A[i, i] = -1.0
+
+    return _pad_negatives(A, off, n_real, model_n_features)
 
 
 def build_adjacency_matrix_for_case(case_study, model_n_features, n_real, graph_mode):
@@ -214,8 +299,13 @@ def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
 
     model.fit(X_train, t_train, y_train)
 
-    adjacency_matrix = build_adjacency_matrix_for_case(
-        DATASET, model_n_features, n_real_features, graph_mode)
+    # ANC_VARIANT wins if set; else fall back to legacy graph_mode.
+    if ANC_VARIANT:
+        adjacency_matrix = build_case_adj(
+            DATASET, model_n_features, n_real_features, ANC_VARIANT)
+    else:
+        adjacency_matrix = build_adjacency_matrix_for_case(
+            DATASET, model_n_features, n_real_features, graph_mode)
 
     T_intv_1 = np.full((n_test, 1), t_intv_1_encoded, dtype=np.float32)
     y_pred_1 = model.predict(
