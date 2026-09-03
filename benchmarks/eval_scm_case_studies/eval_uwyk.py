@@ -99,10 +99,14 @@ def _cate_uwyk(model, X_train, T_train, y_train, X_test, anc_mode):
     else:
         adj = None
 
+    X_obs_ = X_train.astype(np.float32)
+    T_obs_ = T_train.astype(np.float32)
+    Y_obs_ = y_train.astype(np.float32)
+
+    # Wrapper requires .fit() to initialise preprocessing state before .predict()
+    model.fit(X_obs_, T_obs_, Y_obs_)
     preds = model.predict(
-        X_obs=X_train.astype(np.float32),
-        T_obs=T_train.astype(np.float32),
-        Y_obs=y_train.astype(np.float32),
+        X_obs=X_obs_, T_obs=T_obs_, Y_obs=Y_obs_,
         X_intv=X_intv,
         T_intv=T_intv,
         adjacency_matrix=adj,
