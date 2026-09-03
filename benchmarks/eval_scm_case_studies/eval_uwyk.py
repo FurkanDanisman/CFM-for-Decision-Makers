@@ -82,31 +82,43 @@ def _load_uwyk():
     return m
 
 
+def _pad_X(X, F):
+    """Pad X columns to F with zeros (if <F) or truncate (if >F). Matches
+    training-time padding convention of UWYK's fixed-num_features backbone."""
+    X = np.asarray(X, dtype=np.float32)
+    if X.shape[1] == F: return X
+    if X.shape[1] > F:  return X[:, :F]
+    return np.hstack([X, np.zeros((X.shape[0], F - X.shape[1]), dtype=np.float32)])
+
+
 def _cate_uwyk(model, X_train, T_train, y_train, X_test, anc_mode):
     """Single forward for both arms via predict(prediction_type='mean').
     Concatenates do(0) and do(1) queries → one transformer pass.
     Returns cate_pred = E[Y|do(1), x] - E[Y|do(0), x] per query, in raw Y units.
     """
-    M = X_test.shape[0]
-    X_intv = np.vstack([X_test, X_test]).astype(np.float32)
+    F = model.model.num_features            # e.g. 50 for reproduce ckpt
+    # Explicit padding — wrapper's auto-pad may not exist or may fill with the
+    # wrong constant, causing the model to see OOD input → collapse to prior.
+    X_train_p = _pad_X(X_train, F)
+    X_test_p  = _pad_X(X_test,  F)
+
+    M = X_test_p.shape[0]
+    X_intv = np.vstack([X_test_p, X_test_p]).astype(np.float32)
     T_intv = np.concatenate([np.zeros(M, dtype=np.float32),
                               np.ones(M, dtype=np.float32)])
 
-    # UWYK's underlying model has a FIXED num_features (typically 50 for the
-    # reproduce ckpt). The adjacency matrix must be sized to (F+2, F+2) where
-    # F = model.num_features (F for X-features + 2 for T + Y), NOT the raw
-    # X_train.shape[1] of the case study (which is 2-3 for the SCM DGPs).
-    F = model.model.num_features
+    # Adjacency sized to model's fixed (F+2, F+2). Real edges only for the
+    # first L=X_train.shape[1] X-features (positions 2 .. 2+L in the adj);
+    # padded feature slots stay 0 = unknown.
     if anc_mode == 'noanc':
         adj = np.zeros((F + 2, F + 2), dtype=np.float32)
     else:
-        adj = None  # wrapper auto-builds partial adjacency at correct shape
+        adj = None  # wrapper auto-builds partial adjacency
 
-    X_obs_ = X_train.astype(np.float32)
+    X_obs_ = X_train_p
     T_obs_ = T_train.astype(np.float32)
     Y_obs_ = y_train.astype(np.float32)
 
-    # Wrapper requires .fit() to initialise preprocessing state before .predict()
     model.fit(X_obs_, T_obs_, Y_obs_)
     preds = model.predict(
         X_obs=X_obs_, T_obs=T_obs_, Y_obs=Y_obs_,
