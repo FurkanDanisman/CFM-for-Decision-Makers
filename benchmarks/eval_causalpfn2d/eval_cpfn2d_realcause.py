@@ -40,7 +40,14 @@ EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
 PSID_BAL_SEED     = int(os.environ.get('PSID_BAL_SEED', '42'))
 MAX_REAL          = os.environ.get('MAX_REAL', '')
 Y_STD_MODE_EVAL   = os.environ.get('Y_STD_MODE_EVAL', 'pooled').lower()
-assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
+STD_MODE          = os.environ.get('STD_MODE', '').lower()
+# STD_MODE takes precedence over Y_STD_MODE_EVAL when set.
+# Valid: '' (use Y_STD_MODE_EVAL), pooled, per_arm, log, log_per_arm, log_winsor
+if STD_MODE:
+    assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor')
+    Y_STD_MODE_EVAL = STD_MODE
+else:
+    assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
@@ -164,24 +171,46 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
     Y_ctx_r = torch.from_numpy(Y_ctx_raw.astype(np.float32)).unsqueeze(0).to(DEVICE)
     X_q_t   = torch.from_numpy(X_q.astype(np.float32)).unsqueeze(0).to(DEVICE)
 
-    if y_std_mode_eval == 'per_arm':
-        tf = T_ctx_t.reshape(-1); yf = Y_ctx_r.reshape(-1)
+    # --- log-family: apply log1p(Y - min_Y) FIRST, then pooled/per_arm on log-Y.
+    y_min = None
+    if y_std_mode_eval in ('log', 'log_per_arm', 'log_winsor'):
+        y_min = float(Y_ctx_r.amin().item())
+        Y_work = torch.log1p(Y_ctx_r - y_min)
+    else:
+        Y_work = Y_ctx_r
+
+    if y_std_mode_eval in ('per_arm', 'log_per_arm'):
+        tf = T_ctx_t.reshape(-1); yf = Y_work.reshape(-1)
         y0 = yf[tf < 0.5]; y1 = yf[tf > 0.5]
         y0s  = float(y0.mean().item()) if y0.numel() else 0.0
         y0sc = float(y0.std().clamp(min=1e-6).item()) if y0.numel() else 1.0
         y1s  = float(y1.mean().item()) if y1.numel() else 0.0
         y1sc = float(y1.std().clamp(min=1e-6).item()) if y1.numel() else 1.0
-        y_std = torch.where(T_ctx_t > 0.5, (Y_ctx_r - y1s) / y1sc, (Y_ctx_r - y0s) / y0sc)
-        stats = {'mode': 'per_arm', 'y0s': y0s, 'y0sc': y0sc, 'y1s': y1s, 'y1sc': y1sc}
+        y_std = torch.where(T_ctx_t > 0.5, (Y_work - y1s) / y1sc, (Y_work - y0s) / y0sc)
+        stats = {'mode': 'per_arm', 'y0s': y0s, 'y0sc': y0sc, 'y1s': y1s, 'y1sc': y1sc,
+                 'log_y_min': y_min}
+    elif y_std_mode_eval == 'log_winsor':
+        # winsor Q1/Q99 in log space, clip std-Y to model edges
+        qlo = torch.quantile(Y_work, 0.01); qhi = torch.quantile(Y_work, 0.99)
+        Yw = Y_work.clamp(min=qlo.item(), max=qhi.item())
+        sh = Yw.mean(dim=1, keepdim=True); sc = Yw.std(dim=1, keepdim=True).clamp(min=1e-6)
+        y_std = (Y_work - sh) / sc
+        # edge-clip to prevent saturation
+        # (edges come in via _forward_logits; approximate as ±(J/2)*bin_width — but
+        # skip explicit clip since with log the range is naturally tight)
+        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item()),
+                 'log_y_min': y_min}
     elif y_scaling_mode == 'uwyk_minmax':
         y_lo = Y_ctx_r.amin(dim=1, keepdim=True); y_hi = Y_ctx_r.amax(dim=1, keepdim=True)
         sh = 0.5 * (y_lo + y_hi); sc = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
         y_std = (Y_ctx_r - sh) / sc
-        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item())}
+        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item()),
+                 'log_y_min': y_min}
     else:
-        sh = Y_ctx_r.mean(dim=1, keepdim=True); sc = Y_ctx_r.std(dim=1, keepdim=True).clamp(min=1e-6)
-        y_std = (Y_ctx_r - sh) / sc
-        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item())}
+        sh = Y_work.mean(dim=1, keepdim=True); sc = Y_work.std(dim=1, keepdim=True).clamp(min=1e-6)
+        y_std = (Y_work - sh) / sc
+        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item()),
+                 'log_y_min': y_min}
 
     logits = model._forward_logits(X_ctx_t, T_ctx_t, y_std, X_q_t)  # (1, N_q, J²+9+4)
     interior = logits[..., : J * J]
@@ -237,16 +266,33 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
     e_y0_raw, e_y1_raw, e_y0_em, e_y1_em = cate_raw_and_em(p_mats, edges_np)
     e_y0_full, e_y1_full = full_mixture_mean(logits_np, J, edges_np)
 
+    y_min = stats.get('log_y_min', None)   # None → not a log-family mode
+    def _unlog(x):
+        return np.expm1(x) + y_min if y_min is not None else x
     if stats['mode'] == 'per_arm':
         y0s, y0sc = stats['y0s'], stats['y0sc']; y1s, y1sc = stats['y1s'], stats['y1sc']
-        cate_raw  = (e_y1_raw  * y1sc + y1s) - (e_y0_raw  * y0sc + y0s)
-        cate_em   = (e_y1_em   * y1sc + y1s) - (e_y0_em   * y0sc + y0s)
-        cate_full = (e_y1_full * y1sc + y1s) - (e_y0_full * y0sc + y0s)
+        # each arm de-standardises independently (log means shift doesn't cancel)
+        e0_raw_r  = _unlog(e_y0_raw  * y0sc + y0s); e1_raw_r  = _unlog(e_y1_raw  * y1sc + y1s)
+        e0_em_r   = _unlog(e_y0_em   * y0sc + y0s); e1_em_r   = _unlog(e_y1_em   * y1sc + y1s)
+        e0_full_r = _unlog(e_y0_full * y0sc + y0s); e1_full_r = _unlog(e_y1_full * y1sc + y1s)
+        cate_raw  = e1_raw_r  - e0_raw_r
+        cate_em   = e1_em_r   - e0_em_r
+        cate_full = e1_full_r - e0_full_r
     else:
-        sc = stats['scale']
-        cate_raw  = (e_y1_raw  - e_y0_raw ) * sc
-        cate_em   = (e_y1_em   - e_y0_em  ) * sc
-        cate_full = (e_y1_full - e_y0_full) * sc
+        sh = stats.get('shift', 0.0); sc = stats['scale']
+        if y_min is not None:
+            # de-standardise each arm to log-Y, then expm1, then subtract
+            e0r = _unlog(e_y0_raw  * sc + sh); e1r = _unlog(e_y1_raw  * sc + sh)
+            e0e = _unlog(e_y0_em   * sc + sh); e1e = _unlog(e_y1_em   * sc + sh)
+            e0f = _unlog(e_y0_full * sc + sh); e1f = _unlog(e_y1_full * sc + sh)
+            cate_raw  = e1r - e0r
+            cate_em   = e1e - e0e
+            cate_full = e1f - e0f
+        else:
+            # non-log pooled: shift cancels, just scale the difference
+            cate_raw  = (e_y1_raw  - e_y0_raw ) * sc
+            cate_em   = (e_y1_em   - e_y0_em  ) * sc
+            cate_full = (e_y1_full - e_y0_full) * sc
 
     def _pehe(cate):
         pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
