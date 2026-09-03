@@ -229,20 +229,25 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
 
 
 def cate_raw_and_em(p_mats, edges_np):
+    """Vectorised raw marginal means; EM skipped if SKIP_EM=1 (default fast)."""
     N_q = p_mats.shape[0]
     centers = 0.5 * (edges_np[:-1] + edges_np[1:])
-    e_y0_raw = np.empty(N_q); e_y1_raw = np.empty(N_q)
+    p0_all = p_mats.sum(axis=2)                                # (N_q, J)
+    p1_all = p_mats.sum(axis=1)                                # (N_q, J)
+    p0_all = p0_all / np.clip(p0_all.sum(axis=1, keepdims=True), 1e-12, None)
+    p1_all = p1_all / np.clip(p1_all.sum(axis=1, keepdims=True), 1e-12, None)
+    e_y0_raw = (p0_all * centers).sum(axis=1)
+    e_y1_raw = (p1_all * centers).sum(axis=1)
+
+    if os.environ.get('SKIP_EM', '0') == '1':
+        return e_y0_raw, e_y1_raw, e_y0_raw.copy(), e_y1_raw.copy()
+
     e_y0_em  = np.empty(N_q); e_y1_em  = np.empty(N_q)
     for q in range(N_q):
-        pm = p_mats[q]
-        p0 = pm.sum(axis=1); p1 = pm.sum(axis=0)
-        p0 /= max(p0.sum(), 1e-12); p1 /= max(p1.sum(), 1e-12)
-        e_y0_raw[q] = float((centers * p0).sum())
-        e_y1_raw[q] = float((centers * p1).sum())
-        mu0, s0 = _marginal_stats(p0, edges_np)
-        mu1, s1 = _marginal_stats(p1, edges_np)
-        e_y0_em[q] = _em_mean_1d(p0, edges_np, s0, mu0)
-        e_y1_em[q] = _em_mean_1d(p1, edges_np, s1, mu1)
+        mu0, s0 = _marginal_stats(p0_all[q], edges_np)
+        mu1, s1 = _marginal_stats(p1_all[q], edges_np)
+        e_y0_em[q] = _em_mean_1d(p0_all[q], edges_np, s0, mu0)
+        e_y1_em[q] = _em_mean_1d(p1_all[q], edges_np, s1, mu1)
     return e_y0_raw, e_y1_raw, e_y0_em, e_y1_em
 
 
