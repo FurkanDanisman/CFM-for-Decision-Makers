@@ -29,6 +29,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export CKPT="${CKPT:?CKPT required — path to 1D CausalPFN ckpt}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
+export STD_MODE="${STD_MODE:-per_arm}"   # per_arm | pooled | log | log_per_arm | log_winsor
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
 
@@ -50,6 +51,6 @@ export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn 1D RealCause  dataset=$DATASET  OUT=$OUT"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn 1D RealCause  dataset=$DATASET  OUT=$OUT  STD_MODE=$STD_MODE"
 python -u "$REPO/benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py" --dataset "$DATASET"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
