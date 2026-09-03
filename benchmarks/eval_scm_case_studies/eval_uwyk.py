@@ -189,14 +189,25 @@ def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
 
     n_train = X_train.shape[0]; n_test = X_test.shape[0]
 
-    # Target-encode T with mean Y per arm
+    # T encoding: default = target-encode with mean Y per arm (UWYK paper).
+    # Env UWYK_T_ENCODING=raw → pass binary T unchanged (works when Y scale
+    # is unusual and target-encoded values fall outside UWYK's training
+    # distribution). Try 'raw' first if paper encoding collapses.
+    t_encoding = os.environ.get('UWYK_T_ENCODING', 'target').lower()
     t_flat = t_train_orig.flatten(); y_flat = y_train.flatten()
     mean_y_t0 = float(y_flat[t_flat == 0].mean())
     mean_y_t1 = float(y_flat[t_flat == 1].mean())
-    t_train = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
-
-    t_intv_0_encoded = mean_y_t0
-    t_intv_1_encoded = mean_y_t1
+    if t_encoding == 'raw':
+        t_train = t_train_orig.astype(np.float32)
+        t_intv_0_encoded = 0.0
+        t_intv_1_encoded = 1.0
+    else:  # 'target'
+        t_train = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
+        t_intv_0_encoded = mean_y_t0
+        t_intv_1_encoded = mean_y_t1
+    print(f'[uwyk] t_encoding={t_encoding}  T_intv_0={t_intv_0_encoded:+.4f}  '
+          f'T_intv_1={t_intv_1_encoded:+.4f}  Δ={t_intv_1_encoded-t_intv_0_encoded:+.4f}',
+          flush=True)
 
     n_features_orig = X_train.shape[1]
     model_n_features = model.model.num_features
