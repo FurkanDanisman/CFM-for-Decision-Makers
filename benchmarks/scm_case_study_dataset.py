@@ -173,27 +173,33 @@ def _pickle_load_with_dopfn_shim(pkl_path: str):
             f'{dopfn_root!r}'
         )
 
-    saved_datasets = _sys.modules.pop('datasets', None)
-    saved_submods = {k: _sys.modules.pop(k) for k in list(_sys.modules)
-                      if k.startswith('datasets.')}
+    # DoPFN's pickle chain pulls in these top-level packages. We must save
+    # any pre-existing ones (usually UWYK's `utils` or a shimmed `datasets`),
+    # let the real DoPFN modules take over during unpickling, then restore.
+    shadowed = ('datasets', 'utils', 'priors', 'models', 'scripts')
+
+    saved = {}
+    for name in list(_sys.modules):
+        if name in shadowed or any(name.startswith(p + '.') for p in shadowed):
+            saved[name] = _sys.modules.pop(name)
     inserted = False
     if dopfn_root not in _sys.path:
         _sys.path.insert(0, dopfn_root); inserted = True
     try:
         import importlib
-        importlib.import_module('datasets')            # real DoPFN datasets
+        # Prime the real DoPFN packages so pickle finds their classes
+        for p in shadowed:
+            try: importlib.import_module(p)
+            except Exception: pass
         with open(pkl_path, 'rb') as f:
             obj = pickle.load(f)
     finally:
-        # Restore the shimmed datasets so downstream causalpfn imports keep working
-        _sys.modules.pop('datasets', None)
-        for k in list(_sys.modules):
-            if k.startswith('datasets.'): _sys.modules.pop(k)
+        for name in list(_sys.modules):
+            if name in shadowed or any(name.startswith(p + '.') for p in shadowed):
+                _sys.modules.pop(name)
         if inserted and dopfn_root in _sys.path:
             _sys.path.remove(dopfn_root)
-        if saved_datasets is not None:
-            _sys.modules['datasets'] = saved_datasets
-        _sys.modules.update(saved_submods)
+        _sys.modules.update(saved)
     return obj
 
 
