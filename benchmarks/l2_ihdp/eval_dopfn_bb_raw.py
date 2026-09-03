@@ -129,8 +129,12 @@ def main():
     ap.add_argument('--causalpfn',       required=True)
     ap.add_argument('--checkpoint',      required=True,
                     help='Path to DoPFN-backbone checkpoint (.pt with model_state_dict + config + edges).')
+    _SCM_CASES = ['Observed_Confounder', 'Observed_Mediator',
+                   'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+                   'Frontdoor_Criterion', 'Backdoor_Criterion']
     ap.add_argument('--dataset', default='IHDP',
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal', 'law_race', 'sales'],
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal',
+                             'law_race', 'sales'] + _SCM_CASES,
                     help='Which benchmark dataset to eval on. IHDP/ACIC/CPS/PSID/PSIDbal '
                          'expose cd.true_cate directly; law_race and sales are Do-PFN '
                          'semi-real (Kusner et al. 2017 / retail sales), split via '
@@ -226,6 +230,9 @@ def main():
         # as benchmarks/run_one.py::apply_balanced (seed per realization).
         'PSIDbal': lambda: RealCauseLalondePSIDDataset(),
     }
+    if args.dataset in _SCM_CASES:
+        from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset
+        _LOADERS[args.dataset] = lambda: SCMCaseStudyDataset(args.dataset)
     if args.dataset in ('law_race', 'sales'):
         # Do-PFN semi-real dataset — different interface (splits via
         # ds.generate_valid_split). Import DoPFN's `datasets` module fresh
