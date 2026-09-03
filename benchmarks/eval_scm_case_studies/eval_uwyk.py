@@ -87,17 +87,19 @@ def _cate_uwyk(model, X_train, T_train, y_train, X_test, anc_mode):
     Returns cate_pred = E[Y|do(1), x] - E[Y|do(0), x] per query, in raw Y units.
     """
     M = X_test.shape[0]
-    L = X_train.shape[1]
     X_intv = np.vstack([X_test, X_test]).astype(np.float32)
     T_intv = np.concatenate([np.zeros(M, dtype=np.float32),
                               np.ones(M, dtype=np.float32)])
 
-    # noanc → all-zeros adj (unknown everywhere); anc → None triggers UWYK's
-    # auto-built partial (T→Y, X→T, X→Y edges + propagate_ancestor_knowledge)
+    # UWYK's underlying model has a FIXED num_features (typically 50 for the
+    # reproduce ckpt). The adjacency matrix must be sized to (F+2, F+2) where
+    # F = model.num_features (F for X-features + 2 for T + Y), NOT the raw
+    # X_train.shape[1] of the case study (which is 2-3 for the SCM DGPs).
+    F = model.model.num_features
     if anc_mode == 'noanc':
-        adj = np.zeros((L + 2, L + 2), dtype=np.float32)
+        adj = np.zeros((F + 2, F + 2), dtype=np.float32)
     else:
-        adj = None
+        adj = None  # wrapper auto-builds partial adjacency at correct shape
 
     X_obs_ = X_train.astype(np.float32)
     T_obs_ = T_train.astype(np.float32)
