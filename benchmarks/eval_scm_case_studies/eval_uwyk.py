@@ -1,17 +1,15 @@
 """UWYK eval on the 6 synthetic case studies — PEHE + ATE err.
 
-Delegates the actual per-arm density computation to
-`benchmarks/l2_ihdp/methods_densities.py::uwyk_noanc_densities` (or
-`uwyk_anc_densities` when ANC_MODE=anc). That code path is battle-tested
-on the IHDP L2 pipeline. We just wrap it in the case-study loader and
-turn its density output into a point CATE per query.
+FAST path: single `PreprocessingGraphConditionedPFN.predict(prediction_type='mean')`
+per realization, both do(0) and do(1) queries concatenated → one forward
+pass, no density resampling.
 
 Env vars:
-  DATASET          case study name (Observed_Confounder / ...)
+  DATASET          case study name
   OUT              per-realization NPZ dir
-  UWYK_SRC         path to UWYK repo src (has models/ + utils/)
-  UWYK_CKPT        explicit .pt path (preferred)
-  UWYK_CONFIG      explicit .yaml path (preferred)
+  UWYK_SRC         path to UWYK repo src
+  UWYK_CKPT        explicit .pt path
+  UWYK_CONFIG      explicit .yaml path
   UWYK_CKPT_DIR    fallback dir when UWYK_CKPT/UWYK_CONFIG unset
   ANC_MODE         noanc | anc  (default noanc)
   MAX_REAL         optional cap
@@ -37,8 +35,7 @@ assert ANC_MODE in ('noanc', 'anc'), ANC_MODE
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
-sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))     # scm_case_study_dataset
-sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks', 'l2_ihdp'))  # methods_densities
+sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))
 
 from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
@@ -73,7 +70,7 @@ def _load_uwyk():
                 ck_p  = os.path.join(UWYK_CKPT_DIR, 'best_model.pt')
                 cfg_p = os.path.join(UWYK_CKPT_DIR, 'best_model_config.yaml')
         assert os.path.isfile(ck_p),  f'UWYK ckpt missing: {ck_p}'
-        assert os.path.isfile(cfg_p), f'UWYK config missing: {cfg_p} (set UWYK_CONFIG)'
+        assert os.path.isfile(cfg_p), f'UWYK config missing: {cfg_p}'
         print(f'[uwyk] loading  ckpt={ck_p}  cfg={cfg_p}', flush=True)
         m = pre_mod.PreprocessingGraphConditionedPFN(
             config_path=cfg_p, checkpoint_path=ck_p, device='cpu', verbose=False,
@@ -84,49 +81,57 @@ def _load_uwyk():
     return m
 
 
+def _cate_uwyk(model, X_train, T_train, y_train, X_test, anc_mode):
+    """Single forward for both arms via predict(prediction_type='mean').
+    Concatenates do(0) and do(1) queries → one transformer pass.
+    Returns cate_pred = E[Y|do(1), x] - E[Y|do(0), x] per query, in raw Y units.
+    """
+    M = X_test.shape[0]
+    L = X_train.shape[1]
+    X_intv = np.vstack([X_test, X_test]).astype(np.float32)
+    T_intv = np.concatenate([np.zeros(M, dtype=np.float32),
+                              np.ones(M, dtype=np.float32)])
+
+    # noanc → all-zeros adj (unknown everywhere); anc → None triggers UWYK's
+    # auto-built partial (T→Y, X→T, X→Y edges + propagate_ancestor_knowledge)
+    if anc_mode == 'noanc':
+        adj = np.zeros((L + 2, L + 2), dtype=np.float32)
+    else:
+        adj = None
+
+    preds = model.predict(
+        X_obs=X_train.astype(np.float32),
+        T_obs=T_train.astype(np.float32),
+        Y_obs=y_train.astype(np.float32),
+        X_intv=X_intv,
+        T_intv=T_intv,
+        adjacency_matrix=adj,
+        prediction_type='mean',
+        inverse_transform=True,
+    )
+    preds = np.asarray(preds, dtype=np.float64).reshape(-1)
+    e0 = preds[:M]; e1 = preds[M:]
+    return (e1 - e0).astype(np.float32)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     ds = SCMCaseStudyDataset(DATASET)
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
     print(f'[bootstrap] UWYK {ANC_MODE}  {DATASET}  n={n}', flush=True)
     uwyk_model = _load_uwyk()
-    num_features = uwyk_model.model.num_features
-    density_fn_name = 'uwyk_noanc_densities' if ANC_MODE == 'noanc' else 'uwyk_anc_densities'
-
-    # Import methods_densities lazily (avoids IHDP/dopfn dependency until needed)
-    from methods_densities import uwyk_noanc_densities, uwyk_anc_densities
-    density_fn = uwyk_noanc_densities if ANC_MODE == 'noanc' else uwyk_anc_densities
 
     rows = []; t0 = time.time()
     for r in range(n):
         cate_ds, _ = ds[r]
-        # Compute y_min/y_rng from THIS realization's training Y
-        y_train = np.asarray(cate_ds.y_train, dtype=np.float32).reshape(-1)
-        y_min = float(y_train.min())
-        y_rng = max(float(y_train.max() - y_train.min()), 1e-6)
-
-        # methods_densities.uwyk_*_densities returns a dict with per-query densities +
-        # 'cate_raw_scaled' (mean-based CATE in scaled Y).
         try:
-            d = density_fn(cate_ds, uwyk_model, num_features,
-                            y_min=y_min, y_rng=y_rng, n_context=None)
+            cate_pred = _cate_uwyk(uwyk_model,
+                                    cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
+                                    cate_ds.X_test, ANC_MODE)
         except Exception as e:
             print(f'r={r:03d}  ERROR: {type(e).__name__}: {e}', flush=True)
             continue
-
-        # Recover CATE per query. cate_raw_scaled is in scaled Y ([-1, 1]);
-        # multiply by y_rng/2 to get raw Y units.
-        cate_scaled = d.get('cate_raw_scaled')
-        if cate_scaled is None:
-            # Fall back to inferring from p_y0/p_y1 marginals
-            p_y0 = d['p_y0']; p_y1 = d['p_y1']
-            from methods_densities import Y_CENTERS
-            e0 = (p_y0 * Y_CENTERS).sum(axis=-1)
-            e1 = (p_y1 * Y_CENTERS).sum(axis=-1)
-            cate_scaled = e1 - e0
-        cate_pred = np.asarray(cate_scaled, dtype=np.float32).reshape(-1) * (y_rng / 2.0)
         true_cate = np.asarray(cate_ds.true_cate, dtype=np.float32).reshape(-1)
-
         pehe = float(np.sqrt(np.mean((cate_pred - true_cate) ** 2)))
         ate_true = float(true_cate.mean()); ate_hat = float(cate_pred.mean())
         err = abs(ate_hat - ate_true) / max(abs(ate_true), 0.1)
