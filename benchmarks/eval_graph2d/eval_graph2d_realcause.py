@@ -348,6 +348,53 @@ def build_anc_v3c(F, n_real):
     return A
 
 
+def _case_ancestor_pairs(case_study, n_real):
+    """Per-case-study +1 edges (matches paper Fig 2 DAGs).
+    Indices: T=0, Y=1, X_i=2+i."""
+    T, Y, off = 0, 1, 2
+    pairs = []
+    if case_study in ('Observed_Confounder', 'Backdoor_Criterion'):
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((off + i, T)); pairs.append((off + i, Y))
+    elif case_study == 'Observed_Mediator':
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((T, off + i)); pairs.append((off + i, Y))
+    elif case_study == 'Observed_Mediator_and_Confounder':
+        pairs.append((T, Y))
+        if n_real >= 1:
+            pairs.append((off + 0, T)); pairs.append((off + 0, Y))
+        for i in range(1, n_real):
+            pairs.append((T, off + i)); pairs.append((off + i, Y))
+    elif case_study == 'Unobserved_Confounder':
+        pairs.append((T, Y))
+    elif case_study == 'Frontdoor_Criterion':
+        pairs.append((T, Y))
+        for i in range(n_real):
+            pairs.append((T, off + i)); pairs.append((off + i, Y))
+    return pairs
+
+
+def build_case_adj(case_study, F, n_real, variant):
+    """Compose case-specific +1 edges into the 6 named variants.
+      noanc / paper_anc / paper_anc_sa / full / full_sa / only_neg1_sa"""
+    A = _padded_neg1_only(F, n_real)   # padded slots always -1
+    if variant == 'noanc':
+        return A
+    pairs = _case_ancestor_pairs(case_study, n_real)
+    want_pos      = variant in ('paper_anc', 'paper_anc_sa', 'full', 'full_sa')
+    want_reverses = variant in ('full', 'full_sa', 'only_neg1_sa')
+    want_diag     = variant in ('paper_anc_sa', 'full_sa', 'only_neg1_sa')
+    if want_pos:
+        for (p, c) in pairs: A[p, c] = 1.0
+    if want_reverses:
+        for (p, c) in pairs: A[c, p] = -1.0
+    if want_diag:
+        for i in range(2 + n_real): A[i, i] = -1.0
+    return A
+
+
 def build_anc_v3d(F, n_real):
     """v3d: v3b + diagonal +1 on the real block (T,Y,X_real self-ancestors).
     Same +1 layout as v3b (T→Y=+1, X→T=+1, X→Y=+1), reverses=-1,
@@ -880,6 +927,15 @@ def build_mode_list(F, n_real, anc_mode=None):
             ('v6a',   build_anc_v6a(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
         )
+    if anc_mode == 'case_variant':
+        # Composable per-case-study variant. Requires ANC_VARIANT env.
+        # Only for SCM case studies (uses case-specific DAG); for RealCause
+        # datasets, X isn't necessarily aligned with T/Y ancestrally so
+        # falls back to no case-specific info.
+        variant = os.environ.get('ANC_VARIANT', 'noanc').lower()
+        case = DATASET if DATASET in _SCM_CASES else 'Observed_Confounder'
+        return ((variant, build_case_adj(case, F, n_real, variant)),
+                ('noanc', build_anc_none(F, n_real)))
     if anc_mode == 'v3_v6_extended':
         # Sweep: v3a/v3b/v3c/v3e + v6a/v6b + noanc.
         # v3d, v3f, v6c dropped — they set diag=+1 which UWYK's PAM rejects
