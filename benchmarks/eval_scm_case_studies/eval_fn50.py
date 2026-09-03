@@ -78,10 +78,9 @@ def _cate_fn50(model, J, edges_np, num_features, X_train, T_train, y_train, X_te
     Yc_t = torch.from_numpy(Y_scaled.reshape(-1, 1)).unsqueeze(0).to(DEVICE)   # (1, N, 1)
     Xq_t = torch.from_numpy(Xq).unsqueeze(0).to(DEVICE)                        # (1, M, F)
 
-    out = model(Xc_t, Tc_t, Yc_t, Xq_t)      # dict-like or Tensor per fn=50 fwd
-    # `out` may be a dict (see InterventionalPFN.forward -> Dict[str,Tensor]) —
-    # extract the raw logits.
-    logits = out['pred'] if isinstance(out, dict) and 'pred' in out else out
+    out = model(Xc_t, Tc_t, Yc_t, Xq_t)
+    # InterventionalPFN.forward returns Dict[str, Tensor] with key 'predictions'
+    logits = out['predictions'] if isinstance(out, dict) else out
     logits = logits.squeeze(0).float().cpu().numpy()   # (M, J²+9+4)
 
     interior = logits[..., : J * J]
