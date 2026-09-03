@@ -58,11 +58,30 @@ export DATASET
 export OUT="$OUT_ROOT/$DATASET"
 
 case "$MODEL" in
-    cpfn2d)   SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_cpfn2d_realcause.py"    ;;
-    graph2d)  SCRIPT="$REPO/benchmarks/eval_graph2d/eval_graph2d_realcause.py"       ;;
-    cpfn1d)   SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py" ;;
+    cpfn2d)     SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_cpfn2d_realcause.py" ;;
+    graph2d)    SCRIPT="$REPO/benchmarks/eval_graph2d/eval_graph2d_realcause.py" ;;
+    cpfn1d)     SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py" ;;
+    dopfn_native)
+        # native DoPFNRegressor — no --dataset flag needed (env var is enough)
+        SCRIPT="$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py"
+        export DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
+        ;;
+    dopfn_bb)
+        # DoPFN-bb reused eval_dopfn_bb_raw.py; different arg style (positional flags)
+        SCRIPT="$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py"
+        DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
+        EXTRA_ARGS="--repo $REPO --dopfn $DOPFN_ROOT --causalpfn $CAUSALPFN --checkpoint $CKPT --dataset $DATASET --out $OUT/summary.npz"
+        ;;
+    uwyk)
+        SCRIPT="$REPO/benchmarks/eval_scm_case_studies/eval_uwyk.py"
+        export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk/src}"
+        # UWYK_CKPT_DIR must point to the directory holding best_model.pt (or final_model_with_bardist.pt)
+        export UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$(dirname "$CKPT")}"
+        export ANC_MODE="${UWYK_ANC_MODE:-noanc}"
+        ;;
     *) echo "unknown MODEL=$MODEL" >&2; exit 3 ;;
 esac
+: "${EXTRA_ARGS:=}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
@@ -75,5 +94,9 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] SCM case-study eval  MODEL=$MODEL  DATASET=
 echo "  CKPT=$CKPT"
 echo "  OUT=$OUT  STD_MODE=${STD_MODE:-<default>}  GRAPH2D_ANC_MODE=$GRAPH2D_ANC_MODE"
 echo "  DOPFN_DATA_ROOT=$DOPFN_DATA_ROOT"
-python -u "$SCRIPT" --dataset "$DATASET"
+if [ "$MODEL" = "dopfn_bb" ]; then
+    python -u "$SCRIPT" $EXTRA_ARGS
+else
+    python -u "$SCRIPT" --dataset "$DATASET"
+fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
