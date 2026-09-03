@@ -1,19 +1,19 @@
 """UWYK eval on the 6 synthetic case studies — PEHE + ATE err.
 
-FAST path: single `PreprocessingGraphConditionedPFN.predict(prediction_type='mean')`
-per realization, both do(0) and do(1) queries concatenated → one forward
-pass, no density resampling.
+Uses the RAW underlying UWYK model (PartialGraphConditionedInterventionalPFN)
+via the wrapper's .model attribute — bypasses the sklearn wrapper's
+preprocessing which was collapsing predictions to zero on non-standard
+inputs. Follows the same forward pattern as eval_graph2d_realcause.py:
 
-Env vars:
-  DATASET          case study name
-  OUT              per-realization NPZ dir
-  UWYK_SRC         path to UWYK repo src
-  UWYK_CKPT        explicit .pt path
-  UWYK_CONFIG      explicit .yaml path
-  UWYK_CKPT_DIR    fallback dir when UWYK_CKPT/UWYK_CONFIG unset
-  ANC_MODE         noanc | anc  (default noanc)
-  MAX_REAL         optional cap
-  DOPFN_DATA_ROOT  where the prior_sampling pkls live
+  - X padded with 0 to model.num_features
+  - Adj matrix (F+2, F+2) with real block + -1 around padded slots
+  - Y scaled to [-1, 1] via y_min/y_rng of the training Y
+  - Model forward with (X_obs, T_obs, Y_obs, X_intv, adj_t)
+  - Concat both do(0) + do(1) queries → one forward pass
+  - Extract 1D nbins marginal, compute mean, un-scale, subtract
+
+Env vars: DATASET, OUT, UWYK_SRC, UWYK_CKPT, UWYK_CONFIG (or UWYK_CKPT_DIR),
+          ANC_MODE (noanc|anc), MAX_REAL, DOPFN_DATA_ROOT
 """
 from __future__ import annotations
 import argparse, os, sys, time, importlib
@@ -40,7 +40,10 @@ sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))
 from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
 
-# ── UWYK model bootstrap (isolated from local models/utils collisions) ──
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+# ── UWYK model load (via wrapper.model — the underlying transformer) ──────
 def _load_uwyk():
     saved = {}
     for name in list(sys.modules):
@@ -73,63 +76,120 @@ def _load_uwyk():
         assert os.path.isfile(cfg_p), f'UWYK config missing: {cfg_p}'
         _dev = 'cuda' if torch.cuda.is_available() else 'cpu'
         print(f'[uwyk] loading  ckpt={ck_p}  cfg={cfg_p}  device={_dev}', flush=True)
-        m = pre_mod.PreprocessingGraphConditionedPFN(
+        wrapper = pre_mod.PreprocessingGraphConditionedPFN(
             config_path=cfg_p, checkpoint_path=ck_p, device=_dev, verbose=False,
             random_state=42, use_clustering=False,
         ).load()
     finally:
         torch.load = _orig_load
-    return m
+    return wrapper
 
 
-def _pad_X(X, F):
-    """Pad X columns to F with zeros (if <F) or truncate (if >F). Matches
-    training-time padding convention of UWYK's fixed-num_features backbone."""
-    X = np.asarray(X, dtype=np.float32)
+def _pad_features(X, F):
     if X.shape[1] == F: return X
     if X.shape[1] > F:  return X[:, :F]
-    return np.hstack([X, np.zeros((X.shape[0], F - X.shape[1]), dtype=np.float32)])
+    return np.hstack([X, np.zeros((X.shape[0], F - X.shape[1]), dtype=X.dtype)])
 
 
-def _cate_uwyk(model, X_train, T_train, y_train, X_test, anc_mode):
-    """Single forward for both arms via predict(prediction_type='mean').
-    Concatenates do(0) and do(1) queries → one transformer pass.
-    Returns cate_pred = E[Y|do(1), x] - E[Y|do(0), x] per query, in raw Y units.
-    """
-    F = model.model.num_features            # e.g. 50 for reproduce ckpt
-    # Explicit padding — wrapper's auto-pad may not exist or may fill with the
-    # wrong constant, causing the model to see OOD input → collapse to prior.
-    X_train_p = _pad_X(X_train, F)
-    X_test_p  = _pad_X(X_test,  F)
+def _standardize_train_test(Xtr, Xte, eps=1e-8):
+    mu = Xtr.mean(0, keepdims=True); sd = Xtr.std(0, keepdims=True) + eps
+    return (Xtr - mu) / sd, (Xte - mu) / sd
 
-    M = X_test_p.shape[0]
-    X_intv = np.vstack([X_test_p, X_test_p]).astype(np.float32)
-    T_intv = np.concatenate([np.zeros(M, dtype=np.float32),
-                              np.ones(M, dtype=np.float32)])
 
-    # Adjacency sized to model's fixed (F+2, F+2). Real edges only for the
-    # first L=X_train.shape[1] X-features (positions 2 .. 2+L in the adj);
-    # padded feature slots stay 0 = unknown.
-    if anc_mode == 'noanc':
-        adj = np.zeros((F + 2, F + 2), dtype=np.float32)
-    else:
-        adj = None  # wrapper auto-builds partial adjacency
+def _scale_y(y_train):
+    """[-1, 1] scaling via y_min/y_max of training Y. Returns scaled y + (y_min, y_rng)."""
+    y = np.asarray(y_train, dtype=np.float32).reshape(-1)
+    y_min = float(y.min()); y_max = float(y.max())
+    y_rng = max(y_max - y_min, 1e-6)
+    y_scaled = 2.0 * (y - y_min) / y_rng - 1.0
+    return y_scaled.reshape(-1, 1), y_min, y_rng
 
-    X_obs_ = X_train_p
-    T_obs_ = T_train.astype(np.float32)
-    Y_obs_ = y_train.astype(np.float32)
 
-    model.fit(X_obs_, T_obs_, Y_obs_)
-    preds = model.predict(
-        X_obs=X_obs_, T_obs=T_obs_, Y_obs=Y_obs_,
-        X_intv=X_intv,
-        T_intv=T_intv,
-        adjacency_matrix=adj,
-        prediction_type='mean',
-        inverse_transform=True,
-    )
-    preds = np.asarray(preds, dtype=np.float64).reshape(-1)
-    e0 = preds[:M]; e1 = preds[M:]
+def _build_anc_none(F, n_real):
+    """Real block all 0, padded slots -1 (rows + cols + diagonal)."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    feat_off = 2
+    for i in range(n_real, F):
+        A[feat_off + i, :] = -1.0
+        A[:, feat_off + i] = -1.0
+        A[feat_off + i, feat_off + i] = -1.0
+    return A
+
+
+def _build_anc_full(F, n_real):
+    """+1 for T→Y and each real X→T, X→Y; propagate; -1 around padded slots."""
+    A = np.zeros((F + 2, F + 2), dtype=np.float32)
+    T_idx, Y_idx, feat_off = 0, 1, 2
+    A[T_idx, Y_idx] = 1.0
+    for i in range(n_real):
+        A[feat_off + i, T_idx] = 1.0
+        A[feat_off + i, Y_idx] = 1.0
+    # Padded slots: -1
+    for i in range(n_real, F):
+        A[feat_off + i, :] = -1.0
+        A[:, feat_off + i] = -1.0
+        A[feat_off + i, feat_off + i] = -1.0
+    # Propagate ancestor knowledge to fill entailed entries
+    try:
+        from utils.graph_utils import propagate_ancestor_knowledge
+        real_n = 2 + n_real
+        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
+        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
+        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
+    except Exception:
+        pass
+    return A
+
+
+@torch.no_grad()
+def _cate_uwyk_raw(model, X_train, T_train, y_train, X_test, anc_mode):
+    """Raw forward via wrapper.model — bypass sklearn wrapper preprocessing."""
+    underlying = model.model                # PartialGraphConditionedInterventionalPFN
+    F = underlying.num_features
+    n_real = X_train.shape[1]
+
+    # 1. X: standardise then 0-pad
+    X_tr_s, X_te_s = _standardize_train_test(X_train.astype(np.float32),
+                                              X_test.astype(np.float32))
+    X_tr = _pad_features(X_tr_s, F)
+    X_te = _pad_features(X_te_s, F)
+
+    # 2. Y scaled to [-1, 1]
+    Y_scaled, y_min, y_rng = _scale_y(y_train)
+
+    # 3. Adj: -1 around padded slots
+    adj = _build_anc_none(F, n_real) if anc_mode == 'noanc' else _build_anc_full(F, n_real)
+
+    # 4. Concat both arms into one forward
+    M = X_te.shape[0]
+    X_intv_np = np.vstack([X_te, X_te]).astype(np.float32)
+    T_intv_np = np.concatenate([np.zeros(M, dtype=np.float32),
+                                 np.ones(M, dtype=np.float32)])
+
+    X_obs = torch.from_numpy(X_tr).unsqueeze(0).to(DEVICE)                            # (1, N, F)
+    T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE) # (1, N, 1)
+    Y_obs = torch.from_numpy(Y_scaled).unsqueeze(0).to(DEVICE)                        # (1, N, 1)
+    X_int = torch.from_numpy(X_intv_np).unsqueeze(0).to(DEVICE)                       # (1, 2M, F)
+    T_int = torch.from_numpy(T_intv_np).reshape(1, -1, 1).to(DEVICE)                  # (1, 2M, 1)
+    adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)                              # (1, F+2, F+2)
+
+    # Forward — UWYK's underlying takes (X_obs, T_obs, Y_obs, X_intv, T_intv, adjacency_matrix)
+    out = underlying(X_obs, T_obs, Y_obs, X_int, T_int, adj_t)
+    logits = out['predictions'] if isinstance(out, dict) else out
+    logits = logits.squeeze(0).float().cpu().numpy()   # (2M, nbins)
+
+    # BarDistribution mean per query
+    nbins = logits.shape[-1]
+    # Bin centers on [-1, 1] with `nbins` bins
+    edges = np.linspace(-1.0, 1.0, nbins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    p = np.exp(logits - logits.max(axis=-1, keepdims=True))
+    p = p / p.sum(axis=-1, keepdims=True)
+    e_scaled = (p * centers).sum(axis=-1)               # (2M,) mean in [-1,1]
+
+    # Un-scale to raw Y
+    e_raw = (e_scaled + 1.0) * 0.5 * y_rng + y_min
+    e0 = e_raw[:M]; e1 = e_raw[M:]
     return (e1 - e0).astype(np.float32)
 
 
@@ -137,16 +197,16 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     ds = SCMCaseStudyDataset(DATASET)
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
-    print(f'[bootstrap] UWYK {ANC_MODE}  {DATASET}  n={n}', flush=True)
-    uwyk_model = _load_uwyk()
+    print(f'[bootstrap] UWYK-raw {ANC_MODE}  {DATASET}  n={n}', flush=True)
+    model = _load_uwyk()
 
     rows = []; t0 = time.time()
     for r in range(n):
         cate_ds, _ = ds[r]
         try:
-            cate_pred = _cate_uwyk(uwyk_model,
-                                    cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
-                                    cate_ds.X_test, ANC_MODE)
+            cate_pred = _cate_uwyk_raw(model,
+                                        cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
+                                        cate_ds.X_test, ANC_MODE)
         except Exception as e:
             print(f'r={r:03d}  ERROR: {type(e).__name__}: {e}', flush=True)
             continue
@@ -164,7 +224,7 @@ def main():
 
     def _ms(k):
         v = np.array([r[k] for r in rows]); return v.mean(), v.std(ddof=1)/np.sqrt(len(v))
-    print(f'\n══ {DATASET}  UWYK-{ANC_MODE}  n={len(rows)} ══')
+    print(f'\n══ {DATASET}  UWYK-raw-{ANC_MODE}  n={len(rows)} ══')
     for k in ('pehe_raw', 'err_raw'):
         m, s = _ms(k); print(f'  {k:10s} = {m:8.3f} ± {s:6.3f}')
 
