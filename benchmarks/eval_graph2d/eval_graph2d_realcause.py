@@ -745,14 +745,19 @@ def cate_from_marginals(p_y0, p_y1, J, logits_np=None):
     cate_raw = e_y1_raw - e_y0_raw
 
     # EM mean: per-query per-arm fixed-point Gaussian correction.
-    N_q = p_y0.shape[0]
-    e_y0_em = np.empty(N_q); e_y1_em = np.empty(N_q)
-    for q in range(N_q):
-        mu0, s0 = _marginal_stats(p_y0[q], edges)
-        mu1, s1 = _marginal_stats(p_y1[q], edges)
-        e_y0_em[q] = _em_mean_1d(p_y0[q], edges, s0, mu0)
-        e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
-    cate_em = e_y1_em - e_y0_em
+    # Skipped if SKIP_EM=1 (default fast path for SCM case studies).
+    if os.environ.get('SKIP_EM', '0') == '1':
+        e_y0_em = e_y0_raw.copy(); e_y1_em = e_y1_raw.copy()
+        cate_em = cate_raw.copy()
+    else:
+        N_q = p_y0.shape[0]
+        e_y0_em = np.empty(N_q); e_y1_em = np.empty(N_q)
+        for q in range(N_q):
+            mu0, s0 = _marginal_stats(p_y0[q], edges)
+            mu1, s1 = _marginal_stats(p_y1[q], edges)
+            e_y0_em[q] = _em_mean_1d(p_y0[q], edges, s0, mu0)
+            e_y1_em[q] = _em_mean_1d(p_y1[q], edges, s1, mu1)
+        cate_em = e_y1_em - e_y0_em
 
     # Full 9-region mixture mean (integrates over ℝ², not just inner).
     if logits_np is not None:

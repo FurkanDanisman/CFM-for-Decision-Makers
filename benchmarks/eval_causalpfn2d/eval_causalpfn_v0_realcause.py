@@ -217,10 +217,13 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
     e_y0_raw = (p0 * centers).sum(axis=-1)
     e_y1_raw = (p1 * centers).sum(axis=-1)
 
-    sigma = float(bin_edges_np[1] - bin_edges_np[0])
-    # Vectorised across all queries — ~1000× faster than per-query scipy loop.
-    e_y0_em = _em_mean_1d_batch(p0, bin_edges_np, sigma, e_y0_raw)
-    e_y1_em = _em_mean_1d_batch(p1, bin_edges_np, sigma, e_y1_raw)
+    if os.environ.get('SKIP_EM', '0') == '1':
+        # Fast path: skip EM entirely, just alias em=raw for the output schema
+        e_y0_em = e_y0_raw.copy(); e_y1_em = e_y1_raw.copy()
+    else:
+        sigma = float(bin_edges_np[1] - bin_edges_np[0])
+        e_y0_em = _em_mean_1d_batch(p0, bin_edges_np, sigma, e_y0_raw)
+        e_y1_em = _em_mean_1d_batch(p1, bin_edges_np, sigma, e_y1_raw)
 
     def _un(a, arm):
         # de-standardise to (log-)Y space, then expm1 if log was applied
