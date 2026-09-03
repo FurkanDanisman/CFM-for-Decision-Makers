@@ -881,17 +881,16 @@ def build_mode_list(F, n_real, anc_mode=None):
             ('noanc', build_anc_none(F, n_real)),
         )
     if anc_mode == 'v3_v6_extended':
-        # Extended sweep: v3a-v3f + v6a/v6b/v6c + noanc
+        # Sweep: v3a/v3b/v3c/v3e + v6a/v6b + noanc.
+        # v3d, v3f, v6c dropped — they set diag=+1 which UWYK's PAM rejects
+        # (a node cannot be its own strict ancestor), keeping graph2d aligned.
         return (
             ('v3a',   build_anc_v3a(F, n_real)),
             ('v3b',   build_anc_v3b(F, n_real)),
             ('v3c',   build_anc_v3c(F, n_real)),
-            ('v3d',   build_anc_v3d(F, n_real)),
             ('v3e',   build_anc_v3e(F, n_real)),
-            ('v3f',   build_anc_v3f(F, n_real)),
             ('v6a',   build_anc_v6a(F, n_real)),
             ('v6b',   build_anc_v6b(F, n_real)),
-            ('v6c',   build_anc_v6c(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
         )
     if anc_mode == 'all_variants':
