@@ -219,6 +219,9 @@ def main():
 
     _install_dopfn_datasets_shim(args.dopfn)
     sys.path.insert(0, args.causalpfn)
+    _causalpfn_src = os.path.join(args.causalpfn, 'src')
+    if os.path.isdir(_causalpfn_src) and _causalpfn_src not in sys.path:
+        sys.path.insert(0, _causalpfn_src)
     from benchmarks import (IHDPDataset, ACIC2016Dataset,
                               RealCauseLalondeCPSDataset, RealCauseLalondePSIDDataset)
     _LOADERS = {
