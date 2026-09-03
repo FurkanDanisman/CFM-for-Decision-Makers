@@ -151,13 +151,36 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test, edges, J,
     # ── full: 9-region mixture mean over ℝ² ────────────────────────────
     e0_full, e1_full = full_mixture_mean(logits_np, J, edges_np)
 
+    # ── parab: sub-bin parabolic-peak-interpolation mean ──────────────
+    # For a Gaussian-shaped softmax, log-probs around the peak bin are
+    # approximately quadratic in bin index. Fitting a parabola through
+    # (peak-1, peak, peak+1) log-probs and taking its vertex gives an
+    # ~bin_width/10 estimate of the underlying continuous mean — vs the
+    # ~bin_width/2 discretization error of center-of-mass. Falls back to
+    # raw for edge-bin peaks.
+    bw = float(edges_np[1] - edges_np[0])
+    def _parab_mean(p_row):
+        i = int(np.argmax(p_row))
+        if i == 0 or i == len(p_row) - 1:
+            return float((centres * p_row).sum())
+        L = np.log(np.clip(p_row[i-1:i+2], 1e-45, None))
+        denom = L[0] - 2 * L[1] + L[2]
+        if abs(denom) < 1e-12:
+            return centres[i]
+        offset = 0.5 * (L[0] - L[2]) / denom          # in units of bins
+        return centres[i] + offset * bw
+    e0_parab = np.array([_parab_mean(p_y0[q]) for q in range(N_q)])
+    e1_parab = np.array([_parab_mean(p_y1[q]) for q in range(N_q)])
+
     # Un-standardise (shift cancels in cate).
-    cate_raw  = (e1_raw  - e0_raw ) * y_std_scalar
-    cate_em   = (e1_em   - e0_em  ) * y_std_scalar
-    cate_full = (e1_full - e0_full) * y_std_scalar
+    cate_raw   = (e1_raw   - e0_raw  ) * y_std_scalar
+    cate_em    = (e1_em    - e0_em   ) * y_std_scalar
+    cate_full  = (e1_full  - e0_full ) * y_std_scalar
+    cate_parab = (e1_parab - e0_parab) * y_std_scalar
     return (cate_raw.astype(np.float32),
             cate_em.astype(np.float32),
-            cate_full.astype(np.float32))
+            cate_full.astype(np.float32),
+            cate_parab.astype(np.float32))
 
 
 def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
@@ -174,7 +197,7 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
     X_tr_p = _pad_features(X_tr_std, F)
     X_te_p = _pad_features(X_te_std, F)
 
-    cate_raw, cate_em, cate_full = cate_raw_and_em(
+    cate_raw, cate_em, cate_full, cate_parab = cate_raw_and_em(
         model, X_tr_p, T_tr, y_tr, X_te_p, edges, J,
         y_scaling_mode=y_scaling_mode,
     )
@@ -185,17 +208,19 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
         err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
         return pehe, err, ate
 
-    pehe_raw,  err_raw,  ate_raw  = _pehe_err(cate_raw)
-    pehe_em,   err_em,   ate_em   = _pehe_err(cate_em)
-    pehe_full, err_full, ate_full = _pehe_err(cate_full)
+    pehe_raw,   err_raw,   ate_raw   = _pehe_err(cate_raw)
+    pehe_em,    err_em,    ate_em    = _pehe_err(cate_em)
+    pehe_full,  err_full,  ate_full  = _pehe_err(cate_full)
+    pehe_parab, err_parab, ate_parab = _pehe_err(cate_parab)
 
     return {
         'dataset': 'IHDP',
         'realization': realization,
         'true_ate': true_ate,
-        'pehe_raw':  pehe_raw,  'err_raw':  err_raw,  'ate_raw':  ate_raw,
-        'pehe_em':   pehe_em,   'err_em':   err_em,   'ate_em':   ate_em,
-        'pehe_full': pehe_full, 'err_full': err_full, 'ate_full': ate_full,
+        'pehe_raw':   pehe_raw,   'err_raw':   err_raw,   'ate_raw':   ate_raw,
+        'pehe_em':    pehe_em,    'err_em':    err_em,    'ate_em':    ate_em,
+        'pehe_full':  pehe_full,  'err_full':  err_full,  'ate_full':  ate_full,
+        'pehe_parab': pehe_parab, 'err_parab': err_parab, 'ate_parab': ate_parab,
     }
 
 
@@ -265,7 +290,8 @@ def main():
             f'r={r:03d}  '
             f'raw:  pehe={row["pehe_raw"]:6.3f} err={row["err_raw"]:5.3f}  |  '
             f'em:   pehe={row["pehe_em"]:6.3f} err={row["err_em"]:5.3f}  |  '
-            f'full: pehe={row["pehe_full"]:6.3f} err={row["err_full"]:5.3f}  '
+            f'full: pehe={row["pehe_full"]:6.3f} err={row["err_full"]:5.3f}  |  '
+            f'parab: pehe={row["pehe_parab"]:6.3f} err={row["err_parab"]:5.3f}  '
             f'(true_ate={row["true_ate"]:+5.2f}, {time.time()-t0:.0f}s)',
             flush=True,
         )
@@ -274,7 +300,8 @@ def main():
         v = np.array([r[k] for r in all_rows]); return v.mean(), v.std(ddof=1) / np.sqrt(len(v))
 
     print(f'\n══ IHDP summary (n={len(all_rows)}, step={step}) ══')
-    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em', 'pehe_full', 'err_full'):
+    for k in ('pehe_raw', 'err_raw', 'pehe_em', 'err_em',
+              'pehe_full', 'err_full', 'pehe_parab', 'err_parab'):
         m, s = _ms(k)
         print(f'  {k:12s} = {m:8.3f} ± {s:6.3f}')
 
