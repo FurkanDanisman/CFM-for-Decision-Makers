@@ -348,6 +348,17 @@ def build_anc_v3c(F, n_real):
     return A
 
 
+def build_anc_v3d(F, n_real):
+    """v3d: v3b + diagonal +1 on the real block (T,Y,X_real self-ancestors).
+    Same +1 layout as v3b (T→Y=+1, X→T=+1, X→Y=+1), reverses=-1,
+    but diag=+1 instead of -1."""
+    A = build_anc_v3b(F, n_real)
+    real_n = 2 + n_real
+    for i in range(real_n):
+        A[i, i] = 1.0
+    return A
+
+
 def build_anc_diag(F, n_real):
     """diag-only: diagonal of the real block is -1. Rest of real block 0.
     Padded rows/cols still -1."""
@@ -858,6 +869,16 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
             ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s, diag -1
             ('v6b',   build_anc_v6b(F, n_real)),   # all -1s, no +1s, diag 0
+            ('noanc', build_anc_none(F, n_real)),
+        )
+    elif ANC_MODE == 'v3_family':
+        # user-requested sweep: v3a, v3b, v3c, v3d, v6a (+ noanc reference)
+        _mode_list = (
+            ('v3a',   build_anc_v3a(F, n_real)),
+            ('v3b',   build_anc_v3b(F, n_real)),
+            ('v3c',   build_anc_v3c(F, n_real)),
+            ('v3d',   build_anc_v3d(F, n_real)),
+            ('v6a',   build_anc_v6a(F, n_real)),
             ('noanc', build_anc_none(F, n_real)),
         )
     elif ANC_MODE == 'all_variants':
