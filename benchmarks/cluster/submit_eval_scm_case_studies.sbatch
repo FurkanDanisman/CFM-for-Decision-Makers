@@ -42,6 +42,9 @@ export MODEL="${MODEL:?MODEL required (cpfn2d | graph2d | cpfn1d)}"
 export STD_MODE="${STD_MODE:-}"
 export GRAPH2D_ANC_MODE="${GRAPH2D_ANC_MODE:-noanc}"
 export DOPFN_DATA_ROOT="${DOPFN_DATA_ROOT:-$DEPLOY_ROOT/external/dopfn/data/prior_sampling}"
+# DOPFN_ROOT = parent of data/prior_sampling — needed to unpickle case-study pkls
+# (they carry DoPFN's `datasets.InterventionalDataset` class refs).
+export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN_DATA_ROOT%/data/prior_sampling}}"
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
 
