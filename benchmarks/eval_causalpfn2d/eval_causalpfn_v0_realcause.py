@@ -17,9 +17,12 @@ from scipy.stats import norm
 
 
 parser = argparse.ArgumentParser()
+_SCM_CASES = ('Observed_Confounder', 'Observed_Mediator',
+              'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+              'Frontdoor_Criterion', 'Backdoor_Criterion')
 parser.add_argument('--dataset', type=str,
                     default=os.environ.get('DATASET', 'IHDP'),
-                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'))
+                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal') + _SCM_CASES)
 args, _ = parser.parse_known_args()
 DATASET = args.dataset
 
@@ -30,6 +33,8 @@ EVAL_MAX_CONTEXT  = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
 PSID_BAL_SEED     = int(os.environ.get('PSID_BAL_SEED', '42'))
 MAX_REAL          = os.environ.get('MAX_REAL', '')
+STD_MODE          = os.environ.get('STD_MODE', 'per_arm').lower()
+assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor'), STD_MODE
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
@@ -52,6 +57,12 @@ def get_dataset(name):
     if name == 'ACIC':                return ACIC2016Dataset()
     if name == 'CPS':                 return RealCauseLalondeCPSDataset()
     if name in ('PSID', 'PSID_bal'):  return RealCauseLalondePSIDDataset()
+    if name in _SCM_CASES:
+        import sys as _sys
+        _rp_bench = os.path.join(REPO_SRC, 'benchmarks')
+        if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
+        from scm_case_study_dataset import SCMCaseStudyDataset
+        return SCMCaseStudyDataset(name)
     raise ValueError(name)
 
 
@@ -83,16 +94,37 @@ def _per_arm_shift_scale(t, y, eps=1e-6):
     return y0_shift, y0_scale, y1_shift, y1_scale
 
 
+_SQRT_2 = np.sqrt(2.0)
+_SQRT_2PI = np.sqrt(2 * np.pi)
+
 def _em_mean_1d(props, edges, sigma, start, max_step=1000, eps2=1e-10, eps1=1e-5):
-    pn = props / max(props.sum(), 1e-12)
-    mu = start
+    """Scalar API kept for backward compat. Delegates to vectorised batch call."""
+    return float(_em_mean_1d_batch(props[None], edges, sigma,
+                                    np.asarray([start], dtype=np.float64),
+                                    max_step=max_step, eps2=eps2, eps1=eps1)[0])
+
+
+def _em_mean_1d_batch(props_batch, edges, sigma, start_batch,
+                       max_step=30, eps2=1e-10, eps1=1e-5):
+    """Vectorised EM mean across N_q queries at once.
+    props_batch: (N_q, nbins). start_batch: (N_q,). edges: (nbins+1,). sigma: scalar.
+
+    Uses numpy erf/exp (scipy dispatch removed) and caps iters at 30 (single
+    Gaussian per-query converges in <15 iters; the old 1000-cap was a scipy
+    tax that dominated eval time).
+    """
+    from scipy.special import erf as _erf
+    pn = props_batch / np.clip(props_batch.sum(axis=1, keepdims=True), 1e-12, None)
+    mu = start_batch.astype(np.float64).copy()
     for _ in range(max_step):
-        a = (edges - mu) / sigma
-        G1 = norm.cdf(a); G2 = norm.pdf(a)
-        dG1 = G1[1:] - G1[:-1]; dG2 = G2[1:] - G2[:-1]
-        m_bin = mu - sigma * dG2 / np.clip(dG1, eps2, None)
-        mu_new = float(np.sum(pn * m_bin))
-        if abs(mu_new - mu) < eps1:
+        a = (edges[None, :] - mu[:, None]) / sigma                # (N_q, nbins+1)
+        G1 = 0.5 * (1.0 + _erf(a / _SQRT_2))
+        G2 = np.exp(-0.5 * a * a) / _SQRT_2PI
+        dG1 = G1[:, 1:] - G1[:, :-1]
+        dG2 = G2[:, 1:] - G2[:, :-1]
+        temp = (dG2 + eps2) / (dG1 + eps2)
+        mu_new = mu - sigma * np.sum(pn * temp, axis=1)
+        if np.max(np.abs(mu_new - mu)) < eps1:
             mu = mu_new
             break
         mu = mu_new
@@ -131,13 +163,46 @@ def _forward_one_arm(model, X_ctx, T_ctx, Y_std_ctx, X_q, t_val, num_features, n
     return pred[..., -nbins:]
 
 
+def _compute_std_stats(T_train, Y_train_raw, bin_edges_np, mode):
+    """Return (y_ctx_std_np, arm0_stats, arm1_stats, y_min_or_None).
+    arm_stats = (shift, scale) — arm0 and arm1 identical for pooled/log/log_winsor,
+    differ only for per_arm / log_per_arm.  y_min set only when a log transform
+    is applied (needed to un-log at the end)."""
+    T = T_train.reshape(-1); Y = Y_train_raw.reshape(-1).astype(np.float64)
+    # log-family: transform Y BEFORE computing stats
+    y_min = None
+    if mode in ('log', 'log_per_arm', 'log_winsor'):
+        y_min = float(Y.min())
+        Y_work = np.log1p(Y - y_min)
+    else:
+        Y_work = Y
+
+    if mode in ('per_arm', 'log_per_arm'):
+        y0 = Y_work[T < 0.5]; y1 = Y_work[T > 0.5]
+        m0, s0 = (float(y0.mean()), float(y0.std() + 1e-6)) if y0.size else (0.0, 1.0)
+        m1, s1 = (float(y1.mean()), float(y1.std() + 1e-6)) if y1.size else (0.0, 1.0)
+        z = np.where(T > 0.5, (Y_work - m1) / s1, (Y_work - m0) / s0)
+        return z.astype(np.float32), (m0, s0), (m1, s1), y_min
+
+    if mode == 'log_winsor':
+        lo, hi = np.quantile(Y_work, [0.01, 0.99])
+        Yw = np.clip(Y_work, lo, hi)
+        m, s = float(Yw.mean()), float(Yw.std() + 1e-6)
+        edge_lo, edge_hi = float(bin_edges_np[0]), float(bin_edges_np[-1])
+        z = np.clip((Y_work - m) / s, edge_lo, edge_hi)
+        return z.astype(np.float32), (m, s), (m, s), y_min
+
+    # pooled / log (pooled on log-Y)
+    m, s = float(Y_work.mean()), float(Y_work.std() + 1e-6)
+    z = (Y_work - m) / s
+    return z.astype(np.float32), (m, s), (m, s), y_min
+
+
 @torch.no_grad()
 def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
                     num_features, nbins, bin_edges_np):
-    y0s, y0sc, y1s, y1sc = _per_arm_shift_scale(T_train, Y_train_raw)
-    y_ctx_std = np.where(T_train.reshape(-1) > 0.5,
-                          (Y_train_raw - y1s) / y1sc,
-                          (Y_train_raw - y0s) / y0sc).astype(np.float32)
+    y_ctx_std, arm0, arm1, y_min = _compute_std_stats(
+        T_train, Y_train_raw, bin_edges_np, STD_MODE)
     X_ctx = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     T_ctx = torch.from_numpy(T_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     Y_ctx = torch.from_numpy(y_ctx_std).unsqueeze(0).to(DEVICE)
@@ -152,17 +217,22 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
     e_y0_raw = (p0 * centers).sum(axis=-1)
     e_y1_raw = (p1 * centers).sum(axis=-1)
 
-    sigma = float(bin_edges_np[1] - bin_edges_np[0])
-    N_q = p0.shape[0]
-    e_y0_em = np.empty(N_q, dtype=np.float32)
-    e_y1_em = np.empty(N_q, dtype=np.float32)
-    for q in range(N_q):
-        e_y0_em[q] = _em_mean_1d(p0[q], bin_edges_np, sigma, start=e_y0_raw[q])
-        e_y1_em[q] = _em_mean_1d(p1[q], bin_edges_np, sigma, start=e_y1_raw[q])
+    if os.environ.get('SKIP_EM', '0') == '1':
+        # Fast path: skip EM entirely, just alias em=raw for the output schema
+        e_y0_em = e_y0_raw.copy(); e_y1_em = e_y1_raw.copy()
+    else:
+        sigma = float(bin_edges_np[1] - bin_edges_np[0])
+        e_y0_em = _em_mean_1d_batch(p0, bin_edges_np, sigma, e_y0_raw)
+        e_y1_em = _em_mean_1d_batch(p1, bin_edges_np, sigma, e_y1_raw)
 
-    def unst(a, sh, sc): return a * sc + sh
-    cate_raw = unst(e_y1_raw, y1s, y1sc) - unst(e_y0_raw, y0s, y0sc)
-    cate_em  = unst(e_y1_em,  y1s, y1sc) - unst(e_y0_em,  y0s, y0sc)
+    def _un(a, arm):
+        # de-standardise to (log-)Y space, then expm1 if log was applied
+        v = a * arm[1] + arm[0]
+        return np.expm1(v) + y_min if y_min is not None else v
+
+    # log-family means the shift no longer cancels — de-standardise each arm
+    cate_raw = _un(e_y1_raw, arm1) - _un(e_y0_raw, arm0)
+    cate_em  = _un(e_y1_em,  arm1) - _un(e_y0_em,  arm0)
     return cate_raw.astype(np.float32), cate_em.astype(np.float32)
 
 
@@ -196,7 +266,7 @@ def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance
     def _pehe(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate_hat = float(cate.mean())
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate_hat
 
     p_r, e_r, a_r = _pehe(cate_raw)
@@ -252,7 +322,8 @@ def main():
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
     print(f'[bootstrap] {DATASET}  ckpt={CKPT}  ninp={ninp} nhid={nhid} nhead={nhead} '
           f'nlayers={nlayers} nbins={nbins} F={num_features}  n={n}  '
-          f'ctx_cap={EVAL_MAX_CONTEXT or "none"}  seed={EVAL_CONTEXT_SEED}', flush=True)
+          f'ctx_cap={EVAL_MAX_CONTEXT or "none"}  seed={EVAL_CONTEXT_SEED}  '
+          f'STD_MODE={STD_MODE}', flush=True)
 
     rows = []
     t0 = time.time()

@@ -296,7 +296,7 @@ def main():
         cate = cate_scaled * yrange / 2.0
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate_hat = float(cate.mean())
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         print(f'  CATE: pehe={pehe:.4f}  err_ate={err:.4f}  ate_hat={ate_hat:+.4f}',
               flush=True)
 

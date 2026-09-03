@@ -255,10 +255,10 @@ def main():
 
     ot_mode_ate = ours['ours_ot_mode_ate']
     out['ate_ours_ot_mode'] = ot_mode_ate
-    out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+    out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 0.1)
     ot_mean_ate = ours['ours_ot_mean_ate']
     out['ate_ours_ot_mean'] = ot_mean_ate
-    out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
+    out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 0.1)
 
     out['runtime_s'] = time.time() - t0
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})

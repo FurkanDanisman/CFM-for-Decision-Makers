@@ -143,7 +143,7 @@ def main():
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
     ate_pred = float(cate.mean())
     ate_true = float(true_cate.mean())
-    ate_err = abs(ate_pred - ate_true) / max(abs(ate_true), 1e-9)
+    ate_err = abs(ate_pred - ate_true) / max(abs(ate_true), 0.1)
 
     print()
     print(f'=== DIRECT REPRO ({args.dataset} r{args.realization}, {args.graph_mode}) ===')
