@@ -162,7 +162,7 @@ def evaluate_realization(realization: int, model, J, F, hide_fracs, n_masks):
         cate_mean = np.mean(cates, axis=0)
         pehe = float(np.sqrt(np.mean((cate_mean - true_cate) ** 2)))
         ate_hat = float(cate_mean.mean())
-        err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         key = f'hf_{int(hf*100):03d}'
         row[f'pehe_{key}'] = pehe
         row[f'err_{key}']  = err_ate

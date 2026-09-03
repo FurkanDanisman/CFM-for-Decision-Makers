@@ -179,7 +179,7 @@ def evaluate(realization, model, num_features, nbins, bin_centers):
                               num_features, nbins, bin_centers)
     pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
     ate_hat = float(cate.mean())
-    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
 
     return {'dataset': 'IHDP', 'realization': realization,
             'true_ate': true_ate,

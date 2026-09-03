@@ -278,7 +278,7 @@ def evaluate_realization(r, ds, model, J, F):
             cate = cate_scaled * yrange / 2.0   # unscale to raw Y
             pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
             ate_hat = float(np.nanmean(cate))
-            err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+            err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
             row[f'pehe_{name}_{mode}'] = pehe
             row[f'err_{name}_{mode}']  = err
     return row

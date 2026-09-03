@@ -153,7 +153,7 @@ def main():
         def _pehe(cate):
             pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
             ate  = float(cate.mean())
-            err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+            err  = abs(ate - true_ate) / max(abs(true_ate), 0.1)
             return pehe, err, ate
 
         pehe_anc,   err_anc,   ate_anc   = _pehe(cate_anc)

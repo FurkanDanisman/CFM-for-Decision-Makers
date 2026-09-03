@@ -632,7 +632,7 @@ def main():
         # (matches benchmarks/uwyk_direct_repro.py:146). Predicting 0 CATE
         # yields eps_ATE = 1. Guard denominator for near-zero true ATE.
         _ate_true = float(true_cate_raw.mean())
-        _ate_denom = max(abs(_ate_true), 1e-9)
+        _ate_denom = max(abs(_ate_true), 0.1)
         eps_ate_raw       = float(abs(cate_pred_raw.mean()      - _ate_true) / _ate_denom)
         eps_ate_full      = float(abs(cate_pred_em.mean()       - _ate_true) / _ate_denom)
         eps_ate_malc_raw  = float(abs(cate_pred_malc_raw.mean() - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')

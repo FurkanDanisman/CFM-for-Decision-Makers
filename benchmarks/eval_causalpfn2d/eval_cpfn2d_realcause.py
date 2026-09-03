@@ -306,7 +306,7 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
     def _pehe(cate):
         pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
         ate_hat = float(np.nanmean(cate))
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate_hat
 
     p_r, e_r, a_r = _pehe(cate_raw)

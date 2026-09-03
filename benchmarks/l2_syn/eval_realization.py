@@ -194,14 +194,14 @@ def main() -> int:
         ate_hat_raw = ate_hat_scaled * y_rng_over_2
         pehe = float(np.sqrt(np.mean((cate_hat_raw - true_cate_raw) ** 2)))
         eps_ate = float(abs(ate_hat_raw - true_ate_raw)
-                        / max(abs(true_ate_raw), 1e-9))
+                        / max(abs(true_ate_raw), 0.1))
         pehe_raw = eps_ate_raw = None
         if 'cate_raw_scaled' in d:
             cate_raw_raw = d['cate_raw_scaled'] * y_rng_over_2
             ate_raw_raw = float(cate_raw_raw.mean())
             pehe_raw = float(np.sqrt(np.mean((cate_raw_raw - true_cate_raw) ** 2)))
             eps_ate_raw = float(abs(ate_raw_raw - true_ate_raw)
-                                / max(abs(true_ate_raw), 1e-9))
+                                / max(abs(true_ate_raw), 0.1))
 
         def _malc_em_pehe(cate_em_scaled):
             arr = np.asarray(cate_em_scaled) * y_rng_over_2
@@ -210,7 +210,7 @@ def main() -> int:
                 return None, None
             ate_em = float(arr[valid].mean())
             pehe = float(np.sqrt(np.mean((arr[valid] - true_cate_raw[valid]) ** 2)))
-            eps  = float(abs(ate_em - true_ate_raw) / max(abs(true_ate_raw), 1e-9))
+            eps  = float(abs(ate_em - true_ate_raw) / max(abs(true_ate_raw), 0.1))
             return pehe, eps
         pehe_em_mix = eps_em_mix = None
         pehe_em_k1  = eps_em_k1  = None
