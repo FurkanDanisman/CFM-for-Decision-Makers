@@ -26,9 +26,12 @@ from scipy.stats import norm
 
 
 parser = argparse.ArgumentParser()
+_SCM_CASES = ('Observed_Confounder', 'Observed_Mediator',
+              'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+              'Frontdoor_Criterion', 'Backdoor_Criterion')
 parser.add_argument('--dataset', type=str,
                     default=os.environ.get('DATASET', 'IHDP'),
-                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'))
+                    choices=('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal') + _SCM_CASES)
 args, _ = parser.parse_known_args()
 DATASET = args.dataset
 
@@ -69,6 +72,9 @@ def get_dataset(name):
     if name == 'ACIC':                return ACIC2016Dataset()
     if name == 'CPS':                 return RealCauseLalondeCPSDataset()
     if name in ('PSID', 'PSID_bal'):  return RealCauseLalondePSIDDataset()
+    if name in _SCM_CASES:
+        from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset
+        return SCMCaseStudyDataset(name)
     raise ValueError(name)
 
 
