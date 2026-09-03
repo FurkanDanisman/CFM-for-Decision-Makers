@@ -70,7 +70,14 @@ export OUT="$OUT_ROOT/$DATASET"
 
 case "$MODEL" in
     cpfn2d)     SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_cpfn2d_realcause.py" ;;
-    graph2d)    SCRIPT="$REPO/benchmarks/eval_graph2d/eval_graph2d_realcause.py" ;;
+    graph2d)
+        SCRIPT="$REPO/benchmarks/eval_graph2d/eval_graph2d_realcause.py"
+        # eval_graph2d_realcause.py reads ANC_MODE (not GRAPH2D_ANC_MODE).
+        # Bridge the two so SCM-eval submitters can use either name.
+        export ANC_MODE="${GRAPH2D_ANC_MODE:-full}"
+        # For ANC_MODE=case_variant the graph2d script also reads ANC_VARIANT.
+        export ANC_VARIANT="${ANC_VARIANT:-}"
+        ;;
     cpfn1d)     SCRIPT="$REPO/benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py" ;;
     dopfn_native)
         # native DoPFNRegressor — no --dataset flag needed (env var is enough)
