@@ -1,15 +1,15 @@
 """UWYK eval on the 6 synthetic case studies — PEHE + ATE err.
 
-Calls PartialGraphConditionedInterventionalPFN forward directly (via
-wrapper.model) using the SAME preprocessing the sklearn wrapper does:
+VERBATIM copy of UWYK's own dofm_full_conditioning.py pipeline
+(reproduced in benchmarks/uwyk_direct_repro.py). Key details we were
+missing before:
 
-- X-standardize (mean/std on TRAIN X) then 0-pad to model.num_features
-- Y-scale to [-1, 1] via y_min/y_max
-- Adj (F+2, F+2): real block has T→Y = +1, X→T = +1, X→Y = +1;
-  padded feature slots get -1 on rows/cols/diag
-- TWO separate forwards (T=1 arm, T=0 arm) — do NOT concat
-- Get scaled mean via wrapper.bar_distribution.mean(out['predictions'])
-- CATE = (arm1 − arm0) × y_range / 2   (y_min cancels)
+- T is TARGET-ENCODED: t_train = where(T==0, mean_y_t0, mean_y_t1).
+  NOT 0/1. Same for T_intv (query treatment is the encoded value).
+- Two separate wrapper.predict(prediction_type='mean') calls (T=1 arm,
+  T=0 arm). Wrapper handles X standardization + padding + Y scaling
+  internally.
+- Adjacency mode: 'all_unknown' (= noanc) or 'full_graph' (= anc).
 
 Env: DATASET, OUT, UWYK_SRC, UWYK_CKPT, UWYK_CONFIG (or UWYK_CKPT_DIR),
      ANC_MODE (noanc|anc), MAX_REAL, DOPFN_DATA_ROOT
@@ -32,14 +32,14 @@ ANC_MODE      = os.environ.get('ANC_MODE', 'noanc').lower()
 MAX_REAL      = os.environ.get('MAX_REAL', '')
 assert ANC_MODE in ('noanc', 'anc'), ANC_MODE
 
+# Map our anc_mode → UWYK's graph_mode
+GRAPH_MODE = 'all_unknown' if ANC_MODE == 'noanc' else 'full_graph'
+
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
 sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))
 
 from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
-
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def _load_uwyk():
@@ -83,96 +83,171 @@ def _load_uwyk():
     return wrapper
 
 
-def _build_adj(F, n_real, anc_mode):
-    """(F+2, F+2) adjacency. Order: [T=0, Y=1, X_0 ... X_{F-1}].
-    noanc: real block all 0, padded slots -1
-    anc:   T→Y=+1, X_i→T=+1, X_i→Y=+1 for real; padded slots -1
-    """
-    A = np.zeros((F + 2, F + 2), dtype=np.float32)
-    T_idx, Y_idx, feat_off = 0, 1, 2
-    if anc_mode == 'anc':
-        A[T_idx, Y_idx] = 1.0
-        for i in range(n_real):
-            A[feat_off + i, T_idx] = 1.0
-            A[feat_off + i, Y_idx] = 1.0
-    # padded feature slots → -1 rows + cols + diagonal
-    for i in range(n_real, F):
-        A[feat_off + i, :] = -1.0
-        A[:, feat_off + i] = -1.0
-        A[feat_off + i, feat_off + i] = -1.0
+def _pad_negatives(A, feat_off, n_real, model_n_features):
+    """Mark padded feature slots as -1 across their rows/cols/diagonal."""
+    for i in range(n_real, model_n_features):
+        idx = feat_off + i
+        A[idx, :] = -1.0
+        A[:, idx] = -1.0
+        A[idx, idx] = -1.0
     return A
 
 
-def _standardize_and_pad(X_train, X_test, F):
-    """Compute (mean, std) on TRAIN X (real cols), pad to F with zeros
-    (padded cols have mean=0, std=1 so they stay zero after standardization)."""
-    L = X_train.shape[1]
-    mean = np.zeros((1, F), dtype=np.float32); mean[0, :L] = X_train.mean(0)
-    std  = np.ones ((1, F), dtype=np.float32); std [0, :L] = X_train.std(0) + 1e-8
-    Xtr_p = np.zeros((X_train.shape[0], F), dtype=np.float32); Xtr_p[:, :L] = X_train
-    Xte_p = np.zeros((X_test .shape[0], F), dtype=np.float32); Xte_p[:, :L] = X_test
-    Xtr_s = (Xtr_p - mean) / std
-    Xte_s = (Xte_p - mean) / std
-    return Xtr_s, Xte_s
+def build_adjacency_matrix_for_case(case_study, model_n_features, n_real, graph_mode):
+    """Per-case-study true-DAG adjacency (matching DoPFN paper Fig 2).
+
+    all_unknown: real block all 0, padded slots -1 (regardless of case).
+
+    full_graph:  the actual DAG of each case study. Nodes are
+    [T=0, Y=1, X_0, X_1, ...]; entries in {-1, 0, +1} where +1 = row is
+    ancestor of col.  For case studies where X_i is DOWNSTREAM of T
+    (mediators, front-door), we set A[T, X_i]=+1 instead of A[X_i, T]=+1.
+    """
+    A = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
+    T, Y, off = 0, 1, 2
+
+    if graph_mode == 'all_unknown':
+        return _pad_negatives(A, off, n_real, model_n_features)
+
+    if graph_mode != 'full_graph':
+        raise ValueError(graph_mode)
+
+    if case_study in ('Observed_Confounder', 'Backdoor_Criterion'):
+        # X → T, X → Y, T → Y  (all X are confounders of the T→Y edge)
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[off + i, T] = 1.0
+            A[off + i, Y] = 1.0
+
+    elif case_study == 'Observed_Mediator':
+        # T → X → Y  (X is mediator; T → Y also holds transitively)
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[T, off + i] = 1.0        # T ancestor of X
+            A[off + i, Y] = 1.0        # X ancestor of Y
+
+    elif case_study == 'Observed_Mediator_and_Confounder':
+        # X_0 = confounder (X_0 → T, X_0 → Y)
+        # X_1..X_{n-1} = mediators (T → X_i → Y)
+        # T → Y direct
+        A[T, Y] = 1.0
+        if n_real >= 1:
+            A[off + 0, T] = 1.0        # confounder → T
+            A[off + 0, Y] = 1.0        # confounder → Y
+        for i in range(1, n_real):
+            A[T, off + i] = 1.0        # T → mediator
+            A[off + i, Y] = 1.0        # mediator → Y
+
+    elif case_study == 'Unobserved_Confounder':
+        # Unobserved U → T, U → Y. Observed X carries NO known ancestor info.
+        # Only T → Y is (weakly) known.
+        A[T, Y] = 1.0
+
+    elif case_study == 'Frontdoor_Criterion':
+        # T → X → Y (X = mediator on the front-door path)
+        # Unobserved U → T, U → Y (T→Y confounded).
+        # Observed X is the front-door variable.
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[T, off + i] = 1.0        # T → X (frontdoor)
+            A[off + i, Y] = 1.0        # X → Y
+
+    else:
+        raise ValueError(f'unknown case_study: {case_study}')
+
+    A = _pad_negatives(A, off, n_real, model_n_features)
+
+    # Propagate ancestor knowledge on the real block (fills entailed entries)
+    try:
+        from utils.graph_utils import propagate_ancestor_knowledge
+        real_n = 2 + n_real
+        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
+        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
+        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
+    except Exception:
+        pass
+    return A
 
 
-@torch.no_grad()
-def _cate_uwyk(wrapper, X_train, T_train, y_train, X_test, anc_mode):
-    underlying = wrapper.model
-    bd = wrapper.bar_distribution
-    F = underlying.num_features
-    n_real = X_train.shape[1]
+# Backward-compat alias — UWYK's original name
+def build_adjacency_matrix(model_n_features, n_real_features, graph_mode):
+    """Old name (case-agnostic). Kept for callers that don't have case_study."""
+    return build_adjacency_matrix_for_case(
+        DATASET, model_n_features, n_real_features, graph_mode)
 
-    # X: standardize + 0-pad to F
-    Xtr_s, Xte_s = _standardize_and_pad(X_train.astype(np.float32),
-                                         X_test.astype(np.float32), F)
 
-    # Y: [-1, 1] scaling via TRAIN y_min / y_max
-    y_min = float(y_train.min()); y_max = float(y_train.max())
-    y_rng = max(y_max - y_min, 1e-8)
-    Y_scaled = (2.0 * (y_train.astype(np.float32) - y_min) / y_rng - 1.0)
+def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
+    """VERBATIM copy of the reproduce-realcause-results branch's
+    dofm_no_clustering.py pipeline (verified to reproduce Table 1 exactly).
 
-    # Adj (F+2, F+2)
-    adj = _build_adj(F, n_real, anc_mode)
+    Steps:
+    1. Target-encode T with mean(Y|T=0), mean(Y|T=1).
+    2. wrapper.fit(X, T_encoded, Y).
+    3. Two wrapper.predict() calls with target-encoded T_intv, inverse=True.
+    4. CATE = y_pred_1 - y_pred_0.
 
-    # Tensors — shapes: X(1,N,F), T(1,N,1), Y(1,N,1), Xq(1,M,F), Tq(1,M,1), adj(1,F+2,F+2)
-    X_obs = torch.from_numpy(Xtr_s).unsqueeze(0).to(DEVICE)
-    T_obs = torch.from_numpy(T_train.astype(np.float32)).reshape(1, -1, 1).to(DEVICE)
-    Y_obs = torch.from_numpy(Y_scaled).reshape(1, -1, 1).to(DEVICE)
-    X_intv = torch.from_numpy(Xte_s).unsqueeze(0).to(DEVICE)
-    adj_t = torch.from_numpy(adj).unsqueeze(0).to(DEVICE)
+    Note: this needs the CORRECT checkpoint from
+    `experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt`
+    NOT the `experiments/checkpoints/model/best_model.pt` (which is a
+    different experiment's ckpt and produces ~0 predictions here).
+    """
+    X_train = np.asarray(cate_dataset.X_train, dtype=np.float32)
+    t_train_orig = np.asarray(cate_dataset.t_train, dtype=np.float32)
+    t_train_orig = t_train_orig.reshape(-1, 1) if t_train_orig.ndim == 1 else t_train_orig
+    y_train_orig = np.asarray(cate_dataset.y_train, dtype=np.float32)
+    y_train_orig = y_train_orig.reshape(-1, 1) if y_train_orig.ndim == 1 else y_train_orig
+    X_test = np.asarray(cate_dataset.X_test, dtype=np.float32)
+    y_train = y_train_orig
+    n_test = X_test.shape[0]
 
-    def _arm(t_val):
-        T_intv = torch.full((1, X_test.shape[0], 1), float(t_val),
-                             dtype=torch.float32, device=DEVICE)
-        out = underlying(X_obs, T_obs, Y_obs, X_intv, T_intv, adj_t)
-        pred = out['predictions'] if isinstance(out, dict) else out   # (1, M, num_bars+extras)
-        # Use BarDistribution mean — same as wrapper does
-        mean = bd.mean(pred).squeeze(0).cpu().numpy()                  # (M,) in scaled Y
-        return mean
+    # Target-encode T with mean(Y|T)
+    t_flat = t_train_orig.flatten(); y_flat = y_train.flatten()
+    mean_y_t0 = float(y_flat[t_flat == 0].mean())
+    mean_y_t1 = float(y_flat[t_flat == 1].mean())
+    t_train = np.where(t_train_orig == 0, mean_y_t0, mean_y_t1).astype(np.float32)
+    t_intv_0_encoded = mean_y_t0
+    t_intv_1_encoded = mean_y_t1
 
-    e0_scaled = _arm(0.0)
-    e1_scaled = _arm(1.0)
+    n_features_orig = X_train.shape[1]
+    model_n_features = model.model.num_features
+    n_real_features = min(n_features_orig, model_n_features)
 
-    # CATE inverse: scaled_diff × y_range / 2  (y_min cancels)
-    cate = (e1_scaled - e0_scaled) * (y_rng / 2.0)
-    return cate.astype(np.float32)
+    model.fit(X_train, t_train, y_train)
+
+    adjacency_matrix = build_adjacency_matrix_for_case(
+        DATASET, model_n_features, n_real_features, graph_mode)
+
+    T_intv_1 = np.full((n_test, 1), t_intv_1_encoded, dtype=np.float32)
+    y_pred_1 = model.predict(
+        X_obs=X_train, T_obs=t_train, Y_obs=y_train,
+        X_intv=X_test, T_intv=T_intv_1,
+        adjacency_matrix=adjacency_matrix,
+        prediction_type='mean', inverse_transform=True,
+    )
+    T_intv_0 = np.full((n_test, 1), t_intv_0_encoded, dtype=np.float32)
+    y_pred_0 = model.predict(
+        X_obs=X_train, T_obs=t_train, Y_obs=y_train,
+        X_intv=X_test, T_intv=T_intv_0,
+        adjacency_matrix=adjacency_matrix,
+        prediction_type='mean', inverse_transform=True,
+    )
+    cate_pred = np.asarray(y_pred_1 - y_pred_0, dtype=np.float32).reshape(-1)
+    return cate_pred
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
     ds = SCMCaseStudyDataset(DATASET)
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
-    print(f'[bootstrap] UWYK {ANC_MODE}  {DATASET}  n={n}', flush=True)
+    print(f'[bootstrap] UWYK-paper-pipeline  graph_mode={GRAPH_MODE}  '
+          f'{DATASET}  n={n}', flush=True)
     wrapper = _load_uwyk()
 
     rows = []; t0 = time.time()
     for r in range(n):
         cate_ds, _ = ds[r]
         try:
-            cate_pred = _cate_uwyk(wrapper,
-                                    cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
-                                    cate_ds.X_test, ANC_MODE)
+            cate_pred = _cate_uwyk_paper_pipeline(wrapper, cate_ds, GRAPH_MODE)
         except Exception as e:
             print(f'r={r:03d}  ERROR: {type(e).__name__}: {e}', flush=True)
             continue
