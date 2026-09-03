@@ -26,10 +26,19 @@ Realizations: IHDP=100, ACIC=10, CPS=100, PSID=100, PSID_bal=100
 Realizations: IHDP=100, ACIC=10, CPS=100, PSID=100, PSID_bal=100
 
 
+### Ours V6A
+| Metric | IHDP | ACIC | CPS | PSID | PSID_bal |
+|---|---:|---:|---:|---:|---:|
+| PEHE v6a | 4.442 ± 0.572 (lowest) | 2.843 ± 0.510 | 12357.107 ± 21.531 | 21052.614 ± 159.642 (lowest) | 19665.661 ± 245.294 (lowest) |
+| PEHE noanc | 4.519 ± 0.632 | 2.814 ± 0.501 (lowest) | 12346.973 ± 18.774 (lowest) | 21543.697 ± 135.600 | 20046.899 ± 142.031 |
+
+Realizations: IHDP=100, ACIC=10, CPS=100, PSID=100, PSID_bal=100
+
+
 ### UWYK V6A
 | Metric | IHDP | ACIC | CPS | PSID | PSID_bal |
 |---|---:|---:|---:|---:|---:|
 | UWYK PEHE v6a | 7.640 ± 0.819 | 4.365 ± 0.488 | 12948.198 ± 16.887 | 22634.995 ± 129.594 | 22841.709 ± 130.819 |
-| UWYK PEHE noanc | 6.279 ± 0.791 | 3.302 ± 0.473 | 12915.390 ± 16.663 | 22486.193 ± 129.906 | 22735.322 ± 129.410 |
+| UWYK PEHE noanc | 6.279 ± 0.791 (lowest) | 3.302 ± 0.473 (lowest) | 12915.390 ± 16.663 (lowest) | 22486.193 ± 129.906 (lowest) | 22735.322 ± 129.410 (lowest) |
 
 Realizations: IHDP=100, ACIC=10, CPS=100, PSID=100, PSID_bal=100
