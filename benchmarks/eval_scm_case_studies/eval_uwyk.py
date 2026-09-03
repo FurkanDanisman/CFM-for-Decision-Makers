@@ -83,27 +83,97 @@ def _load_uwyk():
     return wrapper
 
 
-def build_adjacency_matrix(model_n_features, n_real_features, graph_mode):
-    """VERBATIM copy of dofm_full_conditioning.py::build_adjacency_matrix."""
-    A = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
-    T_idx, Y_idx, feat_off = 0, 1, 2
-
-    if graph_mode == 'all_unknown':
-        pass
-    elif graph_mode == 'full_graph':
-        A[T_idx, Y_idx] = 1.0
-        for i in range(n_real_features):
-            A[feat_off + i, T_idx] = 1.0
-            A[feat_off + i, Y_idx] = 1.0
-    else:
-        raise ValueError(graph_mode)
-
-    for i in range(n_real_features, model_n_features):
+def _pad_negatives(A, feat_off, n_real, model_n_features):
+    """Mark padded feature slots as -1 across their rows/cols/diagonal."""
+    for i in range(n_real, model_n_features):
         idx = feat_off + i
         A[idx, :] = -1.0
         A[:, idx] = -1.0
         A[idx, idx] = -1.0
     return A
+
+
+def build_adjacency_matrix_for_case(case_study, model_n_features, n_real, graph_mode):
+    """Per-case-study true-DAG adjacency (matching DoPFN paper Fig 2).
+
+    all_unknown: real block all 0, padded slots -1 (regardless of case).
+
+    full_graph:  the actual DAG of each case study. Nodes are
+    [T=0, Y=1, X_0, X_1, ...]; entries in {-1, 0, +1} where +1 = row is
+    ancestor of col.  For case studies where X_i is DOWNSTREAM of T
+    (mediators, front-door), we set A[T, X_i]=+1 instead of A[X_i, T]=+1.
+    """
+    A = np.zeros((model_n_features + 2, model_n_features + 2), dtype=np.float32)
+    T, Y, off = 0, 1, 2
+
+    if graph_mode == 'all_unknown':
+        return _pad_negatives(A, off, n_real, model_n_features)
+
+    if graph_mode != 'full_graph':
+        raise ValueError(graph_mode)
+
+    if case_study in ('Observed_Confounder', 'Backdoor_Criterion'):
+        # X → T, X → Y, T → Y  (all X are confounders of the T→Y edge)
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[off + i, T] = 1.0
+            A[off + i, Y] = 1.0
+
+    elif case_study == 'Observed_Mediator':
+        # T → X → Y  (X is mediator; T → Y also holds transitively)
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[T, off + i] = 1.0        # T ancestor of X
+            A[off + i, Y] = 1.0        # X ancestor of Y
+
+    elif case_study == 'Observed_Mediator_and_Confounder':
+        # X_0 = confounder (X_0 → T, X_0 → Y)
+        # X_1..X_{n-1} = mediators (T → X_i → Y)
+        # T → Y direct
+        A[T, Y] = 1.0
+        if n_real >= 1:
+            A[off + 0, T] = 1.0        # confounder → T
+            A[off + 0, Y] = 1.0        # confounder → Y
+        for i in range(1, n_real):
+            A[T, off + i] = 1.0        # T → mediator
+            A[off + i, Y] = 1.0        # mediator → Y
+
+    elif case_study == 'Unobserved_Confounder':
+        # Unobserved U → T, U → Y. Observed X carries NO known ancestor info.
+        # Only T → Y is (weakly) known.
+        A[T, Y] = 1.0
+
+    elif case_study == 'Frontdoor_Criterion':
+        # T → X → Y (X = mediator on the front-door path)
+        # Unobserved U → T, U → Y (T→Y confounded).
+        # Observed X is the front-door variable.
+        A[T, Y] = 1.0
+        for i in range(n_real):
+            A[T, off + i] = 1.0        # T → X (frontdoor)
+            A[off + i, Y] = 1.0        # X → Y
+
+    else:
+        raise ValueError(f'unknown case_study: {case_study}')
+
+    A = _pad_negatives(A, off, n_real, model_n_features)
+
+    # Propagate ancestor knowledge on the real block (fills entailed entries)
+    try:
+        from utils.graph_utils import propagate_ancestor_knowledge
+        real_n = 2 + n_real
+        real_block = torch.from_numpy(A[:real_n, :real_n].copy())
+        real_block = propagate_ancestor_knowledge(real_block, raise_on_inconsistent=False)
+        A[:real_n, :real_n] = real_block.numpy().astype(np.float32)
+    except Exception:
+        pass
+    return A
+
+
+# Backward-compat alias — UWYK's original name
+def build_adjacency_matrix(model_n_features, n_real_features, graph_mode):
+    """Old name (case-agnostic). Kept for callers that don't have case_study."""
+    return build_adjacency_matrix_for_case(
+        DATASET, model_n_features, n_real_features, graph_mode)
 
 
 def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
@@ -135,7 +205,8 @@ def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
     # Wrapper does its own fit → internal preprocessing state
     model.fit(X_train, t_train, y_train)
 
-    adjacency_matrix = build_adjacency_matrix(model_n_features, n_real_features, graph_mode)
+    adjacency_matrix = build_adjacency_matrix_for_case(
+        DATASET, model_n_features, n_real_features, graph_mode)
 
     T_intv_1 = np.full((n_test, 1), t_intv_1_encoded, dtype=np.float32)
     y_pred_1 = model.predict(
