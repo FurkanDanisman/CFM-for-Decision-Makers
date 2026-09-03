@@ -231,7 +231,10 @@ def main():
         'PSIDbal': lambda: RealCauseLalondePSIDDataset(),
     }
     if args.dataset in _SCM_CASES:
-        from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset
+        import sys as _sys
+        _rp_bench = os.path.join(args.repo, 'benchmarks')
+        if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
+        from scm_case_study_dataset import SCMCaseStudyDataset
         _LOADERS[args.dataset] = lambda: SCMCaseStudyDataset(args.dataset)
     if args.dataset in ('law_race', 'sales'):
         # Do-PFN semi-real dataset — different interface (splits via

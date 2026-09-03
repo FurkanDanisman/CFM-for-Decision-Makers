@@ -34,8 +34,9 @@ assert ANC_MODE in ('noanc', 'anc'), ANC_MODE
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
+sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))   # top-level import
 
-from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
+from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
 
 # ── UWYK model bootstrap (isolated from local `models`/`utils` collisions) ──

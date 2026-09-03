@@ -144,7 +144,10 @@ def get_dataset(name):
     if name in ('PSID', 'PSID_bal'):
         return RealCauseLalondePSIDDataset()
     if name in _SCM_CASES:
-        from benchmarks.scm_case_study_dataset import SCMCaseStudyDataset
+        import sys as _sys
+        _rp_bench = os.path.join(REPO_SRC, 'benchmarks')
+        if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
+        from scm_case_study_dataset import SCMCaseStudyDataset
         return SCMCaseStudyDataset(name)
     raise ValueError(name)
 
