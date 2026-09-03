@@ -28,6 +28,8 @@ DATASET       = args.dataset
 OUT           = os.environ['OUT']
 UWYK_SRC      = os.environ['UWYK_SRC']
 UWYK_CKPT_DIR = os.environ['UWYK_CKPT_DIR']
+UWYK_CKPT     = os.environ.get('UWYK_CKPT', '')     # explicit .pt (overrides dir search)
+UWYK_CONFIG   = os.environ.get('UWYK_CONFIG', '')   # explicit .yaml (overrides dir search)
 ANC_MODE      = os.environ.get('ANC_MODE', 'noanc').lower()
 MAX_REAL      = os.environ.get('MAX_REAL', '')
 assert ANC_MODE in ('noanc', 'anc'), ANC_MODE
@@ -58,13 +60,26 @@ def _load_uwyk():
         kw.setdefault('weights_only', False); return _orig_load(*a, **kw)
     torch.load = _patched_load
     try:
-        final_ck = os.path.join(UWYK_CKPT_DIR, 'final_model_with_bardist.pt')
-        final_cfg = os.path.join(UWYK_CKPT_DIR, 'final_model_with_bardist_config.yaml')
-        if os.path.isfile(final_ck) and os.path.isfile(final_cfg):
-            ck_p, cfg_p = final_ck, final_cfg
+        # 1) explicit CKPT / CONFIG env vars win
+        if UWYK_CKPT and UWYK_CONFIG:
+            ck_p, cfg_p = UWYK_CKPT, UWYK_CONFIG
         else:
-            ck_p  = os.path.join(UWYK_CKPT_DIR, 'best_model.pt')
-            cfg_p = os.path.join(UWYK_CKPT_DIR, 'best_model_config.yaml')
+            # 2) default filenames next to the ckpt
+            final_ck = os.path.join(UWYK_CKPT_DIR, 'final_model_with_bardist.pt')
+            final_cfg = os.path.join(UWYK_CKPT_DIR, 'final_model_with_bardist_config.yaml')
+            if os.path.isfile(final_ck) and os.path.isfile(final_cfg):
+                ck_p, cfg_p = final_ck, final_cfg
+            else:
+                ck_p  = os.path.join(UWYK_CKPT_DIR, 'best_model.pt')
+                cfg_p = os.path.join(UWYK_CKPT_DIR, 'best_model_config.yaml')
+        if not os.path.isfile(ck_p):
+            raise FileNotFoundError(f'UWYK ckpt not found: {ck_p}')
+        if not os.path.isfile(cfg_p):
+            raise FileNotFoundError(
+                f'UWYK config yaml not found: {cfg_p}\n'
+                'Set UWYK_CKPT and UWYK_CONFIG env vars explicitly.'
+            )
+        print(f'[uwyk] loading  ckpt={ck_p}  cfg={cfg_p}', flush=True)
         m = pre_mod.PreprocessingGraphConditionedPFN(
             config_path=cfg_p, checkpoint_path=ck_p, device='cpu', verbose=False,
             random_state=42, use_clustering=False,
