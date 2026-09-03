@@ -778,6 +778,76 @@ def cate_from_marginals(p_y0, p_y1, J, logits_np=None):
             cate_full.astype(np.float32))
 
 
+def build_mode_list(F, n_real, anc_mode=None):
+    """Map ANC_MODE → ((tag, adjacency), ...). Tags become the npz key suffixes
+    (`pehe_raw_<tag>` etc.). Shared with eval_uwyk1d_realcause.py so the control
+    run emits the exact same adjacency matrices and the same npz schema."""
+    anc_mode = ANC_MODE if anc_mode is None else anc_mode
+    if anc_mode == 'ty_only':
+        return (('ty',    build_anc_ty_only(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'ty_antisym':
+        return (('tyx',   build_anc_ty_antisym(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v4a_only':
+        return (('v4a',   build_anc_v4a(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v5a_only':
+        return (('v5a',   build_anc_v5a(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v5b_only':
+        return (('v5b',   build_anc_v5b(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v6b_only':
+        return (('v6b',   build_anc_v6b(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v6a_only':
+        return (('v6a',   build_anc_v6a(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'all_combos':
+        # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
+        # Diagonal always 0; padded region always -1.
+        _codes = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
+        return tuple((code, build_anc_combo(F, n_real, code)) for code in _codes)
+    if anc_mode == 'three_edge_all':
+        # All 27 three-edge combos (P|N|B for each of T→Y, X→T, X→Y) × 2 diag
+        # choices = 54 variants. All 3 edges asserted (no O). Tags use 'n'
+        # suffix for diag=-1 variant (e.g., PPP vs PPPn).
+        return tuple(_three_edge_54_tags_and_codes(F, n_real))
+    if anc_mode == 'focus3':
+        return (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s
+            ('noanc', build_anc_none(F, n_real)),
+        )
+    if anc_mode == 'focus4':
+        return (
+            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
+            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
+            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s, diag -1
+            ('v6b',   build_anc_v6b(F, n_real)),   # all -1s, no +1s, diag 0
+            ('noanc', build_anc_none(F, n_real)),
+        )
+    if anc_mode == 'all_variants':
+        return (
+            ('v1a',   build_anc_v1a(F, n_real)),
+            ('v1b',   build_anc_v1b(F, n_real)),
+            ('v2a',   build_anc_v2a(F, n_real)),
+            ('v2b',   build_anc_v2b(F, n_real)),
+            ('v3a',   build_anc_v3a(F, n_real)),
+            ('v3b',   build_anc_v3b(F, n_real)),
+            ('v3c',   build_anc_v3c(F, n_real)),
+            ('v4a',   build_anc_v4a(F, n_real)),
+            ('v5a',   build_anc_v5a(F, n_real)),
+            ('v5b',   build_anc_v5b(F, n_real)),
+            ('noanc', build_anc_none(F, n_real)),
+            ('diag',  build_anc_diag(F, n_real)),
+        )
+    return (('anc',   build_anc_full(F, n_real)),
+            ('noanc', build_anc_none(F, n_real)))
+
+
 def evaluate(realization, ds, model, J, F, apply_psid_balance):
     cate_ds = ds[realization][0]
     X_tr_raw = np.asarray(cate_ds.X_train, dtype=np.float32)
@@ -814,70 +884,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     Y_obs = y_scaled.reshape(-1, 1)
 
     results = {}
-    if ANC_MODE == 'ty_only':
-        _mode_list = (('ty',    build_anc_ty_only(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'ty_antisym':
-        _mode_list = (('tyx',   build_anc_ty_antisym(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v4a_only':
-        _mode_list = (('v4a',   build_anc_v4a(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v5a_only':
-        _mode_list = (('v5a',   build_anc_v5a(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v5b_only':
-        _mode_list = (('v5b',   build_anc_v5b(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v6b_only':
-        _mode_list = (('v6b',   build_anc_v6b(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'v6a_only':
-        _mode_list = (('v6a',   build_anc_v6a(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
-    elif ANC_MODE == 'all_combos':
-        # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
-        # Diagonal always 0; padded region always -1.
-        _codes = [a + b + c for a in 'PNBO' for b in 'PNBO' for c in 'PNBO']
-        _mode_list = tuple((code, build_anc_combo(F, n_real, code)) for code in _codes)
-    elif ANC_MODE == 'three_edge_all':
-        # All 27 three-edge combos (P|N|B for each of T→Y, X→T, X→Y) × 2 diag
-        # choices = 54 variants. All 3 edges asserted (no O). Tags use 'n'
-        # suffix for diag=-1 variant (e.g., PPP vs PPPn).
-        _mode_list = tuple(_three_edge_54_tags_and_codes(F, n_real))
-    elif ANC_MODE == 'focus3':
-        _mode_list = (
-            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
-            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
-            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s
-            ('noanc', build_anc_none(F, n_real)),
-        )
-    elif ANC_MODE == 'focus4':
-        _mode_list = (
-            ('v7a',   build_anc_v7a(F, n_real)),   # T→Y + diag
-            ('v7b',   build_anc_v7b(F, n_real)),   # T→Y + Y→T=-1 + diag
-            ('v6a',   build_anc_v6a(F, n_real)),   # all -1s, no +1s, diag -1
-            ('v6b',   build_anc_v6b(F, n_real)),   # all -1s, no +1s, diag 0
-            ('noanc', build_anc_none(F, n_real)),
-        )
-    elif ANC_MODE == 'all_variants':
-        _mode_list = (
-            ('v1a',   build_anc_v1a(F, n_real)),
-            ('v1b',   build_anc_v1b(F, n_real)),
-            ('v2a',   build_anc_v2a(F, n_real)),
-            ('v2b',   build_anc_v2b(F, n_real)),
-            ('v3a',   build_anc_v3a(F, n_real)),
-            ('v3b',   build_anc_v3b(F, n_real)),
-            ('v3c',   build_anc_v3c(F, n_real)),
-            ('v4a',   build_anc_v4a(F, n_real)),
-            ('v5a',   build_anc_v5a(F, n_real)),
-            ('v5b',   build_anc_v5b(F, n_real)),
-            ('noanc', build_anc_none(F, n_real)),
-            ('diag',  build_anc_diag(F, n_real)),
-        )
-    else:
-        _mode_list = (('anc',   build_anc_full(F, n_real)),
-                      ('noanc', build_anc_none(F, n_real)))
+    _mode_list = build_mode_list(F, n_real)
     for mode, adj in _mode_list:
         p_y0, p_y1, logits_np = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate_raw_scaled, cate_em_scaled, cate_full_scaled = cate_from_marginals(
