@@ -330,7 +330,7 @@ def main() -> int:
         # Table-3 metrics — MALC-mean flavour (existing)
         pehe = float(np.sqrt(np.mean((cate_hat_raw - true_cate_raw) ** 2)))
         eps_ate = float(abs(ate_hat_raw - true_ate_raw)
-                        / max(abs(true_ate_raw), 1e-9))
+                        / max(abs(true_ate_raw), 0.1))
 
         # Raw-mean flavour (Ours-methods only — dopfn/uwyk_noanc don't use MALC
         # so their raw and MALC means coincide with `cate_hat_raw` above).
@@ -341,7 +341,7 @@ def main() -> int:
             ate_raw_raw = float(cate_raw_raw.mean())
             pehe_raw = float(np.sqrt(np.mean((cate_raw_raw - true_cate_raw) ** 2)))
             eps_ate_raw = float(abs(ate_raw_raw - true_ate_raw)
-                                / max(abs(true_ate_raw), 1e-9))
+                                / max(abs(true_ate_raw), 0.1))
 
         # EM-mean flavours (Ours-methods only). Two variants: K=1 forced,
         # and whatever K MALC selected via BIC (mixture, pi-weighted).
@@ -355,7 +355,7 @@ def main() -> int:
             ate_em = float(cate_em_raw[valid].mean())
             pehe = float(np.sqrt(np.mean(
                 (cate_em_raw[valid] - true_cate_raw[valid]) ** 2)))
-            eps  = float(abs(ate_em - true_ate_raw) / max(abs(true_ate_raw), 1e-9))
+            eps  = float(abs(ate_em - true_ate_raw) / max(abs(true_ate_raw), 0.1))
             return pehe, eps
         pehe_em_mix = eps_em_mix = None
         pehe_em_k1  = eps_em_k1  = None

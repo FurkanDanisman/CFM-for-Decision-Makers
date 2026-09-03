@@ -80,7 +80,7 @@ def evaluate(r: int, ds: SCMCaseStudyDataset):
     pehe = float(np.sqrt(np.mean((cate_pred - true_cate) ** 2)))
     ate_true = float(true_cate.mean())
     ate_hat  = float(cate_pred.mean())
-    err = abs(ate_hat - ate_true) / max(abs(ate_true), 1e-9)
+    err = abs(ate_hat - ate_true) / max(abs(ate_true), 0.1)
     return {'dataset': DATASET, 'realization': r,
             'true_ate': ate_true, 'ate_pred': ate_hat,
             'pehe_raw': pehe, 'err_raw': err}

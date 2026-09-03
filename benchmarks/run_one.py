@@ -397,7 +397,7 @@ def _run_ours_only(args, out_file):
         try:
             ate = float(ours[ours_key])
             out[f'ate_{out_key}'] = ate
-            out[f'err_{out_key}'] = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+            out[f'err_{out_key}'] = abs(ate - true_ate) / max(abs(true_ate), 0.1)
         except Exception as e:
             print(f'[warn] recording {out_key} failed: {type(e).__name__}: {e}', flush=True)
 
@@ -451,11 +451,11 @@ def _run_ours_ot_backfill(args, out_file):
     extras = {
         'ate_ours_ot_mode': np.array(ours['ours_ot_mode_ate'], dtype=np.float64),
         'err_ours_ot_mode': np.array(
-            abs(ours['ours_ot_mode_ate'] - true_ate) / max(abs(true_ate), 1e-9),
+            abs(ours['ours_ot_mode_ate'] - true_ate) / max(abs(true_ate), 0.1),
             dtype=np.float64),
         'ate_ours_ot_mean': np.array(ours['ours_ot_mean_ate'], dtype=np.float64),
         'err_ours_ot_mean': np.array(
-            abs(ours['ours_ot_mean_ate'] - true_ate) / max(abs(true_ate), 1e-9),
+            abs(ours['ours_ot_mean_ate'] - true_ate) / max(abs(true_ate), 0.1),
             dtype=np.float64),
     }
     with np.load(out_file, allow_pickle=True) as f:
@@ -722,13 +722,13 @@ def main():
         ot_mode_ate = ours['ours_ot_mode_ate']
         ot_mean_ate = ours['ours_ot_mean_ate']
         out['ate_ours_ot_mode'] = ot_mode_ate
-        out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 1e-9)
+        out['err_ours_ot_mode'] = abs(ot_mode_ate - true_ate) / max(abs(true_ate), 0.1)
         out['ate_ours_ot_mean'] = ot_mean_ate
-        out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 1e-9)
+        out['err_ours_ot_mean'] = abs(ot_mean_ate - true_ate) / max(abs(true_ate), 0.1)
         # Raw-OT-mean: barycenter of per-query p(τ) from raw p_mat marginals (no MALC).
         ot_mean_ate_raw = ours['ours_ot_mean_ate_raw']
         out['ate_ours_ot_mean_raw'] = ot_mean_ate_raw
-        out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 1e-9)
+        out['err_ours_ot_mean_raw'] = abs(ot_mean_ate_raw - true_ate) / max(abs(true_ate), 0.1)
 
     np.savez(out_file, **{k: np.array(v) for k, v in out.items()})
     _log(f"saved {out_file}  ({out['runtime_s']:.1f}s)", t0)

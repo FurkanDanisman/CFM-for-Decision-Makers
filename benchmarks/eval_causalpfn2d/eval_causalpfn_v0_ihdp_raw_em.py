@@ -168,7 +168,7 @@ def evaluate(realization, model, num_features, nbins, bin_edges_np):
     def _pehe_err(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate_hat = float(cate.mean())
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate_hat
 
     p_raw, e_raw, ate_raw = _pehe_err(cate_raw)

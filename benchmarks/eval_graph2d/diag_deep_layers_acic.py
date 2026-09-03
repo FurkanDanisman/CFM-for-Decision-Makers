@@ -219,7 +219,7 @@ def main():
         cate = cate_scaled * yrange / 2.0
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate_hat = float(cate.mean())
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
 
         layer_summaries = {}
         for layer_key in sorted(captured.keys()):

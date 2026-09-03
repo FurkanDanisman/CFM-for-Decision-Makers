@@ -299,7 +299,7 @@ def evaluate(realization, model, edges_np, nbins, F):
 
     def _pe(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
-        ate  = float(cate.mean()); err = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+        ate  = float(cate.mean()); err = abs(ate - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate
     p_raw, e_raw, a_raw = _pe((e1 - e0).astype(np.float32))
     p_em,  e_em,  a_em  = _pe((e1m - e0m).astype(np.float32))

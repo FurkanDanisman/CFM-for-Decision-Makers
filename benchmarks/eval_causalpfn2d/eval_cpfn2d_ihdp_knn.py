@@ -181,7 +181,7 @@ def evaluate(realization, model, edges, J, F):
     def _pehe_err(cate):
         pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
         ate  = float(np.nanmean(cate))
-        err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+        err  = abs(ate - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate
 
     p_raw, e_raw, a_raw = _pehe_err(cate_raw)

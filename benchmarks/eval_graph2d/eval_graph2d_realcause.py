@@ -885,7 +885,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             cate = cate_scaled * yrange / 2.0
             pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
             ate_hat = float(cate.mean())
-            err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+            err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
             results[f'pehe_{method}_{mode}'] = pehe
             results[f'err_{method}_{mode}']  = err_ate
             results[f'ate_{method}_{mode}']  = ate_hat

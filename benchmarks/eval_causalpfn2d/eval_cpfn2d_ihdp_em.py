@@ -205,7 +205,7 @@ def evaluate(realization: int, model, edges, J, F, y_scaling_mode='pooled_std'):
     def _pehe_err(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate  = float(cate.mean())
-        err  = abs(ate - true_ate) / max(abs(true_ate), 1e-9)
+        err  = abs(ate - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate
 
     pehe_raw,   err_raw,   ate_raw   = _pehe_err(cate_raw)

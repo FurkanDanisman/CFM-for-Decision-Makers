@@ -67,7 +67,7 @@ def evaluate(realization: int, estimator: CATEEstimator):
 
     pehe = float(np.sqrt(np.mean((cate_hat - true_cate) ** 2)))
     ate_hat = float(cate_hat.mean())
-    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 1e-9)
+    err_ate = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
 
     return {
         'dataset':      'IHDP',
