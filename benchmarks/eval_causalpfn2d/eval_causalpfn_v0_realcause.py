@@ -30,6 +30,8 @@ EVAL_MAX_CONTEXT  = os.environ.get('EVAL_MAX_CONTEXT', '')
 EVAL_CONTEXT_SEED = int(os.environ.get('EVAL_CONTEXT_SEED', '1'))
 PSID_BAL_SEED     = int(os.environ.get('PSID_BAL_SEED', '42'))
 MAX_REAL          = os.environ.get('MAX_REAL', '')
+STD_MODE          = os.environ.get('STD_MODE', 'per_arm').lower()
+assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor'), STD_MODE
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
@@ -131,13 +133,46 @@ def _forward_one_arm(model, X_ctx, T_ctx, Y_std_ctx, X_q, t_val, num_features, n
     return pred[..., -nbins:]
 
 
+def _compute_std_stats(T_train, Y_train_raw, bin_edges_np, mode):
+    """Return (y_ctx_std_np, arm0_stats, arm1_stats, y_min_or_None).
+    arm_stats = (shift, scale) — arm0 and arm1 identical for pooled/log/log_winsor,
+    differ only for per_arm / log_per_arm.  y_min set only when a log transform
+    is applied (needed to un-log at the end)."""
+    T = T_train.reshape(-1); Y = Y_train_raw.reshape(-1).astype(np.float64)
+    # log-family: transform Y BEFORE computing stats
+    y_min = None
+    if mode in ('log', 'log_per_arm', 'log_winsor'):
+        y_min = float(Y.min())
+        Y_work = np.log1p(Y - y_min)
+    else:
+        Y_work = Y
+
+    if mode in ('per_arm', 'log_per_arm'):
+        y0 = Y_work[T < 0.5]; y1 = Y_work[T > 0.5]
+        m0, s0 = (float(y0.mean()), float(y0.std() + 1e-6)) if y0.size else (0.0, 1.0)
+        m1, s1 = (float(y1.mean()), float(y1.std() + 1e-6)) if y1.size else (0.0, 1.0)
+        z = np.where(T > 0.5, (Y_work - m1) / s1, (Y_work - m0) / s0)
+        return z.astype(np.float32), (m0, s0), (m1, s1), y_min
+
+    if mode == 'log_winsor':
+        lo, hi = np.quantile(Y_work, [0.01, 0.99])
+        Yw = np.clip(Y_work, lo, hi)
+        m, s = float(Yw.mean()), float(Yw.std() + 1e-6)
+        edge_lo, edge_hi = float(bin_edges_np[0]), float(bin_edges_np[-1])
+        z = np.clip((Y_work - m) / s, edge_lo, edge_hi)
+        return z.astype(np.float32), (m, s), (m, s), y_min
+
+    # pooled / log (pooled on log-Y)
+    m, s = float(Y_work.mean()), float(Y_work.std() + 1e-6)
+    z = (Y_work - m) / s
+    return z.astype(np.float32), (m, s), (m, s), y_min
+
+
 @torch.no_grad()
 def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
                     num_features, nbins, bin_edges_np):
-    y0s, y0sc, y1s, y1sc = _per_arm_shift_scale(T_train, Y_train_raw)
-    y_ctx_std = np.where(T_train.reshape(-1) > 0.5,
-                          (Y_train_raw - y1s) / y1sc,
-                          (Y_train_raw - y0s) / y0sc).astype(np.float32)
+    y_ctx_std, arm0, arm1, y_min = _compute_std_stats(
+        T_train, Y_train_raw, bin_edges_np, STD_MODE)
     X_ctx = torch.from_numpy(X_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     T_ctx = torch.from_numpy(T_train.astype(np.float32)).unsqueeze(0).to(DEVICE)
     Y_ctx = torch.from_numpy(y_ctx_std).unsqueeze(0).to(DEVICE)
@@ -154,15 +189,20 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
 
     sigma = float(bin_edges_np[1] - bin_edges_np[0])
     N_q = p0.shape[0]
-    e_y0_em = np.empty(N_q, dtype=np.float32)
-    e_y1_em = np.empty(N_q, dtype=np.float32)
+    e_y0_em = np.empty(N_q, dtype=np.float64)
+    e_y1_em = np.empty(N_q, dtype=np.float64)
     for q in range(N_q):
         e_y0_em[q] = _em_mean_1d(p0[q], bin_edges_np, sigma, start=e_y0_raw[q])
         e_y1_em[q] = _em_mean_1d(p1[q], bin_edges_np, sigma, start=e_y1_raw[q])
 
-    def unst(a, sh, sc): return a * sc + sh
-    cate_raw = unst(e_y1_raw, y1s, y1sc) - unst(e_y0_raw, y0s, y0sc)
-    cate_em  = unst(e_y1_em,  y1s, y1sc) - unst(e_y0_em,  y0s, y0sc)
+    def _un(a, arm):
+        # de-standardise to (log-)Y space, then expm1 if log was applied
+        v = a * arm[1] + arm[0]
+        return np.expm1(v) + y_min if y_min is not None else v
+
+    # log-family means the shift no longer cancels — de-standardise each arm
+    cate_raw = _un(e_y1_raw, arm1) - _un(e_y0_raw, arm0)
+    cate_em  = _un(e_y1_em,  arm1) - _un(e_y0_em,  arm0)
     return cate_raw.astype(np.float32), cate_em.astype(np.float32)
 
 
@@ -252,7 +292,8 @@ def main():
     n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
     print(f'[bootstrap] {DATASET}  ckpt={CKPT}  ninp={ninp} nhid={nhid} nhead={nhead} '
           f'nlayers={nlayers} nbins={nbins} F={num_features}  n={n}  '
-          f'ctx_cap={EVAL_MAX_CONTEXT or "none"}  seed={EVAL_CONTEXT_SEED}', flush=True)
+          f'ctx_cap={EVAL_MAX_CONTEXT or "none"}  seed={EVAL_CONTEXT_SEED}  '
+          f'STD_MODE={STD_MODE}', flush=True)
 
     rows = []
     t0 = time.time()
