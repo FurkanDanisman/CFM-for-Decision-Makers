@@ -1034,22 +1034,18 @@ def main():
             print(f'r={r:03d}  best={best} pehe={row[f"pehe_raw_{best}"]:6.3f}  '
                   f'({time.time()-t0:.0f}s)', flush=True)
         else:
-            _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
-                        'tyx' if ANC_MODE == 'ty_antisym' else
-                        'v4a' if ANC_MODE == 'v4a_only' else
-                        'v5a' if ANC_MODE == 'v5a_only' else
-                        'v5b' if ANC_MODE == 'v5b_only' else
-                        'v6a' if ANC_MODE == 'v6a_only' else
-                        'v6b' if ANC_MODE == 'v6b_only' else 'anc')
-            print(
-                f'r={r:03d}  '
-                f'raw-{_pos_tag}: pehe={row[f"pehe_raw_{_pos_tag}"]:6.3f} err={row[f"err_raw_{_pos_tag}"]:5.3f}  |  '
-                f'em-{_pos_tag}: pehe={row[f"pehe_em_{_pos_tag}"]:6.3f} err={row[f"err_em_{_pos_tag}"]:5.3f}  |  '
-                f'raw-noanc: pehe={row["pehe_raw_noanc"]:6.3f} err={row["err_raw_noanc"]:5.3f}  |  '
-                f'em-noanc: pehe={row["pehe_em_noanc"]:6.3f} err={row["err_em_noanc"]:5.3f}  '
-                f'({time.time()-t0:.0f}s)',
-                flush=True,
-            )
+            # Tag-agnostic per-r summary. Discover the pos tag from row keys.
+            _pos_keys = [k[len('pehe_raw_'):] for k in row
+                          if k.startswith('pehe_raw_') and not k.endswith('_noanc')]
+            _pos_tag = _pos_keys[0] if _pos_keys else 'anc'
+            _sum = [f'r={r:03d}']
+            for _tag in _pos_keys[:3]:            # first up to 3 non-noanc tags
+                if f'pehe_raw_{_tag}' in row:
+                    _sum.append(f'{_tag}={row[f"pehe_raw_{_tag}"]:5.3f}')
+            if 'pehe_raw_noanc' in row:
+                _sum.append(f'noanc={row["pehe_raw_noanc"]:5.3f}')
+            _sum.append(f'({time.time()-t0:.0f}s)')
+            print('  '.join(_sum), flush=True)
 
     def ms(k):
         v = np.array([r[k] for r in rows if np.isfinite(r[k])])
@@ -1079,15 +1075,17 @@ def main():
                           for s in ('', 'n')]:
             keys += [f'pehe_raw_{tag}', f'pehe_em_{tag}']
     else:
-        _pos_tag = ('ty' if ANC_MODE == 'ty_only' else
-                    'tyx' if ANC_MODE == 'ty_antisym' else
-                    'v4a' if ANC_MODE == 'v4a_only' else
-                    'v5a' if ANC_MODE == 'v5a_only' else
-                    'v5b' if ANC_MODE == 'v5b_only' else 'anc')
-        keys = [f'pehe_raw_{_pos_tag}', f'err_raw_{_pos_tag}',
-                f'pehe_em_{_pos_tag}',  f'err_em_{_pos_tag}',
-                'pehe_raw_noanc', 'err_raw_noanc',
-                'pehe_em_noanc',  'err_em_noanc']
+        # Tag-agnostic summary: discover pos tags from first row.
+        _sample = rows[0] if rows else {}
+        _pos_keys = [k[len('pehe_raw_'):] for k in _sample
+                      if k.startswith('pehe_raw_') and not k.endswith('_noanc')]
+        keys = []
+        for t in _pos_keys:
+            keys.extend([f'pehe_raw_{t}', f'err_raw_{t}',
+                         f'pehe_em_{t}',  f'err_em_{t}'])
+        if 'pehe_raw_noanc' in _sample:
+            keys.extend(['pehe_raw_noanc', 'err_raw_noanc',
+                         'pehe_em_noanc',  'err_em_noanc'])
     for k in keys:
         m, s, n = ms(k)
         print(f'  {k:20s} = {m:8.3f} ± {s:6.3f}   (n={n})')
