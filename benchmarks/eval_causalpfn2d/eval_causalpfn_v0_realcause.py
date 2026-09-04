@@ -275,10 +275,17 @@ def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance
     cate_raw, cate_em, dens = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p,
                                                 num_features, nbins, bin_edges_np)
 
+    # Case-study datasets: report err as pure L1 |ate_hat - true_ate|.
+    # RealCause datasets: keep the paper's relative-error convention.
+    _use_l1_err = (DATASET in _SCM_CASES)
+
     def _pehe(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         ate_hat = float(cate.mean())
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
+        if _use_l1_err:
+            err = abs(ate_hat - true_ate)
+        else:
+            err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate_hat
 
     p_r, e_r, a_r = _pehe(cate_raw)
