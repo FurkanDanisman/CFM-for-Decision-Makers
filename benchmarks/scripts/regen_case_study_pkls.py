@@ -600,10 +600,21 @@ def main():
             _assemble_and_save(row, out_path)
             if i == 1 or i % 25 == 0 or i == args.n_per_case:
                 dt = time.time() - t0
+                # Prefer MC-based stats when available (mu-based cate is misleading
+                # under DoPFN's LayerNorm-coupled DGP).
+                y0s = row.get("y_do0_samples"); y1s = row.get("y_do1_samples")
+                if (isinstance(y0s, np.ndarray) and y0s.ndim == 2 and y0s.size > 0):
+                    y_int_arr = row["y_int"]
+                    y_scale = max(0.5 * (y_int_arr.max() - y_int_arr.min()), 1e-9)
+                    tau_std = (y1s - y0s) / y_scale  # standardized per-realization
+                    mc_msg = (f"MC[τ̃ mean={float(tau_std.mean()):+.3f}  "
+                              f"std={float(tau_std.std()):.3f}  "
+                              f"K={y0s.shape[1]}]")
+                else:
+                    mc_msg = f"MC[off]  mu[τ mean={row['cate'].mean():+.3f}]"
                 print(f"[regen] {case:32s}  i={i:3d}/{args.n_per_case}  "
                       f"seed={seed}  sigma_eps={row['sigma_eps']:.4f}  "
-                      f"cate_mean={row['cate'].mean():+.3f}  "
-                      f"({dt:.0f}s)", flush=True)
+                      f"{mc_msg}  ({dt:.0f}s)", flush=True)
     print(f"[regen] done ({time.time() - t0:.0f}s)", flush=True)
 
 
