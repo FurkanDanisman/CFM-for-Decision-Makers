@@ -1048,6 +1048,17 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             'y_scale': np.float32(yrange / 2.0),
             **_dens_keys,
         })
+        # Also expose one primary mode's densities under the un-suffixed keys
+        # that density_eval.py reads by default. Pick via DENSITY_PRIMARY_MODE
+        # env var (else first non-noanc mode from the list, else first mode).
+        _prim = os.environ.get('DENSITY_PRIMARY_MODE', '')
+        if not _prim:
+            _prim = next((m for m, _ in _mode_list if m != 'noanc'), _mode_list[0][0])
+        if f'p_y0_scaled_{_prim}' in _dens_keys:
+            out['p_y0_scaled'] = _dens_keys[f'p_y0_scaled_{_prim}']
+            out['p_y1_scaled'] = _dens_keys[f'p_y1_scaled_{_prim}']
+            out['p_joint_scaled'] = _dens_keys[f'p_joint_scaled_{_prim}']
+            out['density_primary_mode'] = _prim
     return out
 
 
