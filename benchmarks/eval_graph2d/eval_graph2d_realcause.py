@@ -1005,6 +1005,8 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
 
     results = {}
     _mode_list = build_mode_list(F, n_real)
+    _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
+    _dens_keys = {}
     for mode, adj in _mode_list:
         p_y0, p_y1, logits_np = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate_raw_scaled, cate_em_scaled, cate_full_scaled = cate_from_marginals(
@@ -1021,8 +1023,13 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             results[f'pehe_{method}_{mode}'] = pehe
             results[f'err_{method}_{mode}']  = err_ate
             results[f'ate_{method}_{mode}']  = ate_hat
+        if _do_density:
+            # p_y0/p_y1 come from softmax over J bins on model's edges [-1,+1].
+            # y_shift = ymin + yrange/2 (raw = scaled*(yrange/2) + ymin+yrange/2)
+            _dens_keys[f'p_y0_scaled_{mode}'] = p_y0.astype(np.float32)
+            _dens_keys[f'p_y1_scaled_{mode}'] = p_y1.astype(np.float32)
 
-    return {
+    out = {
         'dataset': DATASET,
         'realization': realization,
         'true_ate': true_ate,
@@ -1030,6 +1037,16 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
         'n_context': int(X_tr_raw.shape[0]),
         **results,
     }
+    if _do_density:
+        # Model bin edges: J bins over [-1, +1] scaled Y (graph2d convention).
+        edges_scaled = np.linspace(-1.0, 1.0, J + 1, dtype=np.float32)
+        out.update({
+            'edges': edges_scaled,
+            'y_shift': np.float32(ymin + yrange / 2.0),
+            'y_scale': np.float32(yrange / 2.0),
+            **_dens_keys,
+        })
+    return out
 
 
 def main():
