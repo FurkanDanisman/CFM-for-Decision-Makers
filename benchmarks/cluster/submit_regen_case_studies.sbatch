@@ -2,7 +2,7 @@
 #SBATCH --job-name=scm-cs-regen-rho02
 #SBATCH --output=logs_scm_case_studies_regen/regen_%j.out
 #SBATCH --error=logs_scm_case_studies_regen/regen_%j.err
-#SBATCH --time=00:30:00
+#SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 # CPU-only: no --gres needed. Single job regenerates all 6 case studies.
@@ -47,6 +47,7 @@ NOISE_STD="${NOISE_STD:-0.01}"
 EXO_STD="${EXO_STD:-0.1}"
 NONLINS="${NONLINS:-sophisticated_sampling_1_rescaling_normalization}"
 ONLY_CASES="${ONLY_CASES:-}"
+OVERWRITE="${OVERWRITE:-0}"
 
 [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not a dir: $DOPFN_ROOT" >&2; exit 2; }
 
@@ -59,6 +60,9 @@ export PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}"
 EXTRA=()
 if [ -n "$ONLY_CASES" ]; then
     EXTRA+=(--only-cases $ONLY_CASES)
+fi
+if [ "$OVERWRITE" = "1" ]; then
+    EXTRA+=(--overwrite)
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] regenerating case-study pkls"
