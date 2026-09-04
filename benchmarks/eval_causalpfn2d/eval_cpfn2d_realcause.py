@@ -308,10 +308,17 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
             cate_em   = (e_y1_em   - e_y0_em  ) * sc
             cate_full = (e_y1_full - e_y0_full) * sc
 
+    # Case-study datasets: report err as pure L1 |ate_hat - true_ate|.
+    # RealCause datasets: keep the paper's relative-error convention.
+    _use_l1_err = (DATASET in _SCM_CASES)
+
     def _pehe(cate):
         pehe = float(np.sqrt(np.nanmean((cate - true_cate) ** 2)))
         ate_hat = float(np.nanmean(cate))
-        err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
+        if _use_l1_err:
+            err = abs(ate_hat - true_ate)
+        else:
+            err = abs(ate_hat - true_ate) / max(abs(true_ate), 0.1)
         return pehe, err, ate_hat
 
     p_r, e_r, a_r = _pehe(cate_raw)
