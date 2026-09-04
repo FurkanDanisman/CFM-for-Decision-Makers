@@ -42,12 +42,26 @@ _CASE_STUDIES = (
 
 @dataclass
 class _CATE_Slice:
-    """Mirrors the fields our realcause eval scripts read off IHDPDataset[r][0]."""
+    """Mirrors the fields our realcause eval scripts read off IHDPDataset[r][0].
+
+    New-format-only fields (populated when the pkl carries them; else None):
+      mu_0        per-test-query structural mean E[Y | do(T=0), X=x_i]
+      mu_1        per-test-query structural mean E[Y | do(T=1), X=x_i]
+      sigma_eps   scalar Y-noise std used by the SCM
+      rho_y_noise correlation between the Y-node's obs / int noise draws
+      test_row_indices  which rows of ds.x are the interventional queries
+                        (aligned with mu_0 / mu_1 / true_cate)
+    """
     X_train: np.ndarray
     t_train: np.ndarray
     y_train: np.ndarray
     X_test:  np.ndarray
     true_cate: np.ndarray
+    mu_0: np.ndarray | None = None
+    mu_1: np.ndarray | None = None
+    sigma_eps: float | None = None
+    rho_y_noise: float | None = None
+    test_row_indices: np.ndarray | None = None
 
 
 class SCMCaseStudyDataset:
@@ -110,11 +124,37 @@ class SCMCaseStudyDataset:
         x = np.asarray(ds.x, dtype=np.float32)      # (N, d+1), T in col 0
         y = np.asarray(ds.y, dtype=np.float32).reshape(-1)
         N = x.shape[0]
-        # Deterministic split — same rng seed per realization for reproducibility
-        rng = np.random.default_rng(42 + r)
-        perm = rng.permutation(N)
-        n_tr = min(self.n_train, N - 1)
-        tr_idx, te_idx = perm[:n_tr], perm[n_tr:]
+
+        # NEW-FORMAT DETECTION — the bivariate-Y-noise regenerated pkls set:
+        #   ds.mu_0_per_query, ds.mu_1_per_query, ds.sigma_eps, ds.rho_y_noise
+        #   ds.int_row_indices  (rows of ds.x that are interventional queries)
+        # For these we use a DETERMINISTIC train/test split that respects the
+        # obs/int row separation: train from obs rows, test from int rows.
+        # For old-format pkls we fall back to the legacy random permutation.
+        mu_0_full = getattr(ds, 'mu_0_per_query', None)
+        mu_1_full = getattr(ds, 'mu_1_per_query', None)
+        sigma_eps = getattr(ds, 'sigma_eps', None)
+        rho_y     = getattr(ds, 'rho_y_noise', None)
+        int_idcs  = getattr(ds, 'int_row_indices', None)
+        n_int_rows = getattr(ds, 'n_int_rows', None)
+        n_obs_rows = getattr(ds, 'n_obs_rows', None)
+        is_new_format = (mu_0_full is not None and mu_1_full is not None
+                         and int_idcs is not None and n_obs_rows is not None)
+
+        if is_new_format:
+            int_idcs = np.asarray(int_idcs, dtype=np.int64)
+            obs_idcs = np.setdiff1d(np.arange(N), int_idcs, assume_unique=False)
+            rng = np.random.default_rng(42 + r)
+            obs_perm = rng.permutation(len(obs_idcs))
+            n_tr = min(self.n_train, len(obs_idcs))
+            tr_idx = obs_idcs[obs_perm[:n_tr]]
+            te_idx = int_idcs                         # ALL interventional queries
+        else:
+            # Legacy random-permutation split (matches previous behaviour).
+            rng = np.random.default_rng(42 + r)
+            perm = rng.permutation(N)
+            n_tr = min(self.n_train, N - 1)
+            tr_idx, te_idx = perm[:n_tr], perm[n_tr:]
 
         # For CATE truth on the test rows we need per-x counterfactual outcomes.
         # DoPFN's `.cate` on an InterventionalDataset is populated by
@@ -130,8 +170,16 @@ class SCMCaseStudyDataset:
         cate_true = None
         if hasattr(ds, 'cate') and ds.cate is not None:
             cate_arr = np.asarray(ds.cate, dtype=np.float32).reshape(-1)
-            if cate_arr.shape[0] == N:
-                cate_true = cate_arr[te_idx]
+            if is_new_format:
+                # For new-format pkls, ds.cate is per-row over the full x
+                # (obs || int concatenation); pick the int rows.
+                if cate_arr.shape[0] == N:
+                    cate_true = cate_arr[te_idx]
+                elif cate_arr.shape[0] == len(int_idcs):
+                    cate_true = cate_arr
+            else:
+                if cate_arr.shape[0] == N:
+                    cate_true = cate_arr[te_idx]
         if cate_true is None:
             # Derive per-test-query CATE by querying the SCM directly.
             # do_scm.forward(x_features_without_t, do_t=1/0) returns y — but
@@ -143,6 +191,19 @@ class SCMCaseStudyDataset:
             T_te = x[te_idx, 0]
             Y_te = y[te_idx]
             cate_true = _cate_from_paired_rows(X_te, T_te, Y_te)
+
+        # Align mu_0 / mu_1 with te_idx for the new-format pkls.
+        mu_0 = mu_1 = None
+        if is_new_format:
+            mu0_arr = np.asarray(mu_0_full, dtype=np.float32).reshape(-1)
+            mu1_arr = np.asarray(mu_1_full, dtype=np.float32).reshape(-1)
+            # mu_*_per_query is stored aligned to the INT rows (length n_int_rows).
+            # te_idx are absolute row indices in ds.x — subtract n_obs_rows to get
+            # positions within the int block.
+            local_pos = te_idx - int(n_obs_rows)
+            if (local_pos.min() >= 0) and (local_pos.max() < len(mu0_arr)):
+                mu_0 = mu0_arr[local_pos]
+                mu_1 = mu1_arr[local_pos]
 
         X_train = x[tr_idx, 1:]; t_train = x[tr_idx, 0]; y_train = y[tr_idx]
         X_test  = x[te_idx, 1:]
@@ -161,6 +222,11 @@ class SCMCaseStudyDataset:
             y_train=y_train.astype(np.float32),
             X_test=X_test.astype(np.float32),
             true_cate=cate_true.astype(np.float32),
+            mu_0=None if mu_0 is None else mu_0.astype(np.float32),
+            mu_1=None if mu_1 is None else mu_1.astype(np.float32),
+            sigma_eps=None if sigma_eps is None else float(sigma_eps),
+            rho_y_noise=None if rho_y is None else float(rho_y),
+            test_row_indices=te_idx.astype(np.int64),
         )
 
     def __getitem__(self, r: int):
