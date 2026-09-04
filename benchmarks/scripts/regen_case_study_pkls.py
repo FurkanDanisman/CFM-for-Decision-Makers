@@ -219,10 +219,19 @@ def _sample_case_study_realization(args, case_study: str, seed: int):
     scm.undo_interventions()
 
     # ── mu_0 / mu_1 per interventional query (noise held at 0) ──────────────
+    # NOTE: DoPFN's Y activation `sophisticated_sampling_1_rescaling_normalization`
+    # applies F.layer_norm(z, z.shape) across the whole batch, so a uniform-T
+    # intervention (all 500 rows set to the same T) is cancelled by LayerNorm's
+    # mean-subtraction and yields mu_0 == mu_1. To respect DoPFN's DGP AND get
+    # per-query analytical mu, we do a single-row counterfactual: for query i,
+    # keep the other 499 rows at their observed mixed T (t_int_vec) and only
+    # flip row i's T to t_low (mu_0[i]) or t_high (mu_1[i]). LayerNorm still
+    # sees T-variation across the batch so the per-row T flip propagates.
     mu_0, mu_1 = _compute_mu_0_mu_1(
         scm=scm, scm_graph=scm_graph, exo_obs=exo_obs,
         t_key=t_key, y_key=y_key,
         samples_shape=samples_shape,
+        t_baseline_vec=t_int_vec,
     )
 
     # ── Assemble x_obs, x_int, y_obs, y_int (T first column) ────────────────
@@ -292,34 +301,61 @@ def _sample_case_study_realization(args, case_study: str, seed: int):
     }
 
 
-def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape):
-    """Per-query mu_t(x_i) = E[Y | do(T=t), X=x_i, exo=fixed]  (noise = 0).
+def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape,
+                       t_baseline_vec=None):
+    """Per-query mu_t(x_i) = E[Y | do(T=t), X=x_i, batch context = fixed]  (noise = 0).
 
-    Achieved by:
-      1. Zero-out the Y-node's active additive noise for the duration.
-      2. do_intervention(T = constant t) with t in {0, 1}.
-      3. scm.get_next_sample(exogenous_vars=exo_obs) — propagates from the
-         cached exogenous state through the fixed non-Y additive noises.
-      4. Read endo[y_key] — that is mu_t(x_i).
-      5. Restore.
+    DoPFN's Y activation includes a batch-wide LayerNorm, so Y[i] is a function
+    of the entire (batch × seq_len) tensor, not of x_i alone. A UNIFORM-T
+    intervention (all rows set to the same T) is cancelled by LayerNorm's
+    mean-subtraction → mu_0 == mu_1. Instead we compute mu via a **single-row
+    counterfactual**: for query i, keep the other rows at `t_baseline_vec` and
+    only flip row i's T to `t_low` (mu_0[i]) or `t_high` (mu_1[i]). LayerNorm
+    then still sees T-variation across the batch, so the per-row T flip
+    propagates properly to Y[i].
+
+    Parameters
+    ----------
+    t_baseline_vec : torch.Tensor, shape samples_shape
+        The mixed T vector used for the interventional sample. Rows other than
+        i keep these values; row i is overwritten with t_low or t_high.
+        If None, falls back to a uniform-T intervention (kept for backwards
+        compat only — will collapse under LayerNorm activations).
+
+    Returns
+    -------
+    mu_0, mu_1 : np.ndarray, shape (seq_len,)
+        Per-query analytical structural means. For LayerNorm-wrapped Y these
+        are the "true mu given the batch context" — what in-context models
+        (DoPFN, CausalPFN, UWYK, graph2d) are trained to predict.
     """
+    import numpy as np
     import torch
 
     y_fn, _ = scm.functions[y_key]
     saved_noise = y_fn.additive_noise
-    # Zero-noise tensor with the SAME shape as the active additive_noise.
     zeros = torch.zeros_like(saved_noise)
     y_fn.additive_noise = zeros
 
-    def _do_at(t_value: float):
-        # Constant vector of shape (batch, seq_len).
-        const = torch.full(samples_shape, float(t_value), dtype=torch.float32)
+    t_low = float(scm.t1s[0].item()) if hasattr(scm, "t1s") else 0.0
+    t_high = float(scm.t2s[0].item()) if hasattr(scm, "t2s") else 1.0
+
+    batch_size, seq_len = int(samples_shape[0]), int(samples_shape[1])
+    assert batch_size == 1, (
+        "Single-row counterfactual mu assumes batch_size=1; got "
+        f"batch_size={batch_size}"
+    )
+
+    if t_baseline_vec is None:
+        # Backwards-compat uniform-T path (WILL collapse under LayerNorm).
+        t_baseline_vec = torch.full(samples_shape, t_low, dtype=torch.float32)
+
+    def _do_with_vec(T_vec: torch.Tensor) -> torch.Tensor:
         if t_key.startswith("X"):
-            scm.do_interventions([(t_key, (lambda: const, {}))])
+            scm.do_interventions([(t_key, (lambda: T_vec, {}))])
         else:
-            # Save exogenous T and overwrite.
             _saved = exo_obs.get(t_key)
-            exo_obs[t_key] = const
+            exo_obs[t_key] = T_vec
         try:
             endo, _ = scm.get_next_sample(exogenous_vars=exo_obs, graph=scm_graph)
         finally:
@@ -328,17 +364,21 @@ def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape):
             else:
                 if _saved is not None:
                     exo_obs[t_key] = _saved
-        return endo[y_key].detach().cpu().numpy().reshape(-1)
+        return endo[y_key].detach()  # shape (batch, seq_len)
 
-    # For the T-values we want mu_t at, we pass the BINARISED levels used
-    # in the observational sample: t1 (low) and t2 (high). This aligns
-    # mu_0 and mu_1 with the two arms that `zero_one_treatment` maps to
-    # {0, 1} in the exported x.
-    t_low = float(scm.t1s[0].item()) if hasattr(scm, "t1s") else 0.0
-    t_high = float(scm.t2s[0].item()) if hasattr(scm, "t2s") else 1.0
+    mu_0 = np.empty(seq_len, dtype=np.float32)
+    mu_1 = np.empty(seq_len, dtype=np.float32)
 
-    mu_0 = _do_at(t_low)
-    mu_1 = _do_at(t_high)
+    for i in range(seq_len):
+        T_low_i = t_baseline_vec.clone()
+        T_low_i[0, i] = t_low
+        y_low = _do_with_vec(T_low_i)
+        mu_0[i] = float(y_low[0, i].cpu().item())
+
+        T_high_i = t_baseline_vec.clone()
+        T_high_i[0, i] = t_high
+        y_high = _do_with_vec(T_high_i)
+        mu_1[i] = float(y_high[0, i].cpu().item())
 
     y_fn.additive_noise = saved_noise
     return mu_0, mu_1
