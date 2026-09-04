@@ -16,11 +16,13 @@ Output: 6 rows (case studies) × 4 cols (Ydo0, Ydo1, CATE, ATE) figure.
 
 Usage:
     python plot_true_densities.py \
-        --pkl-root  /scratch/.../external/dopfn/data/prior_sampling_rho02 \
-        --out       /scratch/.../results_density_rho02/true_densities.pdf \
+        --pkl-root   /scratch/.../external/dopfn/data/prior_sampling_rho02 \
+        --dopfn-root /scratch/.../external/dopfn \
+        --out        /scratch/.../results_density_rho02/true_densities.pdf \
         [--n-max-per-case 100]
 
-Requires only numpy + matplotlib + tqdm — no torch, no dopfn imports.
+`--dopfn-root` (or the DOPFN_ROOT env var) must point at the dopfn_upstream
+repo root so the unpickler can import DoPFN's InterventionalDataset class.
 """
 from __future__ import annotations
 
@@ -51,6 +53,10 @@ def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--pkl-root", required=True,
                    help="Directory containing <CASE>/*.pkl regenerated pkls.")
+    p.add_argument("--dopfn-root", default=os.environ.get("DOPFN_ROOT", ""),
+                   help="Path to dopfn_upstream repo root (has priors/, datasets/). "
+                        "Falls back to $DOPFN_ROOT env var. Required so pickle can "
+                        "import InterventionalDataset when loading the pkls.")
     p.add_argument("--out", required=True,
                    help="Output PDF path.")
     p.add_argument("--n-max-per-case", type=int, default=100,
@@ -60,6 +66,24 @@ def _parse_args():
     p.add_argument("--grid-pad-sigmas", type=float, default=4.0,
                    help="Grid extends this many sigmas past the data range.")
     return p.parse_args()
+
+
+def _install_dopfn_paths(dopfn_root: str) -> None:
+    if not dopfn_root:
+        print("[warn] no --dopfn-root and no $DOPFN_ROOT — pkl unpickling will "
+              "fail with `No module named 'datasets'`.", file=sys.stderr)
+        return
+    if not os.path.isdir(dopfn_root):
+        print(f"[warn] --dopfn-root does not exist: {dopfn_root}", file=sys.stderr)
+        return
+    if dopfn_root not in sys.path:
+        sys.path.insert(0, dopfn_root)
+    # The `datasets` package is at $DOPFN_ROOT/datasets/. Sanity import.
+    try:
+        import datasets as _dopfn_datasets  # noqa: F401
+    except Exception as e:
+        print(f"[warn] failed to import DoPFN's `datasets` from {dopfn_root}: {e}",
+              file=sys.stderr)
 
 
 def _gaussian_mixture_pdf(centers: np.ndarray, sigma: float,
@@ -139,6 +163,7 @@ def _panel(ax, x, pdf, title: str, xlabel: str, color: str = None):
 
 def main():
     args = _parse_args()
+    _install_dopfn_paths(args.dopfn_root)
 
     fig, axes = plt.subplots(len(CASE_STUDIES), 4,
                              figsize=(4 * 3.2, len(CASE_STUDIES) * 2.3),
