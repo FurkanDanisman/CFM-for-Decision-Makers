@@ -55,8 +55,12 @@ export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export STD_MODE="${STD_MODE:-per_arm}"
 
 # ── case-study env: point at the ORIGINAL DoPFN pkls, not any regen ──────────
-export DOPFN_DATA_ROOT="${DOPFN_DATA_ROOT:-$DEPLOY_ROOT/external/dopfn/data}"
-export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN_DATA_ROOT%/data}}"
+# DOPFN_DATA_ROOT must be the DIRECT parent of the case-study subdirs
+# (Observed_Confounder/, Observed_Mediator/, ...). That is prior_sampling/.
+export DOPFN_DATA_ROOT="${DOPFN_DATA_ROOT:-$DEPLOY_ROOT/external/dopfn/data/prior_sampling}"
+# DOPFN_ROOT points at the dopfn repo root so pickle can import
+# `datasets.InterventionalDataset`.
+export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN_DATA_ROOT%/data/prior_sampling}}"
 export SKIP_EM="${SKIP_EM:-1}"
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
