@@ -317,12 +317,27 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
     p_r, e_r, a_r = _pehe(cate_raw)
     p_e, e_e, a_e = _pehe(cate_em)
     p_f, e_f, a_f = _pehe(cate_full)
-    return {
+    row = {
         'dataset': DATASET, 'realization': r, 'true_ate': true_ate,
         'pehe_raw':  p_r, 'err_raw':  e_r, 'ate_raw':  a_r,
         'pehe_em':   p_e, 'err_em':   e_e, 'ate_em':   a_e,
         'pehe_full': p_f, 'err_full': e_f, 'ate_full': a_f,
     }
+    if os.environ.get('DENSITY_DUMP', '0') == '1':
+        # y_raw = y_scaled * y_scale + y_shift (pooled: shift=stats['shift'], scale=stats['scale'];
+        # per_arm: two separate un-scalings — use pooled convention here since density_eval
+        # expects one scale factor; per_arm shards would need separate y0/y1 scales.
+        y_shift = float(stats.get('shift', 0.0))
+        y_scale = float(stats.get('scale', 1.0))
+        row.update({
+            'edges': edges_np.astype(np.float32),
+            'p_y0_scaled': p_mats.sum(axis=2).astype(np.float32),  # (N_q, J)
+            'p_y1_scaled': p_mats.sum(axis=1).astype(np.float32),  # (N_q, J)
+            'p_joint_scaled': p_mats.astype(np.float32),           # (N_q, J, J)
+            'y_shift': np.float32(y_shift),
+            'y_scale': np.float32(y_scale),
+        })
+    return row
 
 
 def main():
