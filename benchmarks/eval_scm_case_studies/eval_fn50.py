@@ -61,10 +61,13 @@ def _load_fn50(ckpt_path):
     return model, J, edges_np, cfg['num_features']
 
 
+DENSITY_DUMP = os.environ.get('DENSITY_DUMP', '0') == '1'
+
+
 @torch.no_grad()
 def _cate_fn50(model, J, edges_np, num_features, X_train, T_train, y_train, X_test):
     """One forward pass, extract J×J inner marginals, compute raw center-of-mass CATE.
-    Returns cate_pred in raw Y units.
+    Returns (cate_pred, dens_dict) — dens_dict populated only when DENSITY_DUMP=1.
     """
     y_min = float(y_train.min())
     y_rng = max(float(y_train.max() - y_train.min()), 1e-6)
@@ -97,7 +100,20 @@ def _cate_fn50(model, J, edges_np, num_features, X_train, T_train, y_train, X_te
     # Un-scale: scaled Y is (Y - y_min) / y_rng * 2 - 1 → raw = (scaled + 1) * y_rng/2 + y_min
     # CATE is a difference so y_min shift cancels; multiply diff by y_rng/2.
     cate_pred = (e1_scaled - e0_scaled) * (y_rng / 2.0)
-    return cate_pred.astype(np.float32)
+    dens = None
+    if DENSITY_DUMP:
+        # y_shift/y_scale s.t.  y_raw = y_scaled * y_scale + y_shift
+        y_scale = y_rng / 2.0
+        y_shift = y_min + y_scale
+        dens = dict(
+            edges=edges_np.astype(np.float32),                    # (J+1,) scaled Y edges [-1,+1]
+            p_y0_scaled=p_y0.astype(np.float32),                  # (M, J)
+            p_y1_scaled=p_y1.astype(np.float32),                  # (M, J)
+            p_joint_scaled=p_mat.astype(np.float32),              # (M, J, J)
+            y_shift=np.float32(y_shift),
+            y_scale=np.float32(y_scale),
+        )
+    return cate_pred.astype(np.float32), dens
 
 
 def main():
@@ -111,7 +127,7 @@ def main():
     rows = []; t0 = time.time()
     for r in range(n):
         cate_ds, _ = ds[r]
-        cate_pred = _cate_fn50(model, J, edges_np, num_features,
+        cate_pred, dens = _cate_fn50(model, J, edges_np, num_features,
                                 cate_ds.X_train, cate_ds.t_train, cate_ds.y_train,
                                 cate_ds.X_test)
         true_cate = np.asarray(cate_ds.true_cate, dtype=np.float32).reshape(-1)
@@ -122,7 +138,9 @@ def main():
                'true_ate': ate_true, 'ate_pred': ate_hat,
                'pehe_raw': pehe, 'err_raw': err}
         rows.append(row)
-        np.savez(os.path.join(OUT, f'r{r:03d}.npz'), **{k: np.array(v) for k, v in row.items()})
+        shard = {k: np.array(v) for k, v in row.items()}
+        if dens is not None: shard.update(dens)
+        np.savez(os.path.join(OUT, f'r{r:03d}.npz'), **shard)
         print(f'r={r:03d}  pehe={pehe:6.3f}  err={err:5.3f}  ate={ate_hat:+5.2f} vs true {ate_true:+5.2f}  '
               f'({time.time()-t0:.0f}s)', flush=True)
 
