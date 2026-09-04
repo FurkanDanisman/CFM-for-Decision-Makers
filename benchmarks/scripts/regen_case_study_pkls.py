@@ -81,6 +81,12 @@ def _parse_args():
     p.add_argument("--only-cases", type=str, nargs="*", default=None,
                    help="Optional list of case studies to regenerate; default: all 6.")
     p.add_argument("--overwrite", action="store_true", default=False)
+    p.add_argument("--n-mc-samples", type=int, default=0,
+                   help="Number of Monte-Carlo Y-noise draws for empirical truth "
+                        "densities per query. Each draw is a paired (eps_obs, eps_int) "
+                        "with rho correlation; produces one sample of Y|do(0) and one "
+                        "of Y|do(1) per query row. Writes sidecar "
+                        "<case>_<i>_truth_samples.npz next to each pkl. Default 0 = off.")
     return p.parse_args()
 
 
@@ -219,20 +225,27 @@ def _sample_case_study_realization(args, case_study: str, seed: int):
     scm.undo_interventions()
 
     # ── mu_0 / mu_1 per interventional query (noise held at 0) ──────────────
-    # NOTE: DoPFN's Y activation `sophisticated_sampling_1_rescaling_normalization`
-    # applies F.layer_norm(z, z.shape) across the whole batch, so a uniform-T
-    # intervention (all 500 rows set to the same T) is cancelled by LayerNorm's
-    # mean-subtraction and yields mu_0 == mu_1. To respect DoPFN's DGP AND get
-    # per-query analytical mu, we do a single-row counterfactual: for query i,
-    # keep the other 499 rows at their observed mixed T (t_int_vec) and only
-    # flip row i's T to t_low (mu_0[i]) or t_high (mu_1[i]). LayerNorm still
-    # sees T-variation across the batch so the per-row T flip propagates.
+    # NOTE: mu is analytical but of limited use under DoPFN's LayerNorm-coupled
+    # DGP (see docstring of _compute_mu_0_mu_1). Kept for backwards compat.
     mu_0, mu_1 = _compute_mu_0_mu_1(
         scm=scm, scm_graph=scm_graph, exo_obs=exo_obs,
         t_key=t_key, y_key=y_key,
         samples_shape=samples_shape,
         t_baseline_vec=t_int_vec,
     )
+
+    # ── Empirical truth density samples (K MC noise draws per query) ────────
+    y_do0_samples, y_do1_samples = None, None
+    if int(args.n_mc_samples) > 0:
+        y_do0_samples, y_do1_samples = _sample_empirical_truth(
+            scm=scm, scm_graph=scm_graph, exo_obs=exo_obs,
+            t_key=t_key, y_key=y_key,
+            samples_shape=samples_shape,
+            t_baseline_vec=t_int_vec,
+            K=int(args.n_mc_samples),
+            rho=float(args.y_noise_corr),
+            noise_std=float(args.noise_std),
+        )
 
     # ── Assemble x_obs, x_int, y_obs, y_int (T first column) ────────────────
     X_keys = [t_key]
@@ -290,6 +303,10 @@ def _sample_case_study_realization(args, case_study: str, seed: int):
         "cate": cate_per_row,
         "mu_0_per_query": mu_0.astype(np.float32),
         "mu_1_per_query": mu_1.astype(np.float32),
+        "y_do0_samples": (y_do0_samples if y_do0_samples is not None
+                          else np.zeros((0,), dtype=np.float32)),
+        "y_do1_samples": (y_do1_samples if y_do1_samples is not None
+                          else np.zeros((0,), dtype=np.float32)),
         "sigma_eps": float(sigma_eps),
         "rho_y_noise": float(args.y_noise_corr),
         "attribute_names": attribute_names,
@@ -391,6 +408,90 @@ def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape,
     return mu_0, mu_1
 
 
+def _sample_empirical_truth(scm, scm_graph, exo_obs, t_key, y_key,
+                             samples_shape, t_baseline_vec,
+                             K: int, rho: float, noise_std: float):
+    """Draw K bivariate Y-noise pairs, run half-and-half passes per k,
+    collect empirical Y samples per query per arm.
+
+    Under DoPFN's LayerNorm-coupled DGP, p(Y|do(t), x_i) is not Gaussian and
+    has no closed form. Instead we sample the SCM K times per realization
+    with fresh Y-noise, keeping the batch context (other rows' T mix and X)
+    identical to the observed interventional pass. Each MC draw gives ONE
+    paired (Y_do0, Y_do1) sample per query row, with the DGP's own rho=0.2
+    correlation between them (via bivariate eps_obs, eps_int draws).
+
+    Parameters
+    ----------
+    K : int   number of MC draws.
+    rho : float  eps_obs / eps_int correlation (matches the pkl's rho_y_noise).
+    noise_std : float  Y-node noise std (matches the SCM's noise_std).
+
+    Returns
+    -------
+    y_do0_samples, y_do1_samples : np.ndarray of shape (seq_len, K)
+        Per-query empirical Y samples under do(T=0) and do(T=1).
+    """
+    import math
+    import numpy as np
+    import torch
+
+    y_fn, _ = scm.functions[y_key]
+    saved_noise = y_fn.additive_noise
+
+    t_low  = float(scm.t1s[0].item()) if hasattr(scm, "t1s") else 0.0
+    t_high = float(scm.t2s[0].item()) if hasattr(scm, "t2s") else 1.0
+
+    batch_size, seq_len = int(samples_shape[0]), int(samples_shape[1])
+    assert batch_size == 1
+
+    t_flipped_vec = torch.where(t_baseline_vec == t_low,
+                                 torch.tensor(t_high, dtype=t_baseline_vec.dtype),
+                                 torch.tensor(t_low,  dtype=t_baseline_vec.dtype))
+    mask_baseline_is_low = (t_baseline_vec[0].cpu().numpy() == t_low)
+
+    def _run(T_vec):
+        if t_key.startswith("X"):
+            scm.do_interventions([(t_key, (lambda: T_vec, {}))])
+        else:
+            _saved = exo_obs.get(t_key)
+            exo_obs[t_key] = T_vec
+        try:
+            endo, _ = scm.get_next_sample(exogenous_vars=exo_obs, graph=scm_graph)
+        finally:
+            if t_key.startswith("X"):
+                scm.undo_interventions()
+            else:
+                if _saved is not None:
+                    exo_obs[t_key] = _saved
+        return endo[y_key].detach()  # (batch, seq_len)
+
+    y_do0 = np.empty((seq_len, K), dtype=np.float32)
+    y_do1 = np.empty((seq_len, K), dtype=np.float32)
+
+    coeff_partner = math.sqrt(max(1.0 - rho * rho, 0.0))
+    for k in range(K):
+        # Draw fresh bivariate Y-noise per DGP: (eps_obs, eps_int) ~ N(0, sigma^2*[[1,rho],[rho,1]])
+        eps_obs   = torch.normal(0.0, noise_std, samples_shape)
+        eps_indep = torch.normal(0.0, noise_std, samples_shape)
+        eps_int   = rho * eps_obs + coeff_partner * eps_indep
+
+        # Pass A: baseline T, eps_obs noise
+        y_fn.additive_noise = eps_obs
+        y_A = _run(t_baseline_vec)[0].cpu().numpy().astype(np.float32)
+
+        # Pass B: flipped T, eps_int noise
+        y_fn.additive_noise = eps_int
+        y_B = _run(t_flipped_vec)[0].cpu().numpy().astype(np.float32)
+
+        # Row-level assignment: pass with T[i]=t_low → y_do0[i,k]; the other → y_do1[i,k].
+        y_do0[:, k] = np.where(mask_baseline_is_low, y_A, y_B)
+        y_do1[:, k] = np.where(mask_baseline_is_low, y_B, y_A)
+
+    y_fn.additive_noise = saved_noise
+    return y_do0, y_do1
+
+
 # ── Assemble the InterventionalDataset pkl ───────────────────────────────────
 def _assemble_and_save(row: dict, out_path: str) -> None:
     """Build an InterventionalDataset with the extra fields attached, then
@@ -445,6 +546,21 @@ def _assemble_and_save(row: dict, out_path: str) -> None:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "wb") as f:
         pickle.dump(ds, f)
+
+    # Sidecar .npz for empirical MC truth samples (if any were drawn).
+    y_do0_s = row.get("y_do0_samples")
+    y_do1_s = row.get("y_do1_samples")
+    if (isinstance(y_do0_s, np.ndarray) and y_do0_s.ndim == 2
+            and y_do0_s.size > 0):
+        base = out_path[:-4] if out_path.endswith(".pkl") else out_path
+        npz_path = f"{base}_truth_samples.npz"
+        np.savez_compressed(
+            npz_path,
+            y_do0_samples=y_do0_s.astype(np.float32),
+            y_do1_samples=y_do1_s.astype(np.float32),
+            sigma_eps=np.float32(row["sigma_eps"]),
+            rho_y_noise=np.float32(row["rho_y_noise"]),
+        )
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
