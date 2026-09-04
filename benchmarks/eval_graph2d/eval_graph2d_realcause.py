@@ -812,8 +812,9 @@ def marginals_from_forward(model, X_train, T_train, Y_train_scaled, X_test, adj,
     p = torch.softmax(interior, dim=-1).reshape(B, -1, J, J)
     p_y0 = p.sum(dim=-1).squeeze(0).cpu().numpy()
     p_y1 = p.sum(dim=-2).squeeze(0).cpu().numpy()
+    p_joint = p.squeeze(0).cpu().numpy()                  # (N_q, J, J)  — for density eval
     logits_np = logits.squeeze(0).float().cpu().numpy()   # (N_q, J²+9+4)
-    return p_y0, p_y1, logits_np
+    return p_y0, p_y1, logits_np, p_joint
 
 
 def cate_from_marginals(p_y0, p_y1, J, logits_np=None):
@@ -1008,7 +1009,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
     _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
     _dens_keys = {}
     for mode, adj in _mode_list:
-        p_y0, p_y1, logits_np = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
+        p_y0, p_y1, logits_np, p_joint = marginals_from_forward(model, X_tr, T_tr, Y_obs, X_te, adj, J)
         cate_raw_scaled, cate_em_scaled, cate_full_scaled = cate_from_marginals(
             p_y0, p_y1, J, logits_np=logits_np,
         )
@@ -1028,6 +1029,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             # y_shift = ymin + yrange/2 (raw = scaled*(yrange/2) + ymin+yrange/2)
             _dens_keys[f'p_y0_scaled_{mode}'] = p_y0.astype(np.float32)
             _dens_keys[f'p_y1_scaled_{mode}'] = p_y1.astype(np.float32)
+            _dens_keys[f'p_joint_scaled_{mode}'] = p_joint.astype(np.float32)
 
     out = {
         'dataset': DATASET,
