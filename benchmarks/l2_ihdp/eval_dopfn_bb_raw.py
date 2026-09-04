@@ -508,6 +508,12 @@ def main():
         Y0_INNER = [0, 3, 4]; Y0_L = [1, 5, 6]; Y0_R = [2, 7, 8]
         Y1_INNER = [0, 1, 2]; Y1_L = [3, 5, 7]; Y1_R = [4, 6, 8]
 
+        _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
+        if _do_density:
+            _p_y0_all = np.zeros((n_test, J), dtype=np.float32)
+            _p_y1_all = np.zeros((n_test, J), dtype=np.float32)
+            _p_joint_all = np.zeros((n_test, J, J), dtype=np.float32)
+
         for q in range(n_test):
             p_mat, w_region, sL0, sR0, sL1, sR1 = unpack_pred(pred[q], J, bin_width)
             pm = p_mat.detach().cpu().numpy().astype(np.float64)
@@ -518,6 +524,10 @@ def main():
             sL1_v = float(sL1); sR1_v = float(sR1)
             p_marg0 = pm.sum(axis=1)  # inner marg for Y0 (conditional on Y0∈inner)
             p_marg1 = pm.sum(axis=0)  # inner marg for Y1
+            if _do_density:
+                _p_y0_all[q] = p_marg0.astype(np.float32)
+                _p_y1_all[q] = p_marg1.astype(np.float32)
+                _p_joint_all[q] = pm.astype(np.float32)
 
             # ── Inner region mean (using RAW-Y bin centers directly) ─
             # For PT this uses pt.inverse_transform(scaled_centers) — the
@@ -663,6 +673,20 @@ def main():
             pass
         std_y0_list.append(float(sigma_em_y0_raw.mean()))
         std_y1_list.append(float(sigma_em_y1_raw.mean()))
+        # ── Density dump (per-realization NPZ alongside args.out) ──────────
+        if _do_density and args.out:
+            _out_dir = os.path.dirname(args.out) or '.'
+            _dens_path = os.path.join(_out_dir, f'density_r{r:03d}.npz')
+            np.savez(_dens_path,
+                     dataset=args.dataset,
+                     realization=r,
+                     edges=edges_np.astype(np.float32),
+                     p_y0_scaled=_p_y0_all, p_y1_scaled=_p_y1_all,
+                     p_joint_scaled=_p_joint_all,
+                     y_shift=np.float32(y_center),
+                     y_scale=np.float32(y_scale),
+                     true_ate=np.float32(_ate_true),
+                     ate_pred=np.float32(cate_pred_raw.mean()))
         malc_note = f'  malc_fail={n_malc_fail}/{n_test}' if args.malc_upsample else ''
         malc_extra = (f'   PEHE malc_raw={pehe_malc_raw:.4f}  malc_em={pehe_malc_em:.4f}   '
                        f'eps_ATE malc_raw={eps_ate_malc_raw:.4f}  malc_em={eps_ate_malc_em:.4f}'

@@ -72,6 +72,30 @@ def evaluate(r: int, ds: SCMCaseStudyDataset):
         model.fit(X_train_full, y_train)
         X_test_t = torch.from_numpy(X_test_full.astype(np.float32))
         cate_pred = model.predict_cate(X_test_t)
+        # For density dump: get raw bin probs via predict_full on both arms.
+        dens = None
+        if os.environ.get('DENSITY_DUMP', '0') == '1':
+            X0 = X_test_full.copy(); X0[:, 0] = 0.0
+            X1 = X_test_full.copy(); X1[:, 0] = 1.0
+            X0_t = torch.from_numpy(X0.astype(np.float32))
+            X1_t = torch.from_numpy(X1.astype(np.float32))
+            full0 = model.predict_full(X0_t)
+            full1 = model.predict_full(X1_t)
+            logits0 = np.asarray(full0['logits'])                 # (N_q, nbins)
+            logits1 = np.asarray(full1['logits'])
+            edges = np.asarray(full0['criterion'].borders)        # (nbins+1,) — natural Y units
+            p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
+            p_y0 = p_y0 / p_y0.sum(axis=-1, keepdims=True)
+            p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
+            p_y1 = p_y1 / p_y1.sum(axis=-1, keepdims=True)
+            # DoPFN emits densities on RAW Y edges — set y_shift=0, y_scale=1 (identity)
+            dens = dict(
+                edges=edges.astype(np.float32),
+                p_y0_scaled=p_y0.astype(np.float32),
+                p_y1_scaled=p_y1.astype(np.float32),
+                y_shift=np.float32(0.0),
+                y_scale=np.float32(1.0),
+            )
     finally:
         os.chdir(_prev_cwd)
 
@@ -81,9 +105,11 @@ def evaluate(r: int, ds: SCMCaseStudyDataset):
     ate_true = float(true_cate.mean())
     ate_hat  = float(cate_pred.mean())
     err = abs(ate_hat - ate_true) / max(abs(ate_true), 0.1)
-    return {'dataset': DATASET, 'realization': r,
-            'true_ate': ate_true, 'ate_pred': ate_hat,
-            'pehe_raw': pehe, 'err_raw': err}
+    row = {'dataset': DATASET, 'realization': r,
+           'true_ate': ate_true, 'ate_pred': ate_hat,
+           'pehe_raw': pehe, 'err_raw': err}
+    if dens is not None: row.update(dens)
+    return row
 
 
 def main():

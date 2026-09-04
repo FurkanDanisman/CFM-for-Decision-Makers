@@ -322,7 +322,57 @@ def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
         prediction_type='mean', inverse_transform=True,
     )
     cate_pred = np.asarray(y_pred_1 - y_pred_0, dtype=np.float32).reshape(-1)
-    return cate_pred
+
+    dens = None
+    if os.environ.get('DENSITY_DUMP', '0') == '1':
+        # Grab raw bin logits from underlying transformer — bypass wrapper's
+        # .mean() reduction. Wrapper's preprocessing (X pad+std, Y scale) has
+        # already been applied inside model.predict; we replicate it here to
+        # get logits on the wrapper's internal (scaled-Y) coordinate system.
+        import torch
+        # Preprocessing: same as PreprocessingGraphConditionedPFN.predict does.
+        # 1. X pad+std using the fitted stats.
+        X_obs_p = model._preprocess_features(X_train)
+        X_int_p1 = model._preprocess_features(X_test)
+        X_int_p0 = X_int_p1                               # X features are the same for both arms
+        # 2. Y scale to [-1, 1] using fitted (y_min, y_max).
+        y_min_fit, y_max_fit = float(model._y_min), float(model._y_max)
+        y_scale_fit = max((y_max_fit - y_min_fit), 1e-6)
+        y_shift_fit = y_min_fit
+        Y_obs_scaled = ((y_train.flatten() - y_min_fit) / y_scale_fit * 2.0 - 1.0).astype(np.float32)
+        T_obs_arr = t_train.flatten().astype(np.float32)
+        # Underlying model forward per arm — get raw output tensor
+        device = next(model.model.parameters()).device
+        Xo = torch.from_numpy(X_obs_p).float().unsqueeze(0).to(device)
+        To = torch.from_numpy(T_obs_arr).float().reshape(1, -1, 1).to(device)
+        Yo = torch.from_numpy(Y_obs_scaled).float().reshape(1, -1, 1).to(device)
+        Xi = torch.from_numpy(X_int_p1).float().unsqueeze(0).to(device)
+        adj_t = torch.from_numpy(adjacency_matrix).float().unsqueeze(0).to(device)
+        with torch.no_grad():
+            Ti_1 = torch.full((1, X_test.shape[0], 1), 1.0, dtype=torch.float32, device=device)
+            Ti_0 = torch.full((1, X_test.shape[0], 1), 0.0, dtype=torch.float32, device=device)
+            out1 = model.model(Xo, To, Yo, Xi, Ti_1, adj_t)
+            out0 = model.model(Xo, To, Yo, Xi, Ti_0, adj_t)
+            logits1 = (out1['predictions'] if isinstance(out1, dict) else out1).float().cpu().numpy().squeeze(0)
+            logits0 = (out0['predictions'] if isinstance(out0, dict) else out0).float().cpu().numpy().squeeze(0)
+        # BarDistribution: first `num_bars` outputs are the bin logits.
+        num_bars = model.bar_distribution.num_bars
+        b_l0 = logits0[..., :num_bars]
+        b_l1 = logits1[..., :num_bars]
+        p0 = np.exp(b_l0 - b_l0.max(-1, keepdims=True)); p0 /= p0.sum(-1, keepdims=True)
+        p1 = np.exp(b_l1 - b_l1.max(-1, keepdims=True)); p1 /= p1.sum(-1, keepdims=True)
+        edges_scaled = model.bar_distribution.borders.detach().cpu().numpy().astype(np.float32)
+        # y_scaled = (y_raw - y_shift) / (y_scale/2) - 1  →  y_raw = y_scaled * (y_scale/2) + y_shift + y_scale/2
+        y_scale_out = y_scale_fit / 2.0
+        y_shift_out = y_shift_fit + y_scale_out
+        dens = dict(
+            edges=edges_scaled,
+            p_y0_scaled=p0.astype(np.float32),
+            p_y1_scaled=p1.astype(np.float32),
+            y_shift=np.float32(y_shift_out),
+            y_scale=np.float32(y_scale_out),
+        )
+    return cate_pred, dens
 
 
 def main():
@@ -337,7 +387,12 @@ def main():
     for r in range(n):
         cate_ds, _ = ds[r]
         try:
-            cate_pred = _cate_uwyk_paper_pipeline(wrapper, cate_ds, GRAPH_MODE)
+            result = _cate_uwyk_paper_pipeline(wrapper, cate_ds, GRAPH_MODE)
+            # Backward compat: pipeline may return either cate_pred or (cate_pred, dens)
+            if isinstance(result, tuple):
+                cate_pred, dens = result
+            else:
+                cate_pred, dens = result, None
         except Exception as e:
             print(f'r={r:03d}  ERROR: {type(e).__name__}: {e}', flush=True)
             continue
@@ -349,7 +404,9 @@ def main():
                'true_ate': ate_true, 'ate_pred': ate_hat,
                'pehe_raw': pehe, 'err_raw': err}
         rows.append(row)
-        np.savez(os.path.join(OUT, f'r{r:03d}.npz'), **{k: np.array(v) for k, v in row.items()})
+        shard = {k: np.array(v) for k, v in row.items()}
+        if dens is not None: shard.update(dens)
+        np.savez(os.path.join(OUT, f'r{r:03d}.npz'), **shard)
         print(f'r={r:03d}  pehe={pehe:6.3f}  err={err:5.3f}  ate={ate_hat:+5.2f} vs true {ate_true:+5.2f}  '
               f'({time.time()-t0:.0f}s)', flush=True)
 
