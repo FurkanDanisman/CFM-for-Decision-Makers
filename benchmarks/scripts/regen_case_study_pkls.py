@@ -306,28 +306,37 @@ def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape,
     """Per-query mu_t(x_i) = E[Y | do(T=t), X=x_i, batch context = fixed]  (noise = 0).
 
     DoPFN's Y activation includes a batch-wide LayerNorm, so Y[i] is a function
-    of the entire (batch × seq_len) tensor, not of x_i alone. A UNIFORM-T
-    intervention (all rows set to the same T) is cancelled by LayerNorm's
-    mean-subtraction → mu_0 == mu_1. Instead we compute mu via a **single-row
-    counterfactual**: for query i, keep the other rows at `t_baseline_vec` and
-    only flip row i's T to `t_low` (mu_0[i]) or `t_high` (mu_1[i]). LayerNorm
-    then still sees T-variation across the batch, so the per-row T flip
-    propagates properly to Y[i].
+    of the entire (batch × seq_len) tensor, not of x_i alone. There is no
+    single "true mu(x_i)" — it depends on what the OTHER 499 rows' T values are.
+
+    We resolve this with a **half-and-half T split** that matches DoPFN's natural
+    sampling: use the observed `t_baseline_vec` (~50/50 coin-flipped t_low/t_high)
+    for pass 1, and the bit-flipped version (t_low ↔ t_high) for pass 2. Then:
+
+      - If t_baseline_vec[i] = t_low  : pass 1 gives mu_0[i], pass 2 gives mu_1[i].
+      - If t_baseline_vec[i] = t_high : pass 1 gives mu_1[i], pass 2 gives mu_0[i].
+
+    Both passes have LayerNorm see ~50/50 T variation across the batch (matching
+    DoPFN's DGP), so mu magnitudes stay in the range DoPFN naturally produces.
+    Only 2 forward passes per realization — fast.
+
+    Trade-off vs single-row counterfactual: mu[i] here technically depends on
+    which of the other 499 rows are at each T, but that dependence is
+    intrinsic to DoPFN's LayerNorm-coupled DGP and stays in a natural range.
 
     Parameters
     ----------
     t_baseline_vec : torch.Tensor, shape samples_shape
-        The mixed T vector used for the interventional sample. Rows other than
-        i keep these values; row i is overwritten with t_low or t_high.
-        If None, falls back to a uniform-T intervention (kept for backwards
-        compat only — will collapse under LayerNorm activations).
+        The mixed T vector used for the interventional sample. Must have both
+        t_low and t_high values (coin-flipped). If None, falls back to a
+        uniform-T intervention (kept for backwards compat only — will
+        collapse under LayerNorm activations).
 
     Returns
     -------
     mu_0, mu_1 : np.ndarray, shape (seq_len,)
-        Per-query analytical structural means. For LayerNorm-wrapped Y these
-        are the "true mu given the batch context" — what in-context models
-        (DoPFN, CausalPFN, UWYK, graph2d) are trained to predict.
+        Per-query analytical structural means (noise = 0), computed under
+        DoPFN's natural half-and-half T distribution.
     """
     import numpy as np
     import torch
@@ -342,8 +351,7 @@ def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape,
 
     batch_size, seq_len = int(samples_shape[0]), int(samples_shape[1])
     assert batch_size == 1, (
-        "Single-row counterfactual mu assumes batch_size=1; got "
-        f"batch_size={batch_size}"
+        "Half-and-half mu assumes batch_size=1; got batch_size={batch_size}"
     )
 
     if t_baseline_vec is None:
@@ -366,19 +374,18 @@ def _compute_mu_0_mu_1(scm, scm_graph, exo_obs, t_key, y_key, samples_shape,
                     exo_obs[t_key] = _saved
         return endo[y_key].detach()  # shape (batch, seq_len)
 
-    mu_0 = np.empty(seq_len, dtype=np.float32)
-    mu_1 = np.empty(seq_len, dtype=np.float32)
+    # Bit-flipped baseline: swap t_low ↔ t_high per row.
+    t_flipped_vec = torch.where(t_baseline_vec == t_low,
+                                 torch.tensor(t_high, dtype=t_baseline_vec.dtype),
+                                 torch.tensor(t_low,  dtype=t_baseline_vec.dtype))
 
-    for i in range(seq_len):
-        T_low_i = t_baseline_vec.clone()
-        T_low_i[0, i] = t_low
-        y_low = _do_with_vec(T_low_i)
-        mu_0[i] = float(y_low[0, i].cpu().item())
+    y_pass_baseline = _do_with_vec(t_baseline_vec)[0].cpu().numpy().astype(np.float32)
+    y_pass_flipped  = _do_with_vec(t_flipped_vec )[0].cpu().numpy().astype(np.float32)
 
-        T_high_i = t_baseline_vec.clone()
-        T_high_i[0, i] = t_high
-        y_high = _do_with_vec(T_high_i)
-        mu_1[i] = float(y_high[0, i].cpu().item())
+    # Row-level assignment: whichever pass had T[i]=t_low gives mu_0[i], other gives mu_1[i].
+    mask_baseline_is_low = (t_baseline_vec[0].cpu().numpy() == t_low)
+    mu_0 = np.where(mask_baseline_is_low, y_pass_baseline, y_pass_flipped).astype(np.float32)
+    mu_1 = np.where(mask_baseline_is_low, y_pass_flipped, y_pass_baseline).astype(np.float32)
 
     y_fn.additive_noise = saved_noise
     return mu_0, mu_1
