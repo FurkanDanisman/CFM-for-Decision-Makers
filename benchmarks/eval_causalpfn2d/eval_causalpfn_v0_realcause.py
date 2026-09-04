@@ -233,7 +233,19 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
     # log-family means the shift no longer cancels — de-standardise each arm
     cate_raw = _un(e_y1_raw, arm1) - _un(e_y0_raw, arm0)
     cate_em  = _un(e_y1_em,  arm1) - _un(e_y0_em,  arm0)
-    return cate_raw.astype(np.float32), cate_em.astype(np.float32)
+
+    dens = None
+    if os.environ.get('DENSITY_DUMP', '0') == '1':
+        # 1D head: no joint. Use pooled arm stats (arm0 == arm1 for pooled modes).
+        y_shift, y_scale = arm0
+        dens = dict(
+            edges=bin_edges_np.astype(np.float32),
+            p_y0_scaled=p0.astype(np.float32),
+            p_y1_scaled=p1.astype(np.float32),
+            y_shift=np.float32(y_shift),
+            y_scale=np.float32(y_scale),
+        )
+    return cate_raw.astype(np.float32), cate_em.astype(np.float32), dens
 
 
 def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance):
@@ -260,8 +272,8 @@ def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance
     X_tr_p = _pad_features(X_tr_std, num_features)
     X_te_p = _pad_features(X_te_std, num_features)
 
-    cate_raw, cate_em = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p,
-                                         num_features, nbins, bin_edges_np)
+    cate_raw, cate_em, dens = cate_raw_and_em(model, X_tr_p, T_tr, y_tr, X_te_p,
+                                                num_features, nbins, bin_edges_np)
 
     def _pehe(cate):
         pehe = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
@@ -271,11 +283,13 @@ def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance
 
     p_r, e_r, a_r = _pehe(cate_raw)
     p_e, e_e, a_e = _pehe(cate_em)
-    return {
+    row = {
         'dataset': DATASET, 'realization': r, 'true_ate': true_ate,
         'pehe_raw': p_r, 'err_raw': e_r, 'ate_raw': a_r,
         'pehe_em':  p_e, 'err_em':  e_e, 'ate_em':  a_e,
     }
+    if dens is not None: row.update(dens)
+    return row
 
 
 def main():
