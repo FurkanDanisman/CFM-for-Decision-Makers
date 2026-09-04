@@ -676,6 +676,7 @@ def main():
         # ── Density dump (per-realization NPZ alongside args.out) ──────────
         if _do_density and args.out:
             _out_dir = os.path.dirname(args.out) or '.'
+            os.makedirs(_out_dir, exist_ok=True)
             _dens_path = os.path.join(_out_dir, f'density_r{r:03d}.npz')
             np.savez(_dens_path,
                      dataset=args.dataset,
