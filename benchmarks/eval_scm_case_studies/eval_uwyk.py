@@ -361,7 +361,8 @@ def _cate_uwyk_paper_pipeline(model, cate_dataset, graph_mode):
         b_l1 = logits1[..., :num_bars]
         p0 = np.exp(b_l0 - b_l0.max(-1, keepdims=True)); p0 /= p0.sum(-1, keepdims=True)
         p1 = np.exp(b_l1 - b_l1.max(-1, keepdims=True)); p1 /= p1.sum(-1, keepdims=True)
-        edges_scaled = model.bar_distribution.borders.detach().cpu().numpy().astype(np.float32)
+        # UWYK's BarDistribution stores bin edges as `.edges` (not `.borders`)
+        edges_scaled = model.bar_distribution.edges.detach().cpu().numpy().astype(np.float32)
         # y_scaled = (y_raw - y_shift) / (y_scale/2) - 1  →  y_raw = y_scaled * (y_scale/2) + y_shift + y_scale/2
         y_scale_out = y_scale_fit / 2.0
         y_shift_out = y_shift_fit + y_scale_out
