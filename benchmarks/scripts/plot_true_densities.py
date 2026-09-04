@@ -1,30 +1,31 @@
-"""Plot the 4 analytical truth densities for each of DoPFN's 6 case studies.
+"""Plot the 4 empirical truth densities for each of DoPFN's 6 case studies.
 
-Per realization we compute a per-realization Y-scale
-    y_shift_r = (y_int.max() + y_int.min()) / 2
-    y_scale_r = (y_int.max() - y_int.min()) / 2   (matches the eval convention)
-and STANDARDIZE mu_0, mu_1, sigma_eps into the [-1, +1]-normalised space that
-all downstream models actually see at eval time. Pooling standardized values
-across realizations gives comparable-scale mixtures and prevents a handful of
-SCM-blowup realizations from dominating the axis.
+Truth source: `<pkl>_truth_samples.npz` sidecar files produced by
+`regen_case_study_pkls.py --n-mc-samples K`. Each sidecar contains
 
-Densities (Gaussian mixtures over queries × realizations, all on standardized Y):
+    y_do0_samples : np.ndarray of shape (N_query, K)
+    y_do1_samples : np.ndarray of shape (N_query, K)
+    sigma_eps, rho_y_noise : scalars
 
-  p(Ỹ | do(0)) = (1/M) Σ_{r,i} N(mu_0_scaled^{(r)}[i], sigma_eps_scaled^{(r)}²)
-  p(Ỹ | do(1)) = (1/M) Σ_{r,i} N(mu_1_scaled^{(r)}[i], sigma_eps_scaled^{(r)}²)
-  p(τ̃)        = (1/M) Σ_{r,i} N(mu_1_scaled-mu_0_scaled, 2·σ²·(1-ρ))
-  p(ATẼ)      = KDE over the R per-realization sample means (standardized)
+drawn by K MC noise passes through DoPFN's SCM with a half-and-half T split
+(so every query row gets K paired samples under do(0) and do(1) with the
+rho=0.2 correlation from the DGP).
 
-Axis limits use robust 1st–99th percentiles to trim SCM-blowup tails.
+Per realization we standardize Y by that realization's y_int range
+(y_shift, y_scale) so all realizations pool on a comparable [-1, +1] scale.
+Axes use robust 1st–99th percentile clipping.
+
+Empirical densities via Gaussian KDE:
+  p(Ỹ | do(0))  KDE over pooled y_do0_scaled across (realizations × queries × K)
+  p(Ỹ | do(1))  same, y_do1_scaled
+  p(τ̃)          KDE over pooled (y_do1_scaled - y_do0_scaled)  — captures rho correlation
+  p(ATẼ)        KDE over per-realization sample means of τ̃
 
 Usage:
     python plot_true_densities.py \
         --pkl-root   /scratch/.../external/dopfn/data/prior_sampling_rho02 \
         --dopfn-root /scratch/.../external/dopfn \
         --out        /scratch/.../results_density_rho02/true_densities.pdf
-
-`--dopfn-root` (or $DOPFN_ROOT) must point at dopfn_upstream so pickle can
-import InterventionalDataset when loading the pkls.
 """
 from __future__ import annotations
 
@@ -54,65 +55,30 @@ CASE_STUDIES = [
 def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--pkl-root", required=True,
-                   help="Directory containing <CASE>/*.pkl regenerated pkls.")
+                   help="Directory containing <CASE>/*.pkl (+ <CASE>/*_truth_samples.npz).")
     p.add_argument("--dopfn-root", default=os.environ.get("DOPFN_ROOT", ""),
-                   help="Path to dopfn_upstream root (needs `datasets` package). "
-                        "Falls back to $DOPFN_ROOT env var.")
-    p.add_argument("--out", required=True,
-                   help="Output PDF path.")
-    p.add_argument("--n-max-per-case", type=int, default=100,
-                   help="Cap on # realizations loaded per case.")
-    p.add_argument("--grid-n", type=int, default=1000,
-                   help="Grid resolution for density curves.")
-    p.add_argument("--axis-lo-pct", type=float, default=1.0,
-                   help="Percentile for x-axis lower bound (default 1).")
-    p.add_argument("--axis-hi-pct", type=float, default=99.0,
-                   help="Percentile for x-axis upper bound (default 99).")
-    p.add_argument("--outlier-clip-sigmas", type=float, default=0.0,
-                   help="If >0, drop realizations whose |mu_scaled|.max() > this "
-                        "many standard-deviations. Default 0 = keep all.")
+                   help="Path to dopfn_upstream root. Falls back to $DOPFN_ROOT env var.")
+    p.add_argument("--out", required=True, help="Output PDF path.")
+    p.add_argument("--n-max-per-case", type=int, default=100)
+    p.add_argument("--n-max-samples-per-real", type=int, default=None,
+                   help="Optional cap on MC samples per realization (for speed).")
+    p.add_argument("--grid-n", type=int, default=1000)
+    p.add_argument("--axis-lo-pct", type=float, default=1.0)
+    p.add_argument("--axis-hi-pct", type=float, default=99.0)
     return p.parse_args()
 
 
 def _install_dopfn_paths(dopfn_root: str) -> None:
-    if not dopfn_root:
-        print("[warn] no --dopfn-root and no $DOPFN_ROOT — pkl unpickling will fail.",
+    if not dopfn_root or not os.path.isdir(dopfn_root):
+        print(f"[warn] no valid --dopfn-root — pkl unpickling may fail.",
               file=sys.stderr)
-        return
-    if not os.path.isdir(dopfn_root):
-        print(f"[warn] --dopfn-root does not exist: {dopfn_root}", file=sys.stderr)
         return
     if dopfn_root not in sys.path:
         sys.path.insert(0, dopfn_root)
-    try:
-        import datasets as _dopfn_datasets  # noqa: F401
-    except Exception as e:
-        print(f"[warn] failed to import DoPFN's `datasets` from {dopfn_root}: {e}",
-              file=sys.stderr)
-
-
-def _gaussian_mixture_pdf(centers: np.ndarray, sigmas: np.ndarray,
-                          x_grid: np.ndarray) -> np.ndarray:
-    """Evaluate (1/N) Σ_i N(center_i, sigma_i^2) on x_grid.
-
-    centers, sigmas both shape (N,); returns pdf on x_grid shape (G,).
-    """
-    # Broadcast-friendly (N, G) computation, chunked to stay under ~200 MB.
-    N, G = len(centers), len(x_grid)
-    if N == 0:
-        return np.zeros_like(x_grid)
-    chunk = max(1, min(N, int(2e7 / G)))
-    out = np.zeros(G, dtype=np.float64)
-    for start in range(0, N, chunk):
-        c = centers[start:start + chunk][:, None]      # (n, 1)
-        s = sigmas [start:start + chunk][:, None]      # (n, 1)
-        diff = (x_grid[None, :] - c) / s               # (n, G)
-        logp = -0.5 * diff * diff - 0.5 * np.log(2 * np.pi * s * s)
-        out += np.exp(logp).sum(axis=0)
-    return out / N
 
 
 def _kde_pdf(samples: np.ndarray, x_grid: np.ndarray) -> np.ndarray:
+    """Silverman-bandwidth Gaussian KDE, chunked to bound memory."""
     n = len(samples)
     if n < 2:
         return np.zeros_like(x_grid)
@@ -120,63 +86,15 @@ def _kde_pdf(samples: np.ndarray, x_grid: np.ndarray) -> np.ndarray:
     if std <= 0:
         std = max(1e-6, 0.01 * float(np.abs(samples).mean() or 1.0))
     h = 1.06 * std * n ** (-1 / 5)
-    diff = (x_grid[None, :] - samples[:, None]) / h
-    kern = np.exp(-0.5 * diff * diff) / np.sqrt(2 * np.pi)
-    return kern.mean(axis=0) / h
 
-
-def _load_case(pkl_dir: str, n_max: int):
-    """Return per-realization standardized mu/sigma + pooled data for one case."""
-    paths = sorted(glob.glob(os.path.join(pkl_dir, "*.pkl")))[:n_max]
-    if not paths:
-        return None
-
-    reals = []
-    for p in paths:
-        try:
-            with open(p, "rb") as f:
-                ds = pickle.load(f)
-        except Exception as e:
-            print(f"[warn] failed to load {p}: {e}", file=sys.stderr)
-            continue
-        if not hasattr(ds, "mu_0_per_query"):
-            continue
-
-        y_int = np.asarray(ds.y_int if hasattr(ds, "y_int") else ds.target_y,
-                            dtype=np.float64).reshape(-1)
-        # Per-realization Y-scale (matches eval convention: fit on y_int range).
-        y_min, y_max = float(y_int.min()), float(y_int.max())
-        y_shift = 0.5 * (y_min + y_max)
-        y_scale = max(0.5 * (y_max - y_min), 1e-9)
-
-        m0 = (np.asarray(ds.mu_0_per_query, dtype=np.float64) - y_shift) / y_scale
-        m1 = (np.asarray(ds.mu_1_per_query, dtype=np.float64) - y_shift) / y_scale
-        sig_eps = float(getattr(ds, "sigma_eps", 1e-3)) / y_scale
-        rho = float(getattr(ds, "rho_y_noise", 0.0))
-
-        reals.append({"mu0": m0, "mu1": m1, "sig_eps": sig_eps, "rho": rho,
-                       "ate": float((m1 - m0).mean()),
-                       "y_scale_raw": y_scale})
-
-    if not reals:
-        return None
-
-    return reals
-
-
-def _pool_reals(reals):
-    """Concatenate per-realization mu arrays; per-row sigma tiled to match."""
-    mu0 = np.concatenate([r["mu0"] for r in reals])
-    mu1 = np.concatenate([r["mu1"] for r in reals])
-    sig_y = np.concatenate([np.full_like(r["mu0"], r["sig_eps"]) for r in reals])
-    # For τ: sigma_τ = sqrt(2·σ²·(1-ρ)) is per-realization.
-    sig_tau_per_real = [float(np.sqrt(2.0 * r["sig_eps"] ** 2 * (1.0 - r["rho"])))
-                          for r in reals]
-    sig_tau = np.concatenate([np.full_like(r["mu0"], s)
-                                for r, s in zip(reals, sig_tau_per_real)])
-    tau = mu1 - mu0
-    ate = np.array([r["ate"] for r in reals])
-    return mu0, mu1, tau, sig_y, sig_tau, ate
+    G = len(x_grid)
+    chunk = max(1, min(n, int(2e7 / G)))
+    out = np.zeros(G, dtype=np.float64)
+    for start in range(0, n, chunk):
+        s = samples[start:start + chunk][:, None]
+        d = (x_grid[None, :] - s) / h
+        out += np.exp(-0.5 * d * d).sum(axis=0)
+    return out / (n * h * np.sqrt(2 * np.pi))
 
 
 def _robust_range(a: np.ndarray, lo_pct: float, hi_pct: float, pad_frac=0.05):
@@ -188,7 +106,70 @@ def _robust_range(a: np.ndarray, lo_pct: float, hi_pct: float, pad_frac=0.05):
     return lo - pad, hi + pad
 
 
-def _panel(ax, x, pdf, title: str, xlabel: str, color: str):
+def _load_case(pkl_dir: str, n_max_reals: int, n_max_samples: int):
+    """Return per-realization pooled arrays for one case study.
+
+    For each realization r that has a truth-samples sidecar:
+      - Compute y_shift_r, y_scale_r from that realization's y_int.
+      - Standardize its MC samples into that scale.
+      - Append to pooled arrays.
+
+    Realizations without a sidecar are skipped (with a warn message).
+    """
+    paths = sorted(glob.glob(os.path.join(pkl_dir, "*.pkl")))[:n_max_reals]
+    if not paths:
+        return None
+
+    y_do0_pool, y_do1_pool = [], []
+    ate_r = []
+    n_used, n_skipped = 0, 0
+    for p in paths:
+        base = p[:-4] if p.endswith(".pkl") else p
+        npz_path = f"{base}_truth_samples.npz"
+        if not os.path.exists(npz_path):
+            n_skipped += 1
+            continue
+        try:
+            with open(p, "rb") as f:
+                ds = pickle.load(f)
+        except Exception as e:
+            print(f"[warn] failed to load {p}: {e}", file=sys.stderr)
+            n_skipped += 1
+            continue
+
+        y_int = np.asarray(ds.y_int if hasattr(ds, "y_int") else ds.target_y,
+                            dtype=np.float64).reshape(-1)
+        y_min, y_max = float(y_int.min()), float(y_int.max())
+        y_shift = 0.5 * (y_min + y_max)
+        y_scale = max(0.5 * (y_max - y_min), 1e-9)
+
+        with np.load(npz_path) as z:
+            y0 = np.asarray(z["y_do0_samples"], dtype=np.float64)
+            y1 = np.asarray(z["y_do1_samples"], dtype=np.float64)
+        if n_max_samples is not None and y0.shape[1] > n_max_samples:
+            y0 = y0[:, :n_max_samples]
+            y1 = y1[:, :n_max_samples]
+
+        y0_std = (y0 - y_shift) / y_scale
+        y1_std = (y1 - y_shift) / y_scale
+
+        y_do0_pool.append(y0_std.reshape(-1))
+        y_do1_pool.append(y1_std.reshape(-1))
+        ate_r.append(float((y1_std - y0_std).mean()))
+        n_used += 1
+
+    if n_used == 0:
+        return None
+    return {
+        "y_do0": np.concatenate(y_do0_pool),
+        "y_do1": np.concatenate(y_do1_pool),
+        "ate_r": np.array(ate_r),
+        "n_used": n_used,
+        "n_skipped": n_skipped,
+    }
+
+
+def _panel(ax, x, pdf, title, xlabel, color):
     ax.plot(x, pdf, linewidth=1.4, color=color)
     ax.fill_between(x, 0, pdf, alpha=0.20, color=color)
     ax.set_title(title, fontsize=10)
@@ -207,65 +188,50 @@ def main():
                               squeeze=False)
 
     for row, case in enumerate(CASE_STUDIES):
-        reals = _load_case(os.path.join(args.pkl_root, case), args.n_max_per_case)
-        if reals is None:
+        data = _load_case(os.path.join(args.pkl_root, case),
+                           args.n_max_per_case,
+                           args.n_max_samples_per_real)
+        if data is None:
+            msg = (f"no truth-samples .npz found in\n{case}\n"
+                   f"(regen with --n-mc-samples > 0 first)")
             for c in range(4):
-                axes[row, c].text(0.5, 0.5, f"no pkls in\n{case}",
-                                  ha="center", va="center",
+                axes[row, c].text(0.5, 0.5, msg, ha="center", va="center",
                                   transform=axes[row, c].transAxes, fontsize=9)
                 axes[row, c].axis("off")
             continue
 
-        # Optional outlier-realization filter.
-        if args.outlier_clip_sigmas > 0:
-            kept = [r for r in reals
-                    if max(np.abs(r["mu0"]).max(), np.abs(r["mu1"]).max())
-                       <= args.outlier_clip_sigmas]
-            dropped = len(reals) - len(kept)
-            if dropped:
-                print(f"[{case}] dropped {dropped}/{len(reals)} outlier realizations "
-                      f"(|mu_scaled|.max > {args.outlier_clip_sigmas})", flush=True)
-            if not kept:
-                for c in range(4):
-                    axes[row, c].text(0.5, 0.5, f"all realizations filtered",
-                                      ha="center", va="center",
-                                      transform=axes[row, c].transAxes)
-                    axes[row, c].axis("off")
-                continue
-            reals = kept
+        y0 = data["y_do0"]; y1 = data["y_do1"]
+        tau = y1 - y0
+        ate = data["ate_r"]
 
-        mu0, mu1, tau, sig_y, sig_tau, ate = _pool_reals(reals)
+        y_lo,  y_hi  = _robust_range(np.concatenate([y0, y1]),
+                                       args.axis_lo_pct, args.axis_hi_pct)
+        tau_lo, tau_hi = _robust_range(tau,
+                                        args.axis_lo_pct, args.axis_hi_pct)
+        ate_lo, ate_hi = _robust_range(ate, 2.5, 97.5, pad_frac=0.15)
 
-        # Robust axis limits (1st–99th percentile of the mixture "centers").
-        y_lo, y_hi = _robust_range(np.concatenate([mu0, mu1]),
-                                     args.axis_lo_pct, args.axis_hi_pct)
-        tau_lo, tau_hi = _robust_range(tau, args.axis_lo_pct, args.axis_hi_pct)
-        ate_lo, ate_hi = _robust_range(ate,
-                                         min(5.0, args.axis_lo_pct),
-                                         max(95.0, args.axis_hi_pct), pad_frac=0.15)
-
-        y_grid   = np.linspace(y_lo, y_hi, args.grid_n)
+        y_grid   = np.linspace(y_lo,   y_hi,   args.grid_n)
         tau_grid = np.linspace(tau_lo, tau_hi, args.grid_n)
         ate_grid = np.linspace(ate_lo, ate_hi, args.grid_n)
 
-        p_ydo0 = _gaussian_mixture_pdf(mu0, sig_y, y_grid)
-        p_ydo1 = _gaussian_mixture_pdf(mu1, sig_y, y_grid)
-        p_tau  = _gaussian_mixture_pdf(tau, sig_tau, tau_grid)
-        p_ate  = _kde_pdf(ate, ate_grid)
+        p_y0  = _kde_pdf(y0,  y_grid)
+        p_y1  = _kde_pdf(y1,  y_grid)
+        p_tau = _kde_pdf(tau, tau_grid)
+        p_ate = _kde_pdf(ate, ate_grid)
 
-        _panel(axes[row, 0], y_grid,   p_ydo0, "p(Ỹ | do(0))", "Ỹ (standardized)", "C0")
-        _panel(axes[row, 1], y_grid,   p_ydo1, "p(Ỹ | do(1))", "Ỹ (standardized)", "C1")
-        _panel(axes[row, 2], tau_grid, p_tau,  "p(τ̃)  (all queries)", "τ̃", "C2")
+        _panel(axes[row, 0], y_grid,   p_y0,  "p(Ỹ | do(0))", "Ỹ (standardized)", "C0")
+        _panel(axes[row, 1], y_grid,   p_y1,  "p(Ỹ | do(1))", "Ỹ (standardized)", "C1")
+        _panel(axes[row, 2], tau_grid, p_tau, "p(τ̃)  (pooled)", "τ̃", "C2")
         _panel(axes[row, 3], ate_grid, p_ate,
-               f"p(ATẼ) (R={len(reals)})", "ATẼ", "C3")
+               f"p(ATẼ)  (R={data['n_used']})", "ATẼ", "C3")
 
-        row_label = (f"{case}\nρ={reals[0]['rho']:.2f}   "
-                     f"σ̃ε≈{np.median([r['sig_eps'] for r in reals]):.3f}\n"
-                     f"R={len(reals)}   N/real={len(reals[0]['mu0'])}")
+        row_label = (f"{case}\n"
+                     f"R={data['n_used']}   skipped={data['n_skipped']}\n"
+                     f"total samples={y0.size:,}")
         axes[row, 0].set_ylabel(row_label, fontsize=9)
 
-    fig.suptitle("Analytical truth densities — standardized per-realization "
-                 "([-1, +1] eval scale), 1st–99th pct axis clipping",
+    fig.suptitle("Empirical truth densities — per-realization Y-standardized "
+                 "([-1, +1] eval scale), Gaussian KDE, 1st–99th pct axis clipping",
                  fontsize=11, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.985])
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)

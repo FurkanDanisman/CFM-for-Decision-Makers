@@ -48,6 +48,7 @@ EXO_STD="${EXO_STD:-0.1}"
 NONLINS="${NONLINS:-sophisticated_sampling_1_rescaling_normalization}"
 ONLY_CASES="${ONLY_CASES:-}"
 OVERWRITE="${OVERWRITE:-0}"
+N_MC_SAMPLES="${N_MC_SAMPLES:-0}"
 
 [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not a dir: $DOPFN_ROOT" >&2; exit 2; }
 
@@ -81,6 +82,7 @@ python -u "$REPO/benchmarks/scripts/regen_case_study_pkls.py" \
     --noise-std   "$NOISE_STD" \
     --exo-std     "$EXO_STD" \
     --nonlins     "$NONLINS" \
+    --n-mc-samples "$N_MC_SAMPLES" \
     "${EXTRA[@]}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] regen done"
