@@ -19,8 +19,12 @@
 # --dataset name routes the loader.  Point-estimate CATE only (no density).
 #
 # Required env vars:
-#   CKPT       path to the 1D CausalPFN ckpt
 #   OUT_ROOT   per-dataset outputs land at OUT_ROOT/{realcause|case_studies}/<DATASET>
+#
+# Optional (defaults to the final 50k cpfn-orig-headrand ckpt):
+#   CKPT       path to the 1D CausalPFN ckpt
+#              default: /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/
+#                       step_checkpoints/run/step_0050000.pt
 #
 # Optional env vars:
 #   STD_MODE           per_arm | pooled | log | log_per_arm | log_winsor  (default per_arm)
@@ -46,7 +50,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 
 # ── required knobs ───────────────────────────────────────────────────────────
-export CKPT="${CKPT:?CKPT required — path to 1D CausalPFN ckpt}"
+export CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export STD_MODE="${STD_MODE:-per_arm}"
 
