@@ -33,6 +33,7 @@ More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks
         - Prescreening (B): Full 2D Distribution Evaluation. Assumes independence anyway, might as well capture more details.
         - CATE (C): Ours: diagonal integration, p(τ) = ∫ f(y₀, y₀+τ) dy₀. UWYK build f₀ ⊗ f₁ = f(y₀, y₁), requires independence assumption. 
 - Metrics:
+- 
 | Tier / Metric  | Scope       | Eval  | Model score                                       | Truth / reference                                                |
 | -------------- | ----------- | ----- | ------------------------------------------------- | ---------------------------------------------------------------- |
 | Tier 1 — NLL   | All 5       | **A** | $-\log g_0(y_0^*) - \log g_1(y_1^*)$              | $N(\mu_t,\sigma^2)$ on `Y_CENTERS`; inner-conditional both sides |
@@ -68,24 +69,33 @@ Exact, O(J) per τ, and integrates to w₀ by construction. Only the 8 smooth ta
 
 # CATE Density Evaluation 
 
-== IHDP   realizations=100  ~75 queries each  anc=v6a  |tau*|>3: 0.00% ==
-method                                 nll                l2            kl_fwd            kl_rev              mass
-------------------------------------------------------------------------------------------------------------------
-UWYK (x)indep  K=1000       0.7224+-0.0428    1.6925+-0.1042    1.5304+-0.0580   34.2100+-6.9395    1.0000+-0.0000
-UWYK (x)indep  J=32         0.7202+-0.0429    1.6903+-0.1041    1.5281+-0.0579   34.4388+-6.9797    1.0000+-0.0000
-Joint-2D       J=32         0.0238+-0.0400    1.3129+-0.1133    0.8363+-0.0626   22.3558+-5.1941    1.0000+-0.0000
+## IHDP   realizations=100  ~75 queries each  anc=v6a  |tau*|>3: 0.00% 
 
-  resolution handicap (uwyk_native -> uwyk_matched):  dNLL=-0.0023  dKLrev=+0.2288
-  model gap at equal resolution (uwyk_matched -> joint):  dNLL=-0.6964  dKLrev=-12.0830
+| Method                   |                 NLL |                  L2 |              KL_fwd |               KL_rev |            Mass |
+| ------------------------ | ------------------: | ------------------: | ------------------: | -------------------: | --------------: |
+| UWYK `(x)indep` `K=1000` |     0.7224 ± 0.0428 |     1.6925 ± 0.1042 |     1.5304 ± 0.0580 |     34.2100 ± 6.9395 | 1.0000 ± 0.0000 |
+| UWYK `(x)indep` `J=32`   |     0.7202 ± 0.0429 |     1.6903 ± 0.1041 |     1.5281 ± 0.0579 |     34.4388 ± 6.9797 | 1.0000 ± 0.0000 |
+| Joint-2D `J=32`          | **0.0238 ± 0.0400** | **1.3129 ± 0.1133** | **0.8363 ± 0.0626** | **22.3558 ± 5.1941** | 1.0000 ± 0.0000 |
+
+| Comparison                                             |        ΔNLL |      ΔKL_rev |
+| ------------------------------------------------------ | ----------: | -----------: |
+| Resolution handicap: UWYK native → UWYK matched        |     -0.0023 |      +0.2288 |
+| Model gap at equal resolution: UWYK matched → Joint-2D | **-0.6964** | **-12.0830** |
+
   (negative = joint better; expect the joint to LOSE slightly if it carries a spurious rho -- the truth here factorises)
 
-== ACIC   realizations=10  ~481 queries each  anc=v6a  |tau*|>3: 0.00% ==
-method                                 nll                l2            kl_fwd            kl_rev              mass
-------------------------------------------------------------------------------------------------------------------
-UWYK (x)indep  K=1000      -0.0970+-0.1207    1.6814+-0.0529    1.1931+-0.0787   13.4317+-1.6076    0.9999+-0.0000
-UWYK (x)indep  J=32        -0.0955+-0.1193    1.6823+-0.0533    1.1945+-0.0781   13.5685+-1.6080    0.9999+-0.0000
-Joint-2D       J=32        -0.4709+-0.1561    1.3286+-0.1227    0.8171+-0.1241    5.8673+-1.1835    1.0001+-0.0002
+## ACIC   realizations=10  ~481 queries each  anc=v6a  |tau*|>3: 0.00% 
 
-  resolution handicap (uwyk_native -> uwyk_matched):  dNLL=+0.0015  dKLrev=+0.1368
-  model gap at equal resolution (uwyk_matched -> joint):  dNLL=-0.3754  dKLrev=-7.7012
+| Method                   |                  NLL |                  L2 |              KL_fwd |              KL_rev |            Mass |
+| ------------------------ | -------------------: | ------------------: | ------------------: | ------------------: | --------------: |
+| UWYK `(x)indep` `K=1000` |     -0.0970 ± 0.1207 |     1.6814 ± 0.0529 |     1.1931 ± 0.0787 |    13.4317 ± 1.6076 | 0.9999 ± 0.0000 |
+| UWYK `(x)indep` `J=32`   |     -0.0955 ± 0.1193 |     1.6823 ± 0.0533 |     1.1945 ± 0.0781 |    13.5685 ± 1.6080 | 0.9999 ± 0.0000 |
+| Joint-2D `J=32`          | **-0.4709 ± 0.1561** | **1.3286 ± 0.1227** | **0.8171 ± 0.1241** | **5.8673 ± 1.1835** | 1.0001 ± 0.0002 |
+
+
+| Comparison                                             |        ΔNLL |     ΔKL_rev |
+| ------------------------------------------------------ | ----------: | ----------: |
+| Resolution handicap: UWYK native → UWYK matched        |     +0.0015 |     +0.1368 |
+| Model gap at equal resolution: UWYK matched → Joint-2D | **-0.3754** | **-7.7012** |
+
   (negative = joint better; expect the joint to LOSE slightly if it carries a spurious rho -- the truth here factorises)
