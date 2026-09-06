@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+
+
+DATASETS = ("IHDP", "ACIC", "CPS", "PSID", "PSID_bal")
+MODES = (("PEHE anc", "anc"), ("PEHE no anc", "noanc"))
+
+
+def latest_run(results_root: Path) -> Path:
+    runs = [path for path in results_root.iterdir() if path.is_dir() and path.name.isdigit()]
+    return max(runs, key=lambda path: int(path.name)) if runs else results_root
+
+
+def summarize(results_dir: Path, dataset: str, key: str) -> tuple[float, float, int]:
+    values = []
+    for path in sorted((results_dir / dataset).glob(f"{dataset}_r*.npz")):
+        with np.load(path) as result:
+            if key in result:
+                value = float(result[key])
+                if np.isfinite(value):
+                    values.append(value)
+
+    array = np.asarray(values, dtype=float)
+    if array.size == 0:
+        return np.nan, np.nan, 0
+    standard_error = array.std(ddof=1) / np.sqrt(array.size) if array.size > 1 else np.nan
+    return float(array.mean()), float(standard_error), int(array.size)
+
+
+def format_cell(mean: float, standard_error: float) -> str:
+    if not np.isfinite(mean):
+        return "—"
+    if not np.isfinite(standard_error):
+        return f"{mean:.3f}"
+    return f"{mean:.3f} ± {standard_error:.3f}"
+
+
+def main() -> None:
+    repo = Path(__file__).resolve().parents[2]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--results",
+        type=Path,
+        default=repo / "results_graph2d_realcause",
+    )
+    parser.add_argument("--estimator", choices=("raw", "em"), default="raw")
+    args = parser.parse_args()
+
+    summaries = {}
+    counts = {}
+    for label, mode in MODES:
+        key = f"pehe_{args.estimator}_{mode}"
+        for dataset in DATASETS:
+            mean, standard_error, count = summarize(args.results, dataset, key)
+            summaries[label, dataset] = format_cell(mean, standard_error)
+            counts[dataset] = count
+
+    print("| Metric | " + " | ".join(DATASETS) + " |")
+    print("|---|" + "|".join("---:" for _ in DATASETS) + "|")
+    for label, _ in MODES:
+        cells = [summaries[label, dataset] for dataset in DATASETS]
+        print(f"| {label} | " + " | ".join(cells) + " |")
+
+    print("\nRealizations: " + ", ".join(f"{dataset}={counts[dataset]}" for dataset in DATASETS))
+
+
+if __name__ == "__main__":
+    main()
+

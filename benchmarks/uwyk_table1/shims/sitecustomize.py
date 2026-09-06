@@ -47,8 +47,17 @@ class _StubModule(_types.ModuleType):
 
 class _StubFinder:
     def find_module(self, name, path=None):
-        top = name.split('.', 1)[0]
-        return self if top in _STUB_TOPLEVEL else None
+        # Exact match only — NOT name.split('.')[0]. A dotted name here means
+        # some package (possibly a real, installed one) is importing a
+        # submodule of itself, e.g. faiss-cpu's `from . import _gpu_build`
+        # marker probe. If we matched on the top-level prefix, a genuinely
+        # absent submodule of a denylisted-but-actually-installed package
+        # would get silently handed a MagicMock stub instead of raising
+        # ImportError, corrupting that package's own internal feature
+        # detection (this broke real faiss-cpu: it mis-detected itself as a
+        # CUDA-13 cuVS GPU build and crashed hunting for `nvidia.cu13`).
+        # Only intercept bare top-level imports of denylisted packages.
+        return self if name in _STUB_TOPLEVEL else None
 
     def load_module(self, name):
         if name in _sys.modules:
