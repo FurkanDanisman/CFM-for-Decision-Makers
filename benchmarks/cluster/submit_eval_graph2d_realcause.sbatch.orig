@@ -27,8 +27,7 @@ REPO="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
 export UWYK="$REPO/g4cfm"
 export CAUSALPFN="/home/lukez/projects/aip-rgrosse/lukez/CausalPFN"
 export CKPT="$REPO/Required_checkpoints/graph2d_step_50000.pt"
-export OUT_ROOT="$REPO/results_graph2d_realcause/$SLURM_ARRAY_JOB_ID"
-# export FIX_DIAG="1"
+export OUT_ROOT="$REPO/results_graph2d_realcause"
 
 [ -f "$CKPT" ] || { echo "FATAL: checkpoint not found at $CKPT" >&2; exit 1; }
 
