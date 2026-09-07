@@ -76,12 +76,17 @@ def _load_density(npz_path: str):
         return None
 
 
-def _tau_grid(edges: np.ndarray) -> np.ndarray:
-    """Given nbins+1 edges (uniform-spaced), return the τ bin centers on which
-    the convolution p_y1 ⊗ flip(p_y0) is defined — length 2·nbins-1."""
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    nbins = centers.size
-    width = float(centers[1] - centers[0])
+def _tau_grid(edges: np.ndarray, nbins: int) -> np.ndarray:
+    """Return the τ bin centers on which p_y1 ⊗ flip(p_y0) lives — length 2·nbins-1.
+
+    Uses `nbins` from the density array (not len(edges)-1) so we're robust to
+    NPZs where edges include extra pad entries beyond the model's actual bins.
+    Derives bin_width from consecutive edges (assumed uniform).
+    """
+    edges = np.asarray(edges, dtype=np.float64)
+    if edges.size < 2:
+        raise ValueError(f'edges too short: shape={edges.shape}')
+    width = float(edges[1] - edges[0])
     k = np.arange(2 * nbins - 1) - (nbins - 1)
     return k.astype(np.float64) * width
 
@@ -136,7 +141,7 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     p_tau_scaled = np.clip(p_tau_scaled, 0.0, None)
     p_tau_scaled /= p_tau_scaled.sum(axis=-1, keepdims=True).clip(min=1e-12)
 
-    tau_centers_scaled = _tau_grid(edges)
+    tau_centers_scaled = _tau_grid(edges, nbins=p_y0.shape[-1])
 
     # ── point CATE derived from density (∫τ p(τ) dτ), un-scaled to raw units.
     cate_hat_scaled = (p_tau_scaled * tau_centers_scaled[None, :]).sum(axis=-1)
@@ -152,8 +157,18 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
         with np.load(npz_path, allow_pickle=True) as z:
             pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
             err_stored  = float(z[err_key])  if err_key  in z.files else float('nan')
+            # If the wrapper saved per-query cate_pred (dopfn does), compare
+            # our density-mean per-query to it — flags a systematic scale bug
+            # (e.g. log-transformed edges, per-arm scaling collapse).
+            cate_pred_stored = np.asarray(z['cate_pred']).astype(np.float64) \
+                if 'cate_pred' in z.files else None
     except Exception:
         pehe_stored, err_stored = float('nan'), float('nan')
+        cate_pred_stored = None
+
+    cate_max_diff = float('nan')
+    if cate_pred_stored is not None and cate_pred_stored.shape == cate_hat.shape:
+        cate_max_diff = float(np.max(np.abs(cate_hat - cate_pred_stored)))
 
     # ── 95% CI bounds → coverage + length.
     tau_lo_s, tau_hi_s = _ci_from_pmf(tau_centers_scaled, p_tau_scaled, 0.025, 0.975)
@@ -167,6 +182,7 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
         'err_den':     err_ate_den,
         'pehe_stored': pehe_stored,
         'err_stored':  err_stored,
+        'cate_max_diff': cate_max_diff,   # per-query |cate_hat - cate_pred_stored|
         'coverage':    coverage,
         'length':      length,
         'n_queries':   int(true_cate_pq.size),
@@ -191,7 +207,7 @@ def summarize_method_dataset(method_dir: str, dataset: str,
     if not paths:
         return None
     pehes_d, errs_d, covs, lens = [], [], [], []
-    pehe_diffs, err_diffs = [], []
+    pehe_diffs, err_diffs, cate_diffs = [], [], []
     for p in paths:
         got = process_npz(p, pehe_key, err_key)
         if got is None:
@@ -202,6 +218,8 @@ def summarize_method_dataset(method_dir: str, dataset: str,
             pehe_diffs.append(got['pehe_den'] - got['pehe_stored'])
         if np.isfinite(got['err_stored']):
             err_diffs.append(got['err_den']  - got['err_stored'])
+        if np.isfinite(got['cate_max_diff']):
+            cate_diffs.append(got['cate_max_diff'])
     if not covs:
         return None
     return {
@@ -212,6 +230,7 @@ def summarize_method_dataset(method_dir: str, dataset: str,
         'n':             len(covs),
         'pehe_max_diff': float(np.max(np.abs(pehe_diffs))) if pehe_diffs else float('nan'),
         'err_max_diff':  float(np.max(np.abs(err_diffs)))  if err_diffs  else float('nan'),
+        'cate_max_diff': float(np.max(cate_diffs)) if cate_diffs else float('nan'),
     }
 
 
@@ -227,6 +246,42 @@ def _fmt(m, se, big=False):
     return f'{m_s} ± {se_s}'
 
 
+def _debug_single(npz_path: str, pehe_key: str, err_key: str) -> None:
+    """Print a fingerprint of one realization: edges range, density means,
+    density-derived cate summary, and stored cate summary. Reveals whether
+    the density lives on a different scale than the stored point estimates."""
+    with np.load(npz_path, allow_pickle=True) as z:
+        edges = np.asarray(z['edges'], dtype=np.float64)
+        p_y0  = np.asarray(z['p_y0_scaled'], dtype=np.float64)
+        p_y1  = np.asarray(z['p_y1_scaled'], dtype=np.float64)
+        y_shift = float(z['y_shift']); y_scale = float(z['y_scale'])
+        true_cate_pq = np.asarray(z['true_cate_per_query'], dtype=np.float64)
+        cate_pred = np.asarray(z['cate_pred']).astype(np.float64) if 'cate_pred' in z.files else None
+        pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
+
+    p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    nbins = p_y0.shape[-1]
+    centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1]) if edges.size >= nbins + 1 \
+              else (np.arange(nbins) * float(edges[1] - edges[0]) + edges[0])
+    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)    # in the density's axis
+    e_y1 = (p_y1 * centers[None, :]).sum(axis=-1)
+    cate_from_diff = (e_y1 - e_y0) * y_scale         # naive: subtract-then-unscale
+    print(f'\n[{npz_path}]')
+    print(f'  edges: shape={edges.shape}  range=[{edges.min():.4g}, {edges.max():.4g}]')
+    print(f'  p_y0/p_y1: shape={p_y0.shape}')
+    print(f'  centers[0:3]={centers[:3]}   centers[-3:]={centers[-3:]}')
+    print(f'  y_shift={y_shift:.4g}  y_scale={y_scale:.4g}')
+    print(f'  E[Y_0] (density-axis)  mean q: {float(e_y0.mean()):.4g}')
+    print(f'  E[Y_1] (density-axis)  mean q: {float(e_y1.mean()):.4g}')
+    print(f'  cate_from_diff (subtract-then-unscale)  mean q: {float(cate_from_diff.mean()):.4g}')
+    if cate_pred is not None:
+        print(f'  cate_pred (stored)                     mean q: {float(cate_pred.mean()):.4g}')
+        print(f'  max |cate_from_diff - cate_pred|: {float(np.max(np.abs(cate_from_diff - cate_pred))):.4g}')
+    print(f'  true_cate_per_query                    mean q: {float(true_cate_pq.mean()):.4g}')
+    print(f'  stored PEHE ({pehe_key}) = {pehe_stored:.4g}')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out-root', required=True,
@@ -238,7 +293,23 @@ def main():
                          'Default: noanc (matches paper Table 3 UWYK No-Anc).')
     ap.add_argument('--out-md', default=None,
                     help='Also write the markdown table to this path.')
+    ap.add_argument('--debug-one', nargs=2, metavar=('METHOD', 'DATASET'),
+                    help='Print one-realization fingerprint (edges range, density '
+                         'means, cate_from_diff vs cate_pred) for the first NPZ of '
+                         'the given (method, dataset). Skips the aggregate table.')
     args = ap.parse_args()
+
+    if args.debug_one is not None:
+        method, dataset = args.debug_one
+        point_keys = dict(_POINT_KEYS)
+        point_keys['uwyk1d'] = (f'pehe_raw_{args.uwyk_tag}', f'err_raw_{args.uwyk_tag}')
+        pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
+        paths = sorted(glob.glob(os.path.join(args.out_root, method, dataset,
+                                              f'{dataset}_r*.npz')))
+        if not paths:
+            sys.exit(f'FATAL: no NPZs found for {method}/{dataset}')
+        _debug_single(paths[0], pehe_key, err_key)
+        return
 
     if not os.path.isdir(args.out_root):
         sys.exit(f'FATAL: --out-root not found: {args.out_root}')
