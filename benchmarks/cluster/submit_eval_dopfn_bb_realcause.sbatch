@@ -38,6 +38,9 @@ export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export CKPT="${CKPT:?CKPT required — DoPFN-bb checkpoint path}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export DENSITY_DUMP="${DENSITY_DUMP:-1}"     # dopfn_bb reads DENSITY_DUMP env, default on here
+# EVAL_MAX_CONTEXT convention — mirrors cpfn1d/graph2d. dopfn_bb's script takes
+# --n-context instead of the env var, so we translate here.
+EVAL_MAX_CONTEXT="${EVAL_MAX_CONTEXT:-0}"
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
 
@@ -67,5 +70,6 @@ python -u "$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py" \
     --causalpfn  "$CAUSALPFN" \
     --checkpoint "$CKPT" \
     --dataset    "$DATASET" \
+    --n-context  "$EVAL_MAX_CONTEXT" \
     --out        "$OUT/summary.npz"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
