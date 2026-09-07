@@ -57,14 +57,14 @@ def _parse_args():
                          '  std_target          — pooled + shrink so σ_scaled = --std-target\n'
                          '  per_arm_std_target  — per-arm + shrink so σ_scaled = --std-target per arm\n'
                          '                        (recommended: keeps arm centering, adds outlier robustness)')
-    p.add_argument('--std-target', type=float, default=1.0,
+    p.add_argument('--std-target', type=float, default=3.0,
                     help='Only used with --std-mode {std_target, per_arm_std_target}. '
-                         'cpfn2d has bar-dist edges [-10, +10] and J=32 '
-                         '(bin_width=0.625), so σ must satisfy σ > 0.625 (else bulk '
-                         'collapses to one bin) AND 3σ < 10 (else tails clipped). '
-                         'Sensible range: 0.7-3.3. Default 1.0 matches CausalPFN '
-                         'training convention (σ_scaled ≈ 1). Do NOT reuse '
-                         'dopfn-bb\'s 0.3 — cpfn2d\'s wider head makes it inappropriate.')
+                         'Same recipe as dopfn-bb (y_scaled = (y-mean)*std_target/std). '
+                         'cpfn2d has edges [-10, +10] so std_target scales up 10× '
+                         'vs dopfn-bb to preserve the σ/edge_half ratio of 0.3 → '
+                         'default 3.0. Sensible range: 0.7 (min: σ > bin_width=0.625) '
+                         'to 3.3 (max: 3σ < 10). 1.0 recovers CausalPFN\'s training '
+                         'convention (equivalent to pooled).')
     p.add_argument('--compile', default='0', choices=['0', '1'],
                     help='torch.compile toggle (default 0 — cpfn2d has a compile bug).')
     p.add_argument('--skip-em', default='1', choices=['0', '1'],
