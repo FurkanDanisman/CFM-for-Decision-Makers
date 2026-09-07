@@ -22,7 +22,7 @@
 set -euo pipefail
 mkdir -p logs_graph2d_realcause
 
-REPO="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+REPO="${REPO:-/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers}"
 
 export UWYK="${UWYK:-$REPO/g4cfm}"
 export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
