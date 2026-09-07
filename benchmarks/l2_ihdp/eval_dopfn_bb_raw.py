@@ -316,6 +316,12 @@ def main():
     if args.backbone == 'dopfn_bb':
         model = DoPFNBackboneWith2DHead(dopfn_root=args.dopfn, K=J).eval()
         NUM_FEATURES = -1   # sentinel: no padding needed
+        # Move to GPU when available — huge speedup on CPS (context attention
+        # over ~14 000 rows was the bottleneck; CPU forward = ~78 s/realization,
+        # GPU forward is seconds).
+        _device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = model.to(_device)
+        print(f'[cfg] dopfn_bb model on device={_device}', flush=True)
     else:
         NUM_FEATURES = int(cfg['num_features'])
         model = InterventionalPFN(
@@ -469,10 +475,11 @@ def main():
             unscale_arr = lambda a: np.asarray(a, dtype=np.float64) * y_scale + y_center
         y_rng = 2.0 * y_scale  # legacy diagnostic only
 
-        X_ctx_t = torch.from_numpy(_pad(X_ctx, NUM_FEATURES)).unsqueeze(0)
-        T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32).reshape(-1, 1)).unsqueeze(0)
-        Y_ctx_t = torch.from_numpy(Y_ctx_s.reshape(-1, 1)).unsqueeze(0)
-        X_qry_t = torch.from_numpy(_pad(X_qry, NUM_FEATURES)).unsqueeze(0)
+        _mdev = next(model.parameters()).device
+        X_ctx_t = torch.from_numpy(_pad(X_ctx, NUM_FEATURES)).unsqueeze(0).to(_mdev)
+        T_ctx_t = torch.from_numpy(T_ctx.astype(np.float32).reshape(-1, 1)).unsqueeze(0).to(_mdev)
+        Y_ctx_t = torch.from_numpy(Y_ctx_s.reshape(-1, 1)).unsqueeze(0).to(_mdev)
+        X_qry_t = torch.from_numpy(_pad(X_qry, NUM_FEATURES)).unsqueeze(0).to(_mdev)
 
         with torch.no_grad():
             pred = model(X_ctx_t, T_ctx_t, Y_ctx_t, X_qry_t)['predictions'][0]
