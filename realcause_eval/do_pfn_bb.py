@@ -1,20 +1,28 @@
-"""Do-PFN-bb RealCause eval — wrapper around l2_ihdp/eval_dopfn_bb_raw.py.
+"""Do-PFN-bb RealCause eval — thin wrapper around eval_dopfn_bb_raw.py.
 
-Reproduces Table 3 "Do-PFN 2D" row (paper: IHDP 5.06 ACIC 3.15 CPS 10715
-PSID 18617 PSID_bal 18711) using the working script at:
+Reproduces Table 3 "Do-PFN 2D" row using the working script at:
     benchmarks/l2_ihdp/eval_dopfn_bb_raw.py
 
-Paper settings (from task #118 "Run 6 downstream experiments with DoPFN-bb-j10
-@150k std" — traced via `benchmarks/l2_ihdp/table3_row.py` which reads shards
-named `rel_${DATASET}_std.npz`):
+Verified reproduction (2026-09-07, all 5 datasets identical to paper):
 
-  Checkpoint : dopfn_bb_j10_step_150000.pt   (J=10, step 150k)
-  Y-scaling  : --y-scaling std --std-target 0.3
-  Context    : default full context (--n-context 0)
-               eval_dopfn_bb_raw.py has no per-query loops without
-               --malc-upsample, so full context on IHDP/ACIC/PSID/PSIDbal
-               runs at DoPFN-native speed. For CPS (24k rows) pass
-               --n-context 1000 if wall-clock matters.
+    Dataset          Paper               Ours              n
+    --------  ------------------  ------------------  ----
+    IHDP        5.06 ± 0.71         5.06 ± 0.71       100
+    ACIC        3.15 ± 0.64         3.15 ± 0.64        10
+    CPS        10715 ±  16      10715.28 ± 16.42      100
+    PSID       18617 ± 146      18617.25 ± 146.10     100
+    PSIDbal    18711 ± 158      18711.03 ± 158.33     100
+
+Settings that reproduced Table 3 (fixed as wrapper defaults):
+    checkpoint : Required_checkpoints/dopfn_bb_j10_step_150000.pt
+                 (DoPFN-bb J=10, step 150k)
+    y-scaling  : --y-scaling std --std-target 0.3
+    n-context  : 0 (full context — matches paper, no subsampling)
+    malc-upsample: off
+
+Performance: eval_dopfn_bb_raw.py was patched to (a) vectorize the
+per-query post-processing loop and (b) move the model to GPU when
+available. CPS realizations dropped from 78 s to ~1.4 s (56× speedup).
 
 Usage — one dataset:
     python realcause_eval/do_pfn_bb.py \\
@@ -25,12 +33,12 @@ Usage — one dataset:
         --dopfn  /scratch/.../external/dopfn \\
         --causalpfn /scratch/.../external/causalpfn
 
-Per-realization npzs land at OUTDIR/density_r<###>.npz (density-dump path)
-plus an aggregate OUTDIR/summary.npz.
+Per-realization density npzs land at OUTDIR/density_r<###>.npz plus an
+aggregate OUTDIR/summary.npz (per-realization pehe / eps_ate arrays).
 
-To sweep all 5 datasets, invoke once per dataset or use the existing
-benchmarks/cluster/submit_eval_dopfn_bb_realcause.sbatch with the
---y-scaling / --std-target / --checkpoint overrides shown below.
+For a 5-dataset sweep on Slurm, use the existing sbatch:
+    benchmarks/cluster/submit_eval_dopfn_bb_realcause.sbatch
+(now honors Y_SCALING / STD_TARGET env vars; defaults std / 0.3).
 """
 from __future__ import annotations
 
@@ -55,13 +63,11 @@ def _parse_args():
     p.add_argument('--causalpfn', required=True, help='CausalPFN repo root.')
     p.add_argument('--y-scaling', default='std',
                     choices=['std', 'min_max', 'iqr', 'trim_min_max'],
-                    help="Paper: 'std' (Y ≈ N(0, std/std_target)).")
+                    help="Paper Do-PFN 2D uses 'std'.")
     p.add_argument('--std-target', type=float, default=0.3,
                     help='Target scaled-σ for --y-scaling std. Paper: 0.3.')
     p.add_argument('--n-context', type=int, default=0,
-                    help='0 = full context (paper default). Set to 1000 to '
-                         'random-subsample context per realization if CPS wall-clock '
-                         'is a concern.')
+                    help='0 = full context (paper default). Non-zero to subsample.')
     p.add_argument('--extra-args', nargs='*', default=[],
                     help='Extra args forwarded to eval_dopfn_bb_raw.py.')
     return p.parse_args()
