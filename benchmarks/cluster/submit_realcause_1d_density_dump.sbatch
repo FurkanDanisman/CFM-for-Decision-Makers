@@ -5,7 +5,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=48G
+#SBATCH --mem=32G
 #SBATCH --array=0-14
 
 # 15-task array — 3 1D methods × 5 RealCause datasets, all with DENSITY_DUMP=1.
