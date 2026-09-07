@@ -530,13 +530,21 @@ def main():
                     'distribution than the stored PEHE row)',
                     '', header, sep]
 
+    import time
+    _t_all = time.time()
     for method in args.methods:
         method_dir = os.path.join(args.out_root, method)
         pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
         cells = [method]
         verify_cells = [method]
         for d in DATASETS:
+            _t0 = time.time()
+            print(f'[{time.strftime("%H:%M:%S")}] processing {method:8s} / {d:9s} ...',
+                  end='', flush=True)
             got = summarize_method_dataset(method_dir, d, pehe_key, err_key)
+            print(f' done in {time.time() - _t0:5.1f}s'
+                  + (f' (n={got["n"]})' if got is not None else ' (no data)'),
+                  flush=True)
             if got is None:
                 cells.append('—')
                 verify_cells.append('—')
