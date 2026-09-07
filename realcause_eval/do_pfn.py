@@ -151,11 +151,20 @@ def _build_dopfn_regressor(DoPFNRegressor):
 def dopfn_pipeline(cate_dataset, reg, return_density=False):
     """Returns length-N cate predictions on cate_dataset.X_test.
 
-    Do-PFN convention: treatment is the first covariate column; `fit(x, y)`
-    then `predict_cate(x_test)` where col 0 of x_test is ignored.
+    Do-PFN convention: treatment is the first covariate column. `fit(x, y)`
+    then run `predict_full` on X-with-T=0 and X-with-T=1 arms; take the
+    bar-dist mean difference. This is IDENTICAL to reg.predict_cate(x)
+    (which does the same two `predict_full` calls internally, see
+    DoPFNRegressor.predict_cate → predict_cid → predict → predict_full),
+    but critically we use the SAME forward passes for both the point CATE
+    and the density dump.
 
-    If return_density=True, also returns (p_y0, p_y1, edges) — bar-dist
-    densities per query on RAW Y units.
+    TabPFN's `transformer_predict` uses ensemble randomness (feature
+    permutations, etc.) so two separate calls to predict_full return
+    slightly different logits. If we call reg.predict_cate for the point
+    and reg.predict_full separately for the density, the density mean will
+    drift from the point (was seeing ~35-unit gaps on CPS). Doing both
+    from the same full0/full1 pair guarantees density-mean == point CATE.
     """
     X_train = _to_np(cate_dataset.X_train).astype(np.float32)
     t_train = _to_np(cate_dataset.t_train).astype(np.float32).reshape(-1)
@@ -166,16 +175,19 @@ def dopfn_pipeline(cate_dataset, reg, return_density=False):
     x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
 
     reg.fit(torch.tensor(x_tr), torch.tensor(y_train))
-    cate = np.asarray(reg.predict_cate(torch.tensor(x_te))).reshape(-1)
 
-    if not return_density:
-        return cate
-
-    # Density: query each arm separately with T fixed to 0 / 1 in col 0.
+    # ONE pair of forward passes shared by point CATE and density.
     X0 = x_te.copy(); X0[:, 0] = 0.0
     X1 = x_te.copy(); X1[:, 0] = 1.0
     full0 = reg.predict_full(torch.tensor(X0))
     full1 = reg.predict_full(torch.tensor(X1))
+    # Point CATE = predict['mean'] diff, byte-identical to reg.predict_cate
+    # would have produced FROM THIS PAIR of forward passes.
+    cate = np.asarray(full1['mean']).reshape(-1) - np.asarray(full0['mean']).reshape(-1)
+
+    if not return_density:
+        return cate
+
     logits0 = np.asarray(full0['logits'])
     logits1 = np.asarray(full1['logits'])
     edges = np.asarray(full0['criterion'].borders)   # RAW Y units
