@@ -179,9 +179,11 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
 
     results = {}
     _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
-    _dens_first_arm = None  # unpacked bar-dist parts for the primary anc tag
-    # Same ANC_MODE dispatch the graph2d eval uses, so a v6a_only run here
-    # produces the identical adjacency matrices and npz keys as the joint run.
+    # Which anc-tag's density to save (must match the tag whose ate_raw the
+    # aggregator compares against — default 'noanc' since that's what
+    # summarize's --uwyk-tag defaults to and what our reported point row uses).
+    _density_tag = os.environ.get('DENSITY_ANC_TAG', 'noanc')
+    _dens_saved = None
     K = int(w.bar_distribution.num_bars)  # for density unpack; safe to read here
     for mode, adj in H.build_mode_list(F, n_real):
         if _do_density:
@@ -198,8 +200,10 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
             p_y0 /= p_y0.sum(axis=-1, keepdims=True)
             p_y1 = np.exp(w_logits_1 - w_logits_1.max(axis=-1, keepdims=True))
             p_y1 /= p_y1.sum(axis=-1, keepdims=True)
-            if _dens_first_arm is None:
-                _dens_first_arm = (
+            # Capture the density from the CORRECT anc-tag iteration so its
+            # mean lines up with ate_raw_{tag} in the same NPZ.
+            if mode == _density_tag:
+                _dens_saved = (
                     p_y0.astype(np.float32), p_y1.astype(np.float32),
                     sL_raw_0.astype(np.float32), sR_raw_0.astype(np.float32),
                     sL_raw_1.astype(np.float32), sR_raw_1.astype(np.float32),
@@ -218,7 +222,7 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
     out = {'dataset': DATASET, 'realization': realization, 'true_ate': true_ate,
            'n_queries': int(true_cate.size), 'n_context': int(X_tr_raw.shape[0]),
            **results}
-    if _do_density and _dens_first_arm is not None:
+    if _do_density and _dens_saved is not None:
         # UWYK BarDistribution: K bars + left tail (half-Gaussian) + right
         # tail (half-Gaussian). Save all pieces so the aggregator can
         # reproduce w.bar_distribution.mean(pred) exactly.
@@ -227,7 +231,7 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
         base_s_left = float(bd.base_s_left.detach().cpu().numpy())
         base_s_right = float(bd.base_s_right.detach().cpu().numpy())
         scale_floor = float(bd.scale_floor)
-        p_y0, p_y1, sL_raw_0, sR_raw_0, sL_raw_1, sR_raw_1 = _dens_first_arm
+        p_y0, p_y1, sL_raw_0, sR_raw_0, sL_raw_1, sR_raw_1 = _dens_saved
         out.update({
             'edges':       edges,                  # (K+1,) — bar edges in scaled Y
             'p_y0_scaled': p_y0,                   # (N_q, K+2) — [pL, pBars, pR]
@@ -241,6 +245,7 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
             'num_bars':    np.int32(K),
             'y_shift':     np.float32(ymin + yrange / 2.0),
             'y_scale':     np.float32(yrange / 2.0),
+            'density_anc_tag': str(_density_tag),  # which mode's density this is
             'true_cate_per_query': true_cate.astype(np.float32),
         })
     return out
