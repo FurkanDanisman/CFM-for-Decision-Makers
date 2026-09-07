@@ -31,10 +31,10 @@
 set -euo pipefail
 mkdir -p logs_uwyk1d_realcause
 
-REPO="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+REPO="${REPO:-/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers}"
 
-export UWYK="$REPO/g4cfm"
-export CAUSALPFN="/home/lukez/projects/aip-rgrosse/lukez/CausalPFN"
+export UWYK="${UWYK:-$REPO/g4cfm}"
+export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
 
 # UWYK's full-conditioning checkpoint (the anc/noanc model from their Table 1).
 # Required_checkpoints/uwyk_reproduce_best_model.pt is a copy of the same file;
@@ -78,7 +78,7 @@ esac
 export T_ENCODING DATASET
 export OUT="$OUT_ROOT/$T_ENCODING/$DATASET"
 
-source "$REPO/.venv/bin/activate"
+source "${VENV_ACTIVATE:-$REPO/.venv/bin/activate}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
