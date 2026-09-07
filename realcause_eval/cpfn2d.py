@@ -49,8 +49,15 @@ def _parse_args():
                     help='Subsample seed (only used if --eval-max-context > 0). '
                          'Default: 1.')
     p.add_argument('--std-mode', default='per_arm',
-                    choices=['pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor'],
-                    help='Y standardization for eval. Default: per_arm.')
+                    choices=['pooled', 'per_arm', 'log', 'log_per_arm',
+                             'log_winsor', 'std_target'],
+                    help='Y standardization for eval. Default: per_arm. '
+                         'std_target = DoPFN-bb-style (σ = --std-target).')
+    p.add_argument('--std-target', type=float, default=0.15,
+                    help='Only used with --std-mode std_target. Scaled σ. For '
+                         'J=32 (bin_width=0.0625), σ ∈ [0.1, 0.3] resolves '
+                         'signal across bins with ±3σ inside [-1, +1]. '
+                         'Default: 0.15.')
     p.add_argument('--compile', default='0', choices=['0', '1'],
                     help='torch.compile toggle (default 0 — cpfn2d has a compile bug).')
     p.add_argument('--skip-em', default='1', choices=['0', '1'],
@@ -73,6 +80,7 @@ def main():
         'EVAL_MAX_CONTEXT':  str(args.eval_max_context) if args.eval_max_context > 0 else '',
         'EVAL_CONTEXT_SEED': str(args.eval_context_seed),
         'STD_MODE':          args.std_mode,
+        'STD_TARGET':        str(args.std_target),
         'COMPILE':           args.compile,
         'SKIP_EM':           args.skip_em,
         'DENSITY_DUMP':      args.density_dump,

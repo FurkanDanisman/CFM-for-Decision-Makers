@@ -45,12 +45,19 @@ MAX_REAL          = os.environ.get('MAX_REAL', '')
 Y_STD_MODE_EVAL   = os.environ.get('Y_STD_MODE_EVAL', 'pooled').lower()
 STD_MODE          = os.environ.get('STD_MODE', '').lower()
 # STD_MODE takes precedence over Y_STD_MODE_EVAL when set.
-# Valid: '' (use Y_STD_MODE_EVAL), pooled, per_arm, log, log_per_arm, log_winsor
+# Valid: '' (use Y_STD_MODE_EVAL), pooled, per_arm, log, log_per_arm, log_winsor,
+# std_target (Y=(y-mean)*STD_TARGET/std — mirrors DoPFN-bb's std recipe).
 if STD_MODE:
-    assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor')
+    assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor',
+                        'std_target')
     Y_STD_MODE_EVAL = STD_MODE
 else:
     assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
+
+# Only used when STD_MODE=std_target. σ(y_scaled) = STD_TARGET regardless of
+# outliers; for J=32 (bin_width=0.0625), 0.15 gives bulk over ~2.5 bins with
+# ±3σ = ±0.45 inside [-1, +1]. Match DoPFN-bb convention with 0.3.
+STD_TARGET = float(os.environ.get('STD_TARGET', '0.15'))
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
@@ -213,6 +220,16 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
         y_lo = Y_ctx_r.amin(dim=1, keepdim=True); y_hi = Y_ctx_r.amax(dim=1, keepdim=True)
         sh = 0.5 * (y_lo + y_hi); sc = (0.5 * (y_hi - y_lo)).clamp(min=1e-6)
         y_std = (Y_ctx_r - sh) / sc
+        stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item()),
+                 'log_y_min': y_min}
+    elif y_std_mode_eval == 'std_target':
+        # DoPFN-bb-style: y_scaled = (y - mean) * STD_TARGET / std → σ(y_scaled) = STD_TARGET.
+        # Un-scale is y_raw = y_scaled * (std / STD_TARGET) + mean → cate = cate_scaled * (std / STD_TARGET).
+        # cate un-scale in the caller does (cate_scaled) * scale, so put std/STD_TARGET in the scale slot.
+        sh = Y_work.mean(dim=1, keepdim=True)
+        y_std_val = Y_work.std(dim=1, keepdim=True).clamp(min=1e-6)
+        sc = y_std_val / max(STD_TARGET, 1e-6)   # this is what y_raw = y_scaled * sc + sh reverses
+        y_std = (Y_work - sh) / sc
         stats = {'mode': 'pooled', 'shift': float(sh.item()), 'scale': float(sc.item()),
                  'log_y_min': y_min}
     else:

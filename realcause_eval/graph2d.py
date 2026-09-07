@@ -64,6 +64,14 @@ def _parse_args():
                     help='Which anc tag mirrors to unsuffixed pehe_raw/err_raw '
                          'keys. Default: same as --anc-mode variant tag '
                          "('v3b' for v3b_only, 'noanc' for noanc, etc.).")
+    p.add_argument('--y-scaling', default='minmax', choices=['minmax', 'std'],
+                    help='Y scaling scheme. minmax (default) pins ymin/ymax of '
+                         'train Y to ±1. std = DoPFN-bb-style (σ(y_scaled) = '
+                         '--std-target, robust to outliers).')
+    p.add_argument('--std-target', type=float, default=0.3,
+                    help='Only used with --y-scaling std. Scaled σ. For J=32 '
+                         '(bin_width=0.0625), σ ∈ [0.1, 0.3] resolves signal '
+                         'across bins with ±3σ inside [-1,+1]. Default: 0.3.')
     return p.parse_args()
 
 
@@ -98,6 +106,8 @@ def main():
         'ANC_MODE':             args.anc_mode,
         'DENSITY_PRIMARY_MODE': primary,
         'X_CLIP_QUANTILE':      str(args.x_clip_quantile) if args.x_clip_quantile > 0 else '',
+        'Y_SCALING':            args.y_scaling,
+        'STD_TARGET':           str(args.std_target),
     })
 
     script = os.path.join(args.repo, 'benchmarks', 'eval_graph2d',
