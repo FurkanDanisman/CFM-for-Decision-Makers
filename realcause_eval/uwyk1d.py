@@ -17,6 +17,9 @@ Defaults:
     T_ENCODING         = target      (what UWYK's own dofm_no_clustering.py does)
     EVAL_MAX_CONTEXT   = 1000        (matches UWYK's training regime)
     EVAL_CONTEXT_SEED  = 43
+    X_CLIP_QUANTILE    = 0.99        (matches UWYK's best_model_config.yaml
+                                      remove_outliers=true, outlier_quantile=0.99;
+                                      the checkpoint expects clipped X)
 
 Usage:
     python realcause_eval/uwyk1d.py \\
@@ -58,6 +61,10 @@ def _parse_args():
                     help='Cap on training context. Default: 1000 (matches UWYK training).')
     p.add_argument('--eval-context-seed', type=int, default=43,
                     help='Deterministic subsampling seed. Default: 43.')
+    p.add_argument('--x-clip-quantile', type=float, default=0.99,
+                    help='Per-column 99th-quantile clip on X before standardization. '
+                         'Matches UWYK config remove_outliers=true, outlier_quantile=0.99. '
+                         'Default: 0.99. Pass 0 to disable.')
     return p.parse_args()
 
 
@@ -89,6 +96,7 @@ def main():
         'T_ENCODING':        args.t_encoding,
         'EVAL_MAX_CONTEXT':  str(args.eval_max_context),
         'EVAL_CONTEXT_SEED': str(args.eval_context_seed),
+        'X_CLIP_QUANTILE':   str(args.x_clip_quantile) if args.x_clip_quantile > 0 else '',
         'PYTHONUNBUFFERED':  '1',
     })
     shim = os.path.join(args.repo, 'benchmarks', 'uwyk_table1', 'shims')
@@ -100,7 +108,8 @@ def main():
     print(f'[uwyk1d] dataset={args.dataset}  anc_mode={args.anc_mode}  '
           f'T_encoding={args.t_encoding}  '
           f'eval_max_context={args.eval_max_context}  '
-          f'seed={args.eval_context_seed}', flush=True)
+          f'seed={args.eval_context_seed}  '
+          f'x_clip_quantile={args.x_clip_quantile}', flush=True)
 
     subprocess.run([sys.executable, '-u', script], env=env, check=True)
 
