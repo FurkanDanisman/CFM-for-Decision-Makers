@@ -89,10 +89,15 @@ _prev_cwd = os.getcwd()
 os.chdir(DOPFN_ROOT)
 try:
     from scripts.transformer_prediction_interface.base import DoPFNRegressor  # noqa: E402
-    # DoPFNRegressor defaults to device='cpu' — force CUDA when available so
-    # inference runs on the requested GPU instead of falling back to CPU.
+    # DoPFNRegressor defaults to device='cpu'. Some versions of the upstream
+    # accept `device=` in __init__, some only expose it as an attribute. Try
+    # kwarg first, fall back to setattr so the model is moved on first fit().
     _device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = DoPFNRegressor(device=_device)
+    try:
+        model = DoPFNRegressor(device=_device)
+    except TypeError:
+        model = DoPFNRegressor()
+        model.device = _device
     print(f'[dopfn_native] instantiated on device={_device}', flush=True)
 finally:
     os.chdir(_prev_cwd)
