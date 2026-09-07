@@ -2,7 +2,7 @@
 #SBATCH --job-name=dopfn-bb-rc
 #SBATCH --output=logs_dopfn_bb_rc/eval_%A_%a.out
 #SBATCH --error=logs_dopfn_bb_rc/eval_%A_%a.err
-#SBATCH --time=03:00:00
+#SBATCH --time=02:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
@@ -38,6 +38,8 @@ export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export CKPT="${CKPT:?CKPT required — DoPFN-bb checkpoint path}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export DENSITY_DUMP="${DENSITY_DUMP:-1}"     # dopfn_bb reads DENSITY_DUMP env, default on here
+Y_SCALING="${Y_SCALING:-std}"                # paper Do-PFN 2D uses std
+STD_TARGET="${STD_TARGET:-0.3}"              # paper Do-PFN 2D uses std_target=0.3
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
 
@@ -67,5 +69,7 @@ python -u "$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py" \
     --causalpfn  "$CAUSALPFN" \
     --checkpoint "$CKPT" \
     --dataset    "$DATASET" \
-    --out        "$OUT/summary.npz"
+    --out        "$OUT/summary.npz" \
+    --y-scaling  "$Y_SCALING" \
+    --std-target "$STD_TARGET"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
