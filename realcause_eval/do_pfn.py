@@ -99,8 +99,22 @@ def load_realization(dname: str, r: int):
     return cd, ad
 
 
+def _build_dopfn_regressor(DoPFNRegressor):
+    """Instantiate DoPFNRegressor ONCE and pin to GPU. Reused across all
+    realizations — otherwise DoPFN reloads its transformer checkpoint from
+    disk on every realization, which is what made CPS/PSID crawl."""
+    _device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    try:
+        reg = DoPFNRegressor(device=_device)
+    except TypeError:
+        reg = DoPFNRegressor()
+        reg.device = _device
+    print(f'[do_pfn] instantiated DoPFNRegressor on device={_device}', flush=True)
+    return reg
+
+
 # ── the pipeline (verbatim from methods/dopfn.py) ----------------------------
-def dopfn_pipeline(cate_dataset, DoPFNRegressor):
+def dopfn_pipeline(cate_dataset, reg):
     """Returns length-N cate predictions on cate_dataset.X_test.
 
     Do-PFN convention: treatment is the first covariate column; `fit(x, y)`
@@ -114,14 +128,6 @@ def dopfn_pipeline(cate_dataset, DoPFNRegressor):
     x_tr = np.concatenate([t_train[:, None], X_train], axis=1)
     x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
 
-    # DoPFNRegressor defaults to CPU; force GPU when available. Some upstream
-    # versions take device= in __init__, others expose it only as an attribute.
-    _device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    try:
-        reg = DoPFNRegressor(device=_device)
-    except TypeError:
-        reg = DoPFNRegressor()
-        reg.device = _device
     reg.fit(torch.tensor(x_tr), torch.tensor(y_train))
     cate = reg.predict_cate(torch.tensor(x_te))
     return np.asarray(cate).reshape(-1)
@@ -182,6 +188,15 @@ def main():
     print(f'[do_pfn] {args.dataset}  n_reals={len(real_indices)}  '
           f'outdir={args.outdir}', flush=True)
 
+    # Build DoPFNRegressor ONCE (cwd must be dopfn root — it loads artifacts
+    # by relative path). Reused across all realizations so we don't reload
+    # the checkpoint 100 times.
+    os.chdir(args.dopfn)
+    try:
+        reg = _build_dopfn_regressor(DoPFNRegressor)
+    finally:
+        os.chdir(_prev_cwd)
+
     t0 = time.time()
     for r in real_indices:
         cd, ad = load_realization(args.dataset, r)
@@ -189,7 +204,7 @@ def main():
 
         os.chdir(args.dopfn)
         try:
-            cate_pred = dopfn_pipeline(cd, DoPFNRegressor)
+            cate_pred = dopfn_pipeline(cd, reg)
         finally:
             os.chdir(_prev_cwd)
 
