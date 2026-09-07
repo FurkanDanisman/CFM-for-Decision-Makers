@@ -1,29 +1,28 @@
-"""Compute 95% CI coverage + interval length for CATE from density-dump npzs.
+"""Compute 95% CATE-interval coverage + length via full p(τ).
 
-For each per-realization npz under a `<model>/<dataset>/` dir (or the flatter
-layout used by some sbatches) this script:
+For each per-realization density-dump npz this script:
 
-  1. Reads edges + p_y0_scaled + p_y1_scaled + y_shift + y_scale.
-  2. Per query, inverts the CDF at α=0.025 and 1-α=0.975 (linear-interp on the
-     cumsum) → (L0, U0) and (L1, U1) in SCALED Y space.
-  3. Un-scales to RAW Y with y_raw = y_scaled * y_scale + y_shift.
-  4. Minkowski-sum CATE interval: [L1 - U0, U1 - L0].
-     - coverage = 1[L1-U0 <= true_cate <= U1-L0]
-     - length   = (U1-L0) - (L1-U0)
-  5. For 2D models with `p_joint_scaled` (N, J, J): also computes DIRECT
-     p(τ) via diagonal projection → percentile → CATE interval.
+  1. Reads edges + p_y0_scaled + p_y1_scaled + y_shift + y_scale +
+     true_cate_per_query.  If p_joint_scaled is also present the model is
+     treated as 2D; otherwise 1D (independence assumption).
+  2. Builds p(τ) per query:
+       - 2D: diagonal projection of the model's joint p(Y0, Y1) → p(τ).
+       - 1D: independence, p_joint = outer(p_y0, p_y1), then diagonal projection.
+  3. Extracts the 2.5% / 97.5% percentiles of p(τ) → CATE interval in scaled
+     τ units. Un-scales via τ_raw = τ_scaled * y_scale (τ has no shift term).
+  4. Per query: covered = 1[true_cate ∈ interval], length = interval width.
+  5. Aggregates per realization (mean) and across realizations (mean ± SE).
 
-Aggregation:
-  - Per realization: mean coverage rate, mean interval length.
-  - Per dataset: mean ± SE across realizations for both metrics.
+Assumes shared bin edges for both arms (true for UWYK, DoPFN-bb, graph2d).
+DoPFN-native uses its own criterion.borders with y_shift=0/y_scale=1, so
+the same code path works — just no un-scaling.
 
 Usage:
     python compute_ci95_coverage.py \
         --results-root /scratch/.../results_ci95 \
-        --out          /scratch/.../ci95_summary.csv
-
-`--results-root` should contain one subdir per (model, dataset) pair (or
-per-model subdir with per-dataset children). See --pattern to control glob.
+        --pattern '{model}/{dataset}/*.npz' \
+        --models uwyk dopfn_native dopfn_bb graph2d \
+        --out /scratch/.../ci95_ptau_summary.csv
 """
 from __future__ import annotations
 
@@ -31,31 +30,87 @@ import argparse
 import glob
 import os
 import sys
-from collections import defaultdict
 
 import numpy as np
 
 
-# ─── Per-query intervals from a histogram ────────────────────────────────────
-def interval_from_hist(edges: np.ndarray, p: np.ndarray, level: float = 0.95):
-    """Inverse-CDF interval per row of `p` (histogram probabilities).
+# ─── p(τ) via diagonal projection of a joint p(Y0, Y1) ───────────────────────
+def p_tau_from_joint(p_joint: np.ndarray, edges: np.ndarray):
+    """p_joint: (J, J) with axes (Y0-bin, Y1-bin).  edges: (J+1,) shared.
 
-    edges : (K+1,) bin edges (float32/float64)
-    p     : (N, K)  bin probabilities (assumed non-negative, roughly sum to 1)
-    level : coverage level (0.95 → 2.5th / 97.5th pct)
-
-    Returns
-    -------
-    L, U : (N,) each — lower / upper bin-edge coordinates.
+    Returns (tau_edges: (2J,), p_tau: (2J-1,)) — uniform-width bins of dy each.
     """
+    J = p_joint.shape[0]
+    dy = float(edges[1] - edges[0])
+    K = 2 * J - 1
+    p_tau = np.zeros(K, dtype=np.float64)
+    # k = i1 - i0 shifted so k index in [0, 2J-2]; k=J-1 is the central τ=0 bin.
+    for k_idx in range(K):
+        k = k_idx - (J - 1)                     # i1 - i0
+        i0_min = max(0, -k)
+        i0_max = min(J, J - k)
+        for i0 in range(i0_min, i0_max):
+            i1 = i0 + k
+            p_tau[k_idx] += p_joint[i0, i1]
+    # τ centers = (i1 - i0) * dy; edges = center ± dy/2.
+    tau_centers = np.arange(-(J - 1), J) * dy
+    tau_edges = np.concatenate([
+        [tau_centers[0] - dy / 2.0],
+        (tau_centers[:-1] + tau_centers[1:]) / 2.0,
+        [tau_centers[-1] + dy / 2.0],
+    ]).astype(np.float64)
+    return tau_edges, p_tau
+
+
+def p_tau_batch(p_y0: np.ndarray, p_y1: np.ndarray,
+                 edges: np.ndarray, p_joint: np.ndarray | None):
+    """Compute p(τ) for a batch of queries.
+
+    p_y0, p_y1 : (N, J)
+    edges      : (J+1,)
+    p_joint    : (N, J, J) or None
+        If None → 1D independence: joint = outer(p_y0, p_y1).
+        If given → 2D direct: use model's joint.
+
+    Returns (tau_edges: (2J,), p_tau_batch: (N, 2J-1)).
+    """
+    N, J = p_y0.shape
+    dy = float(edges[1] - edges[0])
+    K = 2 * J - 1
+    p_tau_all = np.zeros((N, K), dtype=np.float64)
+
+    if p_joint is None:
+        # Independence — outer product per query.
+        for i0 in range(J):
+            for i1 in range(J):
+                k_idx = (i1 - i0) + (J - 1)
+                p_tau_all[:, k_idx] += p_y0[:, i0] * p_y1[:, i1]
+    else:
+        for i0 in range(J):
+            for i1 in range(J):
+                k_idx = (i1 - i0) + (J - 1)
+                p_tau_all[:, k_idx] += p_joint[:, i0, i1]
+
+    tau_centers = np.arange(-(J - 1), J) * dy
+    tau_edges = np.concatenate([
+        [tau_centers[0] - dy / 2.0],
+        (tau_centers[:-1] + tau_centers[1:]) / 2.0,
+        [tau_centers[-1] + dy / 2.0],
+    ]).astype(np.float64)
+    return tau_edges, p_tau_all
+
+
+# ─── Per-query inverse-CDF interval from a batch of histograms ───────────────
+def interval_from_hist_batch(edges: np.ndarray, p: np.ndarray,
+                              level: float = 0.95):
+    """edges: (K+1,), p: (N, K).  Returns L, U : (N,) each."""
     alpha = 0.5 * (1.0 - level)
     p = np.clip(p.astype(np.float64), 0.0, None)
     row_sums = p.sum(axis=1, keepdims=True)
     row_sums = np.where(row_sums <= 0, 1.0, row_sums)
     p = p / row_sums
-    cdf = np.cumsum(p, axis=1)                                    # (N, K)
+    cdf = np.cumsum(p, axis=1)
     cdf = np.concatenate([np.zeros((cdf.shape[0], 1)), cdf], axis=1)  # (N, K+1)
-    # np.interp is 1D; loop rows.
     N = p.shape[0]
     L = np.empty(N, dtype=np.float64)
     U = np.empty(N, dtype=np.float64)
@@ -65,107 +120,53 @@ def interval_from_hist(edges: np.ndarray, p: np.ndarray, level: float = 0.95):
     return L, U
 
 
-def unscale(y_scaled: np.ndarray, y_shift: float, y_scale: float) -> np.ndarray:
-    return y_scaled * y_scale + y_shift
-
-
-# ─── Direct p(τ) from a 2D joint (diagonal projection) ───────────────────────
-def p_tau_from_joint(p_joint: np.ndarray, edges: np.ndarray):
-    """Diagonal-integrate p_joint to get p(τ).
-
-    p_joint : (N, J, J) with axes (Y0-bin, Y1-bin).
-    edges   : (J+1,) shared for both axes.
-
-    Returns
-    -------
-    tau_edges : (2J-1,) bin edges for τ = Y1 - Y0. Uniform spacing.
-    p_tau     : (N, 2J-2) probabilities per τ-bin.
-    """
-    N, J, _ = p_joint.shape
-    # τ-index k = i1 - i0, ranging from -(J-1) to +(J-1). We use bin centers
-    # of Y0 and Y1 to define τ-centers ≈ i1 - i0 in bin-index space, then
-    # convert to Y units via the shared bin width.
-    dy = float(edges[1] - edges[0])
-    # Sum along diagonals i1 - i0 = k.
-    K = 2 * J - 1                       # number of τ centers
-    tau_centers = np.arange(-(J - 1), J) * dy   # (K,)
-    tau_edges = np.concatenate([
-        [tau_centers[0] - dy / 2.0],
-        (tau_centers[:-1] + tau_centers[1:]) / 2.0,
-        [tau_centers[-1] + dy / 2.0],
-    ]).astype(np.float64)              # (K+1,) — uniform spacing dy
-    p_tau = np.zeros((N, K), dtype=np.float64)
-    for k in range(K):
-        i0_min = max(0, -(k - (J - 1)))
-        i0_max = min(J, J - (k - (J - 1)))
-        for i0 in range(i0_min, i0_max):
-            i1 = i0 + (k - (J - 1))
-            p_tau[:, k] += p_joint[:, i0, i1]
-    return tau_edges, p_tau
-
-
-# ─── Main per-realization computation ────────────────────────────────────────
-def process_npz(path: str, direct_tau: bool = False):
-    """Return dict of per-realization aggregate metrics, or None if not usable."""
+# ─── Per-realization computation ─────────────────────────────────────────────
+def process_npz(path: str):
     try:
         with np.load(path) as z:
             keys = set(z.files)
             if not {'edges', 'p_y0_scaled', 'p_y1_scaled', 'true_cate_per_query'} <= keys:
                 return None
-            edges   = z['edges'].astype(np.float64)
-            p_y0    = z['p_y0_scaled'].astype(np.float64)
-            p_y1    = z['p_y1_scaled'].astype(np.float64)
-            y_shift = float(z['y_shift'])
-            y_scale = float(z['y_scale'])
+            edges     = z['edges'].astype(np.float64)
+            p_y0      = z['p_y0_scaled'].astype(np.float64)
+            p_y1      = z['p_y1_scaled'].astype(np.float64)
+            y_shift   = float(z['y_shift'])
+            y_scale   = float(z['y_scale'])
             true_cate = z['true_cate_per_query'].astype(np.float64)
-            p_joint = z['p_joint_scaled'].astype(np.float64) if 'p_joint_scaled' in keys else None
+            p_joint   = z['p_joint_scaled'].astype(np.float64) if 'p_joint_scaled' in keys else None
     except Exception as e:
         print(f'[warn] {path}: {type(e).__name__}: {e}', file=sys.stderr)
         return None
 
-    L0s, U0s = interval_from_hist(edges, p_y0)
-    L1s, U1s = interval_from_hist(edges, p_y1)
-    L0 = unscale(L0s, y_shift, y_scale)
-    U0 = unscale(U0s, y_shift, y_scale)
-    L1 = unscale(L1s, y_shift, y_scale)
-    U1 = unscale(U1s, y_shift, y_scale)
-
-    # Minkowski-sum CATE interval
-    cate_lo = L1 - U0
-    cate_hi = U1 - L0
-    covered = ((cate_lo <= true_cate) & (true_cate <= cate_hi)).astype(np.float64)
-    length  = (cate_hi - cate_lo)
+    tau_edges, p_tau = p_tau_batch(p_y0, p_y1, edges, p_joint=p_joint)
+    L_scaled, U_scaled = interval_from_hist_batch(tau_edges, p_tau, level=0.95)
+    # τ has no shift term (mean of Y1 - Y0 cancels y_shift). Un-scale by y_scale only.
+    L = L_scaled * y_scale
+    U = U_scaled * y_scale
+    covered = ((L <= true_cate) & (true_cate <= U)).astype(np.float64)
+    length  = U - L
 
     result = {
-        'n_queries': int(true_cate.size),
-        'coverage_mink':    float(covered.mean()),
-        'length_mink_mean': float(length.mean()),
+        'n_queries':      int(true_cate.size),
+        'is_2d':          bool(p_joint is not None),
+        'coverage':       float(covered.mean()),
+        'length_mean':    float(length.mean()),
+        'true_cate_mean': float(true_cate.mean()),
+        'true_cate_std':  float(true_cate.std()),
     }
-
-    if direct_tau and p_joint is not None:
-        tau_edges, p_tau_arr = p_tau_from_joint(p_joint, edges)
-        Ltau_s, Utau_s = interval_from_hist(tau_edges, p_tau_arr)
-        # τ scaling: dy_raw = dy_scaled * y_scale. τ has no shift.
-        cate_lo_d = Ltau_s * y_scale
-        cate_hi_d = Utau_s * y_scale
-        covered_d = ((cate_lo_d <= true_cate) & (true_cate <= cate_hi_d)).astype(np.float64)
-        length_d  = (cate_hi_d - cate_lo_d)
-        result['coverage_direct']    = float(covered_d.mean())
-        result['length_direct_mean'] = float(length_d.mean())
-
     return result
 
 
-# ─── Aggregation over realizations ───────────────────────────────────────────
+# ─── Aggregation across realizations ─────────────────────────────────────────
 def aggregate_dataset(per_real_rows: list):
     if not per_real_rows:
         return None
-    keys = ('coverage_mink', 'length_mink_mean', 'coverage_direct', 'length_direct_mean')
-    out = {'n_realizations': len(per_real_rows)}
-    for k in keys:
-        vals = np.array([r[k] for r in per_real_rows if k in r], dtype=np.float64)
-        if vals.size == 0:
-            continue
+    out = {
+        'n_realizations': len(per_real_rows),
+        'model_type':     '2D' if any(r['is_2d'] for r in per_real_rows) else '1D',
+    }
+    for k in ('coverage', 'length_mean'):
+        vals = np.array([r[k] for r in per_real_rows], dtype=np.float64)
         out[k + '_mean'] = float(vals.mean())
         out[k + '_se']   = float(vals.std(ddof=1) / np.sqrt(vals.size)) if vals.size > 1 else 0.0
     return out
@@ -174,18 +175,13 @@ def aggregate_dataset(per_real_rows: list):
 # ─── CLI ─────────────────────────────────────────────────────────────────────
 def _parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument('--results-root', required=True,
-                   help='Root dir with model×dataset subtrees. --pattern controls layout.')
+    p.add_argument('--results-root', required=True)
     p.add_argument('--pattern', default='{model}/{dataset}/*.npz',
-                   help='Glob pattern with {model} {dataset} placeholders. '
-                        'Default matches OUT_ROOT/<model>/<dataset>/*.npz.')
+                   help='Glob with {model} and {dataset} placeholders.')
     p.add_argument('--models', nargs='+', required=True,
-                   help='Model subdirs to scan (e.g. cpfn1d cpfn2d graph2d uwyk).')
+                   help='Model subdir names to scan.')
     p.add_argument('--datasets', nargs='+',
                    default=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'])
-    p.add_argument('--direct-tau', action='store_true', default=True,
-                   help='Also compute the direct p(τ) interval for 2D models '
-                        '(uses p_joint_scaled if present).')
     p.add_argument('--out', required=True, help='CSV output path.')
     return p.parse_args()
 
@@ -198,39 +194,35 @@ def main():
         for dataset in args.datasets:
             glob_pat = os.path.join(
                 args.results_root,
-                args.pattern.format(model=model, dataset=dataset)
+                args.pattern.format(model=model, dataset=dataset),
             )
             paths = sorted(glob.glob(glob_pat))
             if not paths:
-                print(f'[skip] {model:10s} {dataset:10s} no npzs matched {glob_pat}',
+                print(f'[skip] {model:14s} {dataset:10s} no npzs matched {glob_pat}',
                       file=sys.stderr)
                 continue
             per_real = []
             for p in paths:
-                r = process_npz(p, direct_tau=args.direct_tau)
+                r = process_npz(p)
                 if r is not None:
                     per_real.append(r)
             agg = aggregate_dataset(per_real)
             if agg is None:
-                print(f'[skip] {model:10s} {dataset:10s} no usable npzs (missing keys?)',
+                print(f'[skip] {model:14s} {dataset:10s} no usable npzs (missing keys?)',
                       file=sys.stderr)
                 continue
             rows_out.append({'model': model, 'dataset': dataset, **agg})
-            summary = (f'coverage={agg.get("coverage_mink_mean", float("nan")):.3f} '
-                       f'length={agg.get("length_mink_mean_mean", float("nan")):.3f}')
-            if 'coverage_direct_mean' in agg:
-                summary += (f'  |  direct: coverage={agg["coverage_direct_mean"]:.3f} '
-                            f'length={agg["length_direct_mean_mean"]:.3f}')
-            print(f'{model:10s} {dataset:10s} R={agg["n_realizations"]:4d}  {summary}',
+            print(f'{model:14s} {dataset:10s} type={agg["model_type"]}  '
+                  f'R={agg["n_realizations"]:4d}  '
+                  f'coverage={agg["coverage_mean"]:.3f}±{agg["coverage_se"]:.3f}  '
+                  f'length={agg["length_mean_mean"]:.3f}±{agg["length_mean_se"]:.3f}',
                   flush=True)
 
     if not rows_out:
-        print('[error] no rows to write.', file=sys.stderr)
-        sys.exit(1)
+        print('[error] no rows.', file=sys.stderr); sys.exit(1)
 
-    # Write CSV.
     all_cols = sorted({k for r in rows_out for k in r.keys()},
-                       key=lambda k: (k not in ('model', 'dataset'), k))
+                       key=lambda k: (k not in ('model', 'dataset', 'model_type'), k))
     os.makedirs(os.path.dirname(args.out) or '.', exist_ok=True)
     with open(args.out, 'w') as f:
         f.write(','.join(all_cols) + '\n')
