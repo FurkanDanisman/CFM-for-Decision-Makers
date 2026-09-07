@@ -9,12 +9,10 @@ Reads the outputs of submit_realcause_all_methods.sbatch — one directory per
     dopfnbb  : $OUT_ROOT/dopfnbb/<D>/summary.npz        keys: pehe[], eps_ate[]
     fn_50    : $OUT_ROOT/fn_50/<D>/rc_all_<D>/<pkl>     keys: pehe, ate_rel_err
     graph2d  : $OUT_ROOT/graph2d/<D>/<D>_r<###>.npz     keys: pehe_raw_v3b/_noanc, err_raw_v3b/_noanc
-    uwyk     : $OUT_ROOT/uwyk/<D>/<model>_<D>_<r>       (pkl, from UWYK's own dofm scripts — paper-exact)
     uwyk1d   : $OUT_ROOT/uwyk1d/<D>/<D>_r<###>.npz      keys: pehe_raw_v3b/_noanc, err_raw_v3b/_noanc
 
-graph2d produces TWO rows (noanc + v3b/"full") from one NPZ. uwyk (own scripts)
-gives the noanc row; uwyk1d (harness) gives the v3b row. Final table has 9 rows
-× 5 columns, each cell shows
+graph2d and uwyk1d each produce TWO rows (noanc + v3b/"full") from one NPZ.
+Final table has 9 rows × 5 columns, each cell shows
 
     √PEHE mean ± SE
     ε_ATE mean ± SE
@@ -44,7 +42,7 @@ ROW_SPEC = (
     ('fn_50',        'fn_50',   'pkl_fn50'),
     ('graph2d noanc','graph2d', 'npz_pehe_raw_noanc'),
     ('graph2d v3b',  'graph2d', 'npz_pehe_raw_v3b'),
-    ('uwyk noanc',   'uwyk',    'pkl_uwyk'),
+    ('uwyk noanc',   'uwyk1d',  'npz_pehe_raw_noanc'),
     ('uwyk v3b',     'uwyk1d',  'npz_pehe_raw_v3b'),
 )
 
