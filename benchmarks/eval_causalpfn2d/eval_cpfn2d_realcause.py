@@ -54,13 +54,20 @@ if STD_MODE:
 else:
     assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
 
-# Only used when STD_MODE=std_target. σ(y_scaled) = STD_TARGET regardless of
-# outliers. cpfn2d bar-dist edges live in [-10, +10] with J=32 →
-# bin_width=0.625, so σ must be > 0.625 (else bulk collapses to one bin) AND
-# 3σ < 10 (else tails clipped). Default 1.0 matches CausalPFN's training-time
-# scaling convention (σ_scaled ≈ 1). Do NOT reuse DoPFN-bb's 0.3 here: with
-# edges [-10, +10] instead of [-1, +1] the range constraints are 10× wider.
-STD_TARGET = float(os.environ.get('STD_TARGET', '1.0'))
+# Only used when STD_MODE=std_target (or per_arm_std_target). Same recipe
+# dopfn-bb uses: y_scaled = (y - mean) * STD_TARGET / std → σ(y_scaled) =
+# STD_TARGET regardless of outliers. cpfn2d bar-dist edges live in [-10, +10]
+# with J=32 → bin_width=0.625.
+#
+# To preserve dopfn-bb's design ratio (σ / edge_half = 0.3 / 1 = 0.3), scale
+# std_target proportionally to edge_half:
+#     dopfn-bb  edges [-1, +1]   edge_half=1  → std_target=0.3
+#     graph2d   edges [-1, +1]   edge_half=1  → std_target=0.3
+#     cpfn2d    edges [-10,+10]  edge_half=10 → std_target=3.0   ← default here
+# This gives the same bulk-to-head ratio (bulk σ = 30% of edge_half) and the
+# same σ/bin_width ratio for J=32 models (4.8×). Change per-dataset if you
+# want tighter (more outlier suppression) or looser (less signal compression).
+STD_TARGET = float(os.environ.get('STD_TARGET', '3.0'))
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
