@@ -24,10 +24,11 @@ mkdir -p logs_graph2d_realcause
 
 REPO="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
 
-export UWYK="$REPO/g4cfm"
-export CAUSALPFN="/home/lukez/projects/aip-rgrosse/lukez/CausalPFN"
-export CKPT="$REPO/Required_checkpoints/graph2d_step_50000.pt"
-export OUT_ROOT="$REPO/results_graph2d_realcause/$SLURM_ARRAY_JOB_ID"
+export UWYK="${UWYK:-$REPO/g4cfm}"
+export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
+export CKPT="${CKPT:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
+export OUT_ROOT="${OUT_ROOT:-$REPO/results_graph2d_realcause/$SLURM_ARRAY_JOB_ID}"
+export DENSITY_DUMP="${DENSITY_DUMP:-0}"
 # export FIX_DIAG="1"
 
 [ -f "$CKPT" ] || { echo "FATAL: checkpoint not found at $CKPT" >&2; exit 1; }

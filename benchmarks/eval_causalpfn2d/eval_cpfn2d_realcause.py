@@ -343,6 +343,7 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
             'p_joint_scaled': p_mats.astype(np.float32),           # (N_q, J, J)
             'y_shift': np.float32(y_shift),
             'y_scale': np.float32(y_scale),
+            'true_cate_per_query': true_cate.astype(np.float32),
         })
     return row
 

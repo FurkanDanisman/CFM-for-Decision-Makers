@@ -1046,6 +1046,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             'edges': edges_scaled,
             'y_shift': np.float32(ymin + yrange / 2.0),
             'y_scale': np.float32(yrange / 2.0),
+            'true_cate_per_query': true_cate.astype(np.float32),
             **_dens_keys,
         })
         # Also expose one primary mode's densities under the un-suffixed keys

@@ -295,7 +295,9 @@ def evaluate(r, ds, model, num_features, nbins, bin_edges_np, apply_psid_balance
         'pehe_raw': p_r, 'err_raw': e_r, 'ate_raw': a_r,
         'pehe_em':  p_e, 'err_em':  e_e, 'ate_em':  a_e,
     }
-    if dens is not None: row.update(dens)
+    if dens is not None:
+        row.update(dens)
+        row['true_cate_per_query'] = true_cate.astype(np.float32)
     return row
 
 
