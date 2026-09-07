@@ -27,7 +27,7 @@ not an option here.
 Usage (GPU node):
     CKPT=<graph2d ckpt>  UWYK_CKPT=<uwyk best_model.pt>  UWYK_CFG=<yaml>
     UWYK=$PWD/g4cfm  CAUSALPFN=/path/to/CausalPFN
-    DATASET=IHDP  ANC_TAG=v6a  OUT=./results_density_tauC/IHDP
+    DATASET=IHDP  ANC_MODE=v6a_only  ANC_TAG=v6a  OUT=./results_density_tauC/IHDP
     python -u benchmarks/eval_graph2d/eval_density_tauC.py
 """
 from __future__ import annotations
@@ -63,15 +63,33 @@ from density_common import (                                        # noqa: E402
 )
 
 DATASET = H.DATASET
+# ANC_MODE (read by the harness at ITS import, hence the setdefault above)
+# picks the adjacency family; ANC_TAG picks one matrix out of that family.
+# The two must agree -- e.g. v6a_only/v6a, or full/anc -- and an unrecognised
+# ANC_MODE silently falls through to full. The tag set does not depend on
+# F/n_real, so check it here instead of 20 min in, after the checkpoints and
+# the dataset have loaded.
 ANC_TAG = os.environ.get('ANC_TAG', 'v6a')
+_VALID_TAGS = [t for t, _ in H.build_mode_list(4, 2)]
+if ANC_TAG not in _VALID_TAGS:
+    raise SystemExit(
+        f'[tauC] ANC_TAG={ANC_TAG!r} is not produced by ANC_MODE='
+        f'{H.ANC_MODE!r}. Valid tags for this mode: {_VALID_TAGS[:16]}. '
+        f'Usual pairs: ANC_MODE=v6a_only ANC_TAG=v6a (no +1 edges, only the '
+        f'-1s implied by unconfoundedness) | ANC_MODE=full ANC_TAG=anc '
+        f'(build_anc_full: T->Y, X_i->T, X_i->Y asserted +1).')
 OUT = os.environ.get('OUT', f'./results_density_tauC/{DATASET}')
 UWYK_CKPT = os.environ['UWYK_CKPT']
 UWYK_CFG = os.environ['UWYK_CFG']
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
-# Tail-quadrature resolution. 2048 measured at ~0.64 s/query with int p(tau)
-# within 3e-4 of 1; 1024 is 2.3x faster but drifts to 3e-3. Only the 8 smooth
-# tail regions use quadrature -- the interior is closed-form.
-N_Y0 = int(os.environ.get('N_Y0', '2048'))
+# y0-quadrature resolution for the 8 TAIL regions only; the interior is
+# closed-form and free at any tau resolution. Measured on the 12001-point
+# knot-aligned tau grid with midpoint quadrature:
+#   n_y0=1024  0.14 s/query  int p(tau)=0.99922  KL err 8.1e-4
+#   n_y0=4096  0.72 s/query  int p(tau)=0.99990  KL err 1.0e-4
+# 4096 costs about what the OLD 600-point grid did and is 1e-4 accurate, which
+# is ~0.03% of the 0.38-0.70 nat effects being measured.
+N_Y0 = int(os.environ.get('N_Y0', '4096'))
 # Realization slice, so a Slurm array can split the work. Both models stay in
 # ONE process per slice: splitting by model instead would only give 2x and
 # would rest on both processes deriving byte-identical preprocessing.
