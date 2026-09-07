@@ -69,27 +69,35 @@ def p_tau_batch(p_y0: np.ndarray, p_y1: np.ndarray,
     p_y0, p_y1 : (N, J)
     edges      : (J+1,)
     p_joint    : (N, J, J) or None
-        If None → 1D independence: joint = outer(p_y0, p_y1).
-        If given → 2D direct: use model's joint.
+        If None → 1D independence: p(τ) = fftconvolve(p_y1, reverse(p_y0)).
+        If given → 2D direct: diagonal-sum of the model's joint via np.trace.
 
     Returns (tau_edges: (2J,), p_tau_batch: (N, 2J-1)).
     """
     N, J = p_y0.shape
     dy = float(edges[1] - edges[0])
     K = 2 * J - 1
-    p_tau_all = np.zeros((N, K), dtype=np.float64)
 
     if p_joint is None:
-        # Independence — outer product per query.
-        for i0 in range(J):
-            for i1 in range(J):
-                k_idx = (i1 - i0) + (J - 1)
-                p_tau_all[:, k_idx] += p_y0[:, i0] * p_y1[:, i1]
+        # 1D independence: per-query full cross-correlation.
+        #   p(τ = c_{i1} - c_{i0}) = Σ_i p_y1[i] * p_y0[i - k]
+        # np.correlate(p_y1, p_y0, mode='full') gives length 2J-1, indexed
+        # k = -(J-1) .. +(J-1). Vectorise via a single scipy.fftconvolve call.
+        try:
+            from scipy.signal import fftconvolve
+            # fftconvolve(a, b) is convolution; correlation = fftconvolve(a, b_reversed).
+            p_tau_all = fftconvolve(p_y1, p_y0[:, ::-1], mode='full', axes=1)
+        except Exception:
+            # Fallback: numpy loop (still fast enough for J≤2000).
+            p_tau_all = np.empty((N, K), dtype=np.float64)
+            for i in range(N):
+                p_tau_all[i] = np.correlate(p_y1[i], p_y0[i], mode='full')
     else:
-        for i0 in range(J):
-            for i1 in range(J):
-                k_idx = (i1 - i0) + (J - 1)
-                p_tau_all[:, k_idx] += p_joint[:, i0, i1]
+        # 2D direct: sum along each anti-diagonal via np.trace with offsets.
+        p_tau_all = np.empty((N, K), dtype=np.float64)
+        for k_idx in range(K):
+            offset = k_idx - (J - 1)
+            p_tau_all[:, k_idx] = np.trace(p_joint, offset=offset, axis1=1, axis2=2)
 
     tau_centers = np.arange(-(J - 1), J) * dy
     tau_edges = np.concatenate([
