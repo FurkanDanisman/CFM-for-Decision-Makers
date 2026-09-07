@@ -50,18 +50,21 @@ def _parse_args():
                          'Default: 1.')
     p.add_argument('--std-mode', default='per_arm',
                     choices=['pooled', 'per_arm', 'log', 'log_per_arm',
-                             'log_winsor', 'std_target'],
-                    help='Y standardization for eval. Default: per_arm '
-                         '(context Y standardized by its own arm mean/std). '
-                         'std_target = DoPFN-bb-style scaling (σ = --std-target).')
+                             'log_winsor', 'std_target', 'per_arm_std_target'],
+                    help='Y standardization for eval. Default: per_arm.\n'
+                         '  pooled              — one mean/std, σ_scaled = 1\n'
+                         '  per_arm             — per-arm mean/std, σ_scaled = 1 per arm\n'
+                         '  std_target          — pooled + shrink so σ_scaled = --std-target\n'
+                         '  per_arm_std_target  — per-arm + shrink so σ_scaled = --std-target per arm\n'
+                         '                        (recommended: keeps arm centering, adds outlier robustness)')
     p.add_argument('--std-target', type=float, default=1.0,
-                    help='Only used with --std-mode std_target. cpfn2d has '
-                         'bar-dist edges [-10, +10] and J=32 (bin_width=0.625), '
-                         'so σ must satisfy σ > 0.625 (else bulk collapses to '
-                         'one bin) AND 3σ < 10 (else tails clipped). Sensible '
-                         'range: 0.7-3.3. Default 1.0 matches CausalPFN training '
-                         'convention (σ_scaled ≈ 1). Do NOT use dopfn-bb\'s 0.3 '
-                         '— cpfn2d\'s wider head makes it inappropriate.')
+                    help='Only used with --std-mode {std_target, per_arm_std_target}. '
+                         'cpfn2d has bar-dist edges [-10, +10] and J=32 '
+                         '(bin_width=0.625), so σ must satisfy σ > 0.625 (else bulk '
+                         'collapses to one bin) AND 3σ < 10 (else tails clipped). '
+                         'Sensible range: 0.7-3.3. Default 1.0 matches CausalPFN '
+                         'training convention (σ_scaled ≈ 1). Do NOT reuse '
+                         'dopfn-bb\'s 0.3 — cpfn2d\'s wider head makes it inappropriate.')
     p.add_argument('--compile', default='0', choices=['0', '1'],
                     help='torch.compile toggle (default 0 — cpfn2d has a compile bug).')
     p.add_argument('--skip-em', default='1', choices=['0', '1'],
