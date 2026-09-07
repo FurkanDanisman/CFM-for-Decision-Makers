@@ -55,9 +55,12 @@ else:
     assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
 
 # Only used when STD_MODE=std_target. σ(y_scaled) = STD_TARGET regardless of
-# outliers; for J=32 (bin_width=0.0625), 0.15 gives bulk over ~2.5 bins with
-# ±3σ = ±0.45 inside [-1, +1]. Match DoPFN-bb convention with 0.3.
-STD_TARGET = float(os.environ.get('STD_TARGET', '0.15'))
+# outliers. cpfn2d bar-dist edges live in [-10, +10] with J=32 →
+# bin_width=0.625, so σ must be > 0.625 (else bulk collapses to one bin) AND
+# 3σ < 10 (else tails clipped). Default 1.0 matches CausalPFN's training-time
+# scaling convention (σ_scaled ≈ 1). Do NOT reuse DoPFN-bb's 0.3 here: with
+# edges [-10, +10] instead of [-1, +1] the range constraints are 10× wider.
+STD_TARGET = float(os.environ.get('STD_TARGET', '1.0'))
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)

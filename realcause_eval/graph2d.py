@@ -69,9 +69,11 @@ def _parse_args():
                          'train Y to ±1. std = DoPFN-bb-style (σ(y_scaled) = '
                          '--std-target, robust to outliers).')
     p.add_argument('--std-target', type=float, default=0.3,
-                    help='Only used with --y-scaling std. Scaled σ. For J=32 '
-                         '(bin_width=0.0625), σ ∈ [0.1, 0.3] resolves signal '
-                         'across bins with ±3σ inside [-1,+1]. Default: 0.3.')
+                    help='Only used with --y-scaling std. Scaled σ. graph2d '
+                         'bar-dist edges are [-1, +1] (J=32 → bin_width 0.0625), '
+                         'so σ ∈ [0.1, 0.3] resolves signal across bins AND '
+                         'keeps ±3σ inside the head\'s support. Default 0.3 '
+                         '(matches DoPFN-bb convention — same edge range).')
     return p.parse_args()
 
 
