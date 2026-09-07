@@ -114,75 +114,87 @@ def _ci_from_pmf(tau_centers: np.ndarray, p_tau: np.ndarray, lo: float, hi: floa
     return _q(lo), _q(hi)
 
 
-def process_npz(npz_path: str, pehe_key: str, err_key: str):
-    """→ dict with density-derived PEHE / ε_ATE / coverage / length, plus the
-    stored PEHE/err_ATE for diff verification.
+def process_npz(npz_path: str, pehe_key: str, err_key: str,
+                 mc_samples: int = 5000, mc_seed: int = 0):
+    """→ dict with density-derived PEHE / ε_ATE / coverage / length.
 
-    Density-derived point estimates:
-        cate_hat[q] = ∫ τ p(τ) dτ = Σ_k tau_center[k] * p_tau[q, k] * y_scale
-    Under Y|do(0) ⊥ Y|do(1), this equals E[Y_1] - E[Y_0], which is the SAME
-    computation the model wrappers do for their point CATE. So the density-
-    derived and stored PEHE should agree to floating-point tolerance. If they
-    don't, that's a red flag — reported in the max_diff diagnostic.
+    Uses MONTE-CARLO sampling to build p(τ) — handles non-uniform bar-dist
+    edges (dopfn) correctly. Per query and per arm, sample bin indices from
+    p_y{a}, un-scale to raw units (y_shift, y_scale), take differences:
+        τ_s = (y1_sample_s * y_scale + y_shift) - (y0_sample_s * y_scale + y_shift)
+            = (y1 - y0) * y_scale   (y_shift cancels — same for both arms).
+    Point cate_hat[q] = mean_s τ_s  ≈ ∫τ p(τ)dτ. CI = empirical quantiles.
+
+    Reproducing point CATE:
+        E[τ] = E[Y_1] - E[Y_0] = sum_i c_i * (p_y1[i] - p_y0[i]),   then × y_scale.
+    Compute this directly for cross-check.
     """
     loaded = _load_density(npz_path)
     if loaded is None:
         return None
     edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
-
-    # Convolve p_y1 with flip(p_y0) per query → p(τ_scaled) of length 2N-1.
-    from numpy.fft import rfft, irfft
     nbins = p_y0.shape[-1]
-    n_out = 2 * nbins - 1
-    n_fft = 1 << (n_out - 1).bit_length()
-    F1 = rfft(p_y1, n=n_fft, axis=-1)
-    F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
-    p_tau_scaled = irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out]
-    p_tau_scaled = np.clip(p_tau_scaled, 0.0, None)
-    p_tau_scaled /= p_tau_scaled.sum(axis=-1, keepdims=True).clip(min=1e-12)
 
-    tau_centers_scaled = _tau_grid(edges, nbins=p_y0.shape[-1])
+    # Bin centers on the density axis (handles non-uniform edges).
+    if edges.size >= nbins + 1:
+        centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1])
+    else:
+        width = float(edges[1] - edges[0])
+        centers = np.arange(nbins) * width + float(edges[0])
 
-    # ── point CATE derived from density (∫τ p(τ) dτ), un-scaled to raw units.
-    cate_hat_scaled = (p_tau_scaled * tau_centers_scaled[None, :]).sum(axis=-1)
-    cate_hat = cate_hat_scaled * y_scale
+    # ── point CATE via subtract-then-mean (works for ANY bin geometry).
+    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)
+    e_y1 = (p_y1 * centers[None, :]).sum(axis=-1)
+    cate_hat = (e_y1 - e_y0) * y_scale                # y_shift cancels
     resid = cate_hat - true_cate_pq
-    pehe_den   = float(np.sqrt(np.mean(resid * resid)))
-    ate_hat    = float(cate_hat.mean())
-    true_ate   = float(true_cate_pq.mean())
+    pehe_den = float(np.sqrt(np.mean(resid * resid)))
+    ate_hat  = float(cate_hat.mean())
+    true_ate = float(true_cate_pq.mean())
     err_ate_den = float(abs(ate_hat - true_ate) / max(abs(true_ate), 0.1))
 
-    # ── stored point estimates (for cross-check).
+    # ── Monte Carlo CI (robust to non-uniform bin widths).
+    rng = np.random.default_rng(mc_seed)
+    cdf0 = np.cumsum(p_y0, axis=-1)
+    cdf1 = np.cumsum(p_y1, axis=-1)
+    cdf0 /= cdf0[:, -1:].clip(min=1e-12)
+    cdf1 /= cdf1[:, -1:].clip(min=1e-12)
+    u = rng.random((mc_samples, p_y0.shape[0]))       # (M, N_q)
+    # Inverse-CDF sample: for each query q and sample s, find idx s.t. cdf[q, idx] >= u[s, q].
+    # Vectorised via searchsorted per query.
+    def _sample(cdf):
+        out = np.empty((mc_samples, p_y0.shape[0]), dtype=np.int64)
+        for q in range(p_y0.shape[0]):
+            out[:, q] = np.searchsorted(cdf[q], u[:, q], side='right').clip(0, nbins - 1)
+        return centers[out]                            # (M, N_q) raw density-axis values
+    y0_s = _sample(cdf0)
+    y1_s = _sample(cdf1)
+    tau_s = (y1_s - y0_s) * y_scale                    # (M, N_q) in raw τ units
+
+    tau_lo = np.quantile(tau_s, 0.025, axis=0)         # (N_q,)
+    tau_hi = np.quantile(tau_s, 0.975, axis=0)
+    coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
+    length   = float(np.mean(tau_hi - tau_lo))
+
+    # ── stored point estimates + cross-check.
     try:
         with np.load(npz_path, allow_pickle=True) as z:
             pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
             err_stored  = float(z[err_key])  if err_key  in z.files else float('nan')
-            # If the wrapper saved per-query cate_pred (dopfn does), compare
-            # our density-mean per-query to it — flags a systematic scale bug
-            # (e.g. log-transformed edges, per-arm scaling collapse).
             cate_pred_stored = np.asarray(z['cate_pred']).astype(np.float64) \
                 if 'cate_pred' in z.files else None
     except Exception:
-        pehe_stored, err_stored = float('nan'), float('nan')
-        cate_pred_stored = None
+        pehe_stored, err_stored, cate_pred_stored = float('nan'), float('nan'), None
 
     cate_max_diff = float('nan')
     if cate_pred_stored is not None and cate_pred_stored.shape == cate_hat.shape:
         cate_max_diff = float(np.max(np.abs(cate_hat - cate_pred_stored)))
-
-    # ── 95% CI bounds → coverage + length.
-    tau_lo_s, tau_hi_s = _ci_from_pmf(tau_centers_scaled, p_tau_scaled, 0.025, 0.975)
-    tau_lo = tau_lo_s * y_scale
-    tau_hi = tau_hi_s * y_scale
-    coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
-    length   = float(np.mean(tau_hi - tau_lo))
 
     return {
         'pehe_den':    pehe_den,
         'err_den':     err_ate_den,
         'pehe_stored': pehe_stored,
         'err_stored':  err_stored,
-        'cate_max_diff': cate_max_diff,   # per-query |cate_hat - cate_pred_stored|
+        'cate_max_diff': cate_max_diff,
         'coverage':    coverage,
         'length':      length,
         'n_queries':   int(true_cate_pq.size),
