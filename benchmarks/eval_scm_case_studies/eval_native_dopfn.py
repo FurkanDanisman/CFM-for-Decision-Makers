@@ -48,6 +48,37 @@ _skuv.check_array = _patched_check_array
 
 from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 
+# RealCause loaders (importing here is safe — they're lightweight).
+_REALCAUSE = ('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal')
+
+def _get_dataset(name: str):
+    if name in _REALCAUSE:
+        from benchmarks import (IHDPDataset, ACIC2016Dataset,
+                                 RealCauseLalondeCPSDataset,
+                                 RealCauseLalondePSIDDataset)
+        return {
+            'IHDP':     IHDPDataset(),
+            'ACIC':     ACIC2016Dataset(),
+            'CPS':      RealCauseLalondeCPSDataset(),
+            'PSID':     RealCauseLalondePSIDDataset(),
+            'PSID_bal': RealCauseLalondePSIDDataset(),
+        }[name]
+    return SCMCaseStudyDataset(name)
+
+
+def _cate_ds_from(ds, r: int, name: str):
+    """Return the CATE-style dataset for realization r."""
+    if name in _REALCAUSE:
+        # RealCause loaders: ds[r] returns (cate_ds, meta) or just cate_ds.
+        got = ds[r]
+        return got[0] if isinstance(got, tuple) else got
+    # SCMCaseStudyDataset: ds[r] returns (cate_ds, meta).
+    return ds[r][0]
+
+
+def _n_tables(ds, name: str):
+    return int(getattr(ds, 'n_tables', len(ds)))
+
 # DoPFNRegressor loads artifacts by relative path, so cwd matters.
 _prev_cwd = os.getcwd()
 os.chdir(DOPFN_ROOT)
@@ -58,8 +89,8 @@ finally:
     os.chdir(_prev_cwd)
 
 
-def evaluate(r: int, ds: SCMCaseStudyDataset):
-    cate_ds, _ = ds[r]
+def evaluate(r: int, ds):
+    cate_ds = _cate_ds_from(ds, r, DATASET)
     X_train_full = np.hstack([cate_ds.t_train.reshape(-1, 1), cate_ds.X_train])
     y_train = cate_ds.y_train
     X_test_full = np.hstack([np.zeros((cate_ds.X_test.shape[0], 1), dtype=np.float32),
@@ -104,18 +135,25 @@ def evaluate(r: int, ds: SCMCaseStudyDataset):
     pehe = float(np.sqrt(np.mean((cate_pred - true_cate) ** 2)))
     ate_true = float(true_cate.mean())
     ate_hat  = float(cate_pred.mean())
-    err = abs(ate_hat - ate_true) / max(abs(ate_true), 0.1)
+    # Case-study datasets: report err as pure L1. RealCause: relative-error.
+    if DATASET not in _REALCAUSE:
+        err = abs(ate_hat - ate_true)
+    else:
+        err = abs(ate_hat - ate_true) / max(abs(ate_true), 0.1)
     row = {'dataset': DATASET, 'realization': r,
            'true_ate': ate_true, 'ate_pred': ate_hat,
            'pehe_raw': pehe, 'err_raw': err}
-    if dens is not None: row.update(dens)
+    if dens is not None:
+        row.update(dens)
+        row['true_cate_per_query'] = true_cate.astype(np.float32)
     return row
 
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    ds = SCMCaseStudyDataset(DATASET)
-    n = ds.n_tables if not MAX_REAL else min(ds.n_tables, int(MAX_REAL))
+    ds = _get_dataset(DATASET)
+    n_full = _n_tables(ds, DATASET)
+    n = n_full if not MAX_REAL else min(n_full, int(MAX_REAL))
     print(f'[bootstrap] native DoPFN  {DATASET}  n={n}', flush=True)
     rows = []; t0 = time.time()
     for r in range(n):

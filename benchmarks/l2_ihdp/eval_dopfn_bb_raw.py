@@ -687,7 +687,8 @@ def main():
                      y_shift=np.float32(y_center),
                      y_scale=np.float32(y_scale),
                      true_ate=np.float32(_ate_true),
-                     ate_pred=np.float32(cate_pred_raw.mean()))
+                     ate_pred=np.float32(cate_pred_raw.mean()),
+                     true_cate_per_query=true_cate_raw.astype(np.float32))
         malc_note = f'  malc_fail={n_malc_fail}/{n_test}' if args.malc_upsample else ''
         malc_extra = (f'   PEHE malc_raw={pehe_malc_raw:.4f}  malc_em={pehe_malc_em:.4f}   '
                        f'eps_ATE malc_raw={eps_ate_malc_raw:.4f}  malc_em={eps_ate_malc_em:.4f}'
