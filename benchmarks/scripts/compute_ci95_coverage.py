@@ -154,11 +154,21 @@ def process_npz(path: str):
     covered = ((L <= true_cate) & (true_cate <= U)).astype(np.float64)
     length  = U - L
 
+    # Model's point-estimate CATE via E[Y1] - E[Y0] on the arm marginals.
+    bin_centers = 0.5 * (edges[:-1] + edges[1:])
+    e_y0_scaled = (p_y0 * bin_centers[None, :]).sum(axis=1) / p_y0.sum(axis=1).clip(1e-30, None)
+    e_y1_scaled = (p_y1 * bin_centers[None, :]).sum(axis=1) / p_y1.sum(axis=1).clip(1e-30, None)
+    e_y0 = e_y0_scaled * y_scale + y_shift
+    e_y1 = e_y1_scaled * y_scale + y_shift
+    cate_hat = e_y1 - e_y0
+    pehe = float(np.sqrt(np.mean((cate_hat - true_cate) ** 2)))
+
     result = {
         'n_queries':      int(true_cate.size),
         'is_2d':          bool(p_joint is not None),
         'coverage':       float(covered.mean()),
         'length_mean':    float(length.mean()),
+        'pehe':           pehe,
         'true_cate_mean': float(true_cate.mean()),
         'true_cate_std':  float(true_cate.std()),
     }
@@ -173,8 +183,10 @@ def aggregate_dataset(per_real_rows: list):
         'n_realizations': len(per_real_rows),
         'model_type':     '2D' if any(r['is_2d'] for r in per_real_rows) else '1D',
     }
-    for k in ('coverage', 'length_mean'):
-        vals = np.array([r[k] for r in per_real_rows], dtype=np.float64)
+    for k in ('coverage', 'length_mean', 'pehe'):
+        vals = np.array([r[k] for r in per_real_rows if k in r], dtype=np.float64)
+        if vals.size == 0:
+            continue
         out[k + '_mean'] = float(vals.mean())
         out[k + '_se']   = float(vals.std(ddof=1) / np.sqrt(vals.size)) if vals.size > 1 else 0.0
     return out
@@ -220,10 +232,12 @@ def main():
                       file=sys.stderr)
                 continue
             rows_out.append({'model': model, 'dataset': dataset, **agg})
+            _pehe = f'  PEHE={agg["pehe_mean"]:.3f}±{agg["pehe_se"]:.3f}' if 'pehe_mean' in agg else ''
             print(f'{model:14s} {dataset:10s} type={agg["model_type"]}  '
                   f'R={agg["n_realizations"]:4d}  '
                   f'coverage={agg["coverage_mean"]:.3f}±{agg["coverage_se"]:.3f}  '
-                  f'length={agg["length_mean_mean"]:.3f}±{agg["length_mean_se"]:.3f}',
+                  f'length={agg["length_mean_mean"]:.3f}±{agg["length_mean_se"]:.3f}'
+                  f'{_pehe}',
                   flush=True)
 
     if not rows_out:
