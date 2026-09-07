@@ -132,8 +132,13 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
 
     # Treatment encoding — the one deliberate knob.
     if T_ENCODING == 'target':
-        m0 = float(y_scaled[T_tr == 0].mean())
-        m1 = float(y_scaled[T_tr == 1].mean())
+        # Match UWYK's dofm_no_clustering.py:73-80 and dofm_psid_balanced.py:124-131:
+        # target-encode T using RAW y means (not scaled y). Their pipeline feeds
+        # T ← mean(Y|T) at the original y scale (e.g. ~5000 for PSID) — this
+        # affects the attention scores the model sees and shifts predictions by
+        # ~2 units on PSID_bal vs using scaled y means.
+        m0 = float(y_tr_raw[T_tr == 0].mean())
+        m1 = float(y_tr_raw[T_tr == 1].mean())
         T_feed = np.where(T_tr == 0, m0, m1).astype(np.float32).reshape(-1, 1)
         t0_val, t1_val = m0, m1
     else:
