@@ -74,10 +74,14 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  OUT=$OUT  DENSITY_DUMP=1
 case "$METHOD" in
     cpfn1d)
         [ -f "$CKPT_CPFN1D" ] || { echo "FATAL: CKPT_CPFN1D not found: $CKPT_CPFN1D" >&2; exit 1; }
+        # Density dump only saves ONE (y_shift, y_scale) — using STD_MODE=per_arm
+        # (the default) would break convolution because the two marginals live
+        # on different scaled axes. pooled uses one mean/std for all Y so both
+        # marginals share the same axis, making the convolution valid.
         python -u "$REPO/realcause_eval/cpfn1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN1D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-            --density-dump 1
+            --std-mode pooled --density-dump 1
         ;;
     dopfn)
         [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not found: $DOPFN_ROOT" >&2; exit 1; }
