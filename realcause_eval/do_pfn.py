@@ -191,11 +191,27 @@ def dopfn_pipeline(cate_dataset, reg, return_density=False):
     logits0 = np.asarray(full0['logits'])
     logits1 = np.asarray(full1['logits'])
     edges = np.asarray(full0['criterion'].borders)   # RAW Y units
+
+    # DoPFN uses FullSupportBarDistribution: interior bars = uniform (midpoint
+    # centers), FIRST bar = left half-normal with mean = borders[1] - w0·√(2/π)/0.6745,
+    # LAST bar = right half-normal with mean = borders[-2] + w_last·√(2/π)/0.6745,
+    # where 0.6745 = HalfNormal(scale=1).icdf(0.5) and √(2/π) = HalfNormal(1).mean.
+    # Their ratio is exactly _HN_MEAN_FACTOR ≈ 1.1829. Save effective centers so
+    # the aggregator's `sum(p * centers)` exactly reproduces criterion.mean(logits).
+    _HN_MEAN_FACTOR = float(np.sqrt(2.0 / np.pi) /
+                             (np.sqrt(2.0) * float(__import__('scipy.special',
+                              fromlist=['erfinv']).erfinv(0.5))))
+    widths = np.diff(edges).astype(np.float64)
+    centers = (edges[:-1] + widths / 2).astype(np.float64)         # (K,) midpoints
+    centers[0]  = float(edges[1])  - widths[0]  * _HN_MEAN_FACTOR   # left tail mean
+    centers[-1] = float(edges[-2]) + widths[-1] * _HN_MEAN_FACTOR   # right tail mean
+
     p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
     p_y0 /= p_y0.sum(axis=-1, keepdims=True)
     p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
     p_y1 /= p_y1.sum(axis=-1, keepdims=True)
-    return cate, p_y0.astype(np.float32), p_y1.astype(np.float32), edges.astype(np.float32)
+    return (cate, p_y0.astype(np.float32), p_y1.astype(np.float32),
+            edges.astype(np.float32), centers.astype(np.float32))
 
 
 # ── driver -------------------------------------------------------------------
@@ -272,7 +288,7 @@ def main():
         os.chdir(args.dopfn)
         try:
             if _do_density:
-                cate_pred, p_y0, p_y1, edges_np = dopfn_pipeline(cd, reg, return_density=True)
+                cate_pred, p_y0, p_y1, edges_np, centers_np = dopfn_pipeline(cd, reg, return_density=True)
             else:
                 cate_pred = dopfn_pipeline(cd, reg)
         finally:
@@ -296,8 +312,12 @@ def main():
         )
         if _do_density:
             # Bar-dist edges are in RAW Y units for DoPFN — y_shift=0, y_scale=1.
+            # Save effective_centers (with tail half-normal correction) so the
+            # aggregator's `sum(p * centers)` reproduces criterion.mean(logits)
+            # to fp32 — matches DoPFN's own point CATE exactly.
             save_kw.update(dict(
                 edges=edges_np.astype(np.float32),
+                effective_centers=centers_np.astype(np.float32),
                 p_y0_scaled=p_y0.astype(np.float32),
                 p_y1_scaled=p_y1.astype(np.float32),
                 y_shift=np.float32(0.0),
