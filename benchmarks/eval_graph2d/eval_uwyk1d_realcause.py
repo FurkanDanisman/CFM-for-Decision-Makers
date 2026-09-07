@@ -89,8 +89,16 @@ def load_uwyk():
 def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val,
                     return_logits=False):
     """Two forward passes (do(t1), do(t0)); returns CATE on the scaled y axis.
-    If return_logits=True, also returns per-query bar-dist logits for each arm
-    so the caller can compute densities via softmax."""
+
+    When return_logits=True, we do ONLY predict('point') forward passes and
+    compute the mean OURSELVES from the same logits via BarDistribution.mean
+    (called explicitly with a torch tensor). This guarantees the returned
+    point CATE and the returned logits are self-consistent — critical when
+    the underlying model has any nondeterminism between separate .predict()
+    calls (ensembling, dropout, etc.), which was causing density mean to
+    drift from stored ate_raw by ~4500 units on CPS.
+    """
+    import torch as _torch
     preds = {}
     logits_by_tag = {}
     for tag, tval in (('1', t1_val), ('0', t0_val)):
@@ -99,20 +107,26 @@ def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val,
         for s in range(0, X_te.shape[0], QUERY_CHUNK):
             Xq = X_te[s:s + QUERY_CHUNK]
             Tq = np.full((Xq.shape[0], 1), tval, dtype=np.float32)
-            out.append(np.asarray(w.predict(
-                X_obs=X_tr, T_obs=T_tr, Y_obs=Y_tr,
-                X_intv=Xq, T_intv=Tq,
-                adjacency_matrix=adj,
-                prediction_type='mean',
-            )).reshape(-1))
             if return_logits:
-                # prediction_type='point' returns raw logits before bar-dist mean.
-                logits_chunks.append(np.asarray(w.predict(
+                # ONE forward pass → logits → mean derived from those logits.
+                l = np.asarray(w.predict(
                     X_obs=X_tr, T_obs=T_tr, Y_obs=Y_tr,
                     X_intv=Xq, T_intv=Tq,
                     adjacency_matrix=adj,
                     prediction_type='point',
-                )))
+                ))
+                logits_chunks.append(l)
+                # BarDistribution.mean expects shape (B, M, K+4).
+                l_t = _torch.from_numpy(l.astype(np.float32)).unsqueeze(0)
+                m = w.bar_distribution.mean(l_t).squeeze(0).detach().cpu().numpy()
+                out.append(m.reshape(-1))
+            else:
+                out.append(np.asarray(w.predict(
+                    X_obs=X_tr, T_obs=T_tr, Y_obs=Y_tr,
+                    X_intv=Xq, T_intv=Tq,
+                    adjacency_matrix=adj,
+                    prediction_type='mean',
+                )).reshape(-1))
         preds[tag] = np.concatenate(out)
         if return_logits:
             logits_by_tag[tag] = np.concatenate(logits_chunks, axis=0)
