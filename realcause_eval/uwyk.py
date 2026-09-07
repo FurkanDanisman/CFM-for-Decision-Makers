@@ -1,12 +1,5 @@
 """UWYK RealCause eval — thin wrapper around UWYK's own reproduce-branch scripts.
 
-Runs the identical scripts from
-    https://github.com/ArikReuter/Graphs4CausalFoundationModels/tree/reproduce-realcause-results
-with no modifications:
-
-    IHDP / ACIC / CPS / PSID (unbalanced) → dofm_no_clustering.py
-    PSID_bal                              → dofm_psid_balanced.py
-
 Both invoked with --graph_mode all_unknown, both defaulting to the checkpoint
 their scripts point at (best_model.pt in the full_conditioned_model dir).
 All 5 datasets write per-realization pickles to a SINGLE folder
@@ -101,6 +94,8 @@ def _run(args):
     ]
 
     print(f'[uwyk] dataset={args.dataset}  script={script}  exp_name={args.exp_name}', flush=True)
+    print(f'[uwyk] UWYK_SEED={env.get("UWYK_SEED", "(unset — random)")} '
+          '(seeds np.random via sitecustomize; controls 1000-row context subsample)', flush=True)
     print(f'[uwyk] results dir: {uwyk}/RealCauseEval/results/{args.exp_name}/', flush=True)
     subprocess.run(cmd, env=env, check=True, cwd=uwyk)
 
