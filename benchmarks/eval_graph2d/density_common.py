@@ -46,15 +46,52 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Grids (match benchmarks/l2_ihdp/true_ihdp.py so numbers cross-reference)
+# Grids
 # ---------------------------------------------------------------------------
+# THE TAU GRID IS TIED TO THE MODELS, NOT CHOSEN FOR CONVENIENCE.
+#
+# Both heads' tau densities are piecewise-LINEAR with knots at multiples of
+# their own bin width -- that falls out of the closed-form interior term,
+#     p_int(tau) = (w/bw) * [(1-phi) S(d) + phi S(d+1)],  tau = (d+phi) bw
+# which is linear in tau inside every cell (verified to 0.0 second difference
+# in test_density_common gate 7).
+#
+# Trapezoid is EXACT on a piecewise-linear function when the nodes include its
+# knots. So the right grid is the coarsest spacing that contains BOTH knot
+# sets:
+#     UWYK bar  = 0.002    (K=1000 over [-1,1])   0.0020 / 0.0005 =   4
+#     joint bin = 0.0625   (J=32   over [-1,1])   0.0625 / 0.0005 = 125
+# -> TAU_STEP = 0.0005, and the grid must be ANCHORED AT 0 so those multiples
+#    actually land on nodes. linspace(-3, 3, 12001) does both.
+#
+# The previous grid (dtau = 0.01, bin midpoints) was 5x COARSER than UWYK's own
+# bars and was anchored on half-offsets, so it contained neither knot set. It
+# happened to be adequate for smooth trained densities -- KL moved 1.3e-14 from
+# 0.01 to 0.002 -- but it is not adequate where the truth is narrow, which is
+# exactly the ~22/100 IHDP realizations with < 5 old-grid points per sigma_tau.
+TAU_MIN, TAU_MAX = -3.0, 3.0
+TAU_STEP = 0.0005
+_N_TAU = int(round((TAU_MAX - TAU_MIN) / TAU_STEP)) + 1        # 12001
+TAU_CENTERS = np.linspace(TAU_MIN, TAU_MAX, _N_TAU)
+TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
+# Node grid, not bin midpoints -- kept under the old name so callers and the
+# l2_ihdp-style metric signatures do not change.
+TAU_EDGES = TAU_CENTERS
+
+# Y grid for Tier A. Unchanged; matches benchmarks/l2_ihdp/true_ihdp.py so the
+# marginal numbers cross-reference. Retie it to the model knots when Tier A is
+# built -- it has the same defect this TAU grid just had.
 Y_EDGES = np.linspace(-1.5, 1.5, 101)
 Y_CENTERS = 0.5 * (Y_EDGES[:-1] + Y_EDGES[1:])
 Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
 
-TAU_EDGES = np.linspace(-3.0, 3.0, 601)
-TAU_CENTERS = 0.5 * (TAU_EDGES[:-1] + TAU_EDGES[1:])
-TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
+
+def knots_aligned(step=None, bin_widths=(0.002, 0.0625), tol=1e-9) -> bool:
+    """True when every model bin width is an integer multiple of the tau step,
+    which is what makes trapezoid exact on the piecewise-linear interiors."""
+    step = TAU_BIN if step is None else step
+    return all(abs(b / step - round(b / step)) < tol for b in bin_widths)
+
 
 _LOG_2PI = math.log(2.0 * math.pi)
 _EPS = 1e-300          # density floor, only to keep logs finite in KL
@@ -359,26 +396,43 @@ def _interior_tau(S, tau_points, bw, weight):
 
 
 def tau_density_quadrature(f2d, tau_points, lo=-1.0, hi=1.0, pad=0.75,
-                           n_y0=4096, max_points=4_000_000):
+                           n_y0=2048, max_points=4_000_000, align_bins=None):
     """Reference implementation: p(tau) = \\int f(y0, y0+tau) dy0 by trapezoid.
 
-    Correct for smooth integrands, O(h)-biased on staircases. Used for the
-    non-interior regions (smooth) and as the slow cross-check that the exact
-    interior formula above agrees with brute force.
+    The integrand is DISCONTINUOUS at y0 = lo and y0 = hi (the region mask
+    flips there) and is a staircase in between, so a naive linspace gives O(h)
+    error whose sign depends on where nodes happen to fall -- refining then
+    does not monotonically improve (measured: n_y0 4096 scored WORSE than 2048).
+    So the grid is built to land exactly on lo and hi, and, when `align_bins`
+    (the model's bin count across [lo, hi]) is given, on every bin edge too.
 
     Chunked over tau: the evaluation array is (n_tau, n_y0) and `density`
     allocates ~10 temporaries of that shape, so an unchunked call at large
     n_y0 will OOM long before it is slow.
     """
     tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
-    g = np.linspace(lo - pad, hi + pad, n_y0)
-    step = max(1, int(max_points // max(n_y0, 1)))
+    span = float(hi - lo)
+    n_inner = max(2, int(round(n_y0 * span / (span + 2.0 * pad))))
+    if align_bins:                       # snap to a whole number of bins
+        per_bin = max(1, int(round(n_inner / align_bins)))
+        n_inner = int(align_bins) * per_bin
+    step = span / n_inner
+    n_pad = int(np.ceil(pad / step))
+    # MIDPOINT, not trapezoid. lo, hi and every bin edge are CELL EDGES here,
+    # so no cell straddles a discontinuity and the jump-to-zero at the region
+    # boundary is integrated exactly. Trapezoid with a node ON the jump counts
+    # only half that cell, which showed up as a systematic mass DEFICIT
+    # (0.9987 at n_y0=4096) converging from below.
+    cell_edges = lo + step * np.arange(-n_pad, n_inner + n_pad + 1)
+    g = 0.5 * (cell_edges[:-1] + cell_edges[1:])
+
+    chunk = max(1, int(max_points // max(g.size, 1)))
     out = np.empty(tau_points.size, dtype=np.float64)
-    for i in range(0, tau_points.size, step):
-        t = tau_points[i:i + step]
-        Y0 = np.broadcast_to(g, (t.size, n_y0))
+    for i in range(0, tau_points.size, chunk):
+        t = tau_points[i:i + chunk]
+        Y0 = np.broadcast_to(g, (t.size, g.size))
         Y1 = Y0 + t[:, None]
-        out[i:i + step] = _TRAPZ(f2d(Y0, Y1), g, axis=1)
+        out[i:i + chunk] = f2d(Y0, Y1).sum(axis=1) * step
     return out
 
 
@@ -405,13 +459,46 @@ def _outside_only(f2d, lo, hi):
     return g
 
 
+# Coarse grid for the TAIL term only. The 8 non-interior regions carry little
+# mass and vary smoothly in tau, while the interior -- which carries the
+# structure -- is closed-form and free at any resolution. Evaluating the tails
+# on a coarse grid and interpolating up is what keeps a 12001-point tau grid
+# affordable: cost is set by this number, not by len(TAU_CENTERS).
+# Set to 0.0625/8, i.e. 8 nodes per JOINT bin, so the tail term's kinks (which
+# sit at the joint's bin edges) land on nodes. Measured: dropping from 0.002 to
+# this changes the KL error by <2% (8.22e-3 -> 8.37e-3 at n_y0=512, 2.97e-4 ->
+# 2.95e-4 at n_y0=2048) while cutting cost 9x. Accuracy here is governed by
+# n_y0, not by this step -- UWYK's finer 0.002 tail structure is irrelevant
+# because its tail MAGNITUDE is ~1e-3 of the density.
+TAIL_TAU_STEP = 0.0625 / 8      # 0.0078125
+
+
+def _tail_term(f2d_out, tau_points, lo, hi, pad, n_y0,
+               coarse_step=None, align_bins=None) -> np.ndarray:
+    """Non-interior regions on a coarse tau grid, linearly interpolated up."""
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    step = TAIL_TAU_STEP if coarse_step is None else coarse_step
+    span = float(tau_points.max() - tau_points.min())
+    n_coarse = int(round(span / step)) + 1 if span > 0 else 1
+    # Already at or below the coarse resolution (e.g. a single tau*): direct.
+    if tau_points.size <= n_coarse or n_coarse < 2:
+        return tau_density_quadrature(f2d_out, tau_points, lo, hi, pad, n_y0,
+                                      align_bins=align_bins)
+    coarse = np.linspace(float(tau_points.min()), float(tau_points.max()),
+                         n_coarse)
+    vals = tau_density_quadrature(f2d_out, coarse, lo, hi, pad, n_y0,
+                                  align_bins=align_bins)
+    return np.interp(tau_points, coarse, vals)
+
+
 def joint_tau_density(jt: Joint2D, tau_points, n_pad_sigma=8.0, n_y0=4096):
     """p(tau) for the 2D head: exact interior + quadrature over regions 1-8."""
     S = _diag_sums(jt.p_mat)
     p = _interior_tau(S, tau_points, jt.bw, jt.w[0])
     pad = n_pad_sigma * jt.max_scale
-    p += tau_density_quadrature(_outside_only(jt.density, jt.lo, jt.hi),
-                                tau_points, jt.lo, jt.hi, pad, n_y0)
+    p += _tail_term(_outside_only(jt.density, jt.lo, jt.hi),
+                    tau_points, jt.lo, jt.hi, pad, n_y0,
+                    align_bins=jt.p_mat.shape[0])
     return p
 
 
@@ -444,10 +531,11 @@ def uwyk_tau_density(f0: UWYK1D, f1: UWYK1D, tau_points, n_pad_sigma=8.0,
     # interior weight is the product of the two interior masses
     p = _interior_tau(S, tau_points, bw, 1.0)
     pad = n_pad_sigma * max(f0.max_scale, f1.max_scale)
-    p += tau_density_quadrature(
+    p += _tail_term(
         _outside_only(independent_f2d(f0, f1), float(f0.edges[0]),
                       float(f0.edges[-1])),
-        tau_points, float(f0.edges[0]), float(f0.edges[-1]), pad, n_y0)
+        tau_points, float(f0.edges[0]), float(f0.edges[-1]), pad, n_y0,
+        align_bins=len(f0.widths))
     return p
 
 

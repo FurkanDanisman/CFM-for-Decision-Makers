@@ -24,9 +24,29 @@
 # processes recompute them identically. Realizations are independent by
 # construction, so splitting there is both wider (12x) and strictly safer.
 #
-# Cost (measured, 1 core): the tau math is ~0.64 s/query at N_Y0=2048.
-#   IHDP task = 10 real x 75 q  ~= 8 min   + model load/forwards
-#   ACIC task =  5 real x 480 q ~= 26 min  + model load/forwards
+# Cost. The tau grid is now 12001 points (dtau=0.0005, knot-aligned: it
+# divides both models' bin widths, 0.002 for UWYK's K=1000 bars and 0.0625 for
+# the J=32 joint, so the trapezoid in kl/l2/mass is exact on the piecewise-
+# linear interiors). Per QUERY the eval runs three methods -- uwyk_native,
+# uwyk_matched, joint -- so budget the sum, not one method:
+#
+#   N_Y0     s/query (3 methods)      int p(tau), joint path
+#   1024     0.32                     0.99922
+#   2048     0.67                     0.99922
+#   4096     1.60                     0.99990   <- default
+#   8192     3.70                     0.99995
+#
+# Those are login-node numbers. The 5253193 logs put the OLD code (600-point
+# grid, N_Y0=2048) at 0.22 s/query on a compute node vs 0.31 s/query measured
+# the same way here, i.e. the compute node runs ~1.4x faster, so expect
+# ~1.1 s/query at N_Y0=4096:
+#   IHDP task = 10 real x 75 q  ~= 14 min  + model load/forwards
+#   ACIC task =  5 real x 480 q ~= 44 min  + model load/forwards
+# That is ~5x the old cost per query, not "about the same"; --time=03:00:00
+# still leaves >3x headroom on the ACIC tasks.
+#
+# N_Y0=4096 is set by the JOINT path, not UWYK: UWYK's tail quadrature is at
+# 0.99998 by N_Y0=1024, while the joint only reaches 1e-4 mass error at 4096.
 #
 # Submit:  sbatch benchmarks/cluster/submit_density_tauC.sbatch
 # Smoke:   sbatch --array=0 benchmarks/cluster/submit_density_tauC.sbatch
@@ -59,6 +79,15 @@ export UWYK_CFG="${UWYK_CFG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
 # ── eval configuration ─────────────────────────────────────────────────────
 # Must match whatever the PEHE table you are comparing against used, or the
 # two are not measuring the same conditioning.
+# ANC_MODE selects the family H.build_mode_list emits; ANC_TAG picks one
+# matrix out of it. They must be set as a PAIR:
+#   ANC_MODE=v6a_only ANC_TAG=v6a   no +1 edges; only the -1s implied by
+#                                   unconfoundedness (diag, Y->T, Y->X, T->X)
+#   ANC_MODE=full     ANC_TAG=anc   build_anc_full: T->Y, X_i->T, X_i->Y
+#                                   asserted +1, then propagate fills the -1s
+# Same +/-1 matrix is handed to BOTH models either way. Setting ANC_MODE alone
+# leaves ANC_TAG=v6a, which the eval now rejects up front rather than at the
+# first realization.
 export ANC_MODE="${ANC_MODE:-v6a_only}"
 export ANC_TAG="${ANC_TAG:-v6a}"
 # UWYK's config caps training context at 1000; feeding more is outside what it
@@ -66,7 +95,7 @@ export ANC_TAG="${ANC_TAG:-v6a}"
 # ACIC's ~4.3k are not, which is exactly why the truth loader must be handed
 # the POST-subsample y -- the driver does that.
 export EVAL_MAX_CONTEXT="${EVAL_MAX_CONTEXT-1000}"
-export N_Y0="${N_Y0:-2048}"
+export N_Y0="${N_Y0:-4096}"
 export ACIC_CACHE_DIR="${ACIC_CACHE_DIR:-$REPO/data/acic_cache}"
 
 export OUT_ROOT="${OUT_ROOT:-$REPO/results_density_tauC/$SLURM_ARRAY_JOB_ID}"

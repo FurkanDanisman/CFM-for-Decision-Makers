@@ -38,7 +38,7 @@ sys.path.insert(0, _HERE)
 from density_common import (                                        # noqa: E402
     Joint2D, UWYK1D, independent_f2d, truth_tau_density,
     joint_tau_density, uwyk_tau_density, tau_density_quadrature,
-    l2_distance, kl, mass, TAU_CENTERS,
+    l2_distance, kl, mass, TAU_CENTERS, TAU_BIN,
 )
 
 RESULTS: list[tuple[str, bool, str]] = []
@@ -83,6 +83,53 @@ def realistic_pred(J, seed=0, w0_logit=3.5, tail_raw=-0.5, spread=0.25):
     pred[J * J] = w0_logit
     pred[J * J + 9:] = tail_raw
     return pred, edges
+
+
+
+def gate7_knot_alignment():
+    print('\nGate 7 - tau grid is tied to the model knots')
+    from density_common import knots_aligned, TAU_BIN, TAU_CENTERS
+    check('tau step divides both model bin widths', knots_aligned(),
+          f'dtau={TAU_BIN:.6f}; 0.002/dtau={0.002/TAU_BIN:.1f}, '
+          f'0.0625/dtau={0.0625/TAU_BIN:.1f}')
+    check('grid is anchored at 0', float(np.abs(TAU_CENTERS).min()) == 0.0,
+          'knots sit at multiples of the bin width, so 0 must be a node')
+
+    # the property that makes trapezoid exact: interior is piecewise-LINEAR
+    from density_common import _diag_sums_product, _interior_tau
+    K = 1000
+    be = np.linspace(-1.0, 1.0, K + 1); bw = float(be[1] - be[0])
+    bc = 0.5 * (be[:-1] + be[1:])
+    q = np.exp(-0.5 * ((bc + 0.05) / 0.11) ** 2); q /= q.sum()
+    S = _diag_sums_product(q, q)
+    t = np.linspace(10 * bw, 11 * bw, 9)
+    v = _interior_tau(S, t, bw, 1.0)
+    sec = float(np.abs(np.diff(v, 2)).max()) / max(float(np.abs(v).max()), 1e-30)
+    check('interior is piecewise-linear between knots', sec < 1e-12,
+          f'max |2nd difference| / scale = {sec:.1e}')
+
+
+def gate8_tail_interpolation(J=32):
+    print('\nGate 8 - decoupled tail quadrature stays accurate')
+    # The tails are evaluated on a coarse tau grid and interpolated up, which
+    # is what makes a 12001-point grid affordable. Bound the error that buys.
+    import density_common as dc
+    pred, edges = realistic_pred(J, seed=5)
+    jt = Joint2D.from_pred(pred, J, edges)
+    fast = joint_tau_density(jt, TAU_CENTERS, n_y0=4096)
+    saved = dc.TAIL_TAU_STEP
+    dc.TAIL_TAU_STEP = 1e-9                      # forces direct evaluation
+    try:
+        exact = joint_tau_density(jt, TAU_CENTERS, n_y0=4096)
+    finally:
+        dc.TAIL_TAU_STEP = saved
+    d = abs(kl(exact, fast, TAU_CENTERS))
+    check('interpolated tail == direct, in KL', d < 1e-3,
+          f'KL(direct || interpolated) = {d:.2e} nats')
+
+    m = mass(fast, TAU_CENTERS)
+    check('midpoint quadrature conserves mass', abs(m - 1) < 1e-3,
+          f'int p(tau) = {m:.6f}  (trapezoid gave a 1e-3 deficit here)')
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +199,9 @@ def gate2b_float32_bar_grid(K=1000):
     def trained_like(mu, sd=0.11, tail=1e-3):
         """What a fitted head emits: mass smooth over ~50 bars, tiny tails.
         Random logits instead give a tau density with structure at the BAR
-        scale (0.002), which TAU_BIN=0.01 aliases -- see the diagnostic
-        below. That is a property of the grid, not of the operator."""
+        scale (0.002). The OLD tau grid (dtau=0.01, bin midpoints) aliased
+        that; the current grid (dtau=0.0005, anchored at 0) contains every bar
+        knot, so the diagnostic below should now sit at ~1.0."""
         q = np.exp(-0.5 * ((bc - mu) / sd) ** 2); q /= q.sum()
         return UWYK1D(log_pL=np.log(tail), log_pBars=np.log(q * (1 - 2 * tail)),
                       log_pR=np.log(tail), sL=0.002, sR=0.002,
@@ -175,7 +223,7 @@ def gate2b_float32_bar_grid(K=1000):
           f'int p(tau) = {m:.6f}')
 
     # Aliasing limit, reported not asserted: with random logits the K=1000
-    # tau density varies at the 0.002 bar scale and TAU_BIN=0.01 cannot
+    # tau density varies at the 0.002 bar scale, which the old grid could not
     # resolve it. The eval's `mass` column is the live guard for this --
     # summarize_density_tauC warns if it strays >1% from 1.
     g0 = UWYK1D.from_pred(rng.normal(0, 1.5, K + 4), bd.edges.numpy(),
@@ -186,7 +234,7 @@ def gate2b_float32_bar_grid(K=1000):
                           float(bd.base_s_right))
     m = mass(uwyk_tau_density(g0, g1, TAU_CENTERS, n_y0=4096), TAU_CENTERS)
     print(f'    (diagnostic) random logits, structure at bar scale 0.002 vs '
-          f'TAU_BIN=0.01: int p(tau) = {m:.6f} -- aliasing, not an error')
+          f'dtau={TAU_BIN:.5f}: int p(tau) = {m:.6f}')
 
 
 def gate3_normalisation(J=16):
@@ -345,6 +393,8 @@ if __name__ == '__main__':
     gate4b_exact_vs_bruteforce()
     gate5_joint_equals_product()
     gate6_discretisation_floor()
+    gate7_knot_alignment()
+    gate8_tail_interpolation()
 
     n_fail = sum(1 for _, ok, _ in RESULTS if not ok)
     print(f'\n{"="*66}\n{len(RESULTS)-n_fail}/{len(RESULTS)} gates passed')
