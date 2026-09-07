@@ -351,31 +351,30 @@ def summarize_method_dataset(method_dir: str, dataset: str,
     paths = sorted(glob.glob(os.path.join(method_dir, dataset, f'{dataset}_r*.npz')))
     if not paths:
         return None
-    pehes_d, errs_d, covs, lens = [], [], [], []
-    pehe_diffs, err_diffs, cate_diffs = [], [], []
+    pehes, errs, covs, lens = [], [], [], []
+    ate_diffs = []          # density-mean vs stored ate (per realization)
     for p in paths:
         got = process_npz(p, pehe_key, err_key)
         if got is None:
             continue
-        pehes_d.append(got['pehe_den']); errs_d.append(got['err_den'])
-        covs.append(got['coverage']);    lens.append(got['length'])
-        if np.isfinite(got['pehe_stored']):
-            pehe_diffs.append(got['pehe_den'] - got['pehe_stored'])
-        if np.isfinite(got['err_stored']):
-            err_diffs.append(got['err_den']  - got['err_stored'])
-        if np.isfinite(got['cate_max_diff']):
-            cate_diffs.append(got['cate_max_diff'])
+        # REPORTED columns: stored PEHE / ε_ATE (identical to mega-sbatch).
+        if np.isfinite(got['pehe']): pehes.append(got['pehe'])
+        if np.isfinite(got['err']):  errs.append(got['err'])
+        covs.append(got['coverage']); lens.append(got['length'])
+        if np.isfinite(got['density_vs_stored_ate']):
+            ate_diffs.append(got['density_vs_stored_ate'])
     if not covs:
         return None
     return {
-        'pehe':          _mean_se(pehes_d),
-        'err':           _mean_se(errs_d),
-        'cov':           _mean_se(covs),
-        'len':           _mean_se(lens),
-        'n':             len(covs),
-        'pehe_max_diff': float(np.max(np.abs(pehe_diffs))) if pehe_diffs else float('nan'),
-        'err_max_diff':  float(np.max(np.abs(err_diffs)))  if err_diffs  else float('nan'),
-        'cate_max_diff': float(np.max(cate_diffs)) if cate_diffs else float('nan'),
+        'pehe':         _mean_se(pehes),
+        'err':          _mean_se(errs),
+        'cov':          _mean_se(covs),
+        'len':          _mean_se(lens),
+        'n':            len(covs),
+        # Consistency diagnostic: how far is the density mean from the stored ate?
+        # If ≈ 0 the density is trustworthy; if not, CI here is on a different
+        # distribution than the point CATE the mega-sbatch reports.
+        'ate_max_diff': float(np.max(np.abs(ate_diffs))) if ate_diffs else float('nan'),
     }
 
 
@@ -498,15 +497,17 @@ def main():
     lines = [
         f'\nRealCause density-CI — {args.out_root}',
         '',
-        '(each cell, top → bottom: √PEHE, ε_ATE, Coverage, Length; '
-        'ALL derived from the CATE density via convolution p_y1 * flip(p_y0). '
-        'CI = 95%, assume Y|do(0) ⊥ Y|do(1); n = realizations)',
+        '(each cell, top → bottom: √PEHE / ε_ATE (from stored point CATE — '
+        'matches realcause_eval mega-sbatch), Coverage / Length (95% CI from '
+        'the density, assuming Y|do(0) ⊥ Y|do(1)); n = realizations)',
         '',
         header, sep,
     ]
 
-    verify_lines = ['', '## Sanity check: max |PEHE_density - PEHE_stored| per cell',
-                    '(should be ≈ 0 — density mean equals point CATE by construction)',
+    verify_lines = ['', '## Sanity: max |mean(density) − stored ate| across realizations',
+                    '(should be ≈ 0 — the density used for CI IS the density that '
+                    'produced the reported point CATE; if not, CI is on a different '
+                    'distribution than the stored PEHE row)',
                     '', header, sep]
 
     for method in args.methods:
@@ -531,14 +532,12 @@ def main():
                 f'Cov {cov_str}<br>'
                 f'Len {len_str} (n={n})'
             )
-            pd_max = got['pehe_max_diff']
-            ed_max = got['err_max_diff']
-            if np.isfinite(pd_max) or np.isfinite(ed_max):
-                _pfmt = 'nan' if not np.isfinite(pd_max) else (f'{pd_max:.2e}' if abs(pd_max) < 1 else f'{pd_max:.4f}')
-                _efmt = 'nan' if not np.isfinite(ed_max) else f'{ed_max:.2e}'
-                verify_cells.append(f'ΔPEHE {_pfmt}<br>Δε_ATE {_efmt}')
+            ad_max = got.get('ate_max_diff', float('nan'))
+            if np.isfinite(ad_max):
+                _fmt_ad = f'{ad_max:.2e}' if abs(ad_max) < 1 else f'{ad_max:.4f}'
+                verify_cells.append(f'|Δate density-vs-stored| max = {_fmt_ad}')
             else:
-                verify_cells.append('(no stored keys)')
+                verify_cells.append('(no stored ate)')
         lines.append('| ' + ' | '.join(cells) + ' |')
         verify_lines.append('| ' + ' | '.join(verify_cells) + ' |')
 
