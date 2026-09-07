@@ -6,23 +6,19 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
-#SBATCH --array=0-39
+#SBATCH --array=0-34
 #
-# 40-task array — 8 methods × 5 RealCause datasets.
+# 35-task array — 7 methods × 5 RealCause datasets.
 #
 #   method_idx = SLURM_ARRAY_TASK_ID / 5    0=cpfn1d 1=cpfn2d 2=dopfn 3=dopfnbb
-#                                           4=fn_50  5=graph2d 6=uwyk 7=uwyk1d
+#                                           4=fn_50  5=graph2d 6=uwyk1d
 #   dataset_idx = SLURM_ARRAY_TASK_ID % 5   0=IHDP 1=ACIC 2=CPS 3=PSID 4=PSID_bal
 #
-# graph2d runs with ANC_MODE=v3b_only which emits BOTH v3b and noanc keys per
-# realization NPZ — the aggregator reads both into separate rows.
-#
-# uwyk (method_idx=6) runs UWYK's own dofm_no_clustering.py / dofm_psid_balanced.py
-# UNMODIFIED — paper-exact noanc numbers (matches Table 3 21896 on PSID_bal).
-# uwyk1d (method_idx=7) runs UWYK's checkpoint through our harness with
-# ANC_MODE=v3b_only — the only way to get UWYK-with-v3b (their scripts only
-# expose all_unknown/full_graph). The aggregator uses uwyk for noanc row,
-# uwyk1d for v3b row.
+# graph2d and uwyk1d both run with ANC_MODE=v3b_only which emits BOTH v3b and
+# noanc keys per realization NPZ — the aggregator reads both into separate rows.
+# With the T-encoding-uses-raw-y fix in eval_uwyk1d_realcause.py, uwyk1d's
+# noanc numbers match UWYK's own reproduce scripts byte-identically, so we
+# don't need to run UWYK's dofm scripts separately anymore.
 #
 # Env overrides:
 #   OUT_ROOT           required — per-method outputs land at OUT_ROOT/<method>/<DATASET>/
@@ -71,8 +67,7 @@ case "$METHOD_IDX" in
     3) METHOD=dopfnbb ;;
     4) METHOD=fn_50   ;;
     5) METHOD=graph2d ;;
-    6) METHOD=uwyk    ;;
-    7) METHOD=uwyk1d  ;;
+    6) METHOD=uwyk1d  ;;
     *) echo "invalid METHOD_IDX=$METHOD_IDX" >&2; exit 2 ;;
 esac
 
@@ -145,21 +140,6 @@ case "$METHOD" in
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK_REPRO" \
             --anc-mode v3b_only --density-primary-mode v3b
-        ;;
-    uwyk)
-        # UWYK's own reproduce scripts (paper-exact noanc).
-        [ -d "$UWYK_REPRO" ] || { echo "FATAL: UWYK_REPRO not found: $UWYK_REPRO" >&2; exit 1; }
-        # uwyk.py writes pickles to $UWYK_REPRO/RealCauseEval/results/$EXP_NAME/.
-        # Give each dataset its own exp_name so the aggregator can find them.
-        EXP="rc_all_uwyk_${DATASET}"
-        python -u "$REPO/realcause_eval/uwyk.py" run \
-            --dataset "$DATASET" --uwyk-repro "$UWYK_REPRO" \
-            --repo "$REPO" --exp-name "$EXP"
-        # Mirror the pickles under $OUT_ROOT/uwyk/$DATASET/ so aggregator's
-        # default layout works (aggregator reads pkl_uwyk from method_dir=uwyk).
-        SRC="$UWYK_REPRO/RealCauseEval/results/$EXP"
-        [ -d "$SRC" ] || { echo "FATAL: uwyk results not written at $SRC" >&2; exit 1; }
-        cp -f "$SRC"/* "$OUT"/
         ;;
     uwyk1d)
         [ -d "$UWYK_REPRO" ] || { echo "FATAL: UWYK_REPRO not found: $UWYK_REPRO" >&2; exit 1; }
