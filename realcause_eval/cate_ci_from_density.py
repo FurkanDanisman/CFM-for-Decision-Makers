@@ -76,58 +76,91 @@ def _load_density(npz_path: str):
         return None
 
 
-def _tau_grid(edges: np.ndarray, nbins: int) -> np.ndarray:
-    """Return the τ bin centers on which p_y1 ⊗ flip(p_y0) lives — length 2·nbins-1.
-
-    Uses `nbins` from the density array (not len(edges)-1) so we're robust to
-    NPZs where edges include extra pad entries beyond the model's actual bins.
-    Derives bin_width from consecutive edges (assumed uniform).
-    """
-    edges = np.asarray(edges, dtype=np.float64)
-    if edges.size < 2:
-        raise ValueError(f'edges too short: shape={edges.shape}')
-    width = float(edges[1] - edges[0])
-    k = np.arange(2 * nbins - 1) - (nbins - 1)
-    return k.astype(np.float64) * width
+def _is_uniform(centers: np.ndarray, rtol: float = 1e-4) -> bool:
+    """True iff consecutive gaps are equal within rtol × mean gap."""
+    if centers.size < 3:
+        return True
+    d = np.diff(centers)
+    return bool(np.max(np.abs(d - d.mean())) < rtol * abs(d.mean()) + 1e-12)
 
 
-def _ci_from_pmf(tau_centers: np.ndarray, p_tau: np.ndarray, lo: float, hi: float):
-    """Linear-interp CDF at levels lo, hi. p_tau shape (N_q, 2·nbins-1),
-    tau_centers shape (2·nbins-1,). Returns (tau_lo, tau_hi) both (N_q,)."""
-    p_tau = p_tau / p_tau.sum(axis=-1, keepdims=True).clip(min=1e-12)
+def _ci_from_atoms_uniform(centers: np.ndarray, p_y0: np.ndarray, p_y1: np.ndarray,
+                            lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+    """FAST path: bins are uniform, so N² pairs bucket onto 2N-1 τ values.
+    p_τ[q, k] = Σ_{i-j=k+(N-1)} p_y1[q, i] · p_y0[q, j]  via FFT conv.
+    Then CDF → interp at lo/hi. Returns (τ_lo, τ_hi) shape (N_q,)."""
+    from numpy.fft import rfft, irfft
+    N = centers.size
+    n_out = 2 * N - 1
+    n_fft = 1 << (n_out - 1).bit_length()
+    F1 = rfft(p_y1, n=n_fft, axis=-1)
+    F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
+    p_tau = irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out]
+    p_tau = np.clip(p_tau, 0.0, None)
+    p_tau /= p_tau.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    width = float(centers[1] - centers[0])
+    tau = (np.arange(n_out) - (N - 1)).astype(np.float64) * width
+    # tau is already sorted → cumulative interpolate directly.
     cdf = np.cumsum(p_tau, axis=-1)
-    def _q(level):
-        # Per query, find first index where cdf >= level, then linear interp.
-        # cdf shape (N_q, K); tau_centers shape (K,).
-        below = cdf < level
-        # index of first True in "cdf >= level" per row
-        idx = np.argmax(~below, axis=-1)
-        # If entire cdf < level, argmax returns 0 → clip to K-1.
-        idx = np.where(cdf[:, -1] < level, cdf.shape[-1] - 1, idx)
-        row = np.arange(cdf.shape[0])
-        c_hi = cdf[row, idx]
-        c_lo = np.where(idx > 0, cdf[row, np.maximum(idx - 1, 0)], 0.0)
-        t_hi = tau_centers[idx]
-        t_lo = np.where(idx > 0, tau_centers[np.maximum(idx - 1, 0)], tau_centers[0])
-        w = np.where(c_hi > c_lo, (level - c_lo) / (c_hi - c_lo), 0.0)
-        return t_lo + w * (t_hi - t_lo)
-    return _q(lo), _q(hi)
+    return _quantile_from_sorted(tau[None, :], cdf, lo), _quantile_from_sorted(tau[None, :], cdf, hi)
 
 
-def process_npz(npz_path: str, pehe_key: str, err_key: str,
-                 mc_samples: int = 5000, mc_seed: int = 0):
+def _ci_from_atoms_general(centers: np.ndarray, p_y0: np.ndarray, p_y1: np.ndarray,
+                            lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+    """GENERAL path: bins may be non-uniform. Enumerate all N² atoms per query,
+    sort by τ, cumulate probabilities, interpolate CDF quantiles.
+    Cost: O(N_q · N² · log N²)  — fine for N ≤ ~200. For large N use the
+    uniform path via _is_uniform dispatch."""
+    N_q = p_y0.shape[0]
+    N = centers.size
+    tau_mat = centers[:, None] - centers[None, :]   # (N, N) shared across queries
+    tau_flat = tau_mat.ravel()                       # (N²,)
+    order = np.argsort(tau_flat, kind='stable')
+    tau_sorted = tau_flat[order]                     # (N²,) — same for every query
+
+    tau_lo_arr = np.empty(N_q, dtype=np.float64)
+    tau_hi_arr = np.empty(N_q, dtype=np.float64)
+    for q in range(N_q):
+        p_mat = p_y1[q, :, None] * p_y0[q, None, :]  # (N, N)
+        p_sorted = p_mat.ravel()[order]
+        cdf = np.cumsum(p_sorted)
+        cdf /= max(cdf[-1], 1e-12)
+        tau_lo_arr[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], lo)[0]
+        tau_hi_arr[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], hi)[0]
+    return tau_lo_arr, tau_hi_arr
+
+
+def _quantile_from_sorted(tau: np.ndarray, cdf: np.ndarray, level: float) -> np.ndarray:
+    """Linear-interp inverse-CDF at `level`. tau and cdf are sorted along axis=-1.
+    Broadcasts if tau shape (1, K) and cdf shape (N_q, K), returns (N_q,)."""
+    # For each row of cdf, find first index where cdf >= level.
+    below = cdf < level
+    idx = np.argmax(~below, axis=-1)
+    idx = np.where(cdf[..., -1] < level, cdf.shape[-1] - 1, idx)
+    row = np.arange(cdf.shape[0])
+    c_hi = cdf[row, idx]
+    c_lo = np.where(idx > 0, cdf[row, np.maximum(idx - 1, 0)], 0.0)
+    t_row = np.broadcast_to(tau, cdf.shape)
+    t_hi = t_row[row, idx]
+    t_lo = np.where(idx > 0, t_row[row, np.maximum(idx - 1, 0)], t_row[row, 0])
+    w = np.where(c_hi > c_lo, (level - c_lo) / (c_hi - c_lo), 0.0)
+    return t_lo + w * (t_hi - t_lo)
+
+
+
+
+def process_npz(npz_path: str, pehe_key: str, err_key: str):
     """→ dict with density-derived PEHE / ε_ATE / coverage / length.
 
-    Uses MONTE-CARLO sampling to build p(τ) — handles non-uniform bar-dist
-    edges (dopfn) correctly. Per query and per arm, sample bin indices from
-    p_y{a}, un-scale to raw units (y_shift, y_scale), take differences:
-        τ_s = (y1_sample_s * y_scale + y_shift) - (y0_sample_s * y_scale + y_shift)
-            = (y1 - y0) * y_scale   (y_shift cancels — same for both arms).
-    Point cate_hat[q] = mean_s τ_s  ≈ ∫τ p(τ)dτ. CI = empirical quantiles.
+    Point CATE (direct):
+        cate_hat[q] = (Σ_i c_i · p_y1[q, i] - Σ_i c_i · p_y0[q, i]) · y_scale
+    Works for any bin geometry. y_shift cancels between arms.
 
-    Reproducing point CATE:
-        E[τ] = E[Y_1] - E[Y_0] = sum_i c_i * (p_y1[i] - p_y0[i]),   then × y_scale.
-    Compute this directly for cross-check.
+    95% CI (exact, N²-atom PMF):
+        p(τ = c_i - c_j | q) = p_y1[q, i] · p_y0[q, j]   under independence.
+        Enumerate atoms, sort by τ, cumulate → CDF → interp at 0.025 / 0.975.
+    If bin centers are UNIFORM (cpfn1d, uwyk1d likely) the N² atoms collapse
+    onto 2N-1 τ bins via discrete convolution — same result, way faster.
     """
     loaded = _load_density(npz_path)
     if loaded is None:
@@ -152,26 +185,16 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str,
     true_ate = float(true_cate_pq.mean())
     err_ate_den = float(abs(ate_hat - true_ate) / max(abs(true_ate), 0.1))
 
-    # ── Monte Carlo CI (robust to non-uniform bin widths).
-    rng = np.random.default_rng(mc_seed)
-    cdf0 = np.cumsum(p_y0, axis=-1)
-    cdf1 = np.cumsum(p_y1, axis=-1)
-    cdf0 /= cdf0[:, -1:].clip(min=1e-12)
-    cdf1 /= cdf1[:, -1:].clip(min=1e-12)
-    u = rng.random((mc_samples, p_y0.shape[0]))       # (M, N_q)
-    # Inverse-CDF sample: for each query q and sample s, find idx s.t. cdf[q, idx] >= u[s, q].
-    # Vectorised via searchsorted per query.
-    def _sample(cdf):
-        out = np.empty((mc_samples, p_y0.shape[0]), dtype=np.int64)
-        for q in range(p_y0.shape[0]):
-            out[:, q] = np.searchsorted(cdf[q], u[:, q], side='right').clip(0, nbins - 1)
-        return centers[out]                            # (M, N_q) raw density-axis values
-    y0_s = _sample(cdf0)
-    y1_s = _sample(cdf1)
-    tau_s = (y1_s - y0_s) * y_scale                    # (M, N_q) in raw τ units
-
-    tau_lo = np.quantile(tau_s, 0.025, axis=0)         # (N_q,)
-    tau_hi = np.quantile(tau_s, 0.975, axis=0)
+    # ── EXACT CI: enumerate atoms of p(τ) under independence, sort, quantile.
+    # If centers are uniform → convolution collapses N² atoms into 2N-1 bins.
+    # Else → enumerate all N² atoms per query and sort.
+    # Both give τ CI on the density axis; multiply by y_scale for raw units.
+    if _is_uniform(centers):
+        tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+    else:
+        tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
+    tau_lo = tau_lo_axis * y_scale
+    tau_hi = tau_hi_axis * y_scale
     coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
     length   = float(np.mean(tau_hi - tau_lo))
 
