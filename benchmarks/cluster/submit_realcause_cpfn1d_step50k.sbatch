@@ -35,8 +35,8 @@ CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — where per-dataset outputs land}"
 STD_MODE="${STD_MODE:-per_arm}"
-EVAL_MAX_CONTEXT="${EVAL_MAX_CONTEXT:-1000}"
-EVAL_CONTEXT_SEED="${EVAL_CONTEXT_SEED:-43}"
+EVAL_MAX_CONTEXT="${EVAL_MAX_CONTEXT:-0}"   # 0 = no cap; CausalPFN uses full context
+EVAL_CONTEXT_SEED="${EVAL_CONTEXT_SEED:-1}"
 
 [ -f "$CKPT" ] || { echo "FATAL: ckpt not found: $CKPT" >&2; exit 1; }
 
