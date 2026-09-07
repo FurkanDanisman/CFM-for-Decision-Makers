@@ -190,21 +190,23 @@ def dopfn_pipeline(cate_dataset, reg, return_density=False):
 
     logits0 = np.asarray(full0['logits'])
     logits1 = np.asarray(full1['logits'])
-    edges = np.asarray(full0['criterion'].borders)   # RAW Y units
+    edges = np.asarray(full0['criterion'].borders)   # RESCALED (raw Y) borders
 
-    # DoPFN uses FullSupportBarDistribution: interior bars = uniform (midpoint
-    # centers), FIRST bar = left half-normal with mean = borders[1] - w0·√(2/π)/0.6745,
-    # LAST bar = right half-normal with mean = borders[-2] + w_last·√(2/π)/0.6745,
-    # where 0.6745 = HalfNormal(scale=1).icdf(0.5) and √(2/π) = HalfNormal(1).mean.
-    # Their ratio is exactly _HN_MEAN_FACTOR ≈ 1.1829. Save effective centers so
-    # the aggregator's `sum(p * centers)` exactly reproduces criterion.mean(logits).
+    # DoPFN quirk: FullSupportBarDistribution.__init__ registers
+    #   `bucket_widths = borders[1:] - borders[:-1]`  (buffer)
+    # But predict_full then REASSIGNS `criterion.borders = borders * data_std + mean`
+    # WITHOUT updating `bucket_widths`. So `mean()` computes
+    #   bucket_means = borders_NEW[:-1] + bucket_widths_OLD / 2
+    # We MUST read the criterion's own `bucket_widths` (stale) — NOT compute it
+    # from the rescaled edges — to reproduce criterion.mean(logits) exactly.
+    widths_old = np.asarray(full0['criterion'].bucket_widths).astype(np.float64)
+
     _HN_MEAN_FACTOR = float(np.sqrt(2.0 / np.pi) /
                              (np.sqrt(2.0) * float(__import__('scipy.special',
                               fromlist=['erfinv']).erfinv(0.5))))
-    widths = np.diff(edges).astype(np.float64)
-    centers = (edges[:-1] + widths / 2).astype(np.float64)         # (K,) midpoints
-    centers[0]  = float(edges[1])  - widths[0]  * _HN_MEAN_FACTOR   # left tail mean
-    centers[-1] = float(edges[-2]) + widths[-1] * _HN_MEAN_FACTOR   # right tail mean
+    centers = (edges[:-1] + widths_old / 2).astype(np.float64)      # (K,)
+    centers[0]  = float(edges[1])  - widths_old[0]  * _HN_MEAN_FACTOR
+    centers[-1] = float(edges[-2]) + widths_old[-1] * _HN_MEAN_FACTOR
 
     p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
     p_y0 /= p_y0.sum(axis=-1, keepdims=True)
