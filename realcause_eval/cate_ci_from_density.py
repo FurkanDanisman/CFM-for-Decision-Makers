@@ -196,21 +196,41 @@ def _ci_from_atoms_general(centers: np.ndarray, p_y0: np.ndarray, p_y1: np.ndarr
 
 def _ci_uwyk_per_query(centers0_pq: np.ndarray, centers1_pq: np.ndarray,
                         p_y0: np.ndarray, p_y1: np.ndarray,
-                        lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+                        lo: float, hi: float,
+                        n_samples: int = 8000, seed: int = 0
+                        ) -> tuple[np.ndarray, np.ndarray]:
     """UWYK: per-query centers (tail atoms depend on per-arm sL/sR).
-    Enumerate (K+2)² atoms per query, sort, quantile. Cost O(N_q · N²·log N)."""
+
+    Exact enumeration is O(N_q · N²) — for K+2 ≈ 1000 bins × 1618 CPS queries
+    that's 1.6B atoms per realization, hours per dataset. Use MC instead:
+    inverse-CDF sample n_samples atoms per arm per query, take τ = y1 - y0,
+    empirical quantiles. Under independence this converges to the exact CI
+    at O(1/√n_samples); at 8000 samples the CI edge error is ~1% of density
+    std — well below the model's PEHE and comparable to per-realization
+    Monte Carlo variance we already carry.
+
+    Cost drops from N² = 1M per query to n_samples = 8k per query — 125×
+    faster. For CPS: seconds instead of hours.
+    """
     N_q, N = p_y0.shape
+    rng = np.random.default_rng(seed)
+
+    # Per-arm per-query CDFs → invert via searchsorted.
+    cdf0 = np.cumsum(p_y0, axis=-1); cdf0 /= cdf0[:, -1:].clip(min=1e-12)
+    cdf1 = np.cumsum(p_y1, axis=-1); cdf1 /= cdf1[:, -1:].clip(min=1e-12)
+    u0 = rng.random((n_samples, N_q))
+    u1 = rng.random((n_samples, N_q))
+
     tau_lo = np.empty(N_q, dtype=np.float64)
     tau_hi = np.empty(N_q, dtype=np.float64)
     for q in range(N_q):
-        c0 = centers0_pq[q]; c1 = centers1_pq[q]
-        tau = (c1[:, None] - c0[None, :]).ravel()               # (N*N,)
-        p   = (p_y1[q, :, None] * p_y0[q, None, :]).ravel()     # (N*N,)
-        order = np.argsort(tau, kind='stable')
-        tau_sorted = tau[order]; cdf = np.cumsum(p[order])
-        cdf /= max(cdf[-1], 1e-12)
-        tau_lo[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], lo)[0]
-        tau_hi[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], hi)[0]
+        idx0 = np.searchsorted(cdf0[q], u0[:, q], side='right').clip(0, N - 1)
+        idx1 = np.searchsorted(cdf1[q], u1[:, q], side='right').clip(0, N - 1)
+        y0s = centers0_pq[q][idx0]
+        y1s = centers1_pq[q][idx1]
+        tau_s = y1s - y0s
+        tau_lo[q] = float(np.quantile(tau_s, lo))
+        tau_hi[q] = float(np.quantile(tau_s, hi))
     return tau_lo, tau_hi
 
 
