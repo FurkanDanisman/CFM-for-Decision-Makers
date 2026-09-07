@@ -9,10 +9,12 @@ Reads the outputs of submit_realcause_all_methods.sbatch — one directory per
     dopfnbb  : $OUT_ROOT/dopfnbb/<D>/summary.npz        keys: pehe[], eps_ate[]
     fn_50    : $OUT_ROOT/fn_50/<D>/rc_all_<D>/<pkl>     keys: pehe, ate_rel_err
     graph2d  : $OUT_ROOT/graph2d/<D>/<D>_r<###>.npz     keys: pehe_raw_v3b/_noanc, err_raw_v3b/_noanc
+    uwyk     : $OUT_ROOT/uwyk/<D>/<model>_<D>_<r>       (pkl, from UWYK's own dofm scripts — paper-exact)
     uwyk1d   : $OUT_ROOT/uwyk1d/<D>/<D>_r<###>.npz      keys: pehe_raw_v3b/_noanc, err_raw_v3b/_noanc
 
-graph2d + uwyk1d each produce TWO rows (noanc + v3b/"full"); everything else
-produces one row. Final table has 9 rows × 5 columns, each cell shows
+graph2d produces TWO rows (noanc + v3b/"full") from one NPZ. uwyk (own scripts)
+gives the noanc row; uwyk1d (harness) gives the v3b row. Final table has 9 rows
+× 5 columns, each cell shows
 
     √PEHE mean ± SE
     ε_ATE mean ± SE
@@ -42,7 +44,7 @@ ROW_SPEC = (
     ('fn_50',        'fn_50',   'pkl_fn50'),
     ('graph2d noanc','graph2d', 'npz_pehe_raw_noanc'),
     ('graph2d v3b',  'graph2d', 'npz_pehe_raw_v3b'),
-    ('uwyk noanc',   'uwyk1d',  'npz_pehe_raw_noanc'),
+    ('uwyk noanc',   'uwyk',    'pkl_uwyk'),
     ('uwyk v3b',     'uwyk1d',  'npz_pehe_raw_v3b'),
 )
 
@@ -109,6 +111,29 @@ def _load_fn50_pkls(dir_path: str):
     return pehes, errs
 
 
+def _load_uwyk_pkls(dir_path: str):
+    """Walk uwyk output — pkls named dofm_noclust_<D>_<r> or dofm_psid_balanced_<D>_<r>.
+    Keys inside: {'pehe', 'ate_rel_err', 'model', 'dataset', ...}."""
+    pehes, errs = [], []
+    for p in sorted(glob.glob(os.path.join(dir_path, '**', 'dofm_*'),
+                              recursive=True)):
+        if not os.path.isfile(p) or p.endswith(('.csv', '.json', '.md')):
+            continue
+        try:
+            with open(p, 'rb') as f:
+                d = pickle.load(f)
+            if not isinstance(d, dict):
+                continue
+            if 'pehe' in d and d['pehe'] is not None and np.isfinite(d['pehe']):
+                pehes.append(float(d['pehe']))
+            if 'ate_rel_err' in d and d['ate_rel_err'] is not None \
+                    and np.isfinite(d['ate_rel_err']):
+                errs.append(float(d['ate_rel_err']))
+        except Exception as e:
+            print(f'  [warn] {p}: {e}', file=sys.stderr)
+    return pehes, errs
+
+
 def _mean_se(vals):
     v = np.asarray([x for x in vals if np.isfinite(x)], dtype=float)
     if v.size == 0:
@@ -140,6 +165,8 @@ def _load_cell(out_root: str, method_dir: str, dataset: str, loader_key: str):
         return _load_summary_npz(dir_path)
     if loader_key == 'pkl_fn50':
         return _load_fn50_pkls(dir_path)
+    if loader_key == 'pkl_uwyk':
+        return _load_uwyk_pkls(dir_path)
     pehe_key, err_key = NPZ_KEYS[loader_key]
     return _load_per_realization_npz(dir_path, dataset, pehe_key, err_key)
 
