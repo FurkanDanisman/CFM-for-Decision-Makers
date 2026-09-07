@@ -10,7 +10,7 @@ with no modifications:
 Both invoked with --graph_mode all_unknown, both defaulting to the checkpoint
 their scripts point at (best_model.pt in the full_conditioned_model dir).
 All 5 datasets write per-realization pickles to a SINGLE folder
-$UWYK_REPRO/results/$EXP_NAME/ — pickle filenames are
+$UWYK_REPRO/RealCauseEval/results/$EXP_NAME/ — pickle filenames are
     dofm_noclust_{IHDP,ACIC,CPS,PSID}_{r}
     dofm_psid_balanced_PSID_{r}
 so PSID vs PSID_bal is disambiguated by the model-name prefix (which is also
@@ -95,7 +95,7 @@ def _run(args):
     ]
 
     print(f'[uwyk] dataset={args.dataset}  script={script}  exp_name={args.exp_name}', flush=True)
-    print(f'[uwyk] results dir: {uwyk}/results/{args.exp_name}/', flush=True)
+    print(f'[uwyk] results dir: {uwyk}/RealCauseEval/results/{args.exp_name}/', flush=True)
     subprocess.run(cmd, env=env, check=True, cwd=uwyk)
 
 
@@ -144,7 +144,7 @@ def _fmt(m, se, n, big):
 
 def _summary(args):
     uwyk = os.path.abspath(args.uwyk_repro)
-    folder = os.path.join(uwyk, 'results', args.exp_name)
+    folder = os.path.join(uwyk, 'RealCauseEval', 'results', args.exp_name)
     records = _load_pickles(folder)
     if not records:
         sys.exit(f'FATAL: no pickles found in {folder}')

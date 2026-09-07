@@ -20,7 +20,7 @@
 #
 # Both scripts use their default checkpoint (best_model.pt in the
 # full_conditioned_model dir). Pkls land at
-#   $UWYK_REPRO/results/$EXP_NAME/{dofm_noclust,dofm_psid_balanced}_<DATASET>_<r>
+#   $UWYK_REPRO/RealCauseEval/results/$EXP_NAME/{dofm_noclust,dofm_psid_balanced}_<DATASET>_<r>
 # then:
 #   python R-PFN/realcause_eval/uwyk.py summary \
 #          --uwyk-repro $DEPLOY_ROOT/external/uwyk_reproduce
@@ -68,7 +68,7 @@ export PYTHONUNBUFFERED=1
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] UWYK unmodified reproduce  DATASET=$DATASET  EXP_NAME=$EXP_NAME"
 echo "  UWYK_REPRO=$UWYK_REPRO"
-echo "  results dir: $UWYK_REPRO/results/$EXP_NAME/"
+echo "  results dir: $UWYK_REPRO/RealCauseEval/results/$EXP_NAME/"
 
 python -u "$REPO/realcause_eval/uwyk.py" run \
     --dataset    "$DATASET" \
