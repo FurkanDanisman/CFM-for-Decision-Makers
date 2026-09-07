@@ -41,6 +41,7 @@ fi
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 UWYK_REPRO="${UWYK_REPRO:-$DEPLOY_ROOT/external/uwyk_reproduce}"
 EXP_NAME="${EXP_NAME:-uwyk_realcause}"
+SEED="${SEED:-43}"   # seeds numpy so ACIC/CPS/PSID_unbal 1000-row subsample is deterministic
 
 [ -d "$UWYK_REPRO" ] || { echo "FATAL: UWYK_REPRO not found: $UWYK_REPRO" >&2; exit 1; }
 [ -f "$UWYK_REPRO/RealCauseEval/run_baselines/dofm_no_clustering.py" ] || { echo "FATAL: dofm_no_clustering.py missing" >&2; exit 1; }
@@ -74,6 +75,7 @@ python -u "$REPO/realcause_eval/uwyk.py" run \
     --dataset    "$DATASET" \
     --uwyk-repro "$UWYK_REPRO" \
     --exp-name   "$EXP_NAME" \
-    --repo       "$REPO"
+    --repo       "$REPO" \
+    --seed       "$SEED"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done"
