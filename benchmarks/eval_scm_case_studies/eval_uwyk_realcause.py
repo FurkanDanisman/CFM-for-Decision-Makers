@@ -205,6 +205,20 @@ def _cate_uwyk(model, cate_ds, variant, apply_psid_bal):
     if apply_psid_bal:
         X_train, t_train_orig, y_train = psid_balance_subsample(X_train, t_train_orig, y_train)
 
+    # Optional random context subsampling — matches the EVAL_MAX_CONTEXT
+    # convention used by cpfn1d/cpfn2d/graph2d realcause evals.
+    _eval_cap = os.environ.get('EVAL_MAX_CONTEXT', '')
+    if _eval_cap:
+        cap = int(_eval_cap)
+        n_ctx = X_train.shape[0]
+        if cap < n_ctx:
+            _seed = int(os.environ.get('EVAL_CONTEXT_SEED', '0'))
+            rng = np.random.default_rng(_seed)
+            idx = rng.choice(n_ctx, size=cap, replace=False)
+            X_train = X_train[idx]
+            t_train_orig = t_train_orig[idx]
+            y_train = y_train[idx]
+
     n_test = X_test.shape[0]
 
     # Target-encode T with mean(Y|T)
