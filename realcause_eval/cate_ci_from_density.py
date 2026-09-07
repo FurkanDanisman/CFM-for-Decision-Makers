@@ -283,8 +283,10 @@ def _fmt(m, se, big=False):
 
 def _debug_single(npz_path: str, pehe_key: str, err_key: str) -> None:
     """Print a fingerprint of one realization: edges range, density means,
-    density-derived cate summary, and stored cate summary. Reveals whether
-    the density lives on a different scale than the stored point estimates."""
+    density-derived cate summary, and every stored scalar we can grab for
+    cross-check (pehe_raw, ate_raw, true_ate, cate_pred per-query if present).
+    If mean(density-derived cate) differs from stored ate_raw, the density
+    saved in the NPZ is NOT the density used to compute stored PEHE."""
     with np.load(npz_path, allow_pickle=True) as z:
         edges = np.asarray(z['edges'], dtype=np.float64)
         p_y0  = np.asarray(z['p_y0_scaled'], dtype=np.float64)
@@ -293,28 +295,48 @@ def _debug_single(npz_path: str, pehe_key: str, err_key: str) -> None:
         true_cate_pq = np.asarray(z['true_cate_per_query'], dtype=np.float64)
         cate_pred = np.asarray(z['cate_pred']).astype(np.float64) if 'cate_pred' in z.files else None
         pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
+        # Pull any stored ate scalar for cross-check.
+        ate_stored = float('nan')
+        for k in ('ate_raw', 'ate_em', 'ate_full'):
+            if k in z.files:
+                ate_stored = float(z[k]); ate_stored_key = k; break
+        else:
+            ate_stored_key = None
+        true_ate_stored = float(z['true_ate']) if 'true_ate' in z.files else float('nan')
+        stored_keys = list(z.files)
 
     p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
     p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
     nbins = p_y0.shape[-1]
     centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1]) if edges.size >= nbins + 1 \
               else (np.arange(nbins) * float(edges[1] - edges[0]) + edges[0])
-    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)    # in the density's axis
+    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)
     e_y1 = (p_y1 * centers[None, :]).sum(axis=-1)
-    cate_from_diff = (e_y1 - e_y0) * y_scale         # naive: subtract-then-unscale
+    cate_from_diff = (e_y1 - e_y0) * y_scale
+
     print(f'\n[{npz_path}]')
+    print(f'  NPZ keys: {sorted(stored_keys)}')
     print(f'  edges: shape={edges.shape}  range=[{edges.min():.4g}, {edges.max():.4g}]')
     print(f'  p_y0/p_y1: shape={p_y0.shape}')
     print(f'  centers[0:3]={centers[:3]}   centers[-3:]={centers[-3:]}')
     print(f'  y_shift={y_shift:.4g}  y_scale={y_scale:.4g}')
-    print(f'  E[Y_0] (density-axis)  mean q: {float(e_y0.mean()):.4g}')
-    print(f'  E[Y_1] (density-axis)  mean q: {float(e_y1.mean()):.4g}')
-    print(f'  cate_from_diff (subtract-then-unscale)  mean q: {float(cate_from_diff.mean()):.4g}')
+    print(f'  E[Y_0] (density-axis) mean q: {float(e_y0.mean()):.4g}')
+    print(f'  E[Y_1] (density-axis) mean q: {float(e_y1.mean()):.4g}')
+    print(f'  cate_from_diff (density → raw) mean q: {float(cate_from_diff.mean()):.4g}')
     if cate_pred is not None:
-        print(f'  cate_pred (stored)                     mean q: {float(cate_pred.mean()):.4g}')
+        print(f'  cate_pred (stored per-query)  mean q: {float(cate_pred.mean()):.4g}')
         print(f'  max |cate_from_diff - cate_pred|: {float(np.max(np.abs(cate_from_diff - cate_pred))):.4g}')
-    print(f'  true_cate_per_query                    mean q: {float(true_cate_pq.mean()):.4g}')
+    if ate_stored_key is not None:
+        gap = float(cate_from_diff.mean()) - ate_stored
+        print(f'  stored {ate_stored_key} (scalar ate_hat) = {ate_stored:.4g}    '
+              f'Δ vs density-mean = {gap:+.4g}')
+    print(f'  true_cate_per_query mean q = {float(true_cate_pq.mean()):.4g}   '
+          f'stored true_ate = {true_ate_stored:.4g}')
     print(f'  stored PEHE ({pehe_key}) = {pehe_stored:.4g}')
+    if ate_stored_key is not None and np.isfinite(pehe_stored) and np.isfinite(true_ate_stored):
+        bias = abs(ate_stored - true_ate_stored)
+        print(f'  sanity: |ate_stored - true_ate| = {bias:.4g}  must be ≤ PEHE = {pehe_stored:.4g}  '
+              f'→ {"OK" if bias <= pehe_stored + 1e-6 else "VIOLATED"}')
 
 
 def main():
