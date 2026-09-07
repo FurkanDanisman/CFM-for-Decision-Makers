@@ -53,6 +53,7 @@ export CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export STD_MODE="${STD_MODE:-per_arm}"
 export COMPILE="${COMPILE:-0}"
+export DENSITY_DUMP="${DENSITY_DUMP:-0}"
 
 # ── case-study env: point at the ORIGINAL DoPFN pkls, not any regen ──────────
 # DOPFN_DATA_ROOT must be the DIRECT parent of the case-study subdirs

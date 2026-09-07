@@ -53,6 +53,7 @@ export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export STD_MODE="${STD_MODE:-per_arm}"
+export DENSITY_DUMP="${DENSITY_DUMP:-0}"
 
 # ── case-study env: point at the ORIGINAL DoPFN pkls, not any regen ──────────
 # DOPFN_DATA_ROOT must be the DIRECT parent of the case-study subdirs

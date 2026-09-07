@@ -29,6 +29,7 @@ export UWYK_CKPT="${UWYK_CKPT:?UWYK_CKPT required}"
 export UWYK_CONFIG="${UWYK_CONFIG:?UWYK_CONFIG required}"
 export ANC_VARIANT="${ANC_VARIANT:?ANC_VARIANT required — v3a|v3b|v3c|v3d|v6a|noanc}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
+export DENSITY_DUMP="${DENSITY_DUMP:-0}"
 
 case "$SLURM_ARRAY_TASK_ID" in
     0) DATASET=IHDP     ;;
