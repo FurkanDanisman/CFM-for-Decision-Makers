@@ -52,6 +52,10 @@ def _parse_args():
                     help='Random-subsample train context to this cap (paper: 1000).')
     p.add_argument('--eval-context-seed', type=int, default=43,
                     help='Deterministic subsampling seed (paper: 43).')
+    p.add_argument('--x-clip-quantile', type=float, default=0.99,
+                    help='Per-column 99th-quantile clip on X before standardization. '
+                         'Matches UWYK config remove_outliers=true, outlier_quantile=0.99. '
+                         'Default: 0.99. Pass 0 to disable.')
     p.add_argument('--anc-mode', default='v3b_only',
                     help='Adjacency variant. Default v3b_only = v3a (T→Y=+1, '
                          'X→T=+1, X→Y=+1) with symmetric -1 completions '
@@ -93,6 +97,7 @@ def main():
         'EVAL_CONTEXT_SEED':    str(args.eval_context_seed),
         'ANC_MODE':             args.anc_mode,
         'DENSITY_PRIMARY_MODE': primary,
+        'X_CLIP_QUANTILE':      str(args.x_clip_quantile) if args.x_clip_quantile > 0 else '',
     })
 
     script = os.path.join(args.repo, 'benchmarks', 'eval_graph2d',
@@ -101,7 +106,8 @@ def main():
 
     print(f'[graph2d] dataset={args.dataset}  anc_mode={args.anc_mode}  '
           f'eval_max_context={args.eval_max_context}  '
-          f'seed={args.eval_context_seed}', flush=True)
+          f'seed={args.eval_context_seed}  '
+          f'x_clip_quantile={args.x_clip_quantile}', flush=True)
 
     subprocess.run(
         [sys.executable, '-u', script, '--dataset', args.dataset],
