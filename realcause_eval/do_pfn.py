@@ -77,8 +77,41 @@ def _ate_relerr(true_cate, pred_cate):
     return abs(t - p) / abs(t)
 
 
+def _psid_balance_subsample(cd, seed: int = 42):
+    """Match dofm_psid_balanced.py: keep all T=1, sample up to 500 T=0 with
+    np.random.seed(42), shuffle with RandomState(42). Mutates cd in place."""
+    X = _to_np(cd.X_train).astype(np.float32)
+    t = _to_np(cd.t_train).astype(np.float32).reshape(-1)
+    y = _to_np(cd.y_train).astype(np.float32).reshape(-1)
+
+    treated = (t == 1); control = (t == 0)
+    X_tr, t_tr, y_tr = X[treated], t[treated], y[treated]
+    X_ct, t_ct, y_ct = X[control], t[control], y[control]
+
+    n_ct = X_ct.shape[0]
+    n_keep = min(500, n_ct)
+    if n_ct > n_keep:
+        np.random.seed(seed)
+        idx = np.random.choice(n_ct, n_keep, replace=False)
+        X_ct, t_ct, y_ct = X_ct[idx], t_ct[idx], y_ct[idx]
+
+    X_new = np.vstack([X_tr, X_ct])
+    t_new = np.concatenate([t_tr, t_ct])
+    y_new = np.concatenate([y_tr, y_ct])
+    perm = np.random.RandomState(seed).permutation(X_new.shape[0])
+
+    cd.X_train = X_new[perm]
+    cd.t_train = t_new[perm]
+    cd.y_train = y_new[perm]
+    print(f'[do_pfn] PSID-balanced: kept {X_tr.shape[0]} treated + '
+          f'{X_ct.shape[0]}/{n_ct} controls (seed={seed}); '
+          f'final n_train={X_new.shape[0]}', flush=True)
+    return cd
+
+
 def load_realization(dname: str, r: int):
-    """Same dataset loaders as `benchmarks/run_one.py::load_realization`."""
+    """Same dataset loaders as `benchmarks/run_one.py::load_realization`.
+    PSIDbal applies the seed=42 balance-subsample from dofm_psid_balanced.py."""
     if dname == 'IHDP':
         from benchmarks import IHDPDataset
         cd, ad = IHDPDataset()[r]
@@ -94,6 +127,7 @@ def load_realization(dname: str, r: int):
     elif dname == 'PSIDbal':
         from benchmarks import RealCauseLalondePSIDDataset
         cd, ad = RealCauseLalondePSIDDataset()[r]
+        cd = _psid_balance_subsample(cd)
     else:
         raise ValueError(dname)
     return cd, ad
@@ -211,7 +245,11 @@ def main():
         pehe = _pehe(true_cate, cate_pred)
         err  = _ate_relerr(true_cate, cate_pred)
 
-        out_file = os.path.join(args.outdir, f'{args.dataset}_r{r:03d}.npz')
+        # Normalize output filename to underscored dataset (PSIDbal → PSID_bal)
+        # so it matches the naming the rest of realcause_eval/ uses and the
+        # aggregator's glob pattern.
+        _file_ds = 'PSID_bal' if args.dataset == 'PSIDbal' else args.dataset
+        out_file = os.path.join(args.outdir, f'{_file_ds}_r{r:03d}.npz')
         np.savez(
             out_file,
             dataset=args.dataset,
