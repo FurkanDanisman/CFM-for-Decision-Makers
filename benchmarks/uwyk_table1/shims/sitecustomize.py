@@ -16,8 +16,24 @@ Enable by prepending this directory to PYTHONPATH — Python auto-imports
 `sitecustomize` on interpreter start.
 """
 from unittest.mock import MagicMock as _MagicMock
+import os as _os
 import sys as _sys
 import types as _types
+
+
+# UWYK's PreprocessingGraphConditionedPFN._pad_or_truncate_samples uses
+# np.random.choice on numpy's GLOBAL RNG at eval time to pick 1000 rows out
+# of the >1000-row training set (ACIC, CPS, PSID_unbal). If UWYK_SEED is set
+# in the environment, seed the global numpy RNG at interpreter start so those
+# picks are deterministic across runs. IHDP (n=672) and PSID_bal (~685 after
+# balancing) never enter the truncation branch, so they are unaffected.
+_uwyk_seed = _os.environ.get('UWYK_SEED')
+if _uwyk_seed is not None:
+    try:
+        import numpy as _np
+        _np.random.seed(int(_uwyk_seed))
+    except Exception:
+        pass
 
 
 _STUB_TOPLEVEL = {

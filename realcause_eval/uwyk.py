@@ -85,6 +85,12 @@ def _run(args):
     env['PYTHONPATH'] = (
         f'{uwyk}/RealCauseEval:{shim}' + (f':{env["PYTHONPATH"]}' if env.get('PYTHONPATH') else '')
     )
+    # Seed numpy's global RNG at interpreter start (via sitecustomize in the
+    # shim dir) so PreprocessingGraphConditionedPFN's 1000-row context
+    # subsample is deterministic on ACIC / CPS / PSID_unbal. Does not affect
+    # IHDP / PSID_bal (both below the 1000-row cap). --seed -1 disables.
+    if args.seed is not None and args.seed >= 0:
+        env['UWYK_SEED'] = str(args.seed)
 
     cmd = [
         sys.executable, '-u', script_path,
@@ -192,6 +198,10 @@ def main():
     r.add_argument('--exp-name', default=DEFAULT_EXP_NAME,
                    help=f'Single output folder for all 5 datasets. Default: {DEFAULT_EXP_NAME}.')
     r.add_argument('--repo', default=None, help='R-PFN repo root (for the sitecustomize shim).')
+    r.add_argument('--seed', type=int, default=43,
+                   help='Seed for numpy global RNG (controls the 1000-row context '
+                        'subsample in ACIC / CPS / PSID_unbal). Pass -1 to disable. '
+                        'Default: 43.')
     r.set_defaults(func=_run)
 
     s = sub.add_parser('summary', help='Print the 5-column results table for one exp_name folder.')
