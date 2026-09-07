@@ -19,11 +19,11 @@
 #
 # Env overrides:
 #   OUT_ROOT           required — per-method outputs land at OUT_ROOT/<method>/<DATASET>/
-#   CKPT_CPFN2D        default cpfn2d_j32_random_A1_h100/step_0050000.pt
-#   CKPT_CPFN1D        default causalpfn_j1024_headrand_A1_h100/step_0050000.pt
-#   CKPT_DOPFNBB       default Required_checkpoints/dopfn_bb_j10_step_150000.pt
-#   CKPT_FN50          default checkpoints/step_50000_final.pt
-#   CKPT_GRAPH2D       default Required_checkpoints/graph2d_step_50000.pt
+#   CKPT_CPFN2D        default /scratch/.../cpfn2d_j32_random_A1_h100/step_0050000.pt
+#   CKPT_CPFN1D        default /scratch/.../causalpfn_j1024_headrand_A1_h100/step_0050000.pt
+#   CKPT_DOPFNBB       default $REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt
+#   CKPT_FN50          default $REPO/checkpoints/step_50000_final.pt
+#   CKPT_GRAPH2D       default $REPO/Required_checkpoints/graph2d_step_50000.pt
 #
 # Aggregate the whole run with:
 #   python R-PFN/realcause_eval/aggregate_all_methods.py --out-root $OUT_ROOT
@@ -48,9 +48,11 @@ OUT_ROOT="${OUT_ROOT:?OUT_ROOT required (per-method dirs land under it)}"
 
 CKPT_CPFN2D="${CKPT_CPFN2D:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0050000.pt}"
 CKPT_CPFN1D="${CKPT_CPFN1D:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
-CKPT_DOPFNBB="${CKPT_DOPFNBB:-$DEPLOY_ROOT/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
-CKPT_FN50="${CKPT_FN50:-$DEPLOY_ROOT/checkpoints/step_50000_final.pt}"
-CKPT_GRAPH2D="${CKPT_GRAPH2D:-$DEPLOY_ROOT/Required_checkpoints/graph2d_step_50000.pt}"
+# Paths documented in realcause_eval/{do_pfn_bb,fn_50,graph2d}.py + confirmed
+# across benchmarks/cluster/submit_{eval_dopfn_bb,table1_ours_fn50,eval_graph2d}_realcause.sbatch.
+CKPT_DOPFNBB="${CKPT_DOPFNBB:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
+CKPT_FN50="${CKPT_FN50:-$REPO/checkpoints/step_50000_final.pt}"
+CKPT_GRAPH2D="${CKPT_GRAPH2D:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
 
 METHOD_IDX=$(( SLURM_ARRAY_TASK_ID / 5 ))
 DATASET_IDX=$(( SLURM_ARRAY_TASK_ID % 5 ))
