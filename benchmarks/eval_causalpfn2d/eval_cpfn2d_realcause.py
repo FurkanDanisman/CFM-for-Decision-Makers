@@ -49,7 +49,7 @@ STD_MODE          = os.environ.get('STD_MODE', '').lower()
 # std_target (Y=(y-mean)*STD_TARGET/std — mirrors DoPFN-bb's std recipe).
 if STD_MODE:
     assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor',
-                        'std_target')
+                        'std_target', 'per_arm_std_target')
     Y_STD_MODE_EVAL = STD_MODE
 else:
     assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
@@ -198,13 +198,24 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
     else:
         Y_work = Y_ctx_r
 
-    if y_std_mode_eval in ('per_arm', 'log_per_arm'):
+    if y_std_mode_eval in ('per_arm', 'log_per_arm', 'per_arm_std_target'):
+        # per_arm             : σ_scaled = 1 per arm (divide by std)
+        # per_arm_std_target  : σ_scaled = STD_TARGET per arm (divide by std/STD_TARGET)
+        #                       Combines dopfn-bb's shrink factor with the per-arm
+        #                       structure — useful when arms have very different means
+        #                       AND you want outlier-robust scaling.
         tf = T_ctx_t.reshape(-1); yf = Y_work.reshape(-1)
         y0 = yf[tf < 0.5]; y1 = yf[tf > 0.5]
         y0s  = float(y0.mean().item()) if y0.numel() else 0.0
         y0sc = float(y0.std().clamp(min=1e-6).item()) if y0.numel() else 1.0
         y1s  = float(y1.mean().item()) if y1.numel() else 0.0
         y1sc = float(y1.std().clamp(min=1e-6).item()) if y1.numel() else 1.0
+        if y_std_mode_eval == 'per_arm_std_target':
+            # Store std/STD_TARGET in y0sc, y1sc; un-scaling formula
+            #   y_raw = y_scaled * y0sc + y0s  (arm 0)
+            # becomes y_raw = y_scaled * (std/STD_TARGET) + mean, correct for σ=STD_TARGET.
+            y0sc = y0sc / max(STD_TARGET, 1e-6)
+            y1sc = y1sc / max(STD_TARGET, 1e-6)
         y_std = torch.where(T_ctx_t > 0.5, (Y_work - y1s) / y1sc, (Y_work - y0s) / y0sc)
         stats = {'mode': 'per_arm', 'y0s': y0s, 'y0sc': y0sc, 'y1s': y1s, 'y1sc': y1sc,
                  'log_y_min': y_min}
