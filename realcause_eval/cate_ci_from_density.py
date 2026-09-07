@@ -109,26 +109,21 @@ def _ci_from_pmf(tau_centers: np.ndarray, p_tau: np.ndarray, lo: float, hi: floa
     return _q(lo), _q(hi)
 
 
-def process_npz(npz_path: str, pehe_key: str, err_key: str
-                ) -> tuple[float, float, float, float, int] | None:
-    """→ (pehe, err_ate, coverage, length, n_queries).
+def process_npz(npz_path: str, pehe_key: str, err_key: str):
+    """→ dict with density-derived PEHE / ε_ATE / coverage / length, plus the
+    stored PEHE/err_ATE for diff verification.
 
-    pehe / err_ate come from the point-estimate keys the wrapper wrote (which
-    also equal the density mean by construction under independence).
-    coverage / length come from the CI convolution.
+    Density-derived point estimates:
+        cate_hat[q] = ∫ τ p(τ) dτ = Σ_k tau_center[k] * p_tau[q, k] * y_scale
+    Under Y|do(0) ⊥ Y|do(1), this equals E[Y_1] - E[Y_0], which is the SAME
+    computation the model wrappers do for their point CATE. So the density-
+    derived and stored PEHE should agree to floating-point tolerance. If they
+    don't, that's a red flag — reported in the max_diff diagnostic.
     """
     loaded = _load_density(npz_path)
     if loaded is None:
         return None
     edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
-
-    # Grab the point PEHE / err — same NPZ, same run.
-    try:
-        with np.load(npz_path, allow_pickle=True) as z:
-            pehe    = float(z[pehe_key])    if pehe_key in z.files else float('nan')
-            err_ate = float(z[err_key])     if err_key  in z.files else float('nan')
-    except Exception:
-        pehe, err_ate = float('nan'), float('nan')
 
     # Convolve p_y1 with flip(p_y0) per query → p(τ_scaled) of length 2N-1.
     from numpy.fft import rfft, irfft
@@ -139,18 +134,43 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str
     F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
     p_tau_scaled = irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out]
     p_tau_scaled = np.clip(p_tau_scaled, 0.0, None)
+    p_tau_scaled /= p_tau_scaled.sum(axis=-1, keepdims=True).clip(min=1e-12)
 
     tau_centers_scaled = _tau_grid(edges)
-    tau_lo_s, tau_hi_s = _ci_from_pmf(tau_centers_scaled, p_tau_scaled, 0.025, 0.975)
 
-    # τ_raw = τ_scaled * y_scale (y_shift cancels in the difference).
+    # ── point CATE derived from density (∫τ p(τ) dτ), un-scaled to raw units.
+    cate_hat_scaled = (p_tau_scaled * tau_centers_scaled[None, :]).sum(axis=-1)
+    cate_hat = cate_hat_scaled * y_scale
+    resid = cate_hat - true_cate_pq
+    pehe_den   = float(np.sqrt(np.mean(resid * resid)))
+    ate_hat    = float(cate_hat.mean())
+    true_ate   = float(true_cate_pq.mean())
+    err_ate_den = float(abs(ate_hat - true_ate) / max(abs(true_ate), 0.1))
+
+    # ── stored point estimates (for cross-check).
+    try:
+        with np.load(npz_path, allow_pickle=True) as z:
+            pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
+            err_stored  = float(z[err_key])  if err_key  in z.files else float('nan')
+    except Exception:
+        pehe_stored, err_stored = float('nan'), float('nan')
+
+    # ── 95% CI bounds → coverage + length.
+    tau_lo_s, tau_hi_s = _ci_from_pmf(tau_centers_scaled, p_tau_scaled, 0.025, 0.975)
     tau_lo = tau_lo_s * y_scale
     tau_hi = tau_hi_s * y_scale
-
-    inside = (true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)
-    coverage = float(np.mean(inside))
+    coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
     length   = float(np.mean(tau_hi - tau_lo))
-    return pehe, err_ate, coverage, length, int(true_cate_pq.size)
+
+    return {
+        'pehe_den':    pehe_den,
+        'err_den':     err_ate_den,
+        'pehe_stored': pehe_stored,
+        'err_stored':  err_stored,
+        'coverage':    coverage,
+        'length':      length,
+        'n_queries':   int(true_cate_pq.size),
+    }
 
 
 def _mean_se(vals):
@@ -164,24 +184,34 @@ def _mean_se(vals):
 
 def summarize_method_dataset(method_dir: str, dataset: str,
                               pehe_key: str, err_key: str):
-    """Walk NPZs; return {pehe: (m,se), err: (m,se), cov: (m,se), len: (m,se), n}."""
+    """Walk NPZs; return per-cell aggregates + a max |derived - stored| diff
+    diagnostic so we can eyeball whether density-derived point estimates
+    reproduce the stored ones (should be ~0 under independence + normalization)."""
     paths = sorted(glob.glob(os.path.join(method_dir, dataset, f'{dataset}_r*.npz')))
     if not paths:
         return None
-    pehes, errs, covs, lens = [], [], [], []
+    pehes_d, errs_d, covs, lens = [], [], [], []
+    pehe_diffs, err_diffs = [], []
     for p in paths:
         got = process_npz(p, pehe_key, err_key)
         if got is None:
             continue
-        pehes.append(got[0]); errs.append(got[1]); covs.append(got[2]); lens.append(got[3])
+        pehes_d.append(got['pehe_den']); errs_d.append(got['err_den'])
+        covs.append(got['coverage']);    lens.append(got['length'])
+        if np.isfinite(got['pehe_stored']):
+            pehe_diffs.append(got['pehe_den'] - got['pehe_stored'])
+        if np.isfinite(got['err_stored']):
+            err_diffs.append(got['err_den']  - got['err_stored'])
     if not covs:
         return None
     return {
-        'pehe':  _mean_se(pehes),
-        'err':   _mean_se(errs),
-        'cov':   _mean_se(covs),
-        'len':   _mean_se(lens),
-        'n':     len(covs),
+        'pehe':          _mean_se(pehes_d),
+        'err':           _mean_se(errs_d),
+        'cov':           _mean_se(covs),
+        'len':           _mean_se(lens),
+        'n':             len(covs),
+        'pehe_max_diff': float(np.max(np.abs(pehe_diffs))) if pehe_diffs else float('nan'),
+        'err_max_diff':  float(np.max(np.abs(err_diffs)))  if err_diffs  else float('nan'),
     }
 
 
@@ -226,19 +256,26 @@ def main():
         f'\nRealCause density-CI — {args.out_root}',
         '',
         '(each cell, top → bottom: √PEHE, ε_ATE, Coverage, Length; '
+        'ALL derived from the CATE density via convolution p_y1 * flip(p_y0). '
         'CI = 95%, assume Y|do(0) ⊥ Y|do(1); n = realizations)',
         '',
         header, sep,
     ]
 
+    verify_lines = ['', '## Sanity check: max |PEHE_density - PEHE_stored| per cell',
+                    '(should be ≈ 0 — density mean equals point CATE by construction)',
+                    '', header, sep]
+
     for method in args.methods:
         method_dir = os.path.join(args.out_root, method)
         pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
         cells = [method]
+        verify_cells = [method]
         for d in DATASETS:
             got = summarize_method_dataset(method_dir, d, pehe_key, err_key)
             if got is None:
                 cells.append('—')
+                verify_cells.append('—')
                 continue
             pehe_str = _fmt(*got['pehe'], big=d in big_pehe)
             err_str  = _fmt(*got['err'],  big=False)
@@ -251,7 +288,18 @@ def main():
                 f'Cov {cov_str}<br>'
                 f'Len {len_str} (n={n})'
             )
+            pd_max = got['pehe_max_diff']
+            ed_max = got['err_max_diff']
+            if np.isfinite(pd_max) or np.isfinite(ed_max):
+                _pfmt = 'nan' if not np.isfinite(pd_max) else (f'{pd_max:.2e}' if abs(pd_max) < 1 else f'{pd_max:.4f}')
+                _efmt = 'nan' if not np.isfinite(ed_max) else f'{ed_max:.2e}'
+                verify_cells.append(f'ΔPEHE {_pfmt}<br>Δε_ATE {_efmt}')
+            else:
+                verify_cells.append('(no stored keys)')
         lines.append('| ' + ' | '.join(cells) + ' |')
+        verify_lines.append('| ' + ' | '.join(verify_cells) + ' |')
+
+    lines.extend(verify_lines)
 
     md = '\n'.join(lines) + '\n'
     print(md)
