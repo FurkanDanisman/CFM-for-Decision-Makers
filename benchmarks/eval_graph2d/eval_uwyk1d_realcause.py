@@ -165,21 +165,31 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
 
     results = {}
     _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
-    _dens_first_arm = None  # (p_y0, p_y1) for the primary anc tag we emit
+    _dens_first_arm = None  # unpacked bar-dist parts for the primary anc tag
     # Same ANC_MODE dispatch the graph2d eval uses, so a v6a_only run here
     # produces the identical adjacency matrices and npz keys as the joint run.
+    K = int(w.bar_distribution.num_bars)  # for density unpack; safe to read here
     for mode, adj in H.build_mode_list(F, n_real):
         if _do_density:
             cate_scaled, logits0, logits1 = cate_from_uwyk(
                 w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val, return_logits=True)
-            # Softmax over the bar-dist bins → per-query densities (N_q, nbins).
-            p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
+            # logits shape (N_q, K+4) = [K+2 bar-tail logits, sL_raw, sR_raw].
+            # Softmax over ONLY the first K+2 logits (softmaxing all K+4 was
+            # wrong — it mixed the raw tail-scale params into the density).
+            w_logits_0 = logits0[..., :K + 2]
+            w_logits_1 = logits1[..., :K + 2]
+            sL_raw_0, sR_raw_0 = logits0[..., -2], logits0[..., -1]
+            sL_raw_1, sR_raw_1 = logits1[..., -2], logits1[..., -1]
+            p_y0 = np.exp(w_logits_0 - w_logits_0.max(axis=-1, keepdims=True))
             p_y0 /= p_y0.sum(axis=-1, keepdims=True)
-            p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
+            p_y1 = np.exp(w_logits_1 - w_logits_1.max(axis=-1, keepdims=True))
             p_y1 /= p_y1.sum(axis=-1, keepdims=True)
             if _dens_first_arm is None:
-                _dens_first_arm = (p_y0.astype(np.float32),
-                                    p_y1.astype(np.float32))
+                _dens_first_arm = (
+                    p_y0.astype(np.float32), p_y1.astype(np.float32),
+                    sL_raw_0.astype(np.float32), sR_raw_0.astype(np.float32),
+                    sL_raw_1.astype(np.float32), sR_raw_1.astype(np.float32),
+                )
         else:
             cate_scaled = cate_from_uwyk(w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val)
         cate = cate_scaled * yrange / 2.0
@@ -195,15 +205,26 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
            'n_queries': int(true_cate.size), 'n_context': int(X_tr_raw.shape[0]),
            **results}
     if _do_density and _dens_first_arm is not None:
-        # Bar-dist edges live in [-1, +1] scaled space; un-scale to raw Y via
-        # y_raw = y_scaled * (yrange / 2) + (ymin + yrange/2).
-        edges = w.bar_distribution.edges
-        edges_np = (edges.detach().cpu().numpy() if hasattr(edges, 'detach') else np.asarray(edges)).astype(np.float32)
-        p_y0, p_y1 = _dens_first_arm
+        # UWYK BarDistribution: K bars + left tail (half-Gaussian) + right
+        # tail (half-Gaussian). Save all pieces so the aggregator can
+        # reproduce w.bar_distribution.mean(pred) exactly.
+        bd = w.bar_distribution
+        edges = bd.edges.detach().cpu().numpy().astype(np.float32)         # (K+1,)
+        base_s_left = float(bd.base_s_left.detach().cpu().numpy())
+        base_s_right = float(bd.base_s_right.detach().cpu().numpy())
+        scale_floor = float(bd.scale_floor)
+        p_y0, p_y1, sL_raw_0, sR_raw_0, sL_raw_1, sR_raw_1 = _dens_first_arm
         out.update({
-            'edges':       edges_np,
-            'p_y0_scaled': p_y0,
+            'edges':       edges,                  # (K+1,) — bar edges in scaled Y
+            'p_y0_scaled': p_y0,                   # (N_q, K+2) — [pL, pBars, pR]
             'p_y1_scaled': p_y1,
+            # Tail scale raws — un-scaling: sL = base_s_left * (softplus(raw) + floor)
+            'sL_raw_0':    sL_raw_0, 'sR_raw_0': sR_raw_0,
+            'sL_raw_1':    sL_raw_1, 'sR_raw_1': sR_raw_1,
+            'base_s_left': np.float32(base_s_left),
+            'base_s_right': np.float32(base_s_right),
+            'scale_floor': np.float32(scale_floor),
+            'num_bars':    np.int32(K),
             'y_shift':     np.float32(ymin + yrange / 2.0),
             'y_scale':     np.float32(yrange / 2.0),
             'true_cate_per_query': true_cate.astype(np.float32),

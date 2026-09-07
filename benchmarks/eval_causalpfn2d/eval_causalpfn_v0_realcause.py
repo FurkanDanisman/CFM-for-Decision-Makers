@@ -236,8 +236,27 @@ def cate_raw_and_em(model, X_train, T_train, Y_train_raw, X_test,
 
     dens = None
     if os.environ.get('DENSITY_DUMP', '0') == '1':
-        # 1D head: no joint. Use pooled arm stats (arm0 == arm1 for pooled modes).
+        # 1D head: no joint. Density dump only meaningful for pooled scaling
+        # (both arms share y_shift/y_scale so shift cancels in τ = Y_1 - Y_0).
+        # Per-arm modes save arm0's stats — the CI aggregator would need per-arm
+        # un-scaling; not supported here yet.
         y_shift, y_scale = arm0
+        # HARD ASSERT: density mean MUST reproduce the point CATE the eval
+        # returns. If it doesn't, the p0/p1 we're about to save is not the
+        # p0/p1 used to compute cate_raw — fail loud instead of writing a
+        # wrong density that silently drifts from the reported PEHE.
+        cate_from_density = (e_y1_raw - e_y0_raw) * y_scale   # pooled: shift cancels
+        _max_diff = float(np.max(np.abs(cate_from_density - cate_raw)))
+        _ok = np.allclose(cate_from_density, cate_raw, atol=1e-4, rtol=1e-4)
+        if not _ok:
+            raise AssertionError(
+                f'[DENSITY_DUMP] density mean disagrees with cate_raw '
+                f'(max |Δ| = {_max_diff:.4g}). p0/p1 saved would be inconsistent '
+                f'with the reported point PEHE. This means STD_MODE={STD_MODE!r} '
+                f'was not pooled (per-arm shifts don\'t cancel), or the eval '
+                f'pipeline computes cate_raw from something other than p0/p1. '
+                f'Rerun with STD_MODE=pooled, or extend the density dump to '
+                f'save per-arm stats.')
         dens = dict(
             edges=bin_edges_np.astype(np.float32),
             p_y0_scaled=p0.astype(np.float32),
