@@ -89,7 +89,11 @@ _prev_cwd = os.getcwd()
 os.chdir(DOPFN_ROOT)
 try:
     from scripts.transformer_prediction_interface.base import DoPFNRegressor  # noqa: E402
-    model = DoPFNRegressor()
+    # DoPFNRegressor defaults to device='cpu' — force CUDA when available so
+    # inference runs on the requested GPU instead of falling back to CPU.
+    _device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = DoPFNRegressor(device=_device)
+    print(f'[dopfn_native] instantiated on device={_device}', flush=True)
 finally:
     os.chdir(_prev_cwd)
 
@@ -100,6 +104,18 @@ def evaluate(r: int, ds):
     y_train = cate_ds.y_train
     X_test_full = np.hstack([np.zeros((cate_ds.X_test.shape[0], 1), dtype=np.float32),
                               cate_ds.X_test])   # T-col placeholder (predict_cate handles both)
+
+    # Optional random context subsampling (matches cpfn1d/graph2d convention).
+    _eval_cap = os.environ.get('EVAL_MAX_CONTEXT', '')
+    if _eval_cap:
+        cap = int(_eval_cap)
+        n_ctx = X_train_full.shape[0]
+        if cap < n_ctx:
+            _seed = int(os.environ.get('EVAL_CONTEXT_SEED', '0'))
+            rng = np.random.default_rng(_seed + r)
+            idx = rng.choice(n_ctx, size=cap, replace=False)
+            X_train_full = X_train_full[idx]
+            y_train = y_train[idx]
 
     # DoPFNRegressor.fit() expects X with T in col 0; predict_cate does the do(1)-do(0) diff.
     # predict_cate internally calls X.cpu().detach().numpy(), so pass a torch tensor.
