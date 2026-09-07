@@ -35,6 +35,7 @@ fi
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — same one the density-dump job wrote to}"
 METHODS="${METHODS:-cpfn1d dopfn uwyk1d}"
+DATASETS_FILTER="${DATASETS:-}"    # e.g. DATASETS=IHDP for a fast validation pass
 UWYK_TAG="${UWYK_TAG:-noanc}"
 OUT_MD="${OUT_MD:-$OUT_ROOT/cate_ci.md}"
 
@@ -51,10 +52,15 @@ if [ -n "${DEBUG_METHOD:-}" ] && [ -n "${DEBUG_DATASET:-}" ]; then
         --uwyk-tag "$UWYK_TAG" \
         --debug-one "$DEBUG_METHOD" "$DEBUG_DATASET"
 else
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] aggregating  OUT_ROOT=$OUT_ROOT  METHODS=$METHODS"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] aggregating  OUT_ROOT=$OUT_ROOT  METHODS=$METHODS  DATASETS=${DATASETS_FILTER:-all}"
+    _DS_ARGS=()
+    if [ -n "$DATASETS_FILTER" ]; then
+        _DS_ARGS+=(--datasets $DATASETS_FILTER)
+    fi
     python -u "$REPO/realcause_eval/cate_ci_from_density.py" \
         --out-root "$OUT_ROOT" \
         --methods $METHODS \
+        "${_DS_ARGS[@]}" \
         --uwyk-tag "$UWYK_TAG" \
         --out-md "$OUT_MD"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] wrote $OUT_MD"
