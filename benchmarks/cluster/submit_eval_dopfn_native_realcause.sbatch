@@ -30,6 +30,7 @@ fi
 
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
+export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export DENSITY_DUMP="${DENSITY_DUMP:-0}"
 

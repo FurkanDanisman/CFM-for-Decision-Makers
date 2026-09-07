@@ -23,12 +23,17 @@ args, _ = parser.parse_known_args()
 DATASET   = args.dataset
 OUT       = os.environ['OUT']
 DOPFN_ROOT = os.environ['DOPFN_ROOT']
+CAUSALPFN  = os.environ.get('CAUSALPFN', '')  # required for RealCause loaders (from `benchmarks import IHDPDataset`)
 MAX_REAL  = os.environ.get('MAX_REAL', '')
 
 REPO_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, REPO_SRC)
 sys.path.insert(0, os.path.join(REPO_SRC, 'benchmarks'))   # top-level import
 sys.path.insert(0, DOPFN_ROOT)
+# CausalPFN owns the `benchmarks` package that ships IHDPDataset/ACIC2016Dataset/...
+if CAUSALPFN:
+    sys.path.insert(0, CAUSALPFN)
+    sys.path.insert(0, CAUSALPFN + '/src')
 
 # DoPFN's base.py calls sklearn.utils.check_array with keyword
 # `ensure_all_finite=` which was removed in sklearn ≥1.6 (replaced by
