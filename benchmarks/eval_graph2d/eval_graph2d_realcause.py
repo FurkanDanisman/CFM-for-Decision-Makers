@@ -893,6 +893,12 @@ def build_mode_list(F, n_real, anc_mode=None):
     if anc_mode == 'v6a_only':
         return (('v6a',   build_anc_v6a(F, n_real)),
                 ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v3b_only':
+        # v3b = v3a (T→Y=+1, X→T=+1, X→Y=+1) plus all reverses = -1
+        # (Y→T=-1, T→X=-1, Y→X=-1). Diagonals stay 0. Called "full" in
+        # user shorthand: UWYK's original anc with -1 on the symmetry.
+        return (('v3b',   build_anc_v3b(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
     if anc_mode == 'all_combos':
         # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
         # Diagonal always 0; padded region always -1.

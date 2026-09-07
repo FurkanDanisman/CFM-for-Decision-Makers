@@ -52,13 +52,34 @@ def _parse_args():
                     help='Random-subsample train context to this cap (paper: 1000).')
     p.add_argument('--eval-context-seed', type=int, default=43,
                     help='Deterministic subsampling seed (paper: 43).')
-    p.add_argument('--anc-mode', default='noanc',
-                    help='Adjacency variant (paper "UWYK No-Anc 2D" uses noanc).')
+    p.add_argument('--anc-mode', default='v3b_only',
+                    help='Adjacency variant. Default v3b_only = v3a (T→Y=+1, '
+                         'X→T=+1, X→Y=+1) with symmetric -1 completions '
+                         '(diagonals 0). Alternatives: noanc, v6a_only, focus4, etc.')
+    p.add_argument('--density-primary-mode', default=None,
+                    help='Which anc tag mirrors to unsuffixed pehe_raw/err_raw '
+                         'keys. Default: same as --anc-mode variant tag '
+                         "('v3b' for v3b_only, 'noanc' for noanc, etc.).")
     return p.parse_args()
+
+
+_PRIMARY_TAG_FROM_MODE = {
+    'v3b_only':  'v3b',
+    'v6a_only':  'v6a',
+    'v5a_only':  'v5a',
+    'v5b_only':  'v5b',
+    'v4a_only':  'v4a',
+    'v6b_only':  'v6b',
+    'ty_only':   'ty',
+    'noanc':     'noanc',
+}
 
 
 def main():
     args = _parse_args()
+
+    primary = args.density_primary_mode or _PRIMARY_TAG_FROM_MODE.get(
+        args.anc_mode, args.anc_mode)
 
     env = os.environ.copy()
     env.update({
@@ -71,7 +92,7 @@ def main():
         'EVAL_MAX_CONTEXT':     str(args.eval_max_context),
         'EVAL_CONTEXT_SEED':    str(args.eval_context_seed),
         'ANC_MODE':             args.anc_mode,
-        'DENSITY_PRIMARY_MODE': args.anc_mode,
+        'DENSITY_PRIMARY_MODE': primary,
     })
 
     script = os.path.join(args.repo, 'benchmarks', 'eval_graph2d',
