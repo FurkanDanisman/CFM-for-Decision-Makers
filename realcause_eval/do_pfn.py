@@ -114,7 +114,14 @@ def dopfn_pipeline(cate_dataset, DoPFNRegressor):
     x_tr = np.concatenate([t_train[:, None], X_train], axis=1)
     x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
 
-    reg = DoPFNRegressor()
+    # DoPFNRegressor defaults to CPU; force GPU when available. Some upstream
+    # versions take device= in __init__, others expose it only as an attribute.
+    _device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    try:
+        reg = DoPFNRegressor(device=_device)
+    except TypeError:
+        reg = DoPFNRegressor()
+        reg.device = _device
     reg.fit(torch.tensor(x_tr), torch.tensor(y_train))
     cate = reg.predict_cate(torch.tensor(x_te))
     return np.asarray(cate).reshape(-1)
