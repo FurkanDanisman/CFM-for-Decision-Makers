@@ -86,11 +86,16 @@ def load_uwyk():
     return w, F
 
 
-def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val):
-    """Two forward passes (do(t1), do(t0)); returns CATE on the scaled y axis."""
+def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val,
+                    return_logits=False):
+    """Two forward passes (do(t1), do(t0)); returns CATE on the scaled y axis.
+    If return_logits=True, also returns per-query bar-dist logits for each arm
+    so the caller can compute densities via softmax."""
     preds = {}
+    logits_by_tag = {}
     for tag, tval in (('1', t1_val), ('0', t0_val)):
         out = []
+        logits_chunks = [] if return_logits else None
         for s in range(0, X_te.shape[0], QUERY_CHUNK):
             Xq = X_te[s:s + QUERY_CHUNK]
             Tq = np.full((Xq.shape[0], 1), tval, dtype=np.float32)
@@ -100,8 +105,21 @@ def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val):
                 adjacency_matrix=adj,
                 prediction_type='mean',
             )).reshape(-1))
+            if return_logits:
+                # prediction_type='point' returns raw logits before bar-dist mean.
+                logits_chunks.append(np.asarray(w.predict(
+                    X_obs=X_tr, T_obs=T_tr, Y_obs=Y_tr,
+                    X_intv=Xq, T_intv=Tq,
+                    adjacency_matrix=adj,
+                    prediction_type='point',
+                )))
         preds[tag] = np.concatenate(out)
-    return (preds['1'] - preds['0']).astype(np.float32)
+        if return_logits:
+            logits_by_tag[tag] = np.concatenate(logits_chunks, axis=0)
+    cate = (preds['1'] - preds['0']).astype(np.float32)
+    if return_logits:
+        return cate, logits_by_tag['0'], logits_by_tag['1']
+    return cate
 
 
 def evaluate(realization, ds, w, F, apply_psid_balance):
@@ -146,10 +164,24 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
         t0_val, t1_val = 0.0, 1.0
 
     results = {}
+    _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
+    _dens_first_arm = None  # (p_y0, p_y1) for the primary anc tag we emit
     # Same ANC_MODE dispatch the graph2d eval uses, so a v6a_only run here
     # produces the identical adjacency matrices and npz keys as the joint run.
     for mode, adj in H.build_mode_list(F, n_real):
-        cate_scaled = cate_from_uwyk(w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val)
+        if _do_density:
+            cate_scaled, logits0, logits1 = cate_from_uwyk(
+                w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val, return_logits=True)
+            # Softmax over the bar-dist bins → per-query densities (N_q, nbins).
+            p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
+            p_y0 /= p_y0.sum(axis=-1, keepdims=True)
+            p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
+            p_y1 /= p_y1.sum(axis=-1, keepdims=True)
+            if _dens_first_arm is None:
+                _dens_first_arm = (p_y0.astype(np.float32),
+                                    p_y1.astype(np.float32))
+        else:
+            cate_scaled = cate_from_uwyk(w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val)
         cate = cate_scaled * yrange / 2.0
         results[f'pehe_raw_{mode}'] = float(np.sqrt(np.mean((cate - true_cate) ** 2)))
         results[f'ate_raw_{mode}']  = float(cate.mean())
@@ -159,9 +191,24 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
         results[f'ate_em_{mode}']  = results[f'ate_raw_{mode}']
         results[f'err_em_{mode}']  = results[f'err_raw_{mode}']
 
-    return {'dataset': DATASET, 'realization': realization, 'true_ate': true_ate,
-            'n_queries': int(true_cate.size), 'n_context': int(X_tr_raw.shape[0]),
-            **results}
+    out = {'dataset': DATASET, 'realization': realization, 'true_ate': true_ate,
+           'n_queries': int(true_cate.size), 'n_context': int(X_tr_raw.shape[0]),
+           **results}
+    if _do_density and _dens_first_arm is not None:
+        # Bar-dist edges live in [-1, +1] scaled space; un-scale to raw Y via
+        # y_raw = y_scaled * (yrange / 2) + (ymin + yrange/2).
+        edges = w.bar_distribution.edges
+        edges_np = (edges.detach().cpu().numpy() if hasattr(edges, 'detach') else np.asarray(edges)).astype(np.float32)
+        p_y0, p_y1 = _dens_first_arm
+        out.update({
+            'edges':       edges_np,
+            'p_y0_scaled': p_y0,
+            'p_y1_scaled': p_y1,
+            'y_shift':     np.float32(ymin + yrange / 2.0),
+            'y_scale':     np.float32(yrange / 2.0),
+            'true_cate_per_query': true_cate.astype(np.float32),
+        })
+    return out
 
 
 def main():

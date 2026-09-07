@@ -148,11 +148,14 @@ def _build_dopfn_regressor(DoPFNRegressor):
 
 
 # ── the pipeline (verbatim from methods/dopfn.py) ----------------------------
-def dopfn_pipeline(cate_dataset, reg):
+def dopfn_pipeline(cate_dataset, reg, return_density=False):
     """Returns length-N cate predictions on cate_dataset.X_test.
 
     Do-PFN convention: treatment is the first covariate column; `fit(x, y)`
     then `predict_cate(x_test)` where col 0 of x_test is ignored.
+
+    If return_density=True, also returns (p_y0, p_y1, edges) — bar-dist
+    densities per query on RAW Y units.
     """
     X_train = _to_np(cate_dataset.X_train).astype(np.float32)
     t_train = _to_np(cate_dataset.t_train).astype(np.float32).reshape(-1)
@@ -163,8 +166,24 @@ def dopfn_pipeline(cate_dataset, reg):
     x_te = np.concatenate([np.zeros((X_test.shape[0], 1), dtype=np.float32), X_test], axis=1)
 
     reg.fit(torch.tensor(x_tr), torch.tensor(y_train))
-    cate = reg.predict_cate(torch.tensor(x_te))
-    return np.asarray(cate).reshape(-1)
+    cate = np.asarray(reg.predict_cate(torch.tensor(x_te))).reshape(-1)
+
+    if not return_density:
+        return cate
+
+    # Density: query each arm separately with T fixed to 0 / 1 in col 0.
+    X0 = x_te.copy(); X0[:, 0] = 0.0
+    X1 = x_te.copy(); X1[:, 0] = 1.0
+    full0 = reg.predict_full(torch.tensor(X0))
+    full1 = reg.predict_full(torch.tensor(X1))
+    logits0 = np.asarray(full0['logits'])
+    logits1 = np.asarray(full1['logits'])
+    edges = np.asarray(full0['criterion'].borders)   # RAW Y units
+    p_y0 = np.exp(logits0 - logits0.max(axis=-1, keepdims=True))
+    p_y0 /= p_y0.sum(axis=-1, keepdims=True)
+    p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
+    p_y1 /= p_y1.sum(axis=-1, keepdims=True)
+    return cate, p_y0.astype(np.float32), p_y1.astype(np.float32), edges.astype(np.float32)
 
 
 # ── driver -------------------------------------------------------------------
@@ -231,6 +250,8 @@ def main():
     finally:
         os.chdir(_prev_cwd)
 
+    _do_density = os.environ.get('DENSITY_DUMP', '0') == '1'
+
     t0 = time.time()
     for r in real_indices:
         cd, ad = load_realization(args.dataset, r)
@@ -238,7 +259,10 @@ def main():
 
         os.chdir(args.dopfn)
         try:
-            cate_pred = dopfn_pipeline(cd, reg)
+            if _do_density:
+                cate_pred, p_y0, p_y1, edges_np = dopfn_pipeline(cd, reg, return_density=True)
+            else:
+                cate_pred = dopfn_pipeline(cd, reg)
         finally:
             os.chdir(_prev_cwd)
 
@@ -250,8 +274,7 @@ def main():
         # aggregator's glob pattern.
         _file_ds = 'PSID_bal' if args.dataset == 'PSIDbal' else args.dataset
         out_file = os.path.join(args.outdir, f'{_file_ds}_r{r:03d}.npz')
-        np.savez(
-            out_file,
+        save_kw = dict(
             dataset=args.dataset,
             realization=r,
             pehe_dopfn=np.float64(pehe),
@@ -259,6 +282,17 @@ def main():
             true_cate=true_cate.astype(np.float32),
             cate_pred=cate_pred.astype(np.float32),
         )
+        if _do_density:
+            # Bar-dist edges are in RAW Y units for DoPFN — y_shift=0, y_scale=1.
+            save_kw.update(dict(
+                edges=edges_np.astype(np.float32),
+                p_y0_scaled=p_y0.astype(np.float32),
+                p_y1_scaled=p_y1.astype(np.float32),
+                y_shift=np.float32(0.0),
+                y_scale=np.float32(1.0),
+                true_cate_per_query=true_cate.astype(np.float32),
+            ))
+        np.savez(out_file, **save_kw)
         print(f'  r={r:03d}  pehe_dopfn={pehe:7.3f}  err_dopfn={err:6.3f}  '
               f'({time.time()-t0:.0f}s)', flush=True)
 
