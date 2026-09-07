@@ -69,17 +69,23 @@ def main():
                          '<DATASET>_r<###>.npz files inside.')
     ap.add_argument('--variant', default='raw', choices=list(VARIANTS),
                     help='pehe_<variant> / err_<variant> to aggregate. Default: raw.')
+    ap.add_argument('--tag', default='',
+                    help='Extra suffix for graph2d/uwyk1d NPZs which store keys '
+                         'as pehe_<variant>_<tag> (e.g. --tag v3b or --tag noanc). '
+                         'Leave empty for other methods where keys are un-suffixed.')
     args = ap.parse_args()
 
     if not os.path.isdir(args.out_root):
         sys.exit(f'FATAL: --out-root not found: {args.out_root}')
 
-    pehe_key = f'pehe_{args.variant}'
-    err_key  = f'err_{args.variant}'
+    suffix = f'_{args.tag}' if args.tag else ''
+    pehe_key = f'pehe_{args.variant}{suffix}'
+    err_key  = f'err_{args.variant}{suffix}'
 
     per_ds = {d: _load(args.out_root, d) for d in DATASETS}
 
-    lines = [f'\nRealCause — {args.out_root}  (variant={args.variant})\n']
+    lines = [f'\nRealCause — {args.out_root}  '
+             f'(variant={args.variant}{"  tag=" + args.tag if args.tag else ""})\n']
     for metric_key, label, big_cols in (
         (pehe_key, '√PEHE',   {'CPS', 'PSID', 'PSID_bal'}),
         (err_key,  'ε_ATE',   set()),
