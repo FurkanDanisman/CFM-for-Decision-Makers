@@ -54,7 +54,17 @@ _POINT_KEYS = {
 
 
 def _load_density(npz_path: str):
-    """Return (edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq) or None."""
+    """Return (centers, p_y0, p_y1, y_shift, y_scale, true_cate_pq) or None.
+
+    Two schemas supported:
+    - uniform-bar (cpfn1d, dopfn): p_y{0,1} shape (N_q, K), edges (K+1).
+      Reconstruct K bar-center atoms from edges midpoints.
+    - UWYK BarDistribution: p_y{0,1} shape (N_q, K+2) = [pL, pBars, pR],
+      edges (K+1), plus sL_raw/sR_raw and base_s_left/right/scale_floor.
+      Reconstruct K+2 atoms: [E_left, K bar mids, E_right] where
+      E_left/right are the half-Gaussian tail expected values —
+      matches bar_dist.mean(pred) exactly.
+    """
     try:
         with np.load(npz_path, allow_pickle=True) as z:
             required = {'edges', 'p_y0_scaled', 'p_y1_scaled', 'y_shift',
@@ -67,10 +77,56 @@ def _load_density(npz_path: str):
             y_shift = float(z['y_shift'])
             y_scale = float(z['y_scale'])
             true_cate_pq = np.asarray(z['true_cate_per_query'], dtype=np.float64)
-        # Ensure per-query densities normalized.
-        p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
-        p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
-        return edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq
+            keys = set(z.files)
+
+            K = edges.size - 1                     # bar count
+            nbins = p_y0.shape[-1]
+
+            if nbins == K + 2 and 'base_s_left' in keys:
+                # UWYK BarDistribution: [pL, pBars, pR] over K+2 atoms.
+                base_sL  = float(z['base_s_left']);  base_sR = float(z['base_s_right'])
+                scale_floor = float(z['scale_floor'])
+                # Per-query tail scales (arm 0 for the reconstructed atoms;
+                # arm 1 tail scales differ but we only need centers, and the
+                # tail center positions depend on sL/sR which are per-arm).
+                # For a KISS reconstruction: use the arm's own sL/sR for each
+                # arm's atom positions — return TWO center arrays.
+                sL0 = np.asarray(z['sL_raw_0'], dtype=np.float64)
+                sR0 = np.asarray(z['sR_raw_0'], dtype=np.float64)
+                sL1 = np.asarray(z['sL_raw_1'], dtype=np.float64)
+                sR1 = np.asarray(z['sR_raw_1'], dtype=np.float64)
+                def _softplus(x): return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+                sL0 = base_sL * (_softplus(sL0) + scale_floor)
+                sR0 = base_sR * (_softplus(sR0) + scale_floor)
+                sL1 = base_sL * (_softplus(sL1) + scale_floor)
+                sR1 = base_sR * (_softplus(sR1) + scale_floor)
+                sqrt2pi = np.sqrt(2.0 / np.pi)
+                bar_mids = 0.5 * (edges[:-1] + edges[1:])           # (K,)
+                # Per-query atom centers: (N_q, K+2) — tail atoms per query.
+                centers0 = np.empty((p_y0.shape[0], nbins), dtype=np.float64)
+                centers0[:, 0]    = edges[0]  - sqrt2pi * sL0
+                centers0[:, 1:-1] = bar_mids[None, :]
+                centers0[:, -1]   = edges[-1] + sqrt2pi * sR0
+                centers1 = np.empty_like(centers0)
+                centers1[:, 0]    = edges[0]  - sqrt2pi * sL1
+                centers1[:, 1:-1] = bar_mids[None, :]
+                centers1[:, -1]   = edges[-1] + sqrt2pi * sR1
+                p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
+                p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
+                # Return per-arm centers signalling UWYK schema.
+                return ('uwyk', centers0, centers1, p_y0, p_y1,
+                        y_shift, y_scale, true_cate_pq)
+
+            # Standard uniform-bar path.
+            if edges.size >= nbins + 1:
+                centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1])
+            else:
+                width = float(edges[1] - edges[0])
+                centers = np.arange(nbins) * width + float(edges[0])
+            p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
+            p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
+            return ('bar', centers, centers, p_y0, p_y1,
+                    y_shift, y_scale, true_cate_pq)
     except Exception as e:
         print(f'  [warn] {npz_path}: {e}', file=sys.stderr)
         return None
@@ -130,6 +186,26 @@ def _ci_from_atoms_general(centers: np.ndarray, p_y0: np.ndarray, p_y1: np.ndarr
     return tau_lo_arr, tau_hi_arr
 
 
+def _ci_uwyk_per_query(centers0_pq: np.ndarray, centers1_pq: np.ndarray,
+                        p_y0: np.ndarray, p_y1: np.ndarray,
+                        lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+    """UWYK: per-query centers (tail atoms depend on per-arm sL/sR).
+    Enumerate (K+2)² atoms per query, sort, quantile. Cost O(N_q · N²·log N)."""
+    N_q, N = p_y0.shape
+    tau_lo = np.empty(N_q, dtype=np.float64)
+    tau_hi = np.empty(N_q, dtype=np.float64)
+    for q in range(N_q):
+        c0 = centers0_pq[q]; c1 = centers1_pq[q]
+        tau = (c1[:, None] - c0[None, :]).ravel()               # (N*N,)
+        p   = (p_y1[q, :, None] * p_y0[q, None, :]).ravel()     # (N*N,)
+        order = np.argsort(tau, kind='stable')
+        tau_sorted = tau[order]; cdf = np.cumsum(p[order])
+        cdf /= max(cdf[-1], 1e-12)
+        tau_lo[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], lo)[0]
+        tau_hi[q] = _quantile_from_sorted(tau_sorted[None, :], cdf[None, :], hi)[0]
+    return tau_lo, tau_hi
+
+
 def _quantile_from_sorted(tau: np.ndarray, cdf: np.ndarray, level: float) -> np.ndarray:
     """Linear-interp inverse-CDF at `level`. tau and cdf are sorted along axis=-1.
     Broadcasts if tau shape (1, K) and cdf shape (N_q, K), returns (N_q,)."""
@@ -150,77 +226,103 @@ def _quantile_from_sorted(tau: np.ndarray, cdf: np.ndarray, level: float) -> np.
 
 
 def process_npz(npz_path: str, pehe_key: str, err_key: str):
-    """→ dict with density-derived PEHE / ε_ATE / coverage / length.
+    """→ dict with STORED PEHE / ε_ATE (identical to the mega-sbatch numbers)
+    plus DENSITY-DERIVED coverage / length, plus a consistency diagnostic.
 
-    Point CATE (direct):
-        cate_hat[q] = (Σ_i c_i · p_y1[q, i] - Σ_i c_i · p_y0[q, i]) · y_scale
-    Works for any bin geometry. y_shift cancels between arms.
+    Point CATE (PEHE, ε_ATE) comes from the stored NPZ keys — same values as
+    realcause_eval's original run. NOT re-derived from density. This makes
+    the table's point row match the paper reproduction exactly.
 
-    95% CI (exact, N²-atom PMF):
-        p(τ = c_i - c_j | q) = p_y1[q, i] · p_y0[q, j]   under independence.
-        Enumerate atoms, sort by τ, cumulate → CDF → interp at 0.025 / 0.975.
-    If bin centers are UNIFORM (cpfn1d, uwyk1d likely) the N² atoms collapse
-    onto 2N-1 τ bins via discrete convolution — same result, way faster.
+    CI (Coverage, Length) comes from the density via the exact N²-atom PMF
+    of p(τ) under independence Y|do(0) ⊥ Y|do(1). Enumerate atoms, sort by
+    τ, cumulate → CDF → interp at 0.025 / 0.975. Uniform bins get a fast
+    convolution path; non-uniform bins use general N²-atom enumeration.
+
+    Consistency diagnostic: |mean(density-derived cate) − stored ate|. If
+    near-zero, density and point agree (CI is on the same distribution as
+    the point). If not, the density in the NPZ is not the one that produced
+    the stored point CATE — CI is still valid for the SAVED density but
+    doesn't calibrate the reported PEHE row.
     """
     loaded = _load_density(npz_path)
     if loaded is None:
         return None
-    edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
-    nbins = p_y0.shape[-1]
+    schema, centers0, centers1, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
 
-    # Bin centers on the density axis (handles non-uniform edges).
-    if edges.size >= nbins + 1:
-        centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1])
-    else:
-        width = float(edges[1] - edges[0])
-        centers = np.arange(nbins) * width + float(edges[0])
-
-    # ── point CATE via subtract-then-mean (works for ANY bin geometry).
-    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)
-    e_y1 = (p_y1 * centers[None, :]).sum(axis=-1)
+    # ── point CATE from density: sum(centers * p) per query, per arm.
+    #    For UWYK per-arm centers differ (tail-atom positions depend on arm-
+    #    specific sL/sR). For the bar schema centers0 == centers1.
+    e_y0 = (p_y0 * centers0).sum(axis=-1)
+    e_y1 = (p_y1 * centers1).sum(axis=-1)
     cate_hat = (e_y1 - e_y0) * y_scale                # y_shift cancels
-    resid = cate_hat - true_cate_pq
-    pehe_den = float(np.sqrt(np.mean(resid * resid)))
-    ate_hat  = float(cate_hat.mean())
-    true_ate = float(true_cate_pq.mean())
-    err_ate_den = float(abs(ate_hat - true_ate) / max(abs(true_ate), 0.1))
+    ate_hat_density = float(cate_hat.mean())
 
     # ── EXACT CI: enumerate atoms of p(τ) under independence, sort, quantile.
-    # If centers are uniform → convolution collapses N² atoms into 2N-1 bins.
-    # Else → enumerate all N² atoms per query and sort.
-    # Both give τ CI on the density axis; multiply by y_scale for raw units.
-    if _is_uniform(centers):
-        tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+    # For the bar schema (cpfn1d, dopfn), centers0 == centers1 = 1D array;
+    # can use the uniform-convolution or non-uniform N²-atom path.
+    # For UWYK, centers differ per arm per query — must enumerate all N²
+    # atoms per query with per-query per-arm centers. Slower but exact.
+    if schema == 'uwyk':
+        tau_lo_axis, tau_hi_axis = _ci_uwyk_per_query(centers0, centers1, p_y0, p_y1,
+                                                     0.025, 0.975)
     else:
-        tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
+        centers = centers0        # bar schema: shared 1D
+        if _is_uniform(centers):
+            tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+        else:
+            tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
     tau_lo = tau_lo_axis * y_scale
     tau_hi = tau_hi_axis * y_scale
     coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
     length   = float(np.mean(tau_hi - tau_lo))
 
-    # ── stored point estimates + cross-check.
+    # ── STORED point estimates — these are the PEHE / ε_ATE we report.
+    #    Come from the same NPZ that realcause_eval's mega-sbatch writes, so
+    #    the point row here matches the paper reproduction row exactly.
     try:
         with np.load(npz_path, allow_pickle=True) as z:
             pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
             err_stored  = float(z[err_key])  if err_key  in z.files else float('nan')
-            cate_pred_stored = np.asarray(z['cate_pred']).astype(np.float64) \
-                if 'cate_pred' in z.files else None
+            # Grab whichever stored ate scalar is available for the consistency
+            # diagnostic. cpfn1d saves ate_raw; uwyk1d saves ate_raw_<tag>; dopfn
+            # saves per-query cate_pred (mean-it here).
+            ate_stored = float('nan')
+            ate_key = None
+            # Prefer the ate scalar matching the pehe_key's suffix (e.g.
+            # pehe_raw_v3b → ate_raw_v3b), else any ate_* key.
+            _prefer = pehe_key.replace('pehe_', 'ate_', 1)
+            if _prefer in z.files:
+                ate_stored = float(z[_prefer]); ate_key = _prefer
+            else:
+                for k in ('ate_raw', 'ate_em', 'ate_dopfn', 'ate_full'):
+                    if k in z.files:
+                        ate_stored = float(z[k]); ate_key = k; break
+                if ate_key is None and 'cate_pred' in z.files:
+                    ate_stored = float(np.asarray(z['cate_pred']).mean())
+                    ate_key = 'mean(cate_pred)'
     except Exception:
-        pehe_stored, err_stored, cate_pred_stored = float('nan'), float('nan'), None
+        pehe_stored, err_stored, ate_stored, ate_key = (
+            float('nan'), float('nan'), float('nan'), None)
 
-    cate_max_diff = float('nan')
-    if cate_pred_stored is not None and cate_pred_stored.shape == cate_hat.shape:
-        cate_max_diff = float(np.max(np.abs(cate_hat - cate_pred_stored)))
+    density_vs_stored_ate = float('nan')
+    if np.isfinite(ate_stored):
+        density_vs_stored_ate = ate_hat_density - ate_stored
 
     return {
-        'pehe_den':    pehe_den,
-        'err_den':     err_ate_den,
-        'pehe_stored': pehe_stored,
-        'err_stored':  err_stored,
-        'cate_max_diff': cate_max_diff,
-        'coverage':    coverage,
-        'length':      length,
-        'n_queries':   int(true_cate_pq.size),
+        # REPORTED (match the mega-sbatch table exactly).
+        'pehe':          pehe_stored,
+        'err':           err_stored,
+        # CI derived from density.
+        'coverage':      coverage,
+        'length':        length,
+        'n_queries':     int(true_cate_pq.size),
+        # Diagnostics — surface how far the SAVED density's mean is from the
+        # STORED point CATE. Small = density trustworthy for CI. Large = the
+        # density in the NPZ is not the density that produced the point PEHE.
+        'ate_density':   ate_hat_density,
+        'ate_stored':    ate_stored,
+        'ate_key':       ate_key,
+        'density_vs_stored_ate': density_vs_stored_ate,
     }
 
 
@@ -307,12 +409,17 @@ def _debug_single(npz_path: str, pehe_key: str, err_key: str) -> None:
 
     p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
     p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
-    nbins = p_y0.shape[-1]
-    centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1]) if edges.size >= nbins + 1 \
-              else (np.arange(nbins) * float(edges[1] - edges[0]) + edges[0])
-    e_y0 = (p_y0 * centers[None, :]).sum(axis=-1)
-    e_y1 = (p_y1 * centers[None, :]).sum(axis=-1)
+    # Route through the same loader used by process_npz so debug matches
+    # what the aggregator actually computes (handles UWYK's per-arm tail atoms).
+    loaded = _load_density(npz_path)
+    if loaded is None:
+        print(f'  [debug] _load_density returned None for {npz_path}')
+        return
+    schema, centers0, centers1, p_y0, p_y1, _, _, _ = loaded
+    e_y0 = (p_y0 * centers0).sum(axis=-1) if centers0.ndim == 2 else (p_y0 * centers0[None, :]).sum(axis=-1)
+    e_y1 = (p_y1 * centers1).sum(axis=-1) if centers1.ndim == 2 else (p_y1 * centers1[None, :]).sum(axis=-1)
     cate_from_diff = (e_y1 - e_y0) * y_scale
+    print(f'  density schema: {schema}')
 
     print(f'\n[{npz_path}]')
     print(f'  NPZ keys: {sorted(stored_keys)}')
