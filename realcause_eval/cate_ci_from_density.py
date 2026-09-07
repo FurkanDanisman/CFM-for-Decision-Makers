@@ -117,8 +117,16 @@ def _load_density(npz_path: str):
                 return ('uwyk', centers0, centers1, p_y0, p_y1,
                         y_shift, y_scale, true_cate_pq)
 
-            # Standard uniform-bar path.
-            if edges.size >= nbins + 1:
+            # Prefer effective_centers when the eval wrote them (dopfn's
+            # FullSupportBarDistribution: first/last bars have tail-adjusted
+            # means, not simple midpoints). Falls back to midpoints if not
+            # present.
+            if 'effective_centers' in keys:
+                centers = np.asarray(z['effective_centers'], dtype=np.float64)
+                assert centers.size == nbins, (
+                    f'effective_centers has {centers.size} entries but density has '
+                    f'{nbins} bins — schema mismatch in {npz_path}')
+            elif edges.size >= nbins + 1:
                 centers = 0.5 * (edges[:nbins] + edges[1:nbins + 1])
             else:
                 width = float(edges[1] - edges[0])
