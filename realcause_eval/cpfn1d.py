@@ -5,10 +5,9 @@ on the 5 RealCause datasets using
     benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py
 verbatim. Per-realization NPZs land at OUTDIR/<DATASET>_r<###>.npz.
 
-Defaults match the graph2d and cpfn2d wrappers so numbers are directly
-comparable:
-    EVAL_MAX_CONTEXT   = 1000       (random-subsample train context)
-    EVAL_CONTEXT_SEED  = 43         (deterministic subsample seed)
+Defaults (paper CausalPFN-C 1D was trained to consume full context):
+    EVAL_MAX_CONTEXT   = 0          (no cap — feed the full training set)
+    EVAL_CONTEXT_SEED  = 1          (only used if EVAL_MAX_CONTEXT > 0)
     STD_MODE           = per_arm    (per-arm Y standardization)
     COMPILE            = 0
 
@@ -42,10 +41,12 @@ def _parse_args():
     p.add_argument('--repo', required=True, help='R-PFN repo root.')
     p.add_argument('--causalpfn', required=True,
                     help='CausalPFN repo root (for benchmarks / dataset loaders).')
-    p.add_argument('--eval-max-context', type=int, default=1000,
-                    help='Random-subsample train context to this cap. Default: 1000.')
-    p.add_argument('--eval-context-seed', type=int, default=43,
-                    help='Deterministic subsampling seed. Default: 43.')
+    p.add_argument('--eval-max-context', type=int, default=0,
+                    help='Cap on training context (random subsample if > 0). '
+                         'Default: 0 = no cap (CausalPFN uses full context).')
+    p.add_argument('--eval-context-seed', type=int, default=1,
+                    help='Subsample seed (only used if --eval-max-context > 0). '
+                         'Default: 1.')
     p.add_argument('--std-mode', default='per_arm',
                     choices=['pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor'],
                     help='Y standardization for eval. Default: per_arm.')
@@ -67,7 +68,8 @@ def main():
         'OUT':               args.outdir,
         'CKPT':              args.ckpt,
         'CAUSALPFN':         args.causalpfn,
-        'EVAL_MAX_CONTEXT':  str(args.eval_max_context),
+        # Empty EVAL_MAX_CONTEXT disables the cap (feed full context).
+        'EVAL_MAX_CONTEXT':  str(args.eval_max_context) if args.eval_max_context > 0 else '',
         'EVAL_CONTEXT_SEED': str(args.eval_context_seed),
         'STD_MODE':          args.std_mode,
         'COMPILE':           args.compile,
@@ -79,8 +81,9 @@ def main():
                           'eval_causalpfn_v0_realcause.py')
     os.makedirs(args.outdir, exist_ok=True)
 
+    cap_str = args.eval_max_context if args.eval_max_context > 0 else 'none (full context)'
     print(f'[cpfn1d] dataset={args.dataset}  std_mode={args.std_mode}  '
-          f'eval_max_context={args.eval_max_context}  '
+          f'eval_max_context={cap_str}  '
           f'seed={args.eval_context_seed}  ckpt={os.path.basename(args.ckpt)}',
           flush=True)
 
