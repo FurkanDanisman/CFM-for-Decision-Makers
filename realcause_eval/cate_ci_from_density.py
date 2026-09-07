@@ -41,6 +41,17 @@ import numpy as np
 
 DATASETS = ('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal')
 
+# Per-method point-estimate keys (from the same NPZs).
+# cpfn1d writes pehe_raw / err_raw (unsuffixed).
+# dopfn  writes pehe_dopfn / err_dopfn.
+# uwyk1d writes suffixed keys — use noanc for the point row (matches paper
+# Table 3 UWYK No-Anc). Change to _v3b via --uwyk-tag if you want that row.
+_POINT_KEYS = {
+    'cpfn1d': ('pehe_raw',       'err_raw'),
+    'dopfn':  ('pehe_dopfn',     'err_dopfn'),
+    'uwyk1d': ('pehe_raw_noanc', 'err_raw_noanc'),
+}
+
 
 def _load_density(npz_path: str):
     """Return (edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq) or None."""
@@ -98,21 +109,34 @@ def _ci_from_pmf(tau_centers: np.ndarray, p_tau: np.ndarray, lo: float, hi: floa
     return _q(lo), _q(hi)
 
 
-def process_npz(npz_path: str) -> tuple[float, float, int] | None:
-    """→ (per-realization coverage, per-realization avg length, n_queries)."""
+def process_npz(npz_path: str, pehe_key: str, err_key: str
+                ) -> tuple[float, float, float, float, int] | None:
+    """→ (pehe, err_ate, coverage, length, n_queries).
+
+    pehe / err_ate come from the point-estimate keys the wrapper wrote (which
+    also equal the density mean by construction under independence).
+    coverage / length come from the CI convolution.
+    """
     loaded = _load_density(npz_path)
     if loaded is None:
         return None
     edges, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
 
+    # Grab the point PEHE / err — same NPZ, same run.
+    try:
+        with np.load(npz_path, allow_pickle=True) as z:
+            pehe    = float(z[pehe_key])    if pehe_key in z.files else float('nan')
+            err_ate = float(z[err_key])     if err_key  in z.files else float('nan')
+    except Exception:
+        pehe, err_ate = float('nan'), float('nan')
+
     # Convolve p_y1 with flip(p_y0) per query → p(τ_scaled) of length 2N-1.
-    # np.apply_along_axis is slow; vectorize with FFT since nbins is small anyway.
     from numpy.fft import rfft, irfft
     nbins = p_y0.shape[-1]
     n_out = 2 * nbins - 1
-    n_fft = 1 << (n_out - 1).bit_length()   # next power of 2
+    n_fft = 1 << (n_out - 1).bit_length()
     F1 = rfft(p_y1, n=n_fft, axis=-1)
-    F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)   # flip so that convolve = correlate-with-original
+    F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
     p_tau_scaled = irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out]
     p_tau_scaled = np.clip(p_tau_scaled, 0.0, None)
 
@@ -126,29 +150,51 @@ def process_npz(npz_path: str) -> tuple[float, float, int] | None:
     inside = (true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)
     coverage = float(np.mean(inside))
     length   = float(np.mean(tau_hi - tau_lo))
-    return coverage, length, int(true_cate_pq.size)
+    return pehe, err_ate, coverage, length, int(true_cate_pq.size)
 
 
-def summarize_method_dataset(method_dir: str, dataset: str):
-    """Walk NPZs, compute per-realization coverage/length, return means + SE."""
+def _mean_se(vals):
+    v = np.asarray([x for x in vals if np.isfinite(x)], dtype=float)
+    if v.size == 0:
+        return float('nan'), float('nan')
+    m = float(v.mean())
+    se = float(v.std(ddof=1) / np.sqrt(v.size)) if v.size > 1 else float('nan')
+    return m, se
+
+
+def summarize_method_dataset(method_dir: str, dataset: str,
+                              pehe_key: str, err_key: str):
+    """Walk NPZs; return {pehe: (m,se), err: (m,se), cov: (m,se), len: (m,se), n}."""
     paths = sorted(glob.glob(os.path.join(method_dir, dataset, f'{dataset}_r*.npz')))
     if not paths:
         return None
-    covs, lens = [], []
+    pehes, errs, covs, lens = [], [], [], []
     for p in paths:
-        got = process_npz(p)
+        got = process_npz(p, pehe_key, err_key)
         if got is None:
             continue
-        covs.append(got[0]); lens.append(got[1])
+        pehes.append(got[0]); errs.append(got[1]); covs.append(got[2]); lens.append(got[3])
     if not covs:
         return None
-    covs = np.asarray(covs); lens = np.asarray(lens)
-    n = covs.size
-    return (
-        float(covs.mean()), float(covs.std(ddof=1) / np.sqrt(n)) if n > 1 else float('nan'),
-        float(lens.mean()), float(lens.std(ddof=1) / np.sqrt(n)) if n > 1 else float('nan'),
-        n,
-    )
+    return {
+        'pehe':  _mean_se(pehes),
+        'err':   _mean_se(errs),
+        'cov':   _mean_se(covs),
+        'len':   _mean_se(lens),
+        'n':     len(covs),
+    }
+
+
+def _fmt(m, se, big=False):
+    if not np.isfinite(m):
+        return '—'
+    if big:
+        m_s = f'{m:,.2f}'
+        se_s = f'{se:,.2f}' if np.isfinite(se) else '—'
+    else:
+        m_s = f'{m:.3f}'
+        se_s = f'{se:.3f}' if np.isfinite(se) else '—'
+    return f'{m_s} ± {se_s}'
 
 
 def main():
@@ -157,6 +203,9 @@ def main():
                     help='Parent dir; expects <out-root>/<method>/<DATASET>/<D>_r<###>.npz.')
     ap.add_argument('--methods', nargs='+', default=['cpfn1d', 'dopfn', 'uwyk1d'],
                     help='Methods to include (one row each).')
+    ap.add_argument('--uwyk-tag', default='noanc', choices=['noanc', 'v3b'],
+                    help='Which anc-tag row of uwyk1d to use for PEHE/ε_ATE. '
+                         'Default: noanc (matches paper Table 3 UWYK No-Anc).')
     ap.add_argument('--out-md', default=None,
                     help='Also write the markdown table to this path.')
     args = ap.parse_args()
@@ -164,29 +213,44 @@ def main():
     if not os.path.isdir(args.out_root):
         sys.exit(f'FATAL: --out-root not found: {args.out_root}')
 
-    big_len = {'CPS', 'PSID', 'PSID_bal'}
+    # uwyk1d's point keys are suffixed by anc-tag — resolve via --uwyk-tag.
+    point_keys = dict(_POINT_KEYS)
+    point_keys['uwyk1d'] = (f'pehe_raw_{args.uwyk_tag}', f'err_raw_{args.uwyk_tag}')
+
+    big_pehe = {'CPS', 'PSID', 'PSID_bal'}
+    big_len  = big_pehe
 
     header = '| Method | ' + ' | '.join(DATASETS) + ' |'
     sep    = '|' + '|'.join(['---'] * (1 + len(DATASETS))) + '|'
-    lines = [f'\nCATE 95% CI (assume Y|do(0) ⊥ Y|do(1)) — {args.out_root}', '',
-             '(each cell: coverage on top, length below; n = realizations)',
-             '', header, sep]
+    lines = [
+        f'\nRealCause density-CI — {args.out_root}',
+        '',
+        '(each cell, top → bottom: √PEHE, ε_ATE, Coverage, Length; '
+        'CI = 95%, assume Y|do(0) ⊥ Y|do(1); n = realizations)',
+        '',
+        header, sep,
+    ]
 
     for method in args.methods:
         method_dir = os.path.join(args.out_root, method)
+        pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
         cells = [method]
         for d in DATASETS:
-            got = summarize_method_dataset(method_dir, d)
+            got = summarize_method_dataset(method_dir, d, pehe_key, err_key)
             if got is None:
                 cells.append('—')
                 continue
-            cov_m, cov_se, len_m, len_se, n = got
-            cov_str = f'{cov_m:.3f} ± {cov_se:.3f}' if np.isfinite(cov_se) else f'{cov_m:.3f}'
-            if d in big_len:
-                len_str = f'{len_m:,.0f} ± {len_se:,.0f}' if np.isfinite(len_se) else f'{len_m:,.0f}'
-            else:
-                len_str = f'{len_m:.3f} ± {len_se:.3f}' if np.isfinite(len_se) else f'{len_m:.3f}'
-            cells.append(f'{cov_str}<br>{len_str} (n={n})')
+            pehe_str = _fmt(*got['pehe'], big=d in big_pehe)
+            err_str  = _fmt(*got['err'],  big=False)
+            cov_str  = _fmt(*got['cov'],  big=False)
+            len_str  = _fmt(*got['len'],  big=d in big_len)
+            n = got['n']
+            cells.append(
+                f'PEHE {pehe_str}<br>'
+                f'ε_ATE {err_str}<br>'
+                f'Cov {cov_str}<br>'
+                f'Len {len_str} (n={n})'
+            )
         lines.append('| ' + ' | '.join(cells) + ' |')
 
     md = '\n'.join(lines) + '\n'
