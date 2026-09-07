@@ -44,7 +44,7 @@ esac
 export DATASET
 export OUT="$OUT_ROOT/$DATASET"
 
-source "/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/.venv/bin/activate"
+source "${VENV_ACTIVATE:-/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers/.venv/bin/activate}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
