@@ -479,6 +479,10 @@ def main():
                     help='Parent dir; expects <out-root>/<method>/<DATASET>/<D>_r<###>.npz.')
     ap.add_argument('--methods', nargs='+', default=['cpfn1d', 'dopfn', 'uwyk1d'],
                     help='Methods to include (one row each).')
+    ap.add_argument('--datasets', nargs='+', default=None,
+                    choices=list(DATASETS),
+                    help='Restrict to a subset of datasets (default: all 5). '
+                         'Use --datasets IHDP for a fast validation pass.')
     ap.add_argument('--uwyk-tag', default='noanc', choices=['noanc', 'v3b'],
                     help='Which anc-tag row of uwyk1d to use for PEHE/ε_ATE. '
                          'Default: noanc (matches paper Table 3 UWYK No-Anc).')
@@ -512,8 +516,11 @@ def main():
     big_pehe = {'CPS', 'PSID', 'PSID_bal'}
     big_len  = big_pehe
 
-    header = '| Method | ' + ' | '.join(DATASETS) + ' |'
-    sep    = '|' + '|'.join(['---'] * (1 + len(DATASETS))) + '|'
+    # Restrict columns to --datasets if given (default: all 5).
+    datasets_run = tuple(args.datasets) if args.datasets else DATASETS
+
+    header = '| Method | ' + ' | '.join(datasets_run) + ' |'
+    sep    = '|' + '|'.join(['---'] * (1 + len(datasets_run))) + '|'
     lines = [
         f'\nRealCause density-CI — {args.out_root}',
         '',
@@ -537,7 +544,7 @@ def main():
         pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
         cells = [method]
         verify_cells = [method]
-        for d in DATASETS:
+        for d in datasets_run:
             _t0 = time.time()
             print(f'[{time.strftime("%H:%M:%S")}] processing {method:8s} / {d:9s} ...',
                   end='', flush=True)
