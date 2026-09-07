@@ -514,71 +514,76 @@ def main():
             _p_y1_all = np.zeros((n_test, J), dtype=np.float32)
             _p_joint_all = np.zeros((n_test, J, J), dtype=np.float32)
 
-        for q in range(n_test):
-            p_mat, w_region, sL0, sR0, sL1, sR1 = unpack_pred(pred[q], J, bin_width)
-            pm = p_mat.detach().cpu().numpy().astype(np.float64)
-            s = pm.sum()
-            if s > 0: pm /= s
-            w = w_region.detach().cpu().numpy().astype(np.float64)
-            sL0_v = float(sL0); sR0_v = float(sR0)
-            sL1_v = float(sL1); sR1_v = float(sR1)
-            p_marg0 = pm.sum(axis=1)  # inner marg for Y0 (conditional on Y0∈inner)
-            p_marg1 = pm.sum(axis=0)  # inner marg for Y1
-            if _do_density:
-                _p_y0_all[q] = p_marg0.astype(np.float32)
-                _p_y1_all[q] = p_marg1.astype(np.float32)
-                _p_joint_all[q] = pm.astype(np.float32)
+        # ─────────────────────────────────────────────────────────────
+        # VECTORIZED — unpack_pred already supports the batch dim; do all
+        # per-query work as batched numpy ops. Speedup ~1000× on CPS
+        # (100 realizations × ~14 000 queries was the bottleneck).
+        # The old per-query Python for-loop is preserved as a small loop
+        # BELOW, and ONLY runs when args.malc_upsample is True.
+        # ─────────────────────────────────────────────────────────────
+        p_mat_b, w_region_b, sL0_b, sR0_b, sL1_b, sR1_b = unpack_pred(
+            pred, J, bin_width)
+        pm_all  = p_mat_b.detach().cpu().numpy().astype(np.float64)  # (n_test, J, J)
+        w_all   = w_region_b.detach().cpu().numpy().astype(np.float64)  # (n_test, 9)
+        sL0_arr = sL0_b.detach().cpu().numpy().astype(np.float64)     # (n_test,)
+        sR0_arr = sR0_b.detach().cpu().numpy().astype(np.float64)
+        sL1_arr = sL1_b.detach().cpu().numpy().astype(np.float64)
+        sR1_arr = sR1_b.detach().cpu().numpy().astype(np.float64)
 
-            # ── Inner region mean (using RAW-Y bin centers directly) ─
-            # For PT this uses pt.inverse_transform(scaled_centers) — the
-            # Do-PFN border-reinterpretation trick. For linear this is
-            # mathematically identical to scaled_centers*y_scale + y_center.
-            mean0_inner_raw = float((raw_centers_inner * p_marg0).sum())
-            mean1_inner_raw = float((raw_centers_inner * p_marg1).sum())
-            # keep scaled versions too for the tail-mix math (needs scaled units)
-            mean0_inner_s = float((centers_scaled * p_marg0).sum())
-            mean1_inner_s = float((centers_scaled * p_marg1).sum())
-            m0_inner_raw[q] = mean0_inner_raw
-            m1_inner_raw[q] = mean1_inner_raw
+        # Per-query renormalization of the (J, J) inner grid.
+        s_all  = pm_all.sum(axis=(1, 2), keepdims=True)
+        s_safe = np.where(s_all > 0, s_all, 1.0)
+        pm_all = pm_all / s_safe
 
-            # ── FULL 9-region mean (inner + tail regions) ────────────────
-            # Y_do0 side:
-            P0_inner = float(w[Y0_INNER].sum())
-            P0_L     = float(w[Y0_L].sum())
-            P0_R     = float(w[Y0_R].sum())
-            # Half-Gaussian tail expectations at boundaries ±1 with scales σ:
-            #   E[Y | Y < lo] = lo - σ · √(2/π)
-            #   E[Y | Y > hi] = hi + σ · √(2/π)
-            E0_L = lo - sL0_v * _sqrt_2_over_pi
-            E0_R = hi + sR0_v * _sqrt_2_over_pi
-            mean0_full_s = (P0_inner * mean0_inner_s
-                             + P0_L     * E0_L
-                             + P0_R     * E0_R)
+        # Inner marginals (batched)
+        p_marg0_all = pm_all.sum(axis=2)   # (n_test, J) — Y0 inner marginal
+        p_marg1_all = pm_all.sum(axis=1)   # (n_test, J) — Y1 inner marginal
+        if _do_density:
+            _p_y0_all[:]    = p_marg0_all.astype(np.float32)
+            _p_y1_all[:]    = p_marg1_all.astype(np.float32)
+            _p_joint_all[:] = pm_all.astype(np.float32)
 
-            # Y_do1 side:
-            P1_inner = float(w[Y1_INNER].sum())
-            P1_L     = float(w[Y1_L].sum())
-            P1_R     = float(w[Y1_R].sum())
-            E1_L = lo - sL1_v * _sqrt_2_over_pi
-            E1_R = hi + sR1_v * _sqrt_2_over_pi
-            mean1_full_s = (P1_inner * mean1_inner_s
-                             + P1_L     * E1_L
-                             + P1_R     * E1_R)
+        # Inner-region means (raw + scaled). Both raw_centers_inner and
+        # centers_scaled have shape (J,) → dot product with (n_test, J).
+        m0_inner_raw[:] = p_marg0_all @ raw_centers_inner
+        m1_inner_raw[:] = p_marg1_all @ raw_centers_inner
+        mean0_inner_s_arr = p_marg0_all @ centers_scaled
+        mean1_inner_s_arr = p_marg1_all @ centers_scaled
 
-            # Convert full-region mixture mean to raw y via unscale_arr.
-            # For linear this equals P_inner*mean0_inner_raw + P_L*raw(E_L) + P_R*raw(E_R).
-            # For PT this uses pt.inverse_transform on the mixture — an
-            # approximation for a nonlinear pt (tail contribution is small,
-            # error is bounded).
-            m0_full_raw[q] = float(unscale_arr(np.array([mean0_full_s]))[0])
-            m1_full_raw[q] = float(unscale_arr(np.array([mean1_full_s]))[0])
+        # Full 9-region mean (inner + half-Gaussian tails).
+        P0_inner_arr = w_all[:, Y0_INNER].sum(axis=1)
+        P0_L_arr     = w_all[:, Y0_L    ].sum(axis=1)
+        P0_R_arr     = w_all[:, Y0_R    ].sum(axis=1)
+        P1_inner_arr = w_all[:, Y1_INNER].sum(axis=1)
+        P1_L_arr     = w_all[:, Y1_L    ].sum(axis=1)
+        P1_R_arr     = w_all[:, Y1_R    ].sum(axis=1)
 
-            # ── Pure MALC-upsampled means (raw + EM), no tails ───────────
-            # User's literal proposal: fit MALC 2D to the discrete J=10 inner
-            # p_mat, evaluate on a fine grid (default J=100), marginalize,
-            # compute BOTH raw and EM mean on the fine grid. Tails are NOT
-            # added — this isolates the effect of MALC upsampling itself.
-            if args.malc_upsample:
+        E0_L_arr = lo - sL0_arr * _sqrt_2_over_pi
+        E0_R_arr = hi + sR0_arr * _sqrt_2_over_pi
+        E1_L_arr = lo - sL1_arr * _sqrt_2_over_pi
+        E1_R_arr = hi + sR1_arr * _sqrt_2_over_pi
+
+        mean0_full_s_arr = (P0_inner_arr * mean0_inner_s_arr
+                              + P0_L_arr     * E0_L_arr
+                              + P0_R_arr     * E0_R_arr)
+        mean1_full_s_arr = (P1_inner_arr * mean1_inner_s_arr
+                              + P1_L_arr     * E1_L_arr
+                              + P1_R_arr     * E1_R_arr)
+
+        # unscale_arr handles arrays — no per-element wrapping needed.
+        m0_full_raw[:] = np.asarray(unscale_arr(mean0_full_s_arr), dtype=np.float64)
+        m1_full_raw[:] = np.asarray(unscale_arr(mean1_full_s_arr), dtype=np.float64)
+
+        sigma_em_y0_scaled[:] = 0.5 * (sL0_arr + sR0_arr)
+        sigma_em_y1_scaled[:] = 0.5 * (sL1_arr + sR1_arr)
+
+        # ─────────────────────────────────────────────────────────────
+        # MALC-upsample path — infrequent (--malc-upsample), keep as
+        # per-query loop because MALC 2D fitting isn't batched.
+        # ─────────────────────────────────────────────────────────────
+        if args.malc_upsample:
+            for q in range(n_test):
+                pm = pm_all[q]
                 try:
                     fit = fit_malc_inner(
                         pm.T, edges_np, edges_np,
@@ -589,21 +594,16 @@ def main():
                     )
                     dens = dmalc_2d(fit, fine_eval_pts).reshape(
                         args.malc_n_eval, args.malc_n_eval)
-                    # convert density → prob mass by · bin_area, renormalize
                     p_fine = dens * (fine_bw * fine_bw)
                     ps = p_fine.sum()
                     if ps > 0: p_fine = p_fine / ps
                     # AXIS CONVENTION: after dmalc_2d(...).reshape(n_ev, n_ev),
                     # first axis (rows) is Y1 index, second axis (cols) is Y0
                     # index (see methods_densities.py:345 for reference).
-                    # So Y0 marginal = sum over rows (axis=0);
-                    #    Y1 marginal = sum over cols (axis=1).
                     p_marg0_fine = p_fine.sum(axis=0)   # Y0 marginal
                     p_marg1_fine = p_fine.sum(axis=1)   # Y1 marginal
-                    # Raw mean using fine-grid RAW centers (correct for PT too)
                     m0_malc_raw_raw[q] = float((raw_centers_fine * p_marg0_fine).sum())
                     m1_malc_raw_raw[q] = float((raw_centers_fine * p_marg1_fine).sum())
-                    # EM mean on fine grid (in scaled space, then convert to raw)
                     m0_raw_f_s = float((fine_centers * p_marg0_fine).sum())
                     m1_raw_f_s = float((fine_centers * p_marg1_fine).sum())
                     sig0_f = _init_sigma_1d(p_marg0_fine, fine_centers, m0_raw_f_s, fine_bw)
@@ -614,11 +614,8 @@ def main():
                     m1_malc_em_raw[q] = float(unscale_arr(np.array([m1_em_f_s]))[0])
                 except Exception:
                     n_malc_fail += 1
-                    m0_malc_raw_raw[q] = mean0_inner_raw; m1_malc_raw_raw[q] = mean1_inner_raw
-                    m0_malc_em_raw[q]  = mean0_inner_raw; m1_malc_em_raw[q]  = mean1_inner_raw
-
-            sigma_em_y0_scaled[q] = 0.5 * (sL0_v + sR0_v)
-            sigma_em_y1_scaled[q] = 0.5 * (sL1_v + sR1_v)
+                    m0_malc_raw_raw[q] = m0_inner_raw[q]; m1_malc_raw_raw[q] = m1_inner_raw[q]
+                    m0_malc_em_raw[q]  = m0_inner_raw[q]; m1_malc_em_raw[q]  = m1_inner_raw[q]
 
         # Per-query means already in RAW user-Y space (see mean assignments
         # above). CATE = mean1_raw - mean0_raw. For linear schemes this is
