@@ -130,6 +130,18 @@ PSID_BAL_SEED = int(os.environ.get('PSID_BAL_SEED', '42'))
 # (and `pehe_em_ty`, etc.) instead of `pehe_raw_anc`.
 ANC_MODE = os.environ.get('ANC_MODE', 'full')
 
+# Y-scaling scheme, mirrors the knob DoPFN-bb exposes. Default 'minmax' keeps
+# current behavior: y_scaled = 2*(y - ymin)/(ymax - ymin) - 1, so y_train hits
+# the ±1 edges of the head's [-1, +1] bar-dist support exactly. 'std' uses the
+# recipe from _compute_y_scale in eval_dopfn_bb_raw.py:
+#     y_scaled = (y - mean(y)) * STD_TARGET / std(y)
+# which pins σ(y_scaled) = STD_TARGET. For J=32 (bin_width=0.0625), STD_TARGET
+# in [0.1, 0.3] keeps bulk resolvable across multiple bins AND ±3σ inside
+# [-1, +1]. Below 0.1 the mass collapses to one bin; above 0.3 tails get
+# clipped by the head's finite support.
+Y_SCALING = os.environ.get('Y_SCALING', 'minmax').lower()
+STD_TARGET = float(os.environ.get('STD_TARGET', '0.3'))
+
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -179,6 +191,24 @@ def _standardize_train_test(X_train, X_test, eps=1e-8):
 
 
 def _scale_y(y):
+    """Return (y_scaled, y_shift, y_scale_for_cate) where CATE un-scales as
+    cate_raw = cate_scaled * y_scale_for_cate. See Y_SCALING above.
+
+    minmax (default) — y_scaled = 2*(y-ymin)/yrange - 1; cate scale = yrange/2.
+    std             — y_scaled = (y-mean)*STD_TARGET/std;  cate scale = std/STD_TARGET.
+                      Recovers DoPFN-bb's std_target=0.3 recipe when STD_TARGET=0.3.
+                      Bulk σ(y_scaled)=STD_TARGET regardless of outliers.
+    """
+    if Y_SCALING == 'std':
+        y_mean = float(y.mean())
+        y_std = max(float(y.std()), 1e-8)
+        y_scale = y_std / max(STD_TARGET, 1e-6)   # y_raw = y_scaled * y_scale + y_mean
+        y_scaled = ((y - y_mean) / y_scale).astype(np.float32)
+        # Return shape matching minmax: (y_scaled, "shift so cate_raw = cate_s * (2nd_val / 2)").
+        # The evaluate() loop uses `cate = cate_scaled * yrange / 2.0`, so we return
+        # `2 * y_scale` in the yrange slot to make that formula come out right.
+        return y_scaled, y_mean, 2.0 * y_scale
+    # minmax (default) — original behavior
     ymin = float(y.min())
     ymax = float(y.max())
     yrange = max(ymax - ymin, 1e-9)
