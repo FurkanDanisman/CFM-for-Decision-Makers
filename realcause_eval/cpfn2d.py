@@ -51,13 +51,17 @@ def _parse_args():
     p.add_argument('--std-mode', default='per_arm',
                     choices=['pooled', 'per_arm', 'log', 'log_per_arm',
                              'log_winsor', 'std_target'],
-                    help='Y standardization for eval. Default: per_arm. '
-                         'std_target = DoPFN-bb-style (σ = --std-target).')
-    p.add_argument('--std-target', type=float, default=0.15,
-                    help='Only used with --std-mode std_target. Scaled σ. For '
-                         'J=32 (bin_width=0.0625), σ ∈ [0.1, 0.3] resolves '
-                         'signal across bins with ±3σ inside [-1, +1]. '
-                         'Default: 0.15.')
+                    help='Y standardization for eval. Default: per_arm '
+                         '(context Y standardized by its own arm mean/std). '
+                         'std_target = DoPFN-bb-style scaling (σ = --std-target).')
+    p.add_argument('--std-target', type=float, default=1.0,
+                    help='Only used with --std-mode std_target. cpfn2d has '
+                         'bar-dist edges [-10, +10] and J=32 (bin_width=0.625), '
+                         'so σ must satisfy σ > 0.625 (else bulk collapses to '
+                         'one bin) AND 3σ < 10 (else tails clipped). Sensible '
+                         'range: 0.7-3.3. Default 1.0 matches CausalPFN training '
+                         'convention (σ_scaled ≈ 1). Do NOT use dopfn-bb\'s 0.3 '
+                         '— cpfn2d\'s wider head makes it inappropriate.')
     p.add_argument('--compile', default='0', choices=['0', '1'],
                     help='torch.compile toggle (default 0 — cpfn2d has a compile bug).')
     p.add_argument('--skip-em', default='1', choices=['0', '1'],
