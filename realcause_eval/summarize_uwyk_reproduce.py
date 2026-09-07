@@ -44,23 +44,39 @@ from scipy import stats
 ROW_ORDER = ('Predictive', 'No-Anc', 'Anc')
 COL_ORDER = ('IHDP', 'ACIC', 'CPS', 'PSID_unbal', 'PSID_bal')
 
-# Paper Table 3 targets — (mean, stderr) per (row, column).
+# Paper Table 3 targets — (mean, stderr) per (metric, row, column).
 PAPER = {
-    ('Predictive', 'IHDP'):       ( 6.79,   0.81),
-    ('Predictive', 'ACIC'):       ( 3.14,   0.47),
-    ('Predictive', 'CPS'):        (11393.0, 31.0),
-    ('Predictive', 'PSID_unbal'): (None, None),
-    ('Predictive', 'PSID_bal'):   (22045.0, 136.0),
-    ('No-Anc',     'IHDP'):       ( 6.28,   0.79),
-    ('No-Anc',     'ACIC'):       ( 3.41,   0.52),
-    ('No-Anc',     'CPS'):        (12792.0, 61.0),
-    ('No-Anc',     'PSID_unbal'): (22435.0, 141.0),
-    ('No-Anc',     'PSID_bal'):   (21896.0, 137.0),
-    ('Anc',        'IHDP'):       ( 5.49,   0.78),
-    ('Anc',        'ACIC'):       ( 2.79,   0.45),
-    ('Anc',        'CPS'):        (11213.0, 60.0),
-    ('Anc',        'PSID_unbal'): (None, None),
-    ('Anc',        'PSID_bal'):   (19711.0, 230.0),
+    ('pehe', 'Predictive', 'IHDP'):       ( 6.79,   0.81),
+    ('pehe', 'Predictive', 'ACIC'):       ( 3.14,   0.47),
+    ('pehe', 'Predictive', 'CPS'):        (11393.0, 31.0),
+    ('pehe', 'Predictive', 'PSID_unbal'): (None, None),
+    ('pehe', 'Predictive', 'PSID_bal'):   (22045.0, 136.0),
+    ('pehe', 'No-Anc',     'IHDP'):       ( 6.28,   0.79),
+    ('pehe', 'No-Anc',     'ACIC'):       ( 3.41,   0.52),
+    ('pehe', 'No-Anc',     'CPS'):        (12792.0, 61.0),
+    ('pehe', 'No-Anc',     'PSID_unbal'): (22435.0, 141.0),
+    ('pehe', 'No-Anc',     'PSID_bal'):   (21896.0, 137.0),
+    ('pehe', 'Anc',        'IHDP'):       ( 5.49,   0.78),
+    ('pehe', 'Anc',        'ACIC'):       ( 2.79,   0.45),
+    ('pehe', 'Anc',        'CPS'):        (11213.0, 60.0),
+    ('pehe', 'Anc',        'PSID_unbal'): (None, None),
+    ('pehe', 'Anc',        'PSID_bal'):   (19711.0, 230.0),
+
+    ('ate_rel_err', 'Predictive', 'IHDP'):       (0.81,  0.11),
+    ('ate_rel_err', 'Predictive', 'ACIC'):       (0.38,  0.06),
+    ('ate_rel_err', 'Predictive', 'CPS'):        (0.78,  0.00),
+    ('ate_rel_err', 'Predictive', 'PSID_unbal'): (None, None),
+    ('ate_rel_err', 'Predictive', 'PSID_bal'):   (0.945, 0.006),
+    ('ate_rel_err', 'No-Anc',     'IHDP'):       (0.67,  0.05),
+    ('ate_rel_err', 'No-Anc',     'ACIC'):       (0.46,  0.09),
+    ('ate_rel_err', 'No-Anc',     'CPS'):        (0.99,  0.01),
+    ('ate_rel_err', 'No-Anc',     'PSID_unbal'): (None, None),
+    ('ate_rel_err', 'No-Anc',     'PSID_bal'):   (0.936, 0.004),
+    ('ate_rel_err', 'Anc',        'IHDP'):       (0.49,  0.08),
+    ('ate_rel_err', 'Anc',        'ACIC'):       (0.17,  0.08),
+    ('ate_rel_err', 'Anc',        'CPS'):        (0.70,  0.02),
+    ('ate_rel_err', 'Anc',        'PSID_unbal'): (None, None),
+    ('ate_rel_err', 'Anc',        'PSID_bal'):   (0.650, 0.018),
 }
 
 
@@ -112,12 +128,19 @@ def _load_folder(path: str) -> list[dict]:
     return out
 
 
-def collect(results_dir: str) -> dict[tuple[str, str], tuple[str, list[dict]]]:
-    """Return {(row, col): (folder_name, records)} — one folder per cell."""
+def collect(results_dir: str, folder_filter: list[str] | None = None,
+            ) -> dict[tuple[str, str], tuple[str, list[dict]]]:
+    """Return {(row, col): (folder_name, records)} — one folder per cell.
+
+    If folder_filter is given, only folders whose name contains any of the
+    filter substrings are included.
+    """
     candidates: dict[tuple[str, str], list[tuple[str, list[dict]]]] = defaultdict(list)
     for folder in sorted(os.listdir(results_dir)):
         sub = os.path.join(results_dir, folder)
         if not os.path.isdir(sub):
+            continue
+        if folder_filter and not any(sub_s in folder for sub_s in folder_filter):
             continue
         row = _classify_row(folder)
         if row is None:
@@ -167,20 +190,20 @@ def _fmt_paper(m: float | None, se: float | None, big: bool) -> str:
         return '—'
     if big:
         return f'{m:,.0f} ± {se:,.0f}'
-    return f'{m:.2f} ± {se:.2f}'
+    return f'{m:.3f} ± {se:.3f}'
 
 
 def _big_col(col: str) -> bool:
     return col in ('CPS', 'PSID_unbal', 'PSID_bal')
 
 
-def render(picked, metric: str) -> str:
+def render(picked, metric: str, rows_present: list[str]) -> str:
     label = {'pehe': '√PEHE', 'ate_rel_err': 'ε_ATE'}[metric]
     lines = [f'\n## UWYK Table 3 — {label} (mean ± SE)\n']
     header = '| Row | ' + ' | '.join(COL_ORDER) + ' |'
     sep = '|' + '|'.join(['---'] * (1 + len(COL_ORDER))) + '|'
     lines += [header, sep]
-    for row in ROW_ORDER:
+    for row in rows_present:
         cells = [row]
         for col in COL_ORDER:
             big = _big_col(col) and metric == 'pehe'
@@ -194,15 +217,16 @@ def render(picked, metric: str) -> str:
             else:
                 cells.append('—')
         lines.append('| ' + ' | '.join(cells) + ' |')
-    lines.append('| *Paper target* | '
-                 + ' | '.join(_fmt_paper(*PAPER[('No-Anc', c)],
-                                          big=_big_col(c) and metric == 'pehe')
-                              for c in COL_ORDER)
-                 + ' |')
+        paper_cells = [f'*{row} target*']
+        for col in COL_ORDER:
+            pm, pse = PAPER.get((metric, row, col), (None, None))
+            paper_cells.append(_fmt_paper(pm, pse,
+                                          big=_big_col(col) and metric == 'pehe'))
+        lines.append('| ' + ' | '.join(paper_cells) + ' |')
     lines.append('')
 
     lines.append('Folder used per cell:')
-    for row in ROW_ORDER:
+    for row in rows_present:
         for col in COL_ORDER:
             if (row, col) in picked:
                 folder, recs = picked[(row, col)]
@@ -228,16 +252,25 @@ def to_csv(picked, out_path: str) -> None:
                                 and r[metric] is not None
                                 and np.isfinite(r[metric])]
                         m, se, n = _mean_se(vals)
-                    pm, pse = (PAPER[(row, col)] if metric == 'pehe' else (None, None))
+                    pm, pse = PAPER.get((metric, row, col), (None, None))
                     w.writerow([metric, row, col, folder, n, m, se,
                                 '' if pm is None else pm,
                                 '' if pse is None else pse])
+
+
+OUR_RUN_FOLDERS = ('dofm_noclust_all_unknown', 'dofm_psid_balanced_all_unknown')
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--results-dir', required=True,
                     help='UWYK RealCauseEval/results directory.')
+    ap.add_argument('--folders', nargs='*', default=None,
+                    help='Only include folders whose name contains any of these '
+                         'substrings. Default: everything.')
+    ap.add_argument('--our-run', action='store_true',
+                    help=f'Shortcut for --folders {" ".join(OUR_RUN_FOLDERS)}. '
+                         f'Shows only the No-Anc row our sbatch produced.')
     ap.add_argument('--out-md', default=None,
                     help='Markdown output path (default: <results-dir>/uwyk_table3_summary.md).')
     ap.add_argument('--out-csv', default=None,
@@ -247,12 +280,20 @@ def main():
     if not os.path.isdir(args.results_dir):
         sys.exit(f'FATAL: results-dir not found: {args.results_dir}')
 
-    picked = collect(args.results_dir)
-    if not picked:
-        sys.exit(f'FATAL: no recognizable pickles found under {args.results_dir}')
+    folder_filter = args.folders
+    if args.our_run:
+        folder_filter = list(OUR_RUN_FOLDERS)
 
-    md_pehe = render(picked, 'pehe')
-    md_ate  = render(picked, 'ate_rel_err')
+    picked = collect(args.results_dir, folder_filter=folder_filter)
+    if not picked:
+        where = ' + '.join(folder_filter) if folder_filter else args.results_dir
+        sys.exit(f'FATAL: no recognizable pickles found in {where}')
+
+    rows_present = [r for r in ROW_ORDER
+                    if any((r, c) in picked for c in COL_ORDER)]
+
+    md_pehe = render(picked, 'pehe',       rows_present)
+    md_ate  = render(picked, 'ate_rel_err', rows_present)
     md = md_pehe + '\n' + md_ate + '\n'
 
     out_md  = args.out_md  or os.path.join(args.results_dir, 'uwyk_table3_summary.md')
