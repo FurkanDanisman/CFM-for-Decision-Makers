@@ -167,15 +167,20 @@ def _load_realcause_stack(dataset, causalpfn_dir):
     if csv_dir is None:
         raise FileNotFoundError(
             f'RealCause CSVs not found under any of: {cand_dirs}')
+    # Feature columns are all columns EXCEPT the known outcome/treatment ones.
+    # RealCause CSVs use plain feature names (age, education, black, ...) not
+    # x1..x8 — the agent's initial report used generic 'x*' shorthand.
+    _NON_X = {'t', 'y', 'y0', 'y1', 'ite', 'ycf', 'mu0', 'mu1'}
     y0_all = []; y1_all = []; X_pool = None
     for k in range(100):
         path = os.path.join(csv_dir, f'{prefix}{k}.csv')
         df = pd.read_csv(path)
-        x_cols = [c for c in df.columns if c.startswith('x')]
+        x_cols = [c for c in df.columns if c not in _NON_X]
         if not x_cols:
-            raise RuntimeError(f'no x* columns in {path}; got {list(df.columns)}')
+            raise RuntimeError(f'no feature columns in {path}; got {list(df.columns)}')
         if X_pool is None:
             X_pool = df[x_cols].values.astype(np.float64)
+            _saved_x_cols = x_cols
         else:
             assert X_pool.shape == df[x_cols].shape, (
                 f'X shape drift in {path}: {df[x_cols].shape} vs {X_pool.shape}')
@@ -310,7 +315,8 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         from true_acic import load_acic_truth
         ds = ds_obj[r][0]
         y_train_raw = np.asarray(ds.y_train, dtype=np.float64).reshape(-1)
-        truth = load_acic_truth(r, causalpfn_dir, y_train_raw)
+        # Signature: load_acic_truth(r, y_train_full, seed=42, test_ratio=0.1, cache_dir=None)
+        truth = load_acic_truth(r, y_train_raw)
         scale = truth.y_rng / 2.0
         mu_diff = (truth.mu1_test_scaled - truth.mu0_test_scaled) * scale
         sigma_tau = np.sqrt(2.0) * float(truth.sigma_scaled) * scale
