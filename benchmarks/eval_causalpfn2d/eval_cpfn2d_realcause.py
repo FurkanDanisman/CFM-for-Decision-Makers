@@ -369,11 +369,29 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
         'pehe_full': p_f, 'err_full': e_f, 'ate_full': a_f,
     }
     if os.environ.get('DENSITY_DUMP', '0') == '1':
-        # y_raw = y_scaled * y_scale + y_shift (pooled: shift=stats['shift'], scale=stats['scale'];
-        # per_arm: two separate un-scalings — use pooled convention here since density_eval
-        # expects one scale factor; per_arm shards would need separate y0/y1 scales.
+        # y_raw = y_scaled * y_scale + y_shift under POOLED scaling; per_arm
+        # can't be re-scaled with one (shift, scale) pair because the two arms
+        # live on different y_scaled axes. Assert we're in a mode that gives
+        # us one shared axis so the density-CI aggregator's un-scaling is
+        # consistent with the stored point CATE.
+        assert stats['mode'] != 'per_arm', (
+            'DENSITY_DUMP=1 with STD_MODE=per_arm would silently save '
+            'y_shift=0, y_scale=1 while the point CATE uses per-arm '
+            'y0sc/y1sc — the density-CI aggregator would then compute '
+            'a CI on the wrong scale. Use --std-mode pooled (or any '
+            'other single-axis mode) for density dumps.')
         y_shift = float(stats.get('shift', 0.0))
         y_scale = float(stats.get('scale', 1.0))
+        # Sanity: (e_y1_raw - e_y0_raw) * y_scale must reproduce cate_raw.
+        # cate_raw was computed above via _unlog(...) which for non-log
+        # pooled reduces to (e_y1_raw - e_y0_raw) * sc.
+        cate_from_dump = (e_y1_raw - e_y0_raw) * y_scale
+        max_gap = float(np.max(np.abs(cate_from_dump - cate_raw)))
+        assert max_gap < max(1e-3 * abs(y_scale), 1e-6), (
+            f'[DENSITY_DUMP] density mean disagrees with cate_raw: '
+            f'max|Δ|={max_gap:.4g} (y_scale={y_scale:.4g}). '
+            f'This means the saved (y_shift, y_scale) does not reverse '
+            f'the model\'s scaling — density-CI would be wrong.')
         row.update({
             'edges': edges_np.astype(np.float32),
             'p_y0_scaled': p_mats.sum(axis=2).astype(np.float32),  # (N_q, J)
