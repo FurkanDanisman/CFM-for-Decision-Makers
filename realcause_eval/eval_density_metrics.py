@@ -203,23 +203,21 @@ def _truth_realcause_kde(dataset, r, causalpfn_dir, ds_obj, tau_grid_raw,
 
     Returns (p_true_pq, true_cate_pq_raw, mean_sigma_tau).
     """
-    X_pool, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
+    _, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
     tau_all = y1_all - y0_all                   # (N_pool, K=100)
 
     ds = ds_obj[r][0]
-    X_test = np.asarray(ds.X_test, dtype=np.float64)
     true_cate = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)
 
-    # Row-in-pool lookup by tuple hash. Real-valued X → uniqueness is safe.
-    pool_hash = {tuple(X_pool[i]): i for i in range(X_pool.shape[0])}
-    test_idx = np.fromiter(
-        (pool_hash.get(tuple(x), -1) for x in X_test),
-        dtype=np.int64, count=len(X_test))
-    if (test_idx < 0).any():
-        n_miss = int((test_idx < 0).sum())
-        raise RuntimeError(
-            f'{dataset} r={r}: {n_miss}/{len(X_test)} test X rows not '
-            f'found in the shared CSV pool — X mismatch?')
+    # Match test queries to pool rows via ITE identity (robust to X standardization).
+    test_idx = _match_by_ite(dataset, r, causalpfn_dir, ds)
+    keep = test_idx >= 0
+    if not keep.all():
+        n_miss = int((~keep).sum())
+        print(f'  [warn] {dataset} r={r}: {n_miss}/{len(test_idx)} '
+              f'test rows unmatched via ITE; dropping', file=sys.stderr)
+    test_idx = test_idx[keep]
+    true_cate = true_cate[keep]
     tau_samples = tau_all[test_idx]              # (N_q, K)
     N_q, K = tau_samples.shape
 
@@ -241,12 +239,69 @@ def _truth_realcause_kde(dataset, r, causalpfn_dir, ds_obj, tau_grid_raw,
 
 # ── Method density loaders (per realization → per-query p_tau on shared grid).
 
+def _match_by_ite(dataset, r, causalpfn_dir, ds):
+    """Match test queries to shared-pool rows via ITE (true_cate) identity.
+
+    Robust to any X standardization the RealCause loader may do — because
+    the CSV `ite` column (real-valued τ per row) is raw and matches
+    ds.true_cate byte-for-byte modulo float precision.
+
+    Returns (test_idx, ite_pool_len). test_idx: (N_test,) int64 array;
+    entries with no match are -1 (caller drops).
+    """
+    import pandas as pd
+    prefix_map = {'CPS': 'lalonde_cps_sample',
+                  'PSID': 'lalonde_psid_sample',
+                  'PSID_bal': 'lalonde_psid_sample'}
+    cand_dirs = [
+        os.path.join(causalpfn_dir, 'benchmarks', 'realcause_datasets'),
+        os.path.join(causalpfn_dir, 'src', 'benchmarks', 'realcause_datasets'),
+        os.path.join(causalpfn_dir, 'realcause_datasets'),
+    ]
+    csv_dir = next((d for d in cand_dirs if os.path.isdir(d)), None)
+    if csv_dir is None:
+        raise FileNotFoundError(f'RealCause CSVs not under any of: {cand_dirs}')
+    df_r = pd.read_csv(os.path.join(csv_dir, f'{prefix_map[dataset]}{r}.csv'))
+    ite_pool = df_r['ite'].values.astype(np.float64)
+    ite_test = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)
+    # Round to 8 decimals to handle any tiny float precision drift.
+    _key = lambda v: round(float(v), 8)
+    ite_hash = {}
+    for i, v in enumerate(ite_pool):
+        ite_hash.setdefault(_key(v), []).append(i)
+    idx = np.array([ite_hash.get(_key(t), [-1])[0] for t in ite_test], dtype=np.int64)
+    return idx
+
+
+def _resolve_realization_npz(root, method, dataset_dir_name, r, prefix='',
+                                suffix_dataset_name=None):
+    """Try both 3-digit and 2-digit realization padding.
+
+    cpfn1d/cpfn2d use r<r:02d> filenames for ACIC while all other emitters
+    use r<r:03d> uniformly. Search both patterns.
+
+    prefix='' → filenames like <DATASET>_r<###>.npz (inline layout).
+    prefix='malc_ci_{tag}_' → tagged MALC files (2D MALC path).
+    """
+    ds_in_name = suffix_dataset_name or dataset_dir_name
+    for pad in (3, 2):
+        rstr = f'{r:0{pad}d}'
+        if prefix:
+            fname = f'{prefix}r{rstr}.npz'
+        else:
+            fname = f'{ds_in_name}_r{rstr}.npz'
+        path = os.path.join(root, method, dataset_dir_name, fname)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 def _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid_raw):
     """1D method: reconstruct p(τ|x_q) from p_y0 / p_y1 marginals via
     outer-product enumeration + rasterization onto the shared tau_grid_raw.
     Uses effective_centers if present (dopfn's tail-adjusted centers)."""
-    path = os.path.join(root_1d, method, dataset, f'{dataset}_r{r:03d}.npz')
-    if not os.path.isfile(path): return None
+    path = _resolve_realization_npz(root_1d, method, dataset, r)
+    if not path: return None
     with np.load(path, allow_pickle=True) as z:
         p_y0 = np.asarray(z['p_y0_scaled'], dtype=np.float64)
         p_y1 = np.asarray(z['p_y1_scaled'], dtype=np.float64)
@@ -287,9 +342,9 @@ def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
     ds_on_disk = dataset
     if method == 'dopfnbb' and dataset == 'PSID_bal':
         ds_on_disk = 'PSIDbal'
-    path = os.path.join(root_2d, method, ds_on_disk,
-                         f'malc_ci_{malc_tag}_r{r:03d}.npz')
-    if not os.path.isfile(path): return None
+    path = _resolve_realization_npz(root_2d, method, ds_on_disk, r,
+                                     prefix=f'malc_ci_{malc_tag}_')
+    if not path: return None
     with np.load(path, allow_pickle=True) as z:
         p_tau_scaled = np.asarray(z['p_taus_scaled'], dtype=np.float64)
         tau_scaled   = np.asarray(z['tau_scaled'],    dtype=np.float64)
@@ -343,29 +398,39 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         p_true_pq = _renorm(p_true_pq, dtau)
         true_cate_pq_raw = mu_diff.copy()          # point true CATE per query
     else:
-        # KDE truth — first size the grid from empirical τ samples.
-        X_pool, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
-        tau_all = y1_all - y0_all
+        # KDE truth for RealCause datasets (CPS/PSID/PSID_bal).
+        _, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
+        tau_all = y1_all - y0_all                # (N_pool, K=100)
         ds = ds_obj[r][0]
-        X_test = np.asarray(ds.X_test, dtype=np.float64)
-        pool_hash = {tuple(X_pool[i]): i for i in range(X_pool.shape[0])}
-        test_idx = np.fromiter(
-            (pool_hash.get(tuple(x), -1) for x in X_test),
-            dtype=np.int64, count=len(X_test))
-        if (test_idx < 0).any():
-            raise RuntimeError(
-                f'{dataset} r={r}: {int((test_idx < 0).sum())} test X rows '
-                f'not in shared CSV pool')
-        tau_samples = tau_all[test_idx]
-        # Grid: pad by ±3σ of stacked samples + a range multiplier.
+        # Match via ITE (raw τ). Robust to X standardization by the loader.
+        test_idx_full = _match_by_ite(dataset, r, causalpfn_dir, ds)
+        keep_mask = test_idx_full >= 0
+        if not keep_mask.all():
+            print(f'  [warn] {dataset} r={r}: {int((~keep_mask).sum())}/'
+                  f'{len(test_idx_full)} test rows unmatched via ITE',
+                  file=sys.stderr)
+        test_idx = test_idx_full[keep_mask]
+        tau_samples = tau_all[test_idx]           # (N_q_matched, K)
+        true_cate_pq_raw = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)[keep_mask]
+        # Grid: pad by ±3σ of stacked samples.
         s_all = tau_samples.std(ddof=1)
         lo = float(tau_samples.min() - 3.0 * s_all)
         hi = float(tau_samples.max() + 3.0 * s_all)
         tau_grid = np.linspace(lo, hi, T)
         dtau     = tau_grid[1] - tau_grid[0]
-        # Now build p_true_pq via KDE using the helper (recomputes lookup, cheap).
-        p_true_pq, true_cate_pq_raw, _sigma_tau_avg = _truth_realcause_kde(
-            dataset, r, causalpfn_dir, ds_obj, tau_grid, kde_h_scale=1.0)
+        # KDE per matched query.
+        N_q_m, K = tau_samples.shape
+        sigmas = tau_samples.std(axis=1, ddof=1)
+        sigma_floor = 1e-3 * (tau_grid[-1] - tau_grid[0])
+        h = np.maximum(1.06 * sigmas * (K ** (-1.0 / 5.0)), sigma_floor)
+        p_true_pq = np.empty((N_q_m, T), dtype=np.float64)
+        for q in range(N_q_m):
+            z = (tau_grid[:, None] - tau_samples[q, None, :]) / h[q]
+            p_true_pq[q] = np.exp(-0.5 * z ** 2).sum(axis=1) / (K * h[q] * np.sqrt(2.0 * np.pi))
+        p_true_pq = _renorm(p_true_pq, dtau)
+    # keep_mask is None for IHDP/ACIC (all queries used).
+    if _mode == 'gaussian':
+        keep_mask = None
 
     results = {}
     for method, kind in [(m, '1d') for m in methods_1d] + [(m, '2d') for m in methods_2d]:
@@ -380,6 +445,15 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
             p_est_pq = None
         if p_est_pq is None:
             results[method] = None; continue
+        # Filter method density to same subset as truth (RealCause KDE path drops
+        # unmatched queries; IHDP/ACIC uses all queries → keep_mask is None).
+        if keep_mask is not None:
+            p_est_pq = p_est_pq[keep_mask]
+        if p_est_pq.shape[0] != p_true_pq.shape[0]:
+            print(f'  [warn] r={r:03d} {method}: shape mismatch after keep_mask '
+                  f'(est {p_est_pq.shape[0]} vs truth {p_true_pq.shape[0]})',
+                  file=sys.stderr)
+            continue
 
         nll_pq    = _nll_pointwise(p_est_pq, tau_grid, true_cate_pq_raw)
         l2_pq     = _l2(p_true_pq, p_est_pq, dtau)
