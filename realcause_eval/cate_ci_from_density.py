@@ -582,12 +582,15 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     # + fallback for uwyk / non-uniform dopfn).
     is_per_q = _winkler_is_vec(tau_lo, tau_hi, true_cate_pq)
     winkler = float(is_per_q.mean())
-    try:
-        crps_per_q = _crps_per_query_any_schema(loaded, true_cate_pq)
-        crps = float(crps_per_q.mean())
-    except Exception as e:
-        print(f'  [warn] CRPS compute failed for {npz_path}: {e}', file=sys.stderr)
+    if os.environ.get('SKIP_CRPS', '0') == '1':
         crps = float('nan')
+    else:
+        try:
+            crps_per_q = _crps_per_query_any_schema(loaded, true_cate_pq)
+            crps = float(crps_per_q.mean())
+        except Exception as e:
+            print(f'  [warn] CRPS compute failed for {npz_path}: {e}', file=sys.stderr)
+            crps = float('nan')
 
     # ── STORED point estimates — these are the PEHE / ε_ATE we report.
     #    Come from the same NPZ that realcause_eval's mega-sbatch writes, so
