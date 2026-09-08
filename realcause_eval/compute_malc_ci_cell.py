@@ -226,6 +226,12 @@ def main():
                     help='Redo realizations whose output NPZ already exists.')
     ap.add_argument('--max-realizations', type=int, default=None,
                     help='Cap number of realizations (mostly for smoke tests).')
+    ap.add_argument('--out-tag', default='',
+                    help='Prefix inserted into the output filename so multiple '
+                         'hyperparameter sweeps can coexist: '
+                         "'' → malc_ci_r<###>.npz (default, back-compat); "
+                         "'B200' → malc_ci_B200_r<###>.npz. Also propagates to "
+                         "the skip check so tagged runs don't collide with untagged ones.")
     args = ap.parse_args()
 
     repo = args.repo or os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -267,6 +273,7 @@ def main():
         _init_worker(*init_args)
         pool = None
 
+    tag_prefix = f'{args.out_tag}_' if args.out_tag else ''
     try:
         stats = []
         for path in density_paths:
@@ -276,7 +283,7 @@ def main():
             else:
                 # <DATASET>_r<###>.npz → r<###>
                 r_tag = base[len(args.dataset) + 1:-len('.npz')]
-            out_path = os.path.join(dataset_dir, f'malc_ci_{r_tag}.npz')
+            out_path = os.path.join(dataset_dir, f'malc_ci_{tag_prefix}{r_tag}.npz')
             if os.path.isfile(out_path) and not args.overwrite:
                 print(f'  [skip] exists: {out_path}', flush=True)
                 continue

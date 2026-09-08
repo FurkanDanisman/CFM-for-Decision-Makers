@@ -81,11 +81,12 @@ def _load_dopfnbb_summary(dataset_dir, pehe_key, err_key):
         return None, None
 
 
-def summarize_cell(method_dir, dataset, method, pehe_key, err_key):
+def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
     dataset_dir_name = _DATASET_DIR_ALIASES.get(method, {}).get(dataset, dataset)
     dataset_dir      = os.path.join(method_dir, dataset_dir_name)
     is_split = (method in _SPLIT_METHODS)
-    malc_paths = sorted(glob.glob(os.path.join(dataset_dir, 'malc_ci_r*.npz')))
+    tag_prefix = f'{in_tag}_' if in_tag else ''
+    malc_paths = sorted(glob.glob(os.path.join(dataset_dir, f'malc_ci_{tag_prefix}r*.npz')))
     if not malc_paths:
         return None
     # Inline path also holds the point CATE; split path pulls from summary.npz.
@@ -97,9 +98,11 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key):
     pehes, errs, covs, lens = [], [], [], []
     ate_diffs, fail_frac = [], []
     for r_idx, mp in enumerate(malc_paths):
-        # Pair each malc_ci_r<xxx>.npz with its density sibling for the point row.
+        # Pair each malc_ci_<tag>r<xxx>.npz with its density sibling for the point row.
         base   = os.path.basename(mp)
-        r_tag  = base[len('malc_ci_'):-len('.npz')]        # e.g. r000
+        # Strip 'malc_ci_' and optional '{tag}_' prefix to isolate r<###>.
+        stem   = base[len('malc_ci_'):-len('.npz')]
+        r_tag  = stem[len(tag_prefix):] if in_tag else stem
         if is_split:
             density_sib = os.path.join(dataset_dir, f'density_{r_tag}.npz')
         else:
@@ -165,6 +168,9 @@ def main():
     ap.add_argument('--graph2d-tag', default='noanc',
                     help='graph2d anc-tag for the PEHE / ε_ATE columns.')
     ap.add_argument('--dopfnbb-pehe-key', default='pehe', choices=['pehe', 'pehe_em'])
+    ap.add_argument('--in-tag', default='',
+                    help='Read tagged malc_ci_{tag}_r<###>.npz files (matches '
+                         "compute_malc_ci_cell.py --out-tag). Default '' → untagged.")
     ap.add_argument('--out-md', default=None,
                     help='Also write the markdown table to this path.')
     args = ap.parse_args()
@@ -205,7 +211,8 @@ def main():
             _t0 = time.time()
             print(f'[{time.strftime("%H:%M:%S")}] {method:8s} / {d:9s} ...',
                   end='', flush=True)
-            got = summarize_cell(method_dir, d, method, pehe_key, err_key)
+            got = summarize_cell(method_dir, d, method, pehe_key, err_key,
+                                   in_tag=args.in_tag)
             print(f' done in {time.time() - _t0:5.1f}s'
                   + (f' (n={got["n"]})' if got is not None else ' (no data)'),
                   flush=True)
