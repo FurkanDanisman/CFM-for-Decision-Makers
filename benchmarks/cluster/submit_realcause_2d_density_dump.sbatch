@@ -90,10 +90,14 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  OUT=$OUT  DENSITY_DUMP=1
 case "$METHOD" in
     cpfn2d)
         [ -f "$CKPT_CPFN2D" ] || { echo "FATAL: CKPT_CPFN2D not found: $CKPT_CPFN2D" >&2; exit 1; }
+        # --std-mode pooled: density dump saves ONE (y_shift, y_scale) pair,
+        # so per_arm (cpfn2d's default) would break the density-vs-point sanity
+        # — the stored point CATE would un-scale with per-arm y0sc/y1sc while
+        # the aggregator can only apply one scale factor. Same fix as cpfn1d.
         python -u "$REPO/realcause_eval/cpfn2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-            --density-dump 1
+            --std-mode pooled --density-dump 1
         ;;
     graph2d)
         [ -f "$CKPT_GRAPH2D" ] || { echo "FATAL: CKPT_GRAPH2D not found: $CKPT_GRAPH2D" >&2; exit 1; }
