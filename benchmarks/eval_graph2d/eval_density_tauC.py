@@ -9,6 +9,13 @@ What this produces, per realization, per method:
     kl_fwd  KL(truth || est)     ~ NLL up to the truth's entropy
     kl_rev  KL(est || truth)     the one carrying independent information
     mass    int p_est dtau       diagnostic: how much sits on the tau grid
+    pehe / cate_l1 / ate_abs_err  point errors of the full-density mean,
+                                 in original outcome units
+
+Also scores the joint's interior-only mean (joint_inner). All point estimates
+come from the SAME logits used for density scoring, with no extra forwards.
+SAVE_PREDICTIONS=1 (default) writes logits, axes and truth under OUT/predictions
+so subsequent numerical checks can run on CPU without either checkpoint.
 
 Methods (rows):
     uwyk_native   UWYK's K=1000 bars, convolved under independence
@@ -19,8 +26,9 @@ Methods (rows):
 `uwyk_*` rows are 'UWYK (x) indep': UWYK emits no joint, the independence
 assumption is ours. Never label them plain 'UWYK'.
 
-Both models are fed byte-identical context, preprocessing, adjacency and y
-axis by importing eval_graph2d_realcause as the harness. Full densities with
+Both models share context, feature preprocessing and the y axis by importing
+eval_graph2d_realcause as the harness. UWYK's wrapper additionally propagates
+the supplied adjacency; prediction dumps record both matrices. Full densities with
 tails on both sides -- see density_common for why truncate-and-renormalise is
 not an option here.
 
@@ -59,7 +67,7 @@ from models.GraphConditionedInterventionalPFN_sklearn import (      # noqa: E402
 )
 from density_common import (                                        # noqa: E402
     Joint2D, UWYK1D, joint_tau_density, uwyk_tau_density,
-    truth_tau_density, l2_distance, kl, mass, TAU_CENTERS,
+    truth_tau_density, l2_distance, kl, mass, point_metrics, TAU_CENTERS,
 )
 
 DATASET = H.DATASET
@@ -82,6 +90,7 @@ OUT = os.environ.get('OUT', f'./results_density_tauC/{DATASET}')
 UWYK_CKPT = os.environ['UWYK_CKPT']
 UWYK_CFG = os.environ['UWYK_CFG']
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
+SAVE_PREDICTIONS = os.environ.get('SAVE_PREDICTIONS', '1') == '1'
 # y0-quadrature resolution for the 8 TAIL regions only; the interior is
 # closed-form and free at any tau resolution. Measured on the 12001-point
 # knot-aligned tau grid with midpoint quadrature:
@@ -269,8 +278,34 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
     base_sL = float(bd.base_s_left)
     base_sR = float(bd.base_s_right)
 
+    if SAVE_PREDICTIONS:
+        prediction_dir = os.path.join(OUT, 'predictions')
+        os.makedirs(prediction_dir, exist_ok=True)
+        # Same deterministic preprocessing that the wrapper applies before
+        # each forward. Preserve the as-run conditioning for this diagnostic.
+        adj_uwyk = uwyk._preprocess_adjacency_matrix(
+            torch.from_numpy(adj).unsqueeze(0).to(uwyk.device)).cpu().numpy()[0]
+        np.savez_compressed(
+            os.path.join(prediction_dir, f'{DATASET}_r{r:03d}.npz'),
+            dataset=DATASET, realization=r, anc_tag=ANC_TAG,
+            joint_logits=logits, uwyk_pred0=pred0, uwyk_pred1=pred1,
+            J=J, edges2d=edges2d, bar_edges=bar_edges, bar_widths=bar_widths,
+            base_sL=base_sL, base_sR=base_sR,
+            y_scale=yrange / 2.0, y_shift=ymin + yrange / 2.0,
+            true_cate=true_cate, mu0_scaled=mu0, mu1_scaled=mu1,
+            sigma_scaled=sigma, tau_star_scaled=tau_star,
+            adj_joint=adj, adj_uwyk=adj_uwyk,
+            n_context=X_tr_raw.shape[0], context_seed=H.EVAL_CONTEXT_SEED + r,
+            ckpt=H.CKPT, uwyk_ckpt=UWYK_CKPT, uwyk_cfg=UWYK_CFG,
+            y_scaling=H.Y_SCALING, x_clip_quantile=H.X_CLIP_QUANTILE,
+            bias_edge_scale=H.BIAS_EDGE_SCALE, t_intv_override=H.T_INTV_OVERRIDE,
+            n_y0=N_Y0, tau_grid=TAU_CENTERS,
+        )
+
     n_q = X_te.shape[0]
     rows = {m: [] for m in ('uwyk_native', 'uwyk_matched', 'joint')}
+    cate_means = {m: [] for m in (*rows, 'joint_inner')}
+    grid_means = {m: [] for m in rows}
     for q in range(n_q):
         p_true = truth_tau_density(mu0[q], mu1[q], sigma, TAU_CENTERS)
         t_star = np.array([tau_star[q]])
@@ -279,15 +314,22 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
         f0 = UWYK1D.from_pred(pred0[q], bar_edges, bar_widths, base_sL, base_sR)
         f1 = UWYK1D.from_pred(pred1[q], bar_edges, bar_widths, base_sL, base_sR)
         jt = Joint2D.from_pred(logits[q], J, edges2d)
+        f0_matched, f1_matched = f0.rebin(edges2d), f1.rebin(edges2d)
+        m0, m1 = jt.mean()
+        inner0, inner1 = jt.inner_mean()
+        cate_means['joint'].append(m1 - m0)
+        cate_means['joint_inner'].append(inner1 - inner0)
+        cate_means['uwyk_native'].append(f1.mean() - f0.mean())
+        cate_means['uwyk_matched'].append(f1_matched.mean() - f0_matched.mean())
 
         for name, fn in (
             ('uwyk_native', lambda: (
                 uwyk_tau_density(f0, f1, TAU_CENTERS, n_y0=N_Y0),
                 uwyk_tau_density(f0, f1, t_star, n_y0=N_Y0)[0])),
             ('uwyk_matched', lambda: (
-                uwyk_tau_density(f0.rebin(edges2d), f1.rebin(edges2d),
+                uwyk_tau_density(f0_matched, f1_matched,
                                  TAU_CENTERS, n_y0=N_Y0),
-                uwyk_tau_density(f0.rebin(edges2d), f1.rebin(edges2d),
+                uwyk_tau_density(f0_matched, f1_matched,
                                  t_star, n_y0=N_Y0)[0])),
             ('joint', lambda: (
                 joint_tau_density(jt, TAU_CENTERS, n_y0=N_Y0),
@@ -295,14 +337,25 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
         ):
             p_grid, d_star = fn()
             rows[name].append(score(p_grid, p_true, d_star))
+            grid_means[name].append(mass(TAU_CENTERS * p_grid, TAU_CENTERS))
 
     out = {'dataset': DATASET, 'realization': r, 'n_queries': n_q,
            'n_context': int(X_tr_raw.shape[0]), 'anc_tag': ANC_TAG,
            'sigma_scaled': sigma,
+           'y_scale': yrange / 2.0, 'true_cate': true_cate,
            'frac_tau_outside_grid': float(np.mean(np.abs(tau_star) > 3.0))}
     for name, rr in rows.items():
         for k in rr[0]:
             out[f'{k}_{name}'] = float(np.mean([x[k] for x in rr]))
+    for name, means in cate_means.items():
+        for metric, value in point_metrics(means, true_cate, yrange / 2.0).items():
+            out[f'{metric}_{name}'] = value
+        out[f'cate_pred_{name}'] = np.asarray(means) * (yrange / 2.0)
+        if name in grid_means:
+            # Unnormalised integral over the finite tau grid, diagnostic only.
+            # The reported PEHE uses exact full-density means above.
+            out[f'grid_mean_max_abs_diff_{name}'] = float(np.max(np.abs(
+                np.asarray(grid_means[name]) - means)) * (yrange / 2.0))
     return out
 
 
@@ -338,7 +391,7 @@ def main():
                  **{k: np.array(v) for k, v in row.items()})
         print(f'r={r:03d}  ' + '  |  '.join(
             f'{m}: nll={row[f"nll_{m}"]:7.3f} l2={row[f"l2_{m}"]:6.3f} '
-            f'klrev={row[f"kl_rev_{m}"]:7.4f}'
+            f'klrev={row[f"kl_rev_{m}"]:7.4f} pehe={row[f"pehe_{m}"]:7.3f}'
             for m in ('uwyk_native', 'uwyk_matched', 'joint'))
             + f'   ({time.time()-t0:.0f}s)', flush=True)
 
