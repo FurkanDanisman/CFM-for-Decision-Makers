@@ -47,6 +47,7 @@ MALC_K="${MALC_K:-1}"
 MALC_B="${MALC_B:-100}"
 N_EVAL="${N_EVAL:-50}"
 MAX_REAL="${MAX_REAL:-}"        # optional cap (mostly for smoke tests)
+OVERWRITE="${OVERWRITE:-0}"     # 1 to redo realizations whose malc_ci_r*.npz already exists
 
 METHOD_IDX=$(( SLURM_ARRAY_TASK_ID / 5 ))
 DS_IDX=$(( SLURM_ARRAY_TASK_ID % 5 ))
@@ -85,8 +86,9 @@ export PYTHONUNBUFFERED=1
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  CELL=$CELL_DIR  "\
 "K=$MALC_K  B=$MALC_B  n_eval=$N_EVAL  workers=$N_WORKERS"
 
-_MAX_ARGS=()
-[ -n "$MAX_REAL" ] && _MAX_ARGS+=(--max-realizations "$MAX_REAL")
+_EXTRA_ARGS=()
+[ -n "$MAX_REAL" ]        && _EXTRA_ARGS+=(--max-realizations "$MAX_REAL")
+[ "$OVERWRITE" = "1" ]    && _EXTRA_ARGS+=(--overwrite)
 
 python -u "$REPO/realcause_eval/compute_malc_ci_cell.py" \
     --method-dir "$METHOD_DIR" \
@@ -97,6 +99,6 @@ python -u "$REPO/realcause_eval/compute_malc_ci_cell.py" \
     --malc-B     "$MALC_B" \
     --n-eval     "$N_EVAL" \
     --repo       "$REPO" \
-    "${_MAX_ARGS[@]}"
+    "${_EXTRA_ARGS[@]}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done  $METHOD  $DATASET"
