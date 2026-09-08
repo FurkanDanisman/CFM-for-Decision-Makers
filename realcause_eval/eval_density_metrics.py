@@ -253,6 +253,14 @@ def _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid_raw):
         edges = np.asarray(z['edges'], dtype=np.float64)
         y_scale = float(z['y_scale'])
         K = p_y0.shape[1]
+        # UWYK schema: (K_bars + 2 tail atoms) columns but only K_bars+1 edges.
+        # Tail atoms live at per-query offsets outside the bar grid; without
+        # sL/sR the tail centers can't be reconstructed. Trim tails and drop
+        # their (small) mass — mild bias, avoids shape mismatch downstream.
+        if K == edges.size + 1:
+            p_y0 = p_y0[:, 1:-1]
+            p_y1 = p_y1[:, 1:-1]
+            K = p_y0.shape[1]
         centers_scaled = (np.asarray(z['effective_centers'], dtype=np.float64)
                           if 'effective_centers' in z.files
                           else 0.5 * (edges[:-1] + edges[1:]))
