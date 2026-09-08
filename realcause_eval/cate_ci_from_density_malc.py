@@ -46,6 +46,26 @@ _DATASET_DIR_ALIASES = {
     'dopfnbb': {'PSID_bal': 'PSIDbal'},
 }
 
+_ALPHA = 0.05    # 95% CI
+
+
+def _winkler_is_vec(lo, hi, y, alpha=_ALPHA):
+    """Vectorized IS_α over queries. Shapes (N,), (N,), (N,) → (N,)."""
+    length = hi - lo
+    return length + (2.0 / alpha) * np.maximum(lo - y, 0.0) \
+                  + (2.0 / alpha) * np.maximum(y - hi, 0.0)
+
+
+def _crps_from_densities(p_tau, tau, y):
+    """CRPS per query. p_tau: (N_q, T), tau: (T,) [scaled or raw], y: (N_q,).
+    Returns CRPS in the SAME units as tau. Caller applies y_scale to convert.
+    CRPS(F, y) = Σ (F(τ) − 1[τ ≥ y])² · dτ on a uniform τ grid."""
+    dtau = float(tau[1] - tau[0])
+    cdf = np.cumsum(p_tau, axis=-1) * dtau
+    cdf = cdf / cdf[:, -1:].clip(min=1e-12)
+    step = (tau[None, :] >= y[:, None]).astype(np.float64)
+    return np.sum((cdf - step) ** 2, axis=-1) * dtau
+
 
 def _mean_se(vals):
     v = np.asarray([x for x in vals if np.isfinite(x)], dtype=float)
@@ -96,6 +116,7 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
         pehe_arr = err_arr = None
 
     pehes, errs, covs, lens = [], [], [], []
+    winklers, crpses = [], []
     ate_diffs, fail_frac = [], []
     for r_idx, mp in enumerate(malc_paths):
         # Pair each malc_ci_<tag>r<xxx>.npz with its density sibling for the point row.
@@ -114,11 +135,26 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
                 ate_malc  = float(z['ate_malc'])
                 fails     = int(z['n_fails']) if 'n_fails' in z.files else 0
                 N_q       = int(z['true_cate_per_query'].shape[0])
+                # Winkler IS + CRPS per query (raw units).
+                tau_lo_pq = np.asarray(z['tau_lo'],  dtype=np.float64)   # (N_q,)  raw
+                tau_hi_pq = np.asarray(z['tau_hi'],  dtype=np.float64)
+                true_pq   = np.asarray(z['true_cate_per_query'], dtype=np.float64)
+                p_taus_scaled = np.asarray(z['p_taus_scaled'], dtype=np.float64)  # (N_q, T) scaled
+                tau_scaled    = np.asarray(z['tau_scaled'],    dtype=np.float64)
+                y_scale       = float(z['y_scale'])
         except Exception as e:
             print(f'  [warn] {mp}: {e}', file=sys.stderr)
             continue
         covs.append(cov); lens.append(length)
         fail_frac.append(fails / max(N_q, 1))
+        # IS per query (already in raw units since tau_lo/hi are raw).
+        is_pq = _winkler_is_vec(tau_lo_pq, tau_hi_pq, true_pq)
+        winklers.append(float(is_pq.mean()))
+        # CRPS per query on scaled grid, then multiply by y_scale → raw CRPS.
+        crps_pq_scaled = _crps_from_densities(p_taus_scaled, tau_scaled,
+                                                true_pq / max(y_scale, 1e-12))
+        crps_pq_raw = crps_pq_scaled * y_scale
+        crpses.append(float(crps_pq_raw.mean()))
 
         # Stored PEHE / ε_ATE.
         if is_split:
@@ -149,6 +185,8 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
         'err':           _mean_se(errs),
         'cov':           _mean_se(covs),
         'len':           _mean_se(lens),
+        'winkler':       _mean_se(winklers),
+        'crps':          _mean_se(crpses),
         'n':             len(covs),
         'ate_bias_max':  float(np.max(np.abs(ate_diffs))) if ate_diffs else float('nan'),
         'fail_frac_max': float(np.max(fail_frac)) if fail_frac else 0.0,
@@ -194,7 +232,9 @@ def main():
         '',
         '(each cell, top → bottom: √PEHE / ε_ATE (from stored point CATE — '
         'matches realcause_eval mega-sbatch), Coverage / Length (95% CI from '
-        'the 2D-MALC-smoothed p(τ), NOT the raw joint); n = realizations)',
+        'the 2D-MALC-smoothed p(τ), NOT the raw joint), Winkler IS_0.05 '
+        '(length + 40·miss) and CRPS — both single-number combined '
+        'coverage+length metrics, lower = better; n = realizations)',
         '',
         header, sep,
     ]
@@ -222,12 +262,16 @@ def main():
             err_s  = _fmt(*got['err'],  big=False)
             cov_s  = _fmt(*got['cov'],  big=False)
             len_s  = _fmt(*got['len'],  big=d in big)
+            is_s   = _fmt(*got['winkler'], big=d in big)
+            crps_s = _fmt(*got['crps'],    big=d in big)
             n      = got['n']
             cells.append(
                 f'PEHE {pehe_s}<br>'
                 f'ε_ATE {err_s}<br>'
                 f'Cov {cov_s}<br>'
-                f'Len {len_s} (n={n})'
+                f'Len {len_s}<br>'
+                f'IS {is_s}<br>'
+                f'CRPS {crps_s} (n={n})'
             )
             bias = got['ate_bias_max']
             fail = got['fail_frac_max']
