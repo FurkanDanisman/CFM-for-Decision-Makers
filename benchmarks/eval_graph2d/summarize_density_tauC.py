@@ -34,6 +34,8 @@ LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
 # All four are errors or diagnostics; lower is better except `mass`, which
 # should sit at 1.0 and is a grid-coverage check, not a score.
 METRICS = ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass')
+POINT_METHODS = (*METHODS, 'joint_inner')
+POINT_METRICS = ('pehe', 'cate_l1', 'ate_abs_err')
 MISSING = '--'
 
 
@@ -95,6 +97,29 @@ def md_table(headers, rows, aligns=None):
                      + [row(r) for r in rows])
 
 
+def point_table(rows):
+    """Point errors from the same logits; old density-only shards stay valid."""
+    if not any('pehe_joint' in r for r in rows):
+        return None
+    labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)'}
+    body = [[labels[m]] for m in POINT_METHODS]
+    for metric in POINT_METRICS:
+        cells, scores = [], []
+        for method in POINT_METHODS:
+            key = f'{metric}_{method}'
+            if not all(key in r for r in rows):
+                cells.append(MISSING)
+                scores.append(None)
+                continue
+            mu, se, _ = mean_se([r[key] for r in rows])
+            cells.append(f'{mu:.4f}±{se:.4f}')
+            scores.append(mu)
+        for row, cell in zip(body, bold_best(cells, scores)):
+            row.append(cell)
+    return md_table(['mean estimator', 'sqrt PEHE', 'CATE L1', 'ATE abs error'],
+                    body, ['l', 'r', 'r', 'r'])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('results_dir', type=Path)
@@ -132,13 +157,25 @@ def main():
         print(md_table(['method', *METRICS], body,
                        ['l'] + ['r'] * len(METRICS)))
 
+        points = point_table(rows)
+        if points is not None:
+            print('\nPoint errors in original outcome units, from the same '
+                  'predictions. Full-density means except the interior row; '
+                  'CATE L1 is per-query MAE, ATE error is unnormalised.\n')
+            print(points)
+            for m in METHODS:
+                key = f'grid_mean_max_abs_diff_{m}'
+                if all(key in r for r in rows):
+                    print(f'  {m}: max |finite-grid moment - full mean| = '
+                          f'{max(float(r[key]) for r in rows):.6g}')
+
         # The contrasts the design exists to produce.  Paired over realizations:
         # the mean is identical to the difference of the column means, but the
         # SE is the SE of the within-realization difference, which is far
         # tighter than the two column SEs suggest.
         def delta(a, b, metric):
             ka, kb = f'{metric}_{a}', f'{metric}_{b}'
-            if ka not in rows[0] or kb not in rows[0]:
+            if not all(ka in r and kb in r for r in rows):
                 return MISSING, None
             mu, se, _ = mean_se([float(r[kb]) - float(r[ka]) for r in rows])
             return f'{mu:+.4f}±{se:.4f}', mu
@@ -152,15 +189,16 @@ def main():
                       'uwyk_native', 'uwyk_matched')]
         cbody = [[kind, f'{what} ({a} -> {b})']
                  for kind, what, a, b in contrasts]
-        for metric in ('nll', 'kl_rev'):
+        contrast_metrics = ('nll', 'kl_rev', 'pehe') if points else ('nll', 'kl_rev')
+        for metric in contrast_metrics:
             cells, scores = zip(*[delta(a, b, metric)
                                   for _, _, a, b in contrasts])
             for row_cells, cell in zip(cbody, bold_best(cells, scores)):
                 row_cells.append(cell)
 
         print()
-        print(md_table(['', 'contrast', 'dNLL', 'dKLrev'], cbody,
-                       ['l', 'l', 'r', 'r']))
+        print(md_table(['', 'contrast', 'dNLL', 'dKLrev'] + (['dPEHE'] if points else []),
+                       cbody, ['l', 'l'] + ['r'] * len(contrast_metrics)))
         print()
         print('_negative = joint better; the bridge row should be ~0, which '
               'is what licenses reading the headline as a model gap and not a '

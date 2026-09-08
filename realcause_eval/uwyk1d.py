@@ -65,6 +65,11 @@ def _parse_args():
                     help='Per-column 99th-quantile clip on X before standardization. '
                          'Matches UWYK config remove_outliers=true, outlier_quantile=0.99. '
                          'Default: 0.99. Pass 0 to disable.')
+    p.add_argument('--density-anc-tag', default='noanc',
+                    help='Which mode\'s p_y0/p_y1 marginals to persist as the '
+                         "unsuffixed density in the NPZ (default 'noanc', matches "
+                         "paper Table 3 UWYK-NoAnc). Set to 'v3b' when you want "
+                         "density-CI / density-metrics on the v3b variant.")
     return p.parse_args()
 
 
@@ -97,6 +102,7 @@ def main():
         'EVAL_MAX_CONTEXT':  str(args.eval_max_context),
         'EVAL_CONTEXT_SEED': str(args.eval_context_seed),
         'X_CLIP_QUANTILE':   str(args.x_clip_quantile) if args.x_clip_quantile > 0 else '',
+        'DENSITY_ANC_TAG':   args.density_anc_tag,
         'PYTHONUNBUFFERED':  '1',
     })
     shim = os.path.join(args.repo, 'benchmarks', 'uwyk_table1', 'shims')
