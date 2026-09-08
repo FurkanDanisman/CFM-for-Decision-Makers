@@ -407,6 +407,16 @@ def main():
     sys.path.insert(0, args.causalpfn)
     sys.path.insert(0, os.path.join(args.causalpfn, 'src'))
 
+    # CausalPFN's benchmarks package pulls in causalpfn.causal_estimator →
+    # `import faiss`. faiss isn't installed in the CPU venv on some nodes.
+    # Stub it out — benchmarks.data.{ihdp,acic2016,realcause} loaders don't
+    # actually use faiss, so an empty module bypasses the import cascade.
+    try:
+        import faiss  # noqa: F401
+    except ImportError:
+        import types as _types
+        sys.modules['faiss'] = _types.ModuleType('faiss')
+
     if args.dataset == 'IHDP':
         from benchmarks.data.ihdp import IHDPDataset
         ds_obj = IHDPDataset()
