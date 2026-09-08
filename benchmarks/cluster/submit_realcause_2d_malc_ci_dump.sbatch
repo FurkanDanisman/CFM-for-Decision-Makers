@@ -44,6 +44,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — same one the 2D density-dump job wrote to}"
 N_WORKERS="${N_WORKERS:-32}"
 MALC_K="${MALC_K:-1}"
+MALC_MAX_K="${MALC_MAX_K:-0}"       # if > 0, BIC-select K in {1..MAX_K} instead of forced K
 MALC_B="${MALC_B:-100}"
 N_EVAL="${N_EVAL:-50}"
 MAX_REAL="${MAX_REAL:-}"        # optional cap (mostly for smoke tests)
@@ -98,6 +99,7 @@ python -u "$REPO/realcause_eval/compute_malc_ci_cell.py" \
     $SPLIT_FLAG \
     --n-workers  "$N_WORKERS" \
     --malc-K     "$MALC_K" \
+    --malc-max-K "$MALC_MAX_K" \
     --malc-B     "$MALC_B" \
     --n-eval     "$N_EVAL" \
     --repo       "$REPO" \

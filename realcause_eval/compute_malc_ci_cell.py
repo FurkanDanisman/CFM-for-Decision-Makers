@@ -43,7 +43,8 @@ import numpy as np
 _GLOBAL = {}
 
 
-def _init_worker(edges_np, J, bin_width, n_eval, malc_K, malc_B, repo, malc_dir):
+def _init_worker(edges_np, J, bin_width, n_eval, malc_K, malc_B, repo, malc_dir,
+                  malc_max_K=0):
     os.environ.setdefault('OMP_NUM_THREADS', '1')
     os.environ.setdefault('MKL_NUM_THREADS', '1')
     os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
@@ -56,8 +57,9 @@ def _init_worker(edges_np, J, bin_width, n_eval, malc_K, malc_B, repo, malc_dir)
     _GLOBAL['edges'] = edges_np
     _GLOBAL['J']     = J
     _GLOBAL['bw']    = bin_width
-    _GLOBAL['K']     = malc_K       # K passed DIRECTLY (skips BIC scan)
+    _GLOBAL['K']     = malc_K          # forced K when > 0, else use max_K
     _GLOBAL['B']     = malc_B
+    _GLOBAL['MAX_K'] = malc_max_K      # BIC selection over K in {1..max_K} when > 0
     xs = np.linspace(edges_np[0], edges_np[-1], n_eval)
     ys = np.linspace(edges_np[0], edges_np[-1], n_eval)
     XX, YY = np.meshgrid(xs, ys, indexing='xy')
@@ -77,10 +79,19 @@ def _fit_one_query(args):
     normalized so p_tau.sum() * dtau == 1."""
     i, p_mat_np = args
     seed = int(hashlib.md5(f'q{i}malcK1'.encode()).hexdigest()[:8], 16) % (10 ** 8)
+    _K   = _GLOBAL.get('K', 0) or 0
+    _MAX = _GLOBAL.get('MAX_K', 0) or 0
     try:
-        fit = _GLOBAL['fit'](p_mat_np.T, _GLOBAL['edges'], _GLOBAL['edges'],
-                              K=_GLOBAL['K'], B_fit=_GLOBAL['B'],
-                              seed=seed, parallel=False)
+        if _MAX > 0:
+            # BIC selection over K in {1..MAX_K} — internal parallel=False so
+            # this doesn't spawn nested processes (we already run a pool over queries).
+            fit = _GLOBAL['fit'](p_mat_np.T, _GLOBAL['edges'], _GLOBAL['edges'],
+                                  max_K=_MAX, B_fit=_GLOBAL['B'], B_select=_GLOBAL['B'],
+                                  seed=seed, parallel=False)
+        else:
+            fit = _GLOBAL['fit'](p_mat_np.T, _GLOBAL['edges'], _GLOBAL['edges'],
+                                  K=_K, B_fit=_GLOBAL['B'],
+                                  seed=seed, parallel=False)
     except Exception as e:
         print(f'  [worker] fit failed q={i}: {e}', file=sys.stderr, flush=True)
         return i, None
@@ -214,7 +225,13 @@ def main():
     ap.add_argument('--n-workers', type=int, default=32,
                     help='Multiprocessing pool workers (default 32).')
     ap.add_argument('--malc-K', type=int, default=1,
-                    help='Force MALC component count. Default 1 (skips BIC scan).')
+                    help='Force MALC component count. Default 1 (skips BIC scan). '
+                         "Ignored when --malc-max-K > 0.")
+    ap.add_argument('--malc-max-K', type=int, default=0,
+                    help='If > 0, run BIC selection over K in {1..MAX_K} per '
+                         'query instead of forcing a single K. Slower but often '
+                         'better calibrated for multi-modal joints. Default 0 = '
+                         "off (use --malc-K forced-K path).")
     ap.add_argument('--malc-B', type=int, default=100,
                     help='MALC bandwidth parameter (default 100).')
     ap.add_argument('--n-eval', type=int, default=50,
@@ -264,7 +281,8 @@ def main():
           f'workers={args.n_workers}', flush=True)
 
     ctx = get_context('spawn')
-    init_args = (edges0, J, bin_width, args.n_eval, args.malc_K, args.malc_B, repo, malc_dir)
+    init_args = (edges0, J, bin_width, args.n_eval, args.malc_K, args.malc_B, repo, malc_dir,
+                  args.malc_max_K)
 
     if args.n_workers > 1:
         pool = ctx.Pool(processes=args.n_workers, initializer=_init_worker, initargs=init_args)
