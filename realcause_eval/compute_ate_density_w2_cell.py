@@ -67,7 +67,10 @@ def _p_tau_from_joint(p_joint):
 
 
 def _p_tau_from_marginals(p_y0, p_y1):
-    """(N_q, K), (N_q, K) → (N_q, 2K-1) via 1D convolution under independence."""
+    """(N_q, K), (N_q, K) → (N_q, 2K-1) via 1D convolution under independence.
+
+    Assumes centers are equispaced. Atom k corresponds to τ = c[j] - c[i]
+    with j - i = k - (K - 1)."""
     from numpy.fft import rfft, irfft
     N_q, K = p_y0.shape
     n_out = 2 * K - 1
@@ -76,6 +79,36 @@ def _p_tau_from_marginals(p_y0, p_y1):
     F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
     p_tau = irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out]
     return np.clip(p_tau, 0.0, None)
+
+
+def _p_tau_from_marginals_general(p_y0, p_y1, centers, tau_grid):
+    """Non-uniform-centers path: enumerate K² pairwise atoms per query at
+    positions c[j] - c[i] with masses p_y0[i] * p_y1[j], then rasterize
+    onto the uniform tau_grid via nearest-bin assignment.
+
+    Used when centers have non-uniform spacing (e.g. dopfn's
+    effective_centers where tail bars carry half-Gaussian corrections
+    that don't fit the interior uniform grid).
+
+    Returns (N_q, T) mass per bin on tau_grid.
+    """
+    N_q, K = p_y0.shape
+    T = tau_grid.size
+    dtau = float(tau_grid[1] - tau_grid[0])
+    tau_min = float(tau_grid[0])
+    tau_pairs = (centers[None, :] - centers[:, None]).ravel()      # (K²,) — τ = c[j] - c[i]
+    idx = np.clip(np.round((tau_pairs - tau_min) / dtau).astype(int), 0, T - 1)
+    out = np.zeros((N_q, T), dtype=np.float64)
+    for q in range(N_q):
+        mass = np.outer(p_y0[q], p_y1[q]).ravel()                  # (K²,)
+        np.add.at(out[q], idx, mass)
+    return out
+
+
+def _is_uniform(centers, rtol=1e-4):
+    if centers.size < 3: return True
+    d = np.diff(centers)
+    return bool(np.max(np.abs(d - d.mean())) < rtol * abs(d.mean()) + 1e-12)
 
 
 def _load_ptau_raw(density_path, source, malc_path=None):
@@ -118,12 +151,45 @@ def _load_ptau_raw(density_path, source, malc_path=None):
         p_y0 = p_y0 / p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
         p_y1 = p_y1 / p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
         K = p_y0.shape[1]
-        w_scaled = float(edges[1] - edges[0])
-        mass_tau = _p_tau_from_marginals(p_y0, p_y1)   # (N_q, 2K-1)
-        tau_scaled = (np.arange(2 * K - 1) - (K - 1)).astype(np.float64) * w_scaled
-        tau_raw    = tau_scaled * y_scale
-        dtau_raw   = w_scaled * y_scale
-        p_tau_raw = mass_tau / max(dtau_raw, 1e-12)
+        # Prefer effective_centers when present (dopfn's tail-adjusted per-bar
+        # centers — first/last bar carry half-Gaussian offsets, NOT plain
+        # edge midpoints; earlier density-CI aggregator has the same fix).
+        # cpfn1d / uwyk1d don't save it → fall back to edges midpoints.
+        if 'effective_centers' in z_den.files:
+            centers_scaled = np.asarray(z_den['effective_centers'], dtype=np.float64)
+            assert centers_scaled.size == K, (
+                f'effective_centers has {centers_scaled.size} entries but density has '
+                f'{K} bins — schema mismatch in {density_path}')
+        elif edges.size >= K + 1:
+            centers_scaled = 0.5 * (edges[:K] + edges[1:K + 1])
+        else:
+            w = float(edges[1] - edges[0])
+            centers_scaled = np.arange(K) * w + float(edges[0])
+        centers_raw = centers_scaled * y_scale
+        if _is_uniform(centers_raw):
+            # Uniform grid → FFT convolution is exact and fast. τ atom k maps
+            # to c[j] - c[i] with j - i = k - (K - 1), giving 2K-1 atoms
+            # centred at zero with spacing w_raw.
+            w_raw = float(centers_raw[1] - centers_raw[0])
+            mass_tau = _p_tau_from_marginals(p_y0, p_y1)   # (N_q, 2K-1)
+            tau_raw  = (np.arange(2 * K - 1) - (K - 1)).astype(np.float64) * w_raw
+            dtau_raw = w_raw
+            p_tau_raw = mass_tau / max(dtau_raw, 1e-12)
+        else:
+            # Non-uniform (dopfn tail atoms) → enumerate K² atoms and
+            # rasterize onto a uniform τ grid. Grid extent = full pairwise
+            # τ range; grid resolution matches the interior bar spacing.
+            tau_pairs_flat = (centers_raw[None, :] - centers_raw[:, None]).ravel()
+            tau_min_ = float(tau_pairs_flat.min())
+            tau_max_ = float(tau_pairs_flat.max())
+            # Grid resolution: use median interior spacing so tail atoms
+            # get isolated bins but interior stays well-resolved.
+            interior_step = float(np.median(np.diff(centers_raw)))
+            T = max(2 * K - 1, int(np.ceil((tau_max_ - tau_min_) / max(interior_step, 1e-12))) + 1)
+            tau_raw = np.linspace(tau_min_, tau_max_, T)
+            mass_tau = _p_tau_from_marginals_general(p_y0, p_y1, centers_raw, tau_raw)
+            dtau_raw = float(tau_raw[1] - tau_raw[0])
+            p_tau_raw = mass_tau / max(dtau_raw, 1e-12)
     else:
         raise ValueError(f'unknown source: {source}')
     return p_tau_raw, tau_raw, true_cate, y_scale, y_shift
