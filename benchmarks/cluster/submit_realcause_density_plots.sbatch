@@ -5,11 +5,13 @@
 #SBATCH --time=00:15:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
-#SBATCH --array=0-1
+#SBATCH --array=0-4
 
-# 2-task array: 0=IHDP, 1=ACIC. Writes plot_densities_<DATASET>.png to
-# $OUT_2D. Each PNG: 6 methods × N queries subplots showing truth vs
-# estimated p(τ|x_q). Only IHDP+ACIC (analytic Gaussian truth).
+# 5-task array: 0=IHDP, 1=ACIC, 2=CPS, 3=PSID, 4=PSID_bal.
+# Writes plot_densities_<DATASET>.png to $OUT_2D. Each PNG: 6 methods ×
+# N queries subplots showing truth vs estimated p(τ|x_q). Truth:
+# analytic Gaussian for IHDP/ACIC; empirical KDE from 100-CSV MC stack
+# for CPS/PSID/PSID_bal.
 
 set -euo pipefail
 mkdir -p logs_rc_density_metrics
@@ -31,8 +33,11 @@ REALIZATION="${REALIZATION:-0}"
 N_QUERIES="${N_QUERIES:-6}"
 
 case "$SLURM_ARRAY_TASK_ID" in
-    0) DATASET=IHDP ;;
-    1) DATASET=ACIC ;;
+    0) DATASET=IHDP     ;;
+    1) DATASET=ACIC     ;;
+    2) DATASET=CPS      ;;
+    3) DATASET=PSID     ;;
+    4) DATASET=PSID_bal ;;
     *) echo "invalid SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID" >&2; exit 2 ;;
 esac
 
