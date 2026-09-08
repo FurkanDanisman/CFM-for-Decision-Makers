@@ -74,6 +74,10 @@ def _parse_args():
                          'so σ ∈ [0.1, 0.3] resolves signal across bins AND '
                          'keeps ±3σ inside the head\'s support. Default 0.3 '
                          '(matches DoPFN-bb convention — same edge range).')
+    p.add_argument('--density-dump', default='0', choices=['0', '1'],
+                    help='Dump p_y0_scaled/p_y1_scaled/p_joint_scaled (all '
+                         'anc modes + primary un-suffixed) into each '
+                         '<DATASET>_r<###>.npz. Default: 0.')
     return p.parse_args()
 
 
@@ -110,6 +114,7 @@ def main():
         'X_CLIP_QUANTILE':      str(args.x_clip_quantile) if args.x_clip_quantile > 0 else '',
         'Y_SCALING':            args.y_scaling,
         'STD_TARGET':           str(args.std_target),
+        'DENSITY_DUMP':         args.density_dump,
     })
 
     script = os.path.join(args.repo, 'benchmarks', 'eval_graph2d',
