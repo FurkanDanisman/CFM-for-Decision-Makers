@@ -56,6 +56,26 @@ def _fmt_signed(m, big=False):
     return f'{m:+,.2f}' if big else f'{m:+.3f}'
 
 
+_ALPHA = 0.05    # 95% CI
+
+
+def _winkler_is(lo, hi, y, alpha=_ALPHA):
+    """IS_α = (hi-lo) + (2/α) · max(lo-y, 0) + (2/α) · max(y-hi, 0). Lower = better.
+    Strictly proper interval score (Gneiting & Raftery 2007)."""
+    length = float(hi - lo)
+    return length + (2.0 / alpha) * max(lo - y, 0.0) + (2.0 / alpha) * max(y - hi, 0.0)
+
+
+def _crps_density(p, tau, y):
+    """CRPS(F, y) = Σ (F(τ) − 1[τ ≥ y])² · dτ on a uniform τ grid.
+    Density p must integrate to 1 on tau (step dtau)."""
+    dtau = float(tau[1] - tau[0])
+    F = np.cumsum(p) * dtau
+    F = F / max(float(F[-1]), 1e-12)                       # normalize
+    step = (tau >= y).astype(np.float64)
+    return float(np.sum((F - step) ** 2) * dtau)
+
+
 def summarize_cell(method_dir, dataset, method, tag):
     ds_dir_name = _DATASET_DIR_ALIASES.get(method, {}).get(dataset, dataset)
     dataset_dir = os.path.join(method_dir, ds_dir_name)
@@ -63,6 +83,7 @@ def summarize_cell(method_dir, dataset, method, tag):
     if not paths:
         return None
     means, biases, lens, covs, true_ates = [], [], [], [], []
+    winklers, crpses = [], []
     for p in paths:
         try:
             with np.load(p, allow_pickle=True) as z:
@@ -71,10 +92,14 @@ def summarize_cell(method_dir, dataset, method, tag):
                 lo = float(z['tau_lo'])
                 hi = float(z['tau_hi'])
                 cv = int(z['covered'])
+                p_ate = np.asarray(z['p_ate_raw'], dtype=np.float64)
+                tau   = np.asarray(z['tau_raw'],    dtype=np.float64)
         except Exception as e:
             print(f'  [warn] {p}: {e}', file=sys.stderr); continue
         means.append(m); true_ates.append(ta); biases.append(m - ta)
         lens.append(hi - lo); covs.append(float(cv))
+        winklers.append(_winkler_is(lo, hi, ta))
+        crpses.append(_crps_density(p_ate, tau, ta))
     if not means:
         return None
     return {
@@ -83,6 +108,8 @@ def summarize_cell(method_dir, dataset, method, tag):
         'abs_err':  _mean_se([abs(b) for b in biases]),
         'cov':      _mean_se(covs),
         'len':      _mean_se(lens),
+        'winkler':  _mean_se(winklers),
+        'crps':     _mean_se(crpses),
         'n':        len(means),
     }
 
@@ -110,7 +137,9 @@ def main():
         f'\nATE density (1D W2 barycenter over queries) — tag={args.tag} — {args.out_root}',
         '',
         '(each cell, top → bottom: ATE_mean ± SE, ATE_bias (mean − true_ATE), '
-        'Coverage / Length of 95% CI on p_ATE; n = realizations)',
+        'Coverage / Length of 95% CI on p_ATE, '
+        'Winkler IS_0.05 (length + 40·miss) and CRPS — both single-number combined '
+        'coverage+length metrics, lower = better; n = realizations)',
         '',
         header, sep,
     ]
@@ -133,12 +162,16 @@ def main():
             bias_s = _fmt_signed(got['bias'][0], big=d in big)
             cov_s  = _fmt(*got['cov'], big=False)
             len_s  = _fmt(*got['len'], big=d in big)
+            is_s   = _fmt(*got['winkler'], big=d in big)
+            crps_s = _fmt(*got['crps'],    big=d in big)
             n      = got['n']
             cells.append(
                 f'ATE {ate_s}<br>'
                 f'bias {bias_s}<br>'
                 f'Cov {cov_s}<br>'
-                f'Len {len_s} (n={n})'
+                f'Len {len_s}<br>'
+                f'IS {is_s}<br>'
+                f'CRPS {crps_s} (n={n})'
             )
         lines.append('| ' + ' | '.join(cells) + ' |')
 

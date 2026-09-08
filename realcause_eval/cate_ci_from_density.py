@@ -305,6 +305,136 @@ def _ci_uwyk_per_query(centers0_pq: np.ndarray, centers1_pq: np.ndarray,
     return tau_lo, tau_hi
 
 
+_ALPHA_CI = 0.05    # 95% CI
+
+
+def _winkler_is_vec(lo, hi, y, alpha=_ALPHA_CI):
+    """Vectorized Winkler Interval Score IS_α per query. Lower = better.
+    IS = (hi-lo) + (2/α)·max(lo-y, 0) + (2/α)·max(y-hi, 0)."""
+    length = hi - lo
+    return length + (2.0 / alpha) * np.maximum(lo - y, 0.0) \
+                  + (2.0 / alpha) * np.maximum(y - hi, 0.0)
+
+
+def _crps_from_uniform_atoms(mass, atoms, y):
+    """Empirical CRPS from atomic distributions with atoms sorted ascending.
+
+    Uses closed-form for step-function CDF:
+        CRPS(F, y) = Σ_k (a_{k+1} - a_k) · (F_k - 1[a_k ≥ y])²
+    where F_k = cumulative mass up to and including a_k.
+
+    Vectorized over queries: mass (N_q, K), atoms (K,) uniform, y (N_q,).
+    All in same units; caller applies y_scale if needed.
+    """
+    da = float(atoms[1] - atoms[0])
+    F  = np.cumsum(mass, axis=-1) / mass.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    step = (atoms[None, :] >= y[:, None]).astype(np.float64)   # (N_q, K)
+    return np.sum((F - step) ** 2, axis=-1) * da
+
+
+def _crps_from_sorted_atoms_pq(atoms_sorted, mass_sorted, y):
+    """Per-query CRPS when each query has its own sorted (atoms, masses).
+
+    atoms_sorted, mass_sorted: (N_q, N_atoms), sorted ascending per row.
+    y: (N_q,). All in same units. O(N_q · N_atoms) — vectorized.
+
+    Discrete CRPS with step CDF: CRPS = Σ_k Δa_k · (F_k − 1[a_k ≥ y])²  where
+    Δa_k = a_{k+1} − a_k (or 0 for last atom)."""
+    N_q, N = atoms_sorted.shape
+    F = np.cumsum(mass_sorted, axis=-1)
+    F = F / F[:, -1:].clip(min=1e-12)
+    step = (atoms_sorted >= y[:, None]).astype(np.float64)
+    diffs = np.diff(atoms_sorted, axis=-1)                     # (N_q, N-1)
+    diffs = np.concatenate([diffs, np.zeros((N_q, 1))], axis=-1)  # last atom width = 0
+    return np.sum(diffs * (F - step) ** 2, axis=-1)
+
+
+def _reconstruct_p_tau_uniform_raw(loaded):
+    """Reconstruct p(τ|x_q) in RAW units on a uniform tau grid.
+
+    Returns (p_tau_raw, tau_raw) OR (None, None) if the schema has
+    per-query non-uniform atoms (uwyk, dopfn's non-uniform effective_centers)
+    → caller falls back to _crps_from_sorted_atoms_pq.
+
+    - joint2d: antidiagonal of p_joint → 2J-1 uniform atoms (scaled), scale to raw.
+    - bar uniform: FFT convolution → 2K-1 uniform atoms, scale to raw.
+    - bar non-uniform (dopfn) / uwyk: returns (None, None).
+    """
+    if loaded[0] == 'joint2d':
+        _, centers, p_joint, _, y_scale, _ = loaded
+        J = p_joint.shape[1]
+        w_scaled = float(centers[1] - centers[0])
+        mass_tau = np.zeros((p_joint.shape[0], 2 * J - 1), dtype=np.float64)
+        for k in range(2 * J - 1):
+            mass_tau[:, k] = np.trace(p_joint, axis1=-2, axis2=-1, offset=k - (J - 1))
+        tau_raw = (np.arange(2 * J - 1) - (J - 1)).astype(np.float64) * w_scaled * y_scale
+        p_tau_raw = mass_tau / (w_scaled * y_scale).clip(min=1e-12) if hasattr(np, 'clip') else mass_tau
+        # Renormalize as densities.
+        dtau = float(tau_raw[1] - tau_raw[0])
+        s = mass_tau.sum(axis=-1, keepdims=True).clip(min=1e-12)
+        p_tau_raw = (mass_tau / s) / dtau
+        return p_tau_raw, tau_raw
+    schema, centers0, centers1, p_y0, p_y1, _, y_scale, _ = loaded
+    if schema == 'uwyk':
+        return None, None
+    centers = centers0
+    if not _is_uniform(centers):
+        return None, None
+    # bar uniform: FFT convolution → 2K-1 uniform atoms.
+    from numpy.fft import rfft, irfft
+    K = p_y0.shape[1]
+    n_out = 2 * K - 1
+    n_fft = 1 << (n_out - 1).bit_length()
+    F1 = rfft(p_y1, n=n_fft, axis=-1)
+    F0 = rfft(p_y0[:, ::-1], n=n_fft, axis=-1)
+    mass = np.clip(irfft(F1 * F0, n=n_fft, axis=-1)[:, :n_out], 0.0, None)
+    w_scaled = float(centers[1] - centers[0])
+    tau_raw = (np.arange(n_out) - (K - 1)).astype(np.float64) * w_scaled * y_scale
+    dtau = float(tau_raw[1] - tau_raw[0])
+    s = mass.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    p_tau_raw = (mass / s) / dtau
+    return p_tau_raw, tau_raw
+
+
+def _crps_per_query_any_schema(loaded, true_cate_pq_raw):
+    """Compute CRPS per query in RAW units for any schema.
+
+    Uses uniform-atom fast path when possible; otherwise falls back to
+    per-query sorted-atom enumeration (dopfn non-uniform, uwyk per-arm).
+    """
+    p_tau_raw, tau_raw = _reconstruct_p_tau_uniform_raw(loaded)
+    if p_tau_raw is not None:
+        dtau = float(tau_raw[1] - tau_raw[0])
+        F = np.cumsum(p_tau_raw, axis=-1) * dtau
+        F = F / F[:, -1:].clip(min=1e-12)
+        step = (tau_raw[None, :] >= true_cate_pq_raw[:, None]).astype(np.float64)
+        return np.sum((F - step) ** 2, axis=-1) * dtau
+    # Fallback: per-query sorted atoms.
+    schema, centers0, centers1, p_y0, p_y1, _, y_scale, _ = loaded
+    N_q, K = p_y0.shape
+    if schema == 'uwyk':
+        # Per-query per-arm centers, K atoms each; enumerate K² pairs.
+        atoms_pq = np.empty((N_q, K * K), dtype=np.float64)
+        mass_pq  = np.empty_like(atoms_pq)
+        for q in range(N_q):
+            a = (centers1[q][None, :] - centers0[q][:, None]).ravel() * y_scale
+            m = np.outer(p_y0[q], p_y1[q]).ravel()
+            order = np.argsort(a, kind='stable')
+            atoms_pq[q] = a[order]
+            mass_pq[q]  = m[order]
+        return _crps_from_sorted_atoms_pq(atoms_pq, mass_pq, true_cate_pq_raw)
+    # bar non-uniform (dopfn's effective_centers): shared centers, K² atoms.
+    centers = centers0 * y_scale
+    a_flat = (centers[None, :] - centers[:, None]).ravel()           # (K²,)
+    order  = np.argsort(a_flat, kind='stable')
+    a_sorted_shared = a_flat[order]                                   # (K²,)
+    atoms_pq = np.broadcast_to(a_sorted_shared[None, :], (N_q, a_sorted_shared.size))
+    mass_pq  = np.empty((N_q, a_sorted_shared.size), dtype=np.float64)
+    for q in range(N_q):
+        mass_pq[q] = np.outer(p_y0[q], p_y1[q]).ravel()[order]
+    return _crps_from_sorted_atoms_pq(atoms_pq, mass_pq, true_cate_pq_raw)
+
+
 def _ci_from_joint_2d(centers: np.ndarray, p_joint: np.ndarray,
                        lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
     """2D-joint path: NO independence assumption.
@@ -423,6 +553,19 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
     length   = float(np.mean(tau_hi - tau_lo))
 
+    # ── Combined coverage+length metrics (both single-number, lower = better).
+    # Winkler IS_0.05 is trivial from stored CI + true; CRPS requires
+    # reconstructing per-query density on a shared grid (uniform-atom fast path
+    # + fallback for uwyk / non-uniform dopfn).
+    is_per_q = _winkler_is_vec(tau_lo, tau_hi, true_cate_pq)
+    winkler = float(is_per_q.mean())
+    try:
+        crps_per_q = _crps_per_query_any_schema(loaded, true_cate_pq)
+        crps = float(crps_per_q.mean())
+    except Exception as e:
+        print(f'  [warn] CRPS compute failed for {npz_path}: {e}', file=sys.stderr)
+        crps = float('nan')
+
     # ── STORED point estimates — these are the PEHE / ε_ATE we report.
     #    Come from the same NPZ that realcause_eval's mega-sbatch writes, so
     #    the point row here matches the paper reproduction row exactly.
@@ -465,6 +608,9 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
         # CI derived from density.
         'coverage':      coverage,
         'length':        length,
+        # Combined coverage+length metrics (lower = better).
+        'winkler':       winkler,
+        'crps':          crps,
         'n_queries':     int(true_cate_pq.size),
         # Diagnostics — surface how far the SAVED density's mean is from the
         # STORED point CATE. Small = density trustworthy for CI. Large = the
@@ -534,6 +680,7 @@ def summarize_method_dataset(method_dir: str, dataset: str,
     if not paths:
         return None
     pehes, errs, covs, lens = [], [], [], []
+    winklers, crpses = [], []
     ate_diffs = []          # density-mean vs stored ate (per realization)
     for r_idx, p in enumerate(paths):
         got = process_npz(p, pehe_key, err_key)
@@ -549,6 +696,7 @@ def summarize_method_dataset(method_dir: str, dataset: str,
         if np.isfinite(got['pehe']): pehes.append(got['pehe'])
         if np.isfinite(got['err']):  errs.append(got['err'])
         covs.append(got['coverage']); lens.append(got['length'])
+        winklers.append(got['winkler']); crpses.append(got['crps'])
         if np.isfinite(got['density_vs_stored_ate']):
             ate_diffs.append(got['density_vs_stored_ate'])
     if not covs:
@@ -558,6 +706,8 @@ def summarize_method_dataset(method_dir: str, dataset: str,
         'err':          _mean_se(errs),
         'cov':          _mean_se(covs),
         'len':          _mean_se(lens),
+        'winkler':      _mean_se(winklers),
+        'crps':         _mean_se(crpses),
         'n':            len(covs),
         # Consistency diagnostic: how far is the density mean from the stored ate?
         # If ≈ 0 the density is trustworthy; if not, CI here is on a different
@@ -722,7 +872,9 @@ def main():
         'matches realcause_eval mega-sbatch), Coverage / Length (95% CI from '
         'the density; 1D marginals use Y|do(0) ⊥ Y|do(1) convolution, 2D '
         'joint uses anti-diagonal projection with no independence '
-        'assumption); n = realizations)',
+        'assumption), Winkler IS_0.05 (length + 40·miss) and CRPS — both '
+        'single-number combined coverage+length metrics, lower = better; '
+        'n = realizations)',
         '',
         header, sep,
     ]
@@ -756,12 +908,16 @@ def main():
             err_str  = _fmt(*got['err'],  big=False)
             cov_str  = _fmt(*got['cov'],  big=False)
             len_str  = _fmt(*got['len'],  big=d in big_len)
+            is_str   = _fmt(*got['winkler'], big=d in big_len)
+            crps_str = _fmt(*got['crps'],    big=d in big_len)
             n = got['n']
             cells.append(
                 f'PEHE {pehe_str}<br>'
                 f'ε_ATE {err_str}<br>'
                 f'Cov {cov_str}<br>'
-                f'Len {len_str} (n={n})'
+                f'Len {len_str}<br>'
+                f'IS {is_str}<br>'
+                f'CRPS {crps_str} (n={n})'
             )
             ad_max = got.get('ate_max_diff', float('nan'))
             if np.isfinite(ad_max):
