@@ -2,20 +2,20 @@
 #SBATCH --job-name=rc-density-metrics
 #SBATCH --output=logs_rc_density_metrics/eval_%A_%a.out
 #SBATCH --error=logs_rc_density_metrics/eval_%A_%a.err
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
-#SBATCH --array=0-1
+#SBATCH --mem=32G
+#SBATCH --array=0-4
 
-# CPU-only 2-task array — one per Gaussian-truth dataset: IHDP, ACIC.
+# CPU-only 5-task array — one per RealCause dataset.
 # Computes NLL / L2 / KL_fwd / KL_rev of each method's per-query CATE
-# density against the analytic Gaussian truth (Y_do_t | x ~ N(μ_t, σ²)).
+# density against the truth on a tight T=4001 raw τ grid.
 #
-#   task 0: IHDP  (100 realizations × 75 queries)
-#   task 1: ACIC  (10 realizations × ~200 queries)
-#
-# CPS / PSID / PSID_bal need a 100-CSV MC-stack truth pipeline that's not
-# implemented yet — those datasets are skipped by the script.
+#   task 0: IHDP     — analytic Gaussian truth
+#   task 1: ACIC     — analytic Gaussian truth
+#   task 2: CPS      — empirical KDE from 100-CSV MC stack (K=100 pairs/unit)
+#   task 3: PSID     — empirical KDE from 100-CSV MC stack
+#   task 4: PSID_bal — empirical KDE from 100-CSV MC stack (same CSVs as PSID)
 #
 # Env vars:
 #   OUT_1D       required — root of 1D density dumps (…/results_1d_density)
@@ -42,8 +42,11 @@ CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 T="${T:-4001}"
 
 case "$SLURM_ARRAY_TASK_ID" in
-    0) DATASET=IHDP ;;
-    1) DATASET=ACIC ;;
+    0) DATASET=IHDP     ;;
+    1) DATASET=ACIC     ;;
+    2) DATASET=CPS      ;;
+    3) DATASET=PSID     ;;
+    4) DATASET=PSID_bal ;;
     *) echo "invalid SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID" >&2; exit 2 ;;
 esac
 
