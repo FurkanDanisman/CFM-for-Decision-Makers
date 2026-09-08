@@ -21,7 +21,9 @@
 # (dataset, r, EVAL_MAX_CONTEXT, EVAL_CONTEXT_SEED) -- but it buys only 2x and
 # it trades a *guarantee* that both models saw byte-identical context, X
 # standardisation, y scaling and adjacency for an *assumption* that two
-# processes recompute them identically. Realizations are independent by
+# processes recompute them identically. UWYK's wrapper subsequently propagates
+# adjacency, so the actual graph inputs can differ (recorded in the dumps).
+# Realizations are independent by
 # construction, so splitting there is both wider (12x) and strictly safer.
 #
 # Cost. The tau grid is now 12001 points (dtau=0.0005, knot-aligned: it
@@ -53,6 +55,9 @@
 #          (task 0 also runs the model-free gates and aborts if any fail)
 # 1 real:  REAL_END=1 sbatch --array=0 benchmarks/cluster/submit_density_tauC.sbatch
 # Then:    python benchmarks/eval_graph2d/summarize_density_tauC.py results_density_tauC/<JOBID>
+# Point errors are now computed from the same logits, with no extra forwards.
+# SAVE_PREDICTIONS=1 (default) retains raw outputs under <OUT>/predictions for
+# future CPU checks. Use a fresh OUT_ROOT to keep the previous run intact.
 
 set -euo pipefail
 mkdir -p logs_density_tauC
