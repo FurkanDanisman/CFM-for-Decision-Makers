@@ -151,10 +151,13 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
         is_pq = _winkler_is_vec(tau_lo_pq, tau_hi_pq, true_pq)
         winklers.append(float(is_pq.mean()))
         # CRPS per query on scaled grid, then multiply by y_scale → raw CRPS.
-        crps_pq_scaled = _crps_from_densities(p_taus_scaled, tau_scaled,
-                                                true_pq / max(y_scale, 1e-12))
-        crps_pq_raw = crps_pq_scaled * y_scale
-        crpses.append(float(crps_pq_raw.mean()))
+        if os.environ.get('SKIP_CRPS', '0') == '1':
+            crpses.append(float('nan'))
+        else:
+            crps_pq_scaled = _crps_from_densities(p_taus_scaled, tau_scaled,
+                                                    true_pq / max(y_scale, 1e-12))
+            crps_pq_raw = crps_pq_scaled * y_scale
+            crpses.append(float(crps_pq_raw.mean()))
 
         # Stored PEHE / ε_ATE.
         if is_split:

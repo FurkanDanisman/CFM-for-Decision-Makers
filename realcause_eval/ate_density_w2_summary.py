@@ -99,7 +99,10 @@ def summarize_cell(method_dir, dataset, method, tag):
         means.append(m); true_ates.append(ta); biases.append(m - ta)
         lens.append(hi - lo); covs.append(float(cv))
         winklers.append(_winkler_is(lo, hi, ta))
-        crpses.append(_crps_density(p_ate, tau, ta))
+        if os.environ.get('SKIP_CRPS', '0') == '1':
+            crpses.append(float('nan'))
+        else:
+            crpses.append(_crps_density(p_ate, tau, ta))
     if not means:
         return None
     return {
