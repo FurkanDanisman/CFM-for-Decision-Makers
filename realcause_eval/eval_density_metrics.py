@@ -418,21 +418,21 @@ def main():
         sys.modules['faiss'] = _types.ModuleType('faiss')
 
     if args.dataset == 'IHDP':
-        from benchmarks.data.ihdp import IHDPDataset
+        from benchmarks import IHDPDataset
         ds_obj = IHDPDataset()
         n_default = 100
     elif args.dataset == 'ACIC':
-        from benchmarks.data.acic2016 import ACIC2016Dataset
+        from benchmarks import ACIC2016Dataset
         ds_obj = ACIC2016Dataset()
         n_default = 10
     elif args.dataset in ('CPS',):
-        from benchmarks.data.realcause import RealCauseLalondeCPSDataset
+        from benchmarks import RealCauseLalondeCPSDataset
         ds_obj = RealCauseLalondeCPSDataset()
         n_default = 100
     elif args.dataset in ('PSID', 'PSID_bal'):
         # PSID and PSID_bal share the loader; balancing (train subsample) is
         # applied by the method-side pipeline, doesn't affect X_test or truth.
-        from benchmarks.data.realcause import RealCauseLalondePSIDDataset
+        from benchmarks import RealCauseLalondePSIDDataset
         ds_obj = RealCauseLalondePSIDDataset()
         n_default = 100
     else:
