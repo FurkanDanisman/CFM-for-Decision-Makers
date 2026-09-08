@@ -459,12 +459,18 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         l2_pq     = _l2(p_true_pq, p_est_pq, dtau)
         kl_fwd_pq = _kl(p_true_pq, p_est_pq, dtau)
         kl_rev_pq = _kl(p_est_pq,  p_true_pq, dtau)
+        # Sanity: density-derived PEHE. E_est(q) = ∫ τ·p_est(τ|x_q) dτ.
+        # Should match the mega-sbatch PEHE within fp32 if the density is
+        # self-consistent with the point CATE.
+        e_est_pq  = (tau_grid[None, :] * p_est_pq).sum(axis=-1) * dtau
+        pehe_from_density = float(np.sqrt(np.mean((e_est_pq - true_cate_pq_raw) ** 2)))
 
         results[method] = dict(
             nll_mean    = float(np.mean(nll_pq)),
             l2_mean     = float(np.mean(l2_pq)),
             kl_fwd_mean = float(np.mean(kl_fwd_pq)),
             kl_rev_mean = float(np.mean(kl_rev_pq)),
+            pehe_density = pehe_from_density,
         )
     return results
 
@@ -556,11 +562,13 @@ def main():
         f'metrics per query averaged, then averaged across {n_realizations} '
         f'realizations. Lower = better.)',
         '',
-        '| Method | NLL | L2 | KL_fwd (truth‖est) | KL_rev (est‖truth) |',
-        '|---|---|---|---|---|',
+        '| Method | NLL | L2 | KL_fwd (truth‖est) | KL_rev (est‖truth) | √PEHE (from density mean) |',
+        '|---|---|---|---|---|---|',
     ]
+    _big_pehe = args.dataset in ('CPS', 'PSID', 'PSID_bal')
     for method in all_methods:
-        vals = {k: [] for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean', 'kl_rev_mean')}
+        vals = {k: [] for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean',
+                                 'kl_rev_mean', 'pehe_density')}
         for res in per_r:
             m = res.get(method) if res else None
             if not m: continue
@@ -568,6 +576,7 @@ def main():
         cells = [method]
         for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean', 'kl_rev_mean'):
             cells.append(_fmt(*_mean_se(vals[k])))
+        cells.append(_fmt(*_mean_se(vals['pehe_density']), big=_big_pehe))
         lines.append('| ' + ' | '.join(cells) + ' |')
 
     md = '\n'.join(lines) + '\n'
