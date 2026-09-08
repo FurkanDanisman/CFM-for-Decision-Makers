@@ -1,33 +1,45 @@
-"""CATE 95% CI / coverage / length from 1D density dumps.
+"""CATE 95% CI / coverage / length from 1D-marginal OR 2D-joint density dumps.
 
-Reads per-realization NPZs written by realcause_eval/{do_pfn,cpfn1d,uwyk1d}
-runs with DENSITY_DUMP=1. Each NPZ must contain (see the emitters):
+Reads per-realization NPZs written by realcause_eval/{do_pfn,cpfn1d,uwyk1d,
+cpfn2d,graph2d,do_pfn_bb} runs with DENSITY_DUMP=1. Two schemas supported:
 
-    edges          shape (nbins+1,)   bar-dist edges in scaled Y units
-                                       (RAW Y for DoPFN — y_shift=0, y_scale=1)
+  1D marginals (cpfn1d, dopfn, uwyk1d):
+    edges          shape (nbins+1,)
     p_y0_scaled    shape (N_q, nbins) softmax marginal p(Y|do(0)) per query
     p_y1_scaled    shape (N_q, nbins) softmax marginal p(Y|do(1)) per query
-    y_shift        scalar             raw = scaled*y_scale + y_shift
-    y_scale        scalar             (drops out in τ = Y_1 - Y_0)
-    true_cate_per_query shape (N_q,)  ground-truth CATE per query
+    y_shift, y_scale (scalars)  — raw = scaled*y_scale + y_shift
+    true_cate_per_query shape (N_q,)  — ground-truth CATE per query
+    (UWYK also carries base_s_left/right + per-arm sL_raw_0/1 / sR_raw_0/1
+     for the half-Gaussian tail atoms.)
+
+  2D joint (cpfn2d, graph2d, dopfn_bb — for 2D-head models):
+    edges          shape (J+1,)
+    p_joint_scaled shape (N_q, J, J)  — axis 1 = Y0 bin, axis 2 = Y1 bin
+    y_shift, y_scale, true_cate_per_query as above
+
+  For dopfn_bb the per-realization density lives at
+  <method_dir>/<DATASET>/density_r<###>.npz (NOT a summary NPZ), and PEHE/
+  ε_ATE come from an aggregate <method_dir>/<DATASET>/summary.npz that
+  stores pehe[] / eps_ate[] arrays indexed by realization.
 
 Method:
-    1. Assume Y|do(0) ⊥ Y|do(1). Then p(τ = Y_1 - Y_0) = p_y1 * flip(p_y0)
-       via 1D discrete convolution (2·nbins-1 output bins).
-    2. Convolution mean equals E[Y_1] - E[Y_0] — SAME as the point CATE the
-       models already report. So point estimates are guaranteed consistent.
-    3. Per-query CI: find τ_lo, τ_hi via linear-interp on the discrete CDF
-       at levels 0.025 and 0.975.
-    4. Un-scale τ_lo, τ_hi to raw units by multiplying by y_scale (y_shift
-       cancels in the difference).
-    5. Coverage = mean_q 1[τ_true[q] ∈ [τ_lo[q], τ_hi[q]]].
-       Length   = mean_q (τ_hi[q] - τ_lo[q]).
-    6. Aggregate across realizations: mean of coverages, mean of lengths.
+  1D marginals path — assume Y|do(0) ⊥ Y|do(1) → p(τ) = p_y1 * flip(p_y0)
+    (1D discrete convolution / FFT for uniform bins; N²-atom enumeration
+    for non-uniform bins; MC sampling for UWYK per-arm tail atoms).
+  2D joint path — no independence assumption; p(τ = c[j] − c[i]) is the
+    anti-diagonal sum of p_joint[:, i, j] (uniform bins → 2J−1 discrete τ
+    values evenly spaced by bin width).
+  Point CATE for the sanity check is E[Y1] − E[Y0] under the density's
+  marginals; by construction this equals the mean of p(τ).
+
+  Per-query CI: linear-interp inverse-CDF at 0.025 / 0.975, un-scale by
+  y_scale (y_shift cancels in τ = Y1 − Y0). Coverage = mean 1[τ_true ∈ CI],
+  Length = mean (τ_hi − τ_lo). Aggregate per realization.
 
 Usage:
     python realcause_eval/cate_ci_from_density.py \\
         --out-root /scratch/.../results_realcause_all \\
-        --methods cpfn1d dopfn uwyk1d
+        --methods cpfn1d dopfn uwyk1d cpfn2d graph2d dopfnbb
 """
 from __future__ import annotations
 
@@ -42,23 +54,63 @@ import numpy as np
 DATASETS = ('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal')
 
 # Per-method point-estimate keys (from the same NPZs).
-# cpfn1d writes pehe_raw / err_raw (unsuffixed).
-# dopfn  writes pehe_dopfn / err_dopfn.
-# uwyk1d writes suffixed keys — use noanc for the point row (matches paper
-# Table 3 UWYK No-Anc). Change to _v3b via --uwyk-tag if you want that row.
+# 1D methods:
+#   cpfn1d writes pehe_raw / err_raw (unsuffixed).
+#   dopfn  writes pehe_dopfn / err_dopfn.
+#   uwyk1d writes suffixed keys — use noanc for the point row (matches paper
+#     Table 3 UWYK No-Anc). Change to _v3b via --uwyk-tag if you want that row.
+# 2D methods:
+#   cpfn2d  writes pehe_raw / err_raw (unsuffixed) alongside p_joint_scaled.
+#   graph2d writes pehe_raw_<mode> / err_raw_<mode>; noanc matches paper.
+#     Change via --graph2d-tag if you want v3b/v6a/etc.
+#   dopfnbb stores per-realization pehe / eps_ate in an aggregate summary.npz
+#     — resolved separately via _load_dopfnbb_realization (not this table).
 _POINT_KEYS = {
-    'cpfn1d': ('pehe_raw',       'err_raw'),
-    'dopfn':  ('pehe_dopfn',     'err_dopfn'),
-    'uwyk1d': ('pehe_raw_noanc', 'err_raw_noanc'),
+    'cpfn1d':  ('pehe_raw',       'err_raw'),
+    'dopfn':   ('pehe_dopfn',     'err_dopfn'),
+    'uwyk1d':  ('pehe_raw_noanc', 'err_raw_noanc'),
+    'cpfn2d':  ('pehe_raw',       'err_raw'),
+    'graph2d': ('pehe_raw_noanc', 'err_raw_noanc'),
+    # dopfnbb resolved via _load_dopfnbb_summary; entry unused.
+    'dopfnbb': ('pehe',           'eps_ate'),
+}
+
+# Methods whose density lives in per-realization NPZs whose filename is
+# <DATASET>_r<###>.npz alongside the point-CATE keys.
+_INLINE_DENSITY_METHODS = {
+    'cpfn1d', 'dopfn', 'uwyk1d', 'cpfn2d', 'graph2d',
+}
+# Methods whose density is dumped separately (density_r<###>.npz) with
+# PEHE / ε_ATE arrays living in an adjacent summary.npz.
+_SPLIT_DENSITY_METHODS = {
+    'dopfnbb',
+}
+
+# Per-method dataset-directory name overrides. dopfn_bb legacy uses
+# 'PSIDbal' (one word) even though the mega-sbatch table's canonical
+# label is 'PSID_bal'. Only add entries that differ from the canonical
+# name (used in the table header).
+_DATASET_DIR_ALIASES = {
+    'dopfnbb': {'PSID_bal': 'PSIDbal'},
 }
 
 
 def _load_density(npz_path: str):
-    """Return (centers, p_y0, p_y1, y_shift, y_scale, true_cate_pq) or None.
+    """Return a tuple describing the density in an NPZ, or None.
 
-    Two schemas supported:
+    Return shape depends on schema (first element is the schema tag):
+      ('bar',    centers, centers, p_y0, p_y1, y_shift, y_scale, true_cate)
+      ('uwyk',   centers0_pq, centers1_pq, p_y0, p_y1, y_shift, y_scale, true_cate)
+      ('joint2d',centers, p_joint,          y_shift, y_scale, true_cate)
+
+    Schemas:
+    - 2D joint (cpfn2d, graph2d, dopfn_bb): 'p_joint_scaled' key present with
+      shape (N_q, J, J). Axis 1 = Y0 bin, axis 2 = Y1 bin (matches every 2D
+      wrapper's convention — p_y0 = joint.sum(axis=2), p_y1 = joint.sum(axis=1)).
+      Centers are edge midpoints (uniform J bins).
     - uniform-bar (cpfn1d, dopfn): p_y{0,1} shape (N_q, K), edges (K+1).
-      Reconstruct K bar-center atoms from edges midpoints.
+      Reconstruct K bar-center atoms from edges midpoints (or use
+      'effective_centers' for DoPFN's tail-adjusted first/last-bar means).
     - UWYK BarDistribution: p_y{0,1} shape (N_q, K+2) = [pL, pBars, pR],
       edges (K+1), plus sL_raw/sR_raw and base_s_left/right/scale_floor.
       Reconstruct K+2 atoms: [E_left, K bar mids, E_right] where
@@ -67,17 +119,36 @@ def _load_density(npz_path: str):
     """
     try:
         with np.load(npz_path, allow_pickle=True) as z:
-            required = {'edges', 'p_y0_scaled', 'p_y1_scaled', 'y_shift',
-                        'y_scale', 'true_cate_per_query'}
-            if not required.issubset(set(z.files)):
+            base_required = {'edges', 'y_shift', 'y_scale', 'true_cate_per_query'}
+            if not base_required.issubset(set(z.files)):
                 return None
             edges = np.asarray(z['edges'], dtype=np.float64)
-            p_y0  = np.asarray(z['p_y0_scaled'], dtype=np.float64)
-            p_y1  = np.asarray(z['p_y1_scaled'], dtype=np.float64)
             y_shift = float(z['y_shift'])
             y_scale = float(z['y_scale'])
             true_cate_pq = np.asarray(z['true_cate_per_query'], dtype=np.float64)
             keys = set(z.files)
+
+            # ── 2D joint schema first — takes precedence when present, since
+            #    p_joint is the strictly-more-informative density (no
+            #    independence assumption).
+            if 'p_joint_scaled' in keys:
+                p_joint = np.asarray(z['p_joint_scaled'], dtype=np.float64)
+                assert p_joint.ndim == 3 and p_joint.shape[1] == p_joint.shape[2], (
+                    f'p_joint_scaled expected (N_q, J, J); got {p_joint.shape} in {npz_path}')
+                J = p_joint.shape[1]
+                assert edges.size == J + 1, (
+                    f'edges size {edges.size} inconsistent with joint J={J} in {npz_path}')
+                # Per-query normalization; keeps arithmetic tight even if
+                # the writer's softmax leaked ε mass.
+                s = p_joint.sum(axis=(1, 2), keepdims=True)
+                p_joint = p_joint / np.where(s > 0, s, 1.0)
+                centers = 0.5 * (edges[:-1] + edges[1:])
+                return ('joint2d', centers, p_joint, y_shift, y_scale, true_cate_pq)
+
+            if 'p_y0_scaled' not in keys or 'p_y1_scaled' not in keys:
+                return None
+            p_y0  = np.asarray(z['p_y0_scaled'], dtype=np.float64)
+            p_y1  = np.asarray(z['p_y1_scaled'], dtype=np.float64)
 
             K = edges.size - 1                     # bar count
             nbins = p_y0.shape[-1]
@@ -234,6 +305,39 @@ def _ci_uwyk_per_query(centers0_pq: np.ndarray, centers1_pq: np.ndarray,
     return tau_lo, tau_hi
 
 
+def _ci_from_joint_2d(centers: np.ndarray, p_joint: np.ndarray,
+                       lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+    """2D-joint path: NO independence assumption.
+
+    p_joint has shape (N_q, J, J) with axis 1 = Y0 bin, axis 2 = Y1 bin.
+    τ = Y1 − Y0 = c[j] − c[i]; for uniform bins this is (j − i) · w.
+
+    p_τ[q, k] = Σ_{i, j : j − i = k − (J − 1)} p_joint[q, i, j]
+              = anti-diagonal sum of the (J × J) joint at offset (k − (J − 1))
+
+    Uses np.trace on the last two axes (supports leading batch dim) to sum
+    each diagonal in one vectorized call. Cost: O(N_q · J) per k × (2J − 1)
+    diagonals = O(N_q · J²) total — same as forming the marginals once.
+    """
+    N_q, J, _ = p_joint.shape
+    assert _is_uniform(centers), (
+        f'joint 2D CI expects uniform centers; got spacings '
+        f'{np.diff(centers)[:3]}… (min={np.diff(centers).min():.3g}, '
+        f'max={np.diff(centers).max():.3g})')
+    w = float(centers[1] - centers[0])
+    n_tau = 2 * J - 1
+    p_tau = np.empty((N_q, n_tau), dtype=np.float64)
+    for k in range(n_tau):
+        offset = k - (J - 1)                       # j − i
+        p_tau[:, k] = np.trace(p_joint, axis1=-2, axis2=-1, offset=offset)
+    p_tau = np.clip(p_tau, 0.0, None)
+    p_tau /= p_tau.sum(axis=-1, keepdims=True).clip(min=1e-12)
+    tau = (np.arange(n_tau) - (J - 1)).astype(np.float64) * w
+    cdf = np.cumsum(p_tau, axis=-1)
+    return (_quantile_from_sorted(tau[None, :], cdf, lo),
+            _quantile_from_sorted(tau[None, :], cdf, hi))
+
+
 def _quantile_from_sorted(tau: np.ndarray, cdf: np.ndarray, level: float) -> np.ndarray:
     """Linear-interp inverse-CDF at `level`. tau and cdf are sorted along axis=-1.
     Broadcasts if tau shape (1, K) and cdf shape (N_q, K), returns (N_q,)."""
@@ -261,10 +365,13 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     realcause_eval's original run. NOT re-derived from density. This makes
     the table's point row match the paper reproduction exactly.
 
-    CI (Coverage, Length) comes from the density via the exact N²-atom PMF
-    of p(τ) under independence Y|do(0) ⊥ Y|do(1). Enumerate atoms, sort by
-    τ, cumulate → CDF → interp at 0.025 / 0.975. Uniform bins get a fast
-    convolution path; non-uniform bins use general N²-atom enumeration.
+    CI (Coverage, Length) comes from the density:
+      - 2D-joint schema (cpfn2d, graph2d, dopfn_bb): anti-diagonal projection
+        of the joint gives the exact p(τ) — NO independence assumption.
+      - 1D-marginal schema (cpfn1d, dopfn, uwyk1d): assume Y|do(0) ⊥ Y|do(1),
+        enumerate the N²-atom PMF of p(τ). Uniform bins get a fast FFT
+        convolution; UWYK per-arm tail atoms use MC sampling.
+    In every case: CDF → linear interp at 0.025 / 0.975, un-scale by y_scale.
 
     Consistency diagnostic: |mean(density-derived cate) − stored ate|. If
     near-zero, density and point agree (CI is on the same distribution as
@@ -275,30 +382,42 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     loaded = _load_density(npz_path)
     if loaded is None:
         return None
-    schema, centers0, centers1, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
 
-    # ── point CATE from density: sum(centers * p) per query, per arm.
-    #    For UWYK per-arm centers differ (tail-atom positions depend on arm-
-    #    specific sL/sR). For the bar schema centers0 == centers1.
-    e_y0 = (p_y0 * centers0).sum(axis=-1)
-    e_y1 = (p_y1 * centers1).sum(axis=-1)
-    cate_hat = (e_y1 - e_y0) * y_scale                # y_shift cancels
-    ate_hat_density = float(cate_hat.mean())
-
-    # ── EXACT CI: enumerate atoms of p(τ) under independence, sort, quantile.
-    # For the bar schema (cpfn1d, dopfn), centers0 == centers1 = 1D array;
-    # can use the uniform-convolution or non-uniform N²-atom path.
-    # For UWYK, centers differ per arm per query — must enumerate all N²
-    # atoms per query with per-query per-arm centers. Slower but exact.
-    if schema == 'uwyk':
-        tau_lo_axis, tau_hi_axis = _ci_uwyk_per_query(centers0, centers1, p_y0, p_y1,
-                                                     0.025, 0.975)
+    if loaded[0] == 'joint2d':
+        # 2D-joint schema (cpfn2d, graph2d, dopfn_bb): no independence
+        # assumption. Point CATE from marginals; CI from anti-diagonal p(τ).
+        _, centers, p_joint, y_shift, y_scale, true_cate_pq = loaded
+        p_y0_marg = p_joint.sum(axis=2)                 # (N_q, J)  — Y0 marginal
+        p_y1_marg = p_joint.sum(axis=1)                 # (N_q, J)  — Y1 marginal
+        e_y0 = (p_y0_marg * centers).sum(axis=-1)
+        e_y1 = (p_y1_marg * centers).sum(axis=-1)
+        cate_hat = (e_y1 - e_y0) * y_scale
+        ate_hat_density = float(cate_hat.mean())
+        tau_lo_axis, tau_hi_axis = _ci_from_joint_2d(centers, p_joint, 0.025, 0.975)
     else:
-        centers = centers0        # bar schema: shared 1D
-        if _is_uniform(centers):
-            tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+        schema, centers0, centers1, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
+        # ── point CATE from density: sum(centers * p) per query, per arm.
+        #    For UWYK per-arm centers differ (tail-atom positions depend on arm-
+        #    specific sL/sR). For the bar schema centers0 == centers1.
+        e_y0 = (p_y0 * centers0).sum(axis=-1)
+        e_y1 = (p_y1 * centers1).sum(axis=-1)
+        cate_hat = (e_y1 - e_y0) * y_scale            # y_shift cancels
+        ate_hat_density = float(cate_hat.mean())
+
+        # ── EXACT CI: enumerate atoms of p(τ) under independence, sort, quantile.
+        # For the bar schema (cpfn1d, dopfn), centers0 == centers1 = 1D array;
+        # can use the uniform-convolution or non-uniform N²-atom path.
+        # For UWYK, centers differ per arm per query — must enumerate all N²
+        # atoms per query with per-query per-arm centers. Slower but exact.
+        if schema == 'uwyk':
+            tau_lo_axis, tau_hi_axis = _ci_uwyk_per_query(centers0, centers1, p_y0, p_y1,
+                                                         0.025, 0.975)
         else:
-            tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
+            centers = centers0        # bar schema: shared 1D
+            if _is_uniform(centers):
+                tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+            else:
+                tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
     tau_lo = tau_lo_axis * y_scale
     tau_hi = tau_hi_axis * y_scale
     coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))
@@ -322,7 +441,10 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
             if _prefer in z.files:
                 ate_stored = float(z[_prefer]); ate_key = _prefer
             else:
-                for k in ('ate_raw', 'ate_em', 'ate_dopfn', 'ate_full'):
+                # ate_pred is what dopfn_bb writes into density_r<###>.npz
+                # (mean of per-query cate). Other 1D emitters use ate_raw /
+                # ate_em / ate_dopfn / ate_full — check in that order.
+                for k in ('ate_raw', 'ate_em', 'ate_dopfn', 'ate_full', 'ate_pred'):
                     if k in z.files:
                         ate_stored = float(z[k]); ate_key = k; break
                 if ate_key is None and 'cate_pred' in z.files:
@@ -363,20 +485,66 @@ def _mean_se(vals):
     return m, se
 
 
+def _load_dopfnbb_summary(dataset_dir: str, pehe_key: str, err_key: str):
+    """Load per-realization pehe / err arrays from dopfnbb's aggregate
+    summary.npz. Returns (pehe_arr, err_arr) or (None, None) if missing.
+
+    The dopfnbb eval writes an aggregate summary.npz alongside the
+    per-realization density_r<###>.npz files. Point rows are indexed by
+    realization order — same order density_r000, density_r001, ... are
+    written."""
+    path = os.path.join(dataset_dir, 'summary.npz')
+    if not os.path.isfile(path):
+        return None, None
+    try:
+        with np.load(path, allow_pickle=True) as z:
+            pehe_arr = np.asarray(z[pehe_key], dtype=np.float64) if pehe_key in z.files else None
+            err_arr  = np.asarray(z[err_key],  dtype=np.float64) if err_key  in z.files else None
+        return pehe_arr, err_arr
+    except Exception as e:
+        print(f'  [warn] {path}: {e}', file=sys.stderr)
+        return None, None
+
+
 def summarize_method_dataset(method_dir: str, dataset: str,
-                              pehe_key: str, err_key: str):
+                              pehe_key: str, err_key: str,
+                              method: str = ''):
     """Walk NPZs; return per-cell aggregates + a max |derived - stored| diff
     diagnostic so we can eyeball whether density-derived point estimates
-    reproduce the stored ones (should be ~0 under independence + normalization)."""
-    paths = sorted(glob.glob(os.path.join(method_dir, dataset, f'{dataset}_r*.npz')))
+    reproduce the stored ones (should be ~0 under independence + normalization).
+
+    Two layouts:
+      - inline (cpfn1d, dopfn, uwyk1d, cpfn2d, graph2d):
+          {method_dir}/{dataset}/{dataset}_r<###>.npz  contains density AND
+          the pehe/err scalars.
+      - split (dopfnbb): {method_dir}/{dataset}/density_r<###>.npz contains
+          only the density; pehe[] / eps_ate[] arrays live in
+          {method_dir}/{dataset}/summary.npz indexed by realization order.
+    """
+    # Per-method dir aliasing (e.g. dopfn_bb legacy stores PSID_bal under PSIDbal/).
+    dataset_dir_name = _DATASET_DIR_ALIASES.get(method, {}).get(dataset, dataset)
+    dataset_dir = os.path.join(method_dir, dataset_dir_name)
+    is_split = (method in _SPLIT_DENSITY_METHODS)
+    if is_split:
+        paths = sorted(glob.glob(os.path.join(dataset_dir, 'density_r*.npz')))
+        pehe_arr, err_arr = _load_dopfnbb_summary(dataset_dir, pehe_key, err_key)
+    else:
+        paths = sorted(glob.glob(os.path.join(dataset_dir, f'{dataset_dir_name}_r*.npz')))
+        pehe_arr = err_arr = None
     if not paths:
         return None
     pehes, errs, covs, lens = [], [], [], []
     ate_diffs = []          # density-mean vs stored ate (per realization)
-    for p in paths:
+    for r_idx, p in enumerate(paths):
         got = process_npz(p, pehe_key, err_key)
         if got is None:
             continue
+        # For split layout, override stored pehe/err from the aggregate summary.
+        if is_split:
+            if pehe_arr is not None and r_idx < pehe_arr.size:
+                got['pehe'] = float(pehe_arr[r_idx])
+            if err_arr is not None and r_idx < err_arr.size:
+                got['err'] = float(err_arr[r_idx])
         # REPORTED columns: stored PEHE / ε_ATE (identical to mega-sbatch).
         if np.isfinite(got['pehe']): pehes.append(got['pehe'])
         if np.isfinite(got['err']):  errs.append(got['err'])
@@ -415,44 +583,55 @@ def _debug_single(npz_path: str, pehe_key: str, err_key: str) -> None:
     density-derived cate summary, and every stored scalar we can grab for
     cross-check (pehe_raw, ate_raw, true_ate, cate_pred per-query if present).
     If mean(density-derived cate) differs from stored ate_raw, the density
-    saved in the NPZ is NOT the density used to compute stored PEHE."""
+    saved in the NPZ is NOT the density used to compute stored PEHE.
+
+    Handles all three schemas ('bar', 'uwyk', 'joint2d')."""
     with np.load(npz_path, allow_pickle=True) as z:
         edges = np.asarray(z['edges'], dtype=np.float64)
-        p_y0  = np.asarray(z['p_y0_scaled'], dtype=np.float64)
-        p_y1  = np.asarray(z['p_y1_scaled'], dtype=np.float64)
         y_shift = float(z['y_shift']); y_scale = float(z['y_scale'])
         true_cate_pq = np.asarray(z['true_cate_per_query'], dtype=np.float64)
         cate_pred = np.asarray(z['cate_pred']).astype(np.float64) if 'cate_pred' in z.files else None
         pehe_stored = float(z[pehe_key]) if pehe_key in z.files else float('nan')
         # Pull any stored ate scalar for cross-check.
         ate_stored = float('nan')
-        for k in ('ate_raw', 'ate_em', 'ate_full'):
+        ate_stored_key = None
+        for k in ('ate_raw', 'ate_em', 'ate_full', 'ate_pred'):
             if k in z.files:
                 ate_stored = float(z[k]); ate_stored_key = k; break
-        else:
-            ate_stored_key = None
         true_ate_stored = float(z['true_ate']) if 'true_ate' in z.files else float('nan')
         stored_keys = list(z.files)
 
-    p_y0 /= p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
-    p_y1 /= p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
     # Route through the same loader used by process_npz so debug matches
-    # what the aggregator actually computes (handles UWYK's per-arm tail atoms).
+    # what the aggregator actually computes (handles UWYK per-arm atoms and
+    # the 2D-joint schema).
     loaded = _load_density(npz_path)
     if loaded is None:
         print(f'  [debug] _load_density returned None for {npz_path}')
         return
-    schema, centers0, centers1, p_y0, p_y1, _, _, _ = loaded
-    e_y0 = (p_y0 * centers0).sum(axis=-1) if centers0.ndim == 2 else (p_y0 * centers0[None, :]).sum(axis=-1)
-    e_y1 = (p_y1 * centers1).sum(axis=-1) if centers1.ndim == 2 else (p_y1 * centers1[None, :]).sum(axis=-1)
+
+    if loaded[0] == 'joint2d':
+        schema = 'joint2d'
+        _, centers, p_joint, _, _, _ = loaded
+        p_y0_marg = p_joint.sum(axis=2)
+        p_y1_marg = p_joint.sum(axis=1)
+        e_y0 = (p_y0_marg * centers).sum(axis=-1)
+        e_y1 = (p_y1_marg * centers).sum(axis=-1)
+        p_shape = p_joint.shape
+    else:
+        schema, centers0, centers1, p_y0, p_y1, _, _, _ = loaded
+        e_y0 = (p_y0 * centers0).sum(axis=-1) if centers0.ndim == 2 else (p_y0 * centers0[None, :]).sum(axis=-1)
+        e_y1 = (p_y1 * centers1).sum(axis=-1) if centers1.ndim == 2 else (p_y1 * centers1[None, :]).sum(axis=-1)
+        p_shape = p_y0.shape
+        centers = centers0 if centers0.ndim == 1 else centers0[0]
     cate_from_diff = (e_y1 - e_y0) * y_scale
-    print(f'  density schema: {schema}')
 
     print(f'\n[{npz_path}]')
+    print(f'  density schema: {schema}')
     print(f'  NPZ keys: {sorted(stored_keys)}')
     print(f'  edges: shape={edges.shape}  range=[{edges.min():.4g}, {edges.max():.4g}]')
-    print(f'  p_y0/p_y1: shape={p_y0.shape}')
-    print(f'  centers[0:3]={centers[:3]}   centers[-3:]={centers[-3:]}')
+    print(f'  density shape: {p_shape}')
+    if schema != 'joint2d':
+        print(f'  centers[0:3]={centers[:3]}   centers[-3:]={centers[-3:]}')
     print(f'  y_shift={y_shift:.4g}  y_scale={y_scale:.4g}')
     print(f'  E[Y_0] (density-axis) mean q: {float(e_y0.mean()):.4g}')
     print(f'  E[Y_1] (density-axis) mean q: {float(e_y1.mean()):.4g}')
@@ -486,6 +665,16 @@ def main():
     ap.add_argument('--uwyk-tag', default='noanc', choices=['noanc', 'v3b'],
                     help='Which anc-tag row of uwyk1d to use for PEHE/ε_ATE. '
                          'Default: noanc (matches paper Table 3 UWYK No-Anc).')
+    ap.add_argument('--graph2d-tag', default='noanc',
+                    help='Which anc-tag row of graph2d to use for PEHE/ε_ATE. '
+                         'Default: noanc (matches paper Table 3). Also '
+                         'accepts v3b, v6a, v5a, etc. — must match a key '
+                         "written by eval_graph2d_realcause.py.")
+    ap.add_argument('--dopfnbb-pehe-key', default='pehe',
+                    choices=['pehe', 'pehe_em'],
+                    help='Which pehe array in dopfnbb summary.npz to use. '
+                         'Default: pehe (inner-9-region). pehe_em is the '
+                         'EM-smoothed variant.')
     ap.add_argument('--out-md', default=None,
                     help='Also write the markdown table to this path.')
     ap.add_argument('--debug-one', nargs=2, metavar=('METHOD', 'DATASET'),
@@ -494,24 +683,29 @@ def main():
                          'the given (method, dataset). Skips the aggregate table.')
     args = ap.parse_args()
 
+    # Resolve point-key overrides once — same table shared by debug + aggregate.
+    point_keys = dict(_POINT_KEYS)
+    point_keys['uwyk1d']  = (f'pehe_raw_{args.uwyk_tag}',  f'err_raw_{args.uwyk_tag}')
+    point_keys['graph2d'] = (f'pehe_raw_{args.graph2d_tag}',
+                              f'err_raw_{args.graph2d_tag}')
+    point_keys['dopfnbb'] = (args.dopfnbb_pehe_key,
+                              'eps_ate' if args.dopfnbb_pehe_key == 'pehe' else 'eps_ate_em')
+
     if args.debug_one is not None:
         method, dataset = args.debug_one
-        point_keys = dict(_POINT_KEYS)
-        point_keys['uwyk1d'] = (f'pehe_raw_{args.uwyk_tag}', f'err_raw_{args.uwyk_tag}')
         pehe_key, err_key = point_keys.get(method, ('pehe_raw', 'err_raw'))
-        paths = sorted(glob.glob(os.path.join(args.out_root, method, dataset,
-                                              f'{dataset}_r*.npz')))
+        dataset_dir_name = _DATASET_DIR_ALIASES.get(method, {}).get(dataset, dataset)
+        pattern = 'density_r*.npz' if method in _SPLIT_DENSITY_METHODS \
+                                    else f'{dataset_dir_name}_r*.npz'
+        paths = sorted(glob.glob(os.path.join(args.out_root, method, dataset_dir_name, pattern)))
         if not paths:
-            sys.exit(f'FATAL: no NPZs found for {method}/{dataset}')
+            sys.exit(f'FATAL: no NPZs found for {method}/{dataset}  '
+                     f'(looked in {os.path.join(args.out_root, method, dataset_dir_name)})')
         _debug_single(paths[0], pehe_key, err_key)
         return
 
     if not os.path.isdir(args.out_root):
         sys.exit(f'FATAL: --out-root not found: {args.out_root}')
-
-    # uwyk1d's point keys are suffixed by anc-tag — resolve via --uwyk-tag.
-    point_keys = dict(_POINT_KEYS)
-    point_keys['uwyk1d'] = (f'pehe_raw_{args.uwyk_tag}', f'err_raw_{args.uwyk_tag}')
 
     big_pehe = {'CPS', 'PSID', 'PSID_bal'}
     big_len  = big_pehe
@@ -526,7 +720,9 @@ def main():
         '',
         '(each cell, top → bottom: √PEHE / ε_ATE (from stored point CATE — '
         'matches realcause_eval mega-sbatch), Coverage / Length (95% CI from '
-        'the density, assuming Y|do(0) ⊥ Y|do(1)); n = realizations)',
+        'the density; 1D marginals use Y|do(0) ⊥ Y|do(1) convolution, 2D '
+        'joint uses anti-diagonal projection with no independence '
+        'assumption); n = realizations)',
         '',
         header, sep,
     ]
@@ -548,7 +744,7 @@ def main():
             _t0 = time.time()
             print(f'[{time.strftime("%H:%M:%S")}] processing {method:8s} / {d:9s} ...',
                   end='', flush=True)
-            got = summarize_method_dataset(method_dir, d, pehe_key, err_key)
+            got = summarize_method_dataset(method_dir, d, pehe_key, err_key, method=method)
             print(f' done in {time.time() - _t0:5.1f}s'
                   + (f' (n={got["n"]})' if got is not None else ' (no data)'),
                   flush=True)
