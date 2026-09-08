@@ -305,7 +305,7 @@ def _ci_uwyk_per_query(centers0_pq: np.ndarray, centers1_pq: np.ndarray,
     return tau_lo, tau_hi
 
 
-_ALPHA_CI = 0.05    # 95% CI
+_ALPHA_CI = float(os.environ.get('ALPHA', '0.05'))    # 0.05 → 95%, 0.01 → 99%
 
 
 def _winkler_is_vec(lo, hi, y, alpha=_ALPHA_CI):
@@ -536,6 +536,8 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
     if loaded is None:
         return None
 
+    # α-derived quantile levels (95% CI: 0.025/0.975; 99% CI: 0.005/0.995).
+    _lo_lev, _hi_lev = _ALPHA_CI / 2.0, 1.0 - _ALPHA_CI / 2.0
     if loaded[0] == 'joint2d':
         # 2D-joint schema (cpfn2d, graph2d, dopfn_bb): no independence
         # assumption. Point CATE from marginals; CI from anti-diagonal p(τ).
@@ -546,7 +548,7 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
         e_y1 = (p_y1_marg * centers).sum(axis=-1)
         cate_hat = (e_y1 - e_y0) * y_scale
         ate_hat_density = float(cate_hat.mean())
-        tau_lo_axis, tau_hi_axis = _ci_from_joint_2d(centers, p_joint, 0.025, 0.975)
+        tau_lo_axis, tau_hi_axis = _ci_from_joint_2d(centers, p_joint, _lo_lev, _hi_lev)
     else:
         schema, centers0, centers1, p_y0, p_y1, y_shift, y_scale, true_cate_pq = loaded
         # ── point CATE from density: sum(centers * p) per query, per arm.
@@ -564,13 +566,13 @@ def process_npz(npz_path: str, pehe_key: str, err_key: str):
         # atoms per query with per-query per-arm centers. Slower but exact.
         if schema == 'uwyk':
             tau_lo_axis, tau_hi_axis = _ci_uwyk_per_query(centers0, centers1, p_y0, p_y1,
-                                                         0.025, 0.975)
+                                                         _lo_lev, _hi_lev)
         else:
             centers = centers0        # bar schema: shared 1D
             if _is_uniform(centers):
-                tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, 0.025, 0.975)
+                tau_lo_axis, tau_hi_axis = _ci_from_atoms_uniform(centers, p_y0, p_y1, _lo_lev, _hi_lev)
             else:
-                tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, 0.025, 0.975)
+                tau_lo_axis, tau_hi_axis = _ci_from_atoms_general(centers, p_y0, p_y1, _lo_lev, _hi_lev)
     tau_lo = tau_lo_axis * y_scale
     tau_hi = tau_hi_axis * y_scale
     coverage = float(np.mean((true_cate_pq >= tau_lo) & (true_cate_pq <= tau_hi)))

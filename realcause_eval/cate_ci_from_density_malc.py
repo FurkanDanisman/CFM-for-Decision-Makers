@@ -46,7 +46,7 @@ _DATASET_DIR_ALIASES = {
     'dopfnbb': {'PSID_bal': 'PSIDbal'},
 }
 
-_ALPHA = 0.05    # 95% CI
+_ALPHA = float(os.environ.get('ALPHA', '0.05'))   # 0.05 → 95% CI, 0.01 → 99% CI
 
 
 def _winkler_is_vec(lo, hi, y, alpha=_ALPHA):
@@ -54,6 +54,24 @@ def _winkler_is_vec(lo, hi, y, alpha=_ALPHA):
     length = hi - lo
     return length + (2.0 / alpha) * np.maximum(lo - y, 0.0) \
                   + (2.0 / alpha) * np.maximum(y - hi, 0.0)
+
+
+def _quantile_from_density_pq(p_pq, tau, level):
+    """Linear-interp inverse-CDF at `level` per query.
+    p_pq (N_q, T), tau (T,) uniform. Returns (N_q,)."""
+    dtau = float(tau[1] - tau[0])
+    cdf = np.cumsum(p_pq, axis=-1) * dtau
+    cdf = cdf / cdf[:, -1:].clip(min=1e-12)
+    below = cdf < level
+    idx = np.argmax(~below, axis=-1)
+    idx = np.where(cdf[..., -1] < level, cdf.shape[-1] - 1, idx)
+    row = np.arange(cdf.shape[0])
+    c_hi = cdf[row, idx]
+    c_lo = np.where(idx > 0, cdf[row, np.maximum(idx - 1, 0)], 0.0)
+    t_hi = tau[idx]
+    t_lo = np.where(idx > 0, tau[np.maximum(idx - 1, 0)], tau[0])
+    w = np.where(c_hi > c_lo, (level - c_lo) / (c_hi - c_lo), 0.0)
+    return t_lo + w * (t_hi - t_lo)
 
 
 def _crps_from_densities(p_tau, tau, y):
@@ -130,21 +148,23 @@ def summarize_cell(method_dir, dataset, method, pehe_key, err_key, in_tag=''):
             density_sib = os.path.join(dataset_dir, f'{dataset_dir_name}_{r_tag}.npz')
         try:
             with np.load(mp, allow_pickle=True) as z:
-                cov       = float(z['coverage_per_query'].mean())
-                length    = float(z['length_per_query'].mean())
                 ate_malc  = float(z['ate_malc'])
                 fails     = int(z['n_fails']) if 'n_fails' in z.files else 0
                 N_q       = int(z['true_cate_per_query'].shape[0])
                 # Winkler IS + CRPS per query (raw units).
-                tau_lo_pq = np.asarray(z['tau_lo'],  dtype=np.float64)   # (N_q,)  raw
-                tau_hi_pq = np.asarray(z['tau_hi'],  dtype=np.float64)
-                true_pq   = np.asarray(z['true_cate_per_query'], dtype=np.float64)
+                true_pq       = np.asarray(z['true_cate_per_query'], dtype=np.float64)
                 p_taus_scaled = np.asarray(z['p_taus_scaled'], dtype=np.float64)  # (N_q, T) scaled
                 tau_scaled    = np.asarray(z['tau_scaled'],    dtype=np.float64)
                 y_scale       = float(z['y_scale'])
         except Exception as e:
             print(f'  [warn] {mp}: {e}', file=sys.stderr)
             continue
+        # Recompute CI at env-var ALPHA (defaults 0.05). Level lo/hi.
+        _lo, _hi = _ALPHA / 2.0, 1.0 - _ALPHA / 2.0
+        tau_lo_pq = _quantile_from_density_pq(p_taus_scaled, tau_scaled, _lo) * y_scale
+        tau_hi_pq = _quantile_from_density_pq(p_taus_scaled, tau_scaled, _hi) * y_scale
+        cov       = float(np.mean((true_pq >= tau_lo_pq) & (true_pq <= tau_hi_pq)))
+        length    = float(np.mean(tau_hi_pq - tau_lo_pq))
         covs.append(cov); lens.append(length)
         fail_frac.append(fails / max(N_q, 1))
         # IS per query (already in raw units since tau_lo/hi are raw).
