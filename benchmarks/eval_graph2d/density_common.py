@@ -176,6 +176,47 @@ class Joint2D:
                    sL1=float(s[2]), sR1=float(s[3]), rho=rho,
                    edges=np.asarray(edges, dtype=np.float64))
 
+    def inner_mean(self) -> tuple[float, float]:
+        """Interior-conditional means used by the point runner's raw path."""
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        return (float(self.p_mat.sum(axis=1) @ centers),
+                float(self.p_mat.sum(axis=0) @ centers))
+
+    def mean(self) -> tuple[float, float]:
+        """Exact E[Y0], E[Y1] of the full density, including correlated corners.
+
+        Computing moments by region avoids truncating the mean to TAU_CENTERS.
+        For a standard bivariate normal with correlation r, the positive
+        quadrant has probability P = 1/4 + asin(r)/(2*pi) and unnormalised
+        first moment (1+r)/(2*sqrt(2*pi)). Reflecting each corner into that
+        quadrant gives its conditional means, including the rho correction.
+        """
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        h = math.sqrt(2.0 / math.pi)
+
+        def boundary_mean(p):
+            return float(p @ centers) / max(float(p.sum()), 1e-300)
+
+        regions = [
+            self.inner_mean(),
+            (self.lo - h * self.sL0, boundary_mean(self.p_mat[0, :])),
+            (self.hi + h * self.sR0, boundary_mean(self.p_mat[-1, :])),
+            (boundary_mean(self.p_mat[:, 0]), self.lo - h * self.sL1),
+            (boundary_mean(self.p_mat[:, -1]), self.hi + h * self.sR1),
+        ]
+        for sign0, sign1, a0, a1, s0, s1 in (
+            (-1, -1, self.lo, self.lo, self.sL0, self.sL1),
+            (-1, +1, self.lo, self.hi, self.sL0, self.sR1),
+            (+1, -1, self.hi, self.lo, self.sR0, self.sL1),
+            (+1, +1, self.hi, self.hi, self.sR0, self.sR1),
+        ):
+            r = sign0 * sign1 * self.rho
+            quadrant_mass = 0.25 + math.asin(r) / (2.0 * math.pi)
+            offset = (1.0 + r) / (2.0 * math.sqrt(2.0 * math.pi) * quadrant_mass)
+            regions.append((a0 + sign0 * s0 * offset, a1 + sign1 * s1 * offset))
+        m0, m1 = self.w @ np.asarray(regions)
+        return float(m0), float(m1)
+
     # -- the density ------------------------------------------------------
     def density(self, y0, y1) -> np.ndarray:
         """f(y0, y1) on the full plane. Broadcasting over arbitrary shapes."""
@@ -315,6 +356,14 @@ class UWYK1D:
                         0, K - 1)
             out[mid] = np.exp(self.log_pBars[k]) / self.widths[k]
         return out
+
+    def mean(self) -> float:
+        """Exact mean of the bars and both half-normal tails."""
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        h = math.sqrt(2.0 / math.pi)
+        return float(np.exp(self.log_pBars) @ centers
+                     + math.exp(self.log_pL) * (self.edges[0] - h * self.sL)
+                     + math.exp(self.log_pR) * (self.edges[-1] + h * self.sR))
 
     def rebin(self, new_edges) -> "UWYK1D":
         """Re-express this density on a coarser uniform grid (resolution match).
@@ -583,3 +632,20 @@ def mass(f, grid):
     """\\int f over the grid. Diagnostic: how much of the density the tau grid
     actually contains. Report it; do not silently renormalise NLL by it."""
     return float(_TRAPZ(np.asarray(f), grid))
+
+
+def point_metrics(cate_scaled, true_cate, y_scale):
+    """Score density means against true CATE in original outcome units.
+
+    PEHE is the root mean squared error across queries, not the average
+    absolute error. L1 here explicitly means per-query CATE MAE; ate_abs_err
+    is separate and is not the point runner's normalised err_ATE.
+    """
+    pred = np.asarray(cate_scaled, dtype=np.float64).reshape(-1) * float(y_scale)
+    truth = np.asarray(true_cate, dtype=np.float64).reshape(-1)
+    if pred.shape != truth.shape or pred.size == 0:
+        raise ValueError('predicted and true CATE must have equal, nonempty shapes')
+    error = pred - truth
+    return dict(pehe=float(np.sqrt(np.mean(error ** 2))),
+                cate_l1=float(np.mean(np.abs(error))),
+                ate_abs_err=float(abs(np.mean(error))))

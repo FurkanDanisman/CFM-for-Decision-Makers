@@ -41,6 +41,7 @@ UWYK_REPRO="${UWYK_REPRO:-$DEPLOY_ROOT/external/uwyk_reproduce}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — per-method dirs land under it}"
 
 CKPT_CPFN1D="${CKPT_CPFN1D:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
+DENSITY_ANC_TAG="${DENSITY_ANC_TAG:-noanc}"    # 'noanc' | 'v3b' — which uwyk1d mode's density to persist
 
 METHOD_IDX=$(( SLURM_ARRAY_TASK_ID / 5 ))
 DS_IDX=$(( SLURM_ARRAY_TASK_ID % 5 ))
@@ -95,7 +96,8 @@ case "$METHOD" in
         python -u "$REPO/realcause_eval/uwyk1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --uwyk-repro "$UWYK_REPRO" --repo "$REPO" \
-            --causalpfn "$CAUSALPFN" --anc-mode v3b_only
+            --causalpfn "$CAUSALPFN" --anc-mode v3b_only \
+            --density-anc-tag "$DENSITY_ANC_TAG"
         ;;
 esac
 
