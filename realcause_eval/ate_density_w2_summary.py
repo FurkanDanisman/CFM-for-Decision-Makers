@@ -56,22 +56,28 @@ def _fmt_signed(m, big=False):
     return f'{m:+,.2f}' if big else f'{m:+.3f}'
 
 
-_ALPHA = 0.05    # 95% CI
+_ALPHA = float(os.environ.get('ALPHA', '0.05'))    # 0.05 → 95% CI, 0.01 → 99% CI
 
 
 def _winkler_is(lo, hi, y, alpha=_ALPHA):
-    """IS_α = (hi-lo) + (2/α) · max(lo-y, 0) + (2/α) · max(y-hi, 0). Lower = better.
-    Strictly proper interval score (Gneiting & Raftery 2007)."""
+    """IS_α = (hi-lo) + (2/α) · max(lo-y, 0) + (2/α) · max(y-hi, 0). Lower = better."""
     length = float(hi - lo)
     return length + (2.0 / alpha) * max(lo - y, 0.0) + (2.0 / alpha) * max(y - hi, 0.0)
 
 
-def _crps_density(p, tau, y):
-    """CRPS(F, y) = Σ (F(τ) − 1[τ ≥ y])² · dτ on a uniform τ grid.
-    Density p must integrate to 1 on tau (step dtau)."""
+def _quantile_from_density(p, tau, level):
+    """Linear-interp inverse-CDF at `level`. p: (T,), tau: (T,) uniform."""
     dtau = float(tau[1] - tau[0])
     F = np.cumsum(p) * dtau
-    F = F / max(float(F[-1]), 1e-12)                       # normalize
+    F = F / max(float(F[-1]), 1e-12)
+    return float(np.interp(level, F, tau))
+
+
+def _crps_density(p, tau, y):
+    """CRPS(F, y) = Σ (F(τ) − 1[τ ≥ y])² · dτ on a uniform τ grid."""
+    dtau = float(tau[1] - tau[0])
+    F = np.cumsum(p) * dtau
+    F = F / max(float(F[-1]), 1e-12)
     step = (tau >= y).astype(np.float64)
     return float(np.sum((F - step) ** 2) * dtau)
 
@@ -89,13 +95,15 @@ def summarize_cell(method_dir, dataset, method, tag):
             with np.load(p, allow_pickle=True) as z:
                 m  = float(z['ate_mean'])
                 ta = float(z['true_ate'])
-                lo = float(z['tau_lo'])
-                hi = float(z['tau_hi'])
-                cv = int(z['covered'])
                 p_ate = np.asarray(z['p_ate_raw'], dtype=np.float64)
                 tau   = np.asarray(z['tau_raw'],    dtype=np.float64)
         except Exception as e:
             print(f'  [warn] {p}: {e}', file=sys.stderr); continue
+        # Recompute CI at env-var ALPHA from stored p_ate + tau.
+        _lo, _hi = _ALPHA / 2.0, 1.0 - _ALPHA / 2.0
+        lo = _quantile_from_density(p_ate, tau, _lo)
+        hi = _quantile_from_density(p_ate, tau, _hi)
+        cv = int((lo <= ta) and (ta <= hi))
         means.append(m); true_ates.append(ta); biases.append(m - ta)
         lens.append(hi - lo); covs.append(float(cv))
         winklers.append(_winkler_is(lo, hi, ta))
