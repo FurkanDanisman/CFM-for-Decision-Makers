@@ -36,7 +36,8 @@ METHODS="${METHODS:-cpfn2d graph2d dopfnbb}"
 DATASETS_FILTER="${DATASETS:-}"
 GRAPH2D_TAG="${GRAPH2D_TAG:-noanc}"
 DOPFNBB_PEHE_KEY="${DOPFNBB_PEHE_KEY:-pehe}"
-OUT_MD="${OUT_MD:-$OUT_ROOT/cate_ci_2d_malc.md}"
+IN_TAG="${IN_TAG:-}"
+OUT_MD="${OUT_MD:-$OUT_ROOT/cate_ci_2d_malc${IN_TAG:+_$IN_TAG}.md}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
@@ -47,10 +48,14 @@ if [ -n "$DATASETS_FILTER" ]; then
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] aggregating MALC CI  OUT_ROOT=$OUT_ROOT  METHODS=$METHODS  DATASETS=${DATASETS_FILTER:-all}"
+_TAG_ARGS=()
+[ -n "$IN_TAG" ] && _TAG_ARGS+=(--in-tag "$IN_TAG")
+
 python -u "$REPO/realcause_eval/cate_ci_from_density_malc.py" \
     --out-root         "$OUT_ROOT" \
     --methods          $METHODS \
     "${_DS_ARGS[@]}" \
+    "${_TAG_ARGS[@]}" \
     --graph2d-tag      "$GRAPH2D_TAG" \
     --dopfnbb-pehe-key "$DOPFNBB_PEHE_KEY" \
     --out-md           "$OUT_MD"

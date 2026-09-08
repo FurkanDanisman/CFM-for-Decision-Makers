@@ -47,7 +47,8 @@ MALC_K="${MALC_K:-1}"
 MALC_B="${MALC_B:-100}"
 N_EVAL="${N_EVAL:-50}"
 MAX_REAL="${MAX_REAL:-}"        # optional cap (mostly for smoke tests)
-OVERWRITE="${OVERWRITE:-0}"     # 1 to redo realizations whose malc_ci_r*.npz already exists
+OVERWRITE="${OVERWRITE:-0}"     # 1 to redo realizations whose malc_ci_*.npz already exists
+OUT_TAG="${OUT_TAG:-}"          # optional filename tag → malc_ci_{TAG}_r<###>.npz
 
 METHOD_IDX=$(( SLURM_ARRAY_TASK_ID / 5 ))
 DS_IDX=$(( SLURM_ARRAY_TASK_ID % 5 ))
@@ -89,6 +90,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  CELL=$CELL_DIR  "\
 _EXTRA_ARGS=()
 [ -n "$MAX_REAL" ]        && _EXTRA_ARGS+=(--max-realizations "$MAX_REAL")
 [ "$OVERWRITE" = "1" ]    && _EXTRA_ARGS+=(--overwrite)
+[ -n "$OUT_TAG" ]         && _EXTRA_ARGS+=(--out-tag "$OUT_TAG")
 
 python -u "$REPO/realcause_eval/compute_malc_ci_cell.py" \
     --method-dir "$METHOD_DIR" \
