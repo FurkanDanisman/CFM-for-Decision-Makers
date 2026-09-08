@@ -416,16 +416,31 @@ def _crps_per_query_any_schema(loaded, true_cate_pq_raw):
     N_q, K = p_y0.shape
     crps = np.empty(N_q, dtype=np.float64)
     if schema == 'uwyk':
-        # Per-query per-arm centers, K atoms each; enumerate K² pairs.
+        # UWYK K is often ~1000 → K² = 1M atoms per query, argsort ~50ms
+        # (CPS N_q=1618 → 2h). Use empirical CRPS from MC samples instead:
+        # CRPS_emp = (1/n)·Σ|x_i - y| − (1/n²)·Σ(2i-n-1)·x_(i)  for sorted x_(i).
+        # O(n log n) per query at n=8000 → ~1ms; matches the same MC
+        # scheme used by _ci_uwyk_per_query.
+        n_samples = 8000
+        from numpy.random import default_rng
+        rng = default_rng(0)
+        cdf0 = np.cumsum(p_y0, axis=-1); cdf0 /= cdf0[:, -1:].clip(min=1e-12)
+        cdf1 = np.cumsum(p_y1, axis=-1); cdf1 /= cdf1[:, -1:].clip(min=1e-12)
+        u0 = rng.random((n_samples, N_q))
+        u1 = rng.random((n_samples, N_q))
+        i_arr = np.arange(1, n_samples + 1)
+        weights = (2 * i_arr - n_samples - 1) / (n_samples * n_samples)
         for q in range(N_q):
-            a = (centers1[q][None, :] - centers0[q][:, None]).ravel() * y_scale
-            m = np.outer(p_y0[q], p_y1[q]).ravel()
-            order = np.argsort(a, kind='stable')
-            a_sorted = a[order]; m_sorted = m[order]
-            F = np.cumsum(m_sorted); F = F / max(float(F[-1]), 1e-12)
-            step = (a_sorted >= true_cate_pq_raw[q]).astype(np.float64)
-            diffs = np.diff(a_sorted)
-            crps[q] = float(np.sum(diffs * (F[:-1] - step[:-1]) ** 2))
+            idx0 = np.searchsorted(cdf0[q], u0[:, q], side='right').clip(0, K - 1)
+            idx1 = np.searchsorted(cdf1[q], u1[:, q], side='right').clip(0, K - 1)
+            y0s = centers0[q][idx0]
+            y1s = centers1[q][idx1]
+            tau_s = (y1s - y0s) * y_scale
+            tau_sorted = np.sort(tau_s)
+            y = float(true_cate_pq_raw[q])
+            term1 = float(np.mean(np.abs(tau_sorted - y)))
+            term2 = float(np.sum(weights * tau_sorted))
+            crps[q] = term1 - term2
         return crps
     # bar non-uniform (dopfn's effective_centers): shared centers across
     # queries, K² atoms. Sort atoms + widths ONCE outside the loop; only
