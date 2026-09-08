@@ -360,11 +360,55 @@ def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
     return _renorm(out, dtau)
 
 
+def _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw):
+    """2D method (RAW joint, no MALC): read p_joint_scaled from the
+    density-dump NPZ, extract 2J−1 anti-diagonal masses at atom positions
+    τ_k = (k − (J−1)) · bar_width_scaled · y_scale, then nearest-bin
+    rasterize onto tau_grid_raw.
+
+    The raw joint is a discrete distribution: 2J−1 spike atoms per query.
+    After rasterization each atom's mass lands in one bin at density
+    mass/dτ_grid, so pointwise metrics against a smooth truth are spiky
+    by construction — this is the honest raw representation, not a bug.
+    """
+    ds_on_disk = dataset
+    if method == 'dopfnbb' and dataset == 'PSID_bal':
+        ds_on_disk = 'PSIDbal'
+    path = _resolve_realization_npz(root_2d, method, ds_on_disk, r)
+    if not path: return None
+    with np.load(path, allow_pickle=True) as z:
+        p_joint = np.asarray(z['p_joint_scaled'], dtype=np.float64)   # (N_q, J, J)
+        edges   = np.asarray(z['edges'],          dtype=np.float64)   # (J+1,)
+        y_scale = float(z['y_scale'])
+    assert p_joint.ndim == 3 and p_joint.shape[1] == p_joint.shape[2], \
+        f'p_joint_scaled expected (N_q, J, J); got {p_joint.shape}'
+    N_q, J, _ = p_joint.shape
+    s = p_joint.sum(axis=(1, 2), keepdims=True)
+    p_joint = p_joint / np.where(s > 0, s, 1.0)
+    mass_tau = np.zeros((N_q, 2 * J - 1), dtype=np.float64)
+    for k in range(2 * J - 1):
+        mass_tau[:, k] = np.trace(p_joint, axis1=1, axis2=2, offset=k - (J - 1))
+    bar_width_scaled = float(edges[1] - edges[0])
+    offsets = np.arange(2 * J - 1) - (J - 1)
+    tau_native_raw = offsets * bar_width_scaled * y_scale
+    T = tau_grid_raw.size
+    dtau = float(tau_grid_raw[1] - tau_grid_raw[0])
+    tau_min = float(tau_grid_raw[0])
+    idx = np.round((tau_native_raw - tau_min) / dtau).astype(int)
+    in_range = (idx >= 0) & (idx < T)
+    out = np.zeros((N_q, T), dtype=np.float64)
+    for k in np.where(in_range)[0]:
+        out[:, idx[k]] += mass_tau[:, k]
+    out /= dtau
+    return _renorm(out, dtau)
+
+
 # ── Per-realization pipeline ─────────────────────────────────────────────
 
 def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
                           root_1d, root_2d, methods_1d, methods_2d,
-                          T=DEFAULT_T, tau_pad_sigmas=6.0):
+                          T=DEFAULT_T, tau_pad_sigmas=6.0,
+                          joint_2d_source='malc', malc_tag='B500'):
     if dataset == 'IHDP':
         from true_ihdp import load_ihdp_truth
         ds = ds_obj[r][0]
@@ -437,9 +481,11 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         try:
             if kind == '1d':
                 p_est_pq = _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid)
+            elif joint_2d_source == 'raw':
+                p_est_pq = _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid)
             else:
                 p_est_pq = _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r,
-                                                            tau_grid, malc_tag='B500')
+                                                            tau_grid, malc_tag=malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d} {method}: {e}', file=sys.stderr)
             p_est_pq = None
@@ -491,6 +537,12 @@ def main():
                     help='Cap on realizations (default: dataset default).')
     ap.add_argument('--T', type=int, default=DEFAULT_T,
                     help='τ-grid resolution (default 4001 — very tight).')
+    ap.add_argument('--joint-2d-source', choices=['malc', 'raw'], default='malc',
+                    help='For 2D methods: use MALC-smoothed p(τ) or the raw '
+                         'joint anti-diagonal (discrete 2J−1 spike density).')
+    ap.add_argument('--malc-tag', default='B500',
+                    help='MALC file tag when --joint-2d-source=malc '
+                         '(e.g. B500, B100_maxK3).')
     ap.add_argument('--out-md', default=None)
     args = ap.parse_args()
 
@@ -535,8 +587,11 @@ def main():
     n_realizations = args.n_realizations or n_default
     methods_1d = list(args.methods_1d); methods_2d = list(args.methods_2d)
     all_methods = methods_1d + methods_2d
+    _2d_desc = ('raw joint anti-diagonal' if args.joint_2d_source == 'raw'
+                else f'MALC-smoothed ({args.malc_tag})')
     print(f'[bootstrap] dataset={args.dataset}  n_realizations={n_realizations}  '
-          f'T={args.T}  methods_1d={methods_1d}  methods_2d={methods_2d}', flush=True)
+          f'T={args.T}  methods_1d={methods_1d}  methods_2d={methods_2d}  '
+          f'2d_source={_2d_desc}', flush=True)
 
     per_r = []
     t0 = time.time()
@@ -545,7 +600,9 @@ def main():
         try:
             res = evaluate_realization(r, args.dataset, args.causalpfn, ds_obj,
                                          args.root_1d, args.root_2d,
-                                         methods_1d, methods_2d, T=args.T)
+                                         methods_1d, methods_2d, T=args.T,
+                                         joint_2d_source=args.joint_2d_source,
+                                         malc_tag=args.malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d}: {e}', file=sys.stderr); continue
         per_r.append(res)
@@ -556,7 +613,8 @@ def main():
                     if args.dataset in _ANALYTIC_GAUSSIAN
                     else 'empirical KDE from 100 RealCause CSVs (K=100 MC pairs per unit)')
     lines = [
-        f'\nDensity metrics — {args.dataset} — tight T={args.T} raw τ grid',
+        f'\nDensity metrics — {args.dataset} — tight T={args.T} raw τ grid '
+        f'(2D source: {_2d_desc})',
         '',
         f'(truth = {_truth_kind}; '
         f'metrics per query averaged, then averaged across {n_realizations} '
