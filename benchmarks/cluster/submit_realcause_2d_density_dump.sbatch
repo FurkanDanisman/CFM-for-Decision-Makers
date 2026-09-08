@@ -51,6 +51,7 @@ OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — per-method dirs land under it}"
 CKPT_CPFN2D="${CKPT_CPFN2D:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0050000.pt}"
 CKPT_GRAPH2D="${CKPT_GRAPH2D:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
 CKPT_DOPFNBB="${CKPT_DOPFNBB:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
+DENSITY_PRIMARY_MODE="${DENSITY_PRIMARY_MODE:-noanc}"   # 'noanc' | 'v3b' — which graph2d mode's density to persist
 
 METHOD_IDX=$(( SLURM_ARRAY_TASK_ID / 5 ))
 DS_IDX=$(( SLURM_ARRAY_TASK_ID % 5 ))
@@ -109,7 +110,7 @@ case "$METHOD" in
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK_REPRO" \
-            --anc-mode v3b_only --density-primary-mode noanc \
+            --anc-mode v3b_only --density-primary-mode "$DENSITY_PRIMARY_MODE" \
             --density-dump 1
         ;;
     dopfnbb)
