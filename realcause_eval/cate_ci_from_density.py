@@ -409,30 +409,38 @@ def _crps_per_query_any_schema(loaded, true_cate_pq_raw):
         F = F / F[:, -1:].clip(min=1e-12)
         step = (tau_raw[None, :] >= true_cate_pq_raw[:, None]).astype(np.float64)
         return np.sum((F - step) ** 2, axis=-1) * dtau
-    # Fallback: per-query sorted atoms.
+    # Fallback: per-query sorted atoms. Iterates queries with a TRANSIENT
+    # (K²,) allocation each — avoids preallocating (N_q, K²) which is a
+    # multi-GB memory bomb (dopfn K=1000, CPS N_q=1618 → 13 GB otherwise).
     schema, centers0, centers1, p_y0, p_y1, _, y_scale, _ = loaded
     N_q, K = p_y0.shape
+    crps = np.empty(N_q, dtype=np.float64)
     if schema == 'uwyk':
         # Per-query per-arm centers, K atoms each; enumerate K² pairs.
-        atoms_pq = np.empty((N_q, K * K), dtype=np.float64)
-        mass_pq  = np.empty_like(atoms_pq)
         for q in range(N_q):
             a = (centers1[q][None, :] - centers0[q][:, None]).ravel() * y_scale
             m = np.outer(p_y0[q], p_y1[q]).ravel()
             order = np.argsort(a, kind='stable')
-            atoms_pq[q] = a[order]
-            mass_pq[q]  = m[order]
-        return _crps_from_sorted_atoms_pq(atoms_pq, mass_pq, true_cate_pq_raw)
-    # bar non-uniform (dopfn's effective_centers): shared centers, K² atoms.
+            a_sorted = a[order]; m_sorted = m[order]
+            F = np.cumsum(m_sorted); F = F / max(float(F[-1]), 1e-12)
+            step = (a_sorted >= true_cate_pq_raw[q]).astype(np.float64)
+            diffs = np.diff(a_sorted)
+            crps[q] = float(np.sum(diffs * (F[:-1] - step[:-1]) ** 2))
+        return crps
+    # bar non-uniform (dopfn's effective_centers): shared centers across
+    # queries, K² atoms. Sort atoms + widths ONCE outside the loop; only
+    # the mass reshuffle happens per query.
     centers = centers0 * y_scale
     a_flat = (centers[None, :] - centers[:, None]).ravel()           # (K²,)
     order  = np.argsort(a_flat, kind='stable')
-    a_sorted_shared = a_flat[order]                                   # (K²,)
-    atoms_pq = np.broadcast_to(a_sorted_shared[None, :], (N_q, a_sorted_shared.size))
-    mass_pq  = np.empty((N_q, a_sorted_shared.size), dtype=np.float64)
+    a_sorted = a_flat[order]                                          # (K²,)
+    diffs = np.diff(a_sorted)                                         # (K²-1,)
     for q in range(N_q):
-        mass_pq[q] = np.outer(p_y0[q], p_y1[q]).ravel()[order]
-    return _crps_from_sorted_atoms_pq(atoms_pq, mass_pq, true_cate_pq_raw)
+        m_sorted = np.outer(p_y0[q], p_y1[q]).ravel()[order]          # transient (K²,)
+        F = np.cumsum(m_sorted); F = F / max(float(F[-1]), 1e-12)
+        step = (a_sorted >= true_cate_pq_raw[q]).astype(np.float64)
+        crps[q] = float(np.sum(diffs * (F[:-1] - step[:-1]) ** 2))
+    return crps
 
 
 def _ci_from_joint_2d(centers: np.ndarray, p_joint: np.ndarray,
