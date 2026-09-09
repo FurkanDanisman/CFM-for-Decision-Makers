@@ -258,7 +258,7 @@ def main():
                 continue
             s = _process_realization_1d(path, out_path, pool, args.n_workers,
                                           args.n_eval, args.malc_K, args.malc_B,
-                                          args.downsample_bins_to)
+                                          args.downsample_max_J)
             if s: stats.append(s)
     finally:
         if pool is not None:
