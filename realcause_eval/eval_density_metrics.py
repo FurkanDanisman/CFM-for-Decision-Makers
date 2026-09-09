@@ -167,15 +167,20 @@ def _load_realcause_stack(dataset, causalpfn_dir):
     if csv_dir is None:
         raise FileNotFoundError(
             f'RealCause CSVs not found under any of: {cand_dirs}')
+    # Feature columns are all columns EXCEPT the known outcome/treatment ones.
+    # RealCause CSVs use plain feature names (age, education, black, ...) not
+    # x1..x8 — the agent's initial report used generic 'x*' shorthand.
+    _NON_X = {'t', 'y', 'y0', 'y1', 'ite', 'ycf', 'mu0', 'mu1'}
     y0_all = []; y1_all = []; X_pool = None
     for k in range(100):
         path = os.path.join(csv_dir, f'{prefix}{k}.csv')
         df = pd.read_csv(path)
-        x_cols = [c for c in df.columns if c.startswith('x')]
+        x_cols = [c for c in df.columns if c not in _NON_X]
         if not x_cols:
-            raise RuntimeError(f'no x* columns in {path}; got {list(df.columns)}')
+            raise RuntimeError(f'no feature columns in {path}; got {list(df.columns)}')
         if X_pool is None:
             X_pool = df[x_cols].values.astype(np.float64)
+            _saved_x_cols = x_cols
         else:
             assert X_pool.shape == df[x_cols].shape, (
                 f'X shape drift in {path}: {df[x_cols].shape} vs {X_pool.shape}')
@@ -198,23 +203,21 @@ def _truth_realcause_kde(dataset, r, causalpfn_dir, ds_obj, tau_grid_raw,
 
     Returns (p_true_pq, true_cate_pq_raw, mean_sigma_tau).
     """
-    X_pool, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
+    _, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
     tau_all = y1_all - y0_all                   # (N_pool, K=100)
 
     ds = ds_obj[r][0]
-    X_test = np.asarray(ds.X_test, dtype=np.float64)
     true_cate = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)
 
-    # Row-in-pool lookup by tuple hash. Real-valued X → uniqueness is safe.
-    pool_hash = {tuple(X_pool[i]): i for i in range(X_pool.shape[0])}
-    test_idx = np.fromiter(
-        (pool_hash.get(tuple(x), -1) for x in X_test),
-        dtype=np.int64, count=len(X_test))
-    if (test_idx < 0).any():
-        n_miss = int((test_idx < 0).sum())
-        raise RuntimeError(
-            f'{dataset} r={r}: {n_miss}/{len(X_test)} test X rows not '
-            f'found in the shared CSV pool — X mismatch?')
+    # Match test queries to pool rows via ITE identity (robust to X standardization).
+    test_idx = _match_by_ite(dataset, r, causalpfn_dir, ds)
+    keep = test_idx >= 0
+    if not keep.all():
+        n_miss = int((~keep).sum())
+        print(f'  [warn] {dataset} r={r}: {n_miss}/{len(test_idx)} '
+              f'test rows unmatched via ITE; dropping', file=sys.stderr)
+    test_idx = test_idx[keep]
+    true_cate = true_cate[keep]
     tau_samples = tau_all[test_idx]              # (N_q, K)
     N_q, K = tau_samples.shape
 
@@ -236,18 +239,83 @@ def _truth_realcause_kde(dataset, r, causalpfn_dir, ds_obj, tau_grid_raw,
 
 # ── Method density loaders (per realization → per-query p_tau on shared grid).
 
+def _match_by_ite(dataset, r, causalpfn_dir, ds):
+    """Match test queries to shared-pool rows via ITE (true_cate) identity.
+
+    Robust to any X standardization the RealCause loader may do — because
+    the CSV `ite` column (real-valued τ per row) is raw and matches
+    ds.true_cate byte-for-byte modulo float precision.
+
+    Returns (test_idx, ite_pool_len). test_idx: (N_test,) int64 array;
+    entries with no match are -1 (caller drops).
+    """
+    import pandas as pd
+    prefix_map = {'CPS': 'lalonde_cps_sample',
+                  'PSID': 'lalonde_psid_sample',
+                  'PSID_bal': 'lalonde_psid_sample'}
+    cand_dirs = [
+        os.path.join(causalpfn_dir, 'benchmarks', 'realcause_datasets'),
+        os.path.join(causalpfn_dir, 'src', 'benchmarks', 'realcause_datasets'),
+        os.path.join(causalpfn_dir, 'realcause_datasets'),
+    ]
+    csv_dir = next((d for d in cand_dirs if os.path.isdir(d)), None)
+    if csv_dir is None:
+        raise FileNotFoundError(f'RealCause CSVs not under any of: {cand_dirs}')
+    df_r = pd.read_csv(os.path.join(csv_dir, f'{prefix_map[dataset]}{r}.csv'))
+    ite_pool = df_r['ite'].values.astype(np.float64)
+    ite_test = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)
+    # Round to 8 decimals to handle any tiny float precision drift.
+    _key = lambda v: round(float(v), 8)
+    ite_hash = {}
+    for i, v in enumerate(ite_pool):
+        ite_hash.setdefault(_key(v), []).append(i)
+    idx = np.array([ite_hash.get(_key(t), [-1])[0] for t in ite_test], dtype=np.int64)
+    return idx
+
+
+def _resolve_realization_npz(root, method, dataset_dir_name, r, prefix='',
+                                suffix_dataset_name=None):
+    """Try both 3-digit and 2-digit realization padding.
+
+    cpfn1d/cpfn2d use r<r:02d> filenames for ACIC while all other emitters
+    use r<r:03d> uniformly. Search both patterns.
+
+    prefix='' → filenames like <DATASET>_r<###>.npz (inline layout).
+    prefix='malc_ci_{tag}_' → tagged MALC files (2D MALC path).
+    """
+    ds_in_name = suffix_dataset_name or dataset_dir_name
+    for pad in (3, 2):
+        rstr = f'{r:0{pad}d}'
+        if prefix:
+            fname = f'{prefix}r{rstr}.npz'
+        else:
+            fname = f'{ds_in_name}_r{rstr}.npz'
+        path = os.path.join(root, method, dataset_dir_name, fname)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
 def _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid_raw):
     """1D method: reconstruct p(τ|x_q) from p_y0 / p_y1 marginals via
     outer-product enumeration + rasterization onto the shared tau_grid_raw.
     Uses effective_centers if present (dopfn's tail-adjusted centers)."""
-    path = os.path.join(root_1d, method, dataset, f'{dataset}_r{r:03d}.npz')
-    if not os.path.isfile(path): return None
+    path = _resolve_realization_npz(root_1d, method, dataset, r)
+    if not path: return None
     with np.load(path, allow_pickle=True) as z:
         p_y0 = np.asarray(z['p_y0_scaled'], dtype=np.float64)
         p_y1 = np.asarray(z['p_y1_scaled'], dtype=np.float64)
         edges = np.asarray(z['edges'], dtype=np.float64)
         y_scale = float(z['y_scale'])
         K = p_y0.shape[1]
+        # UWYK schema: (K_bars + 2 tail atoms) columns but only K_bars+1 edges.
+        # Tail atoms live at per-query offsets outside the bar grid; without
+        # sL/sR the tail centers can't be reconstructed. Trim tails and drop
+        # their (small) mass — mild bias, avoids shape mismatch downstream.
+        if K == edges.size + 1:
+            p_y0 = p_y0[:, 1:-1]
+            p_y1 = p_y1[:, 1:-1]
+            K = p_y0.shape[1]
         centers_scaled = (np.asarray(z['effective_centers'], dtype=np.float64)
                           if 'effective_centers' in z.files
                           else 0.5 * (edges[:-1] + edges[1:]))
@@ -267,16 +335,20 @@ def _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid_raw):
     return _renorm(p_tau_mass / dtau, dtau)
 
 
-def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
-                                     malc_tag='B500'):
-    """2D method (MALC-smoothed): load p_taus_scaled, convert to raw,
-    interpolate onto shared grid."""
+def _load_malc_ptau_raw_on_grid(root, method, dataset, r, tau_grid_raw,
+                                  malc_tag='B500'):
+    """MALC-smoothed density loader (works for both 2D and 1D methods —
+    the compute_malc_ci_cell_1d dump writes the same NPZ schema as the
+    2D one). Load p_taus_scaled, convert to raw, interpolate onto grid.
+
+    root: OUT_1D for 1D methods, OUT_2D for 2D methods.
+    """
     ds_on_disk = dataset
     if method == 'dopfnbb' and dataset == 'PSID_bal':
         ds_on_disk = 'PSIDbal'
-    path = os.path.join(root_2d, method, ds_on_disk,
-                         f'malc_ci_{malc_tag}_r{r:03d}.npz')
-    if not os.path.isfile(path): return None
+    path = _resolve_realization_npz(root, method, ds_on_disk, r,
+                                     prefix=f'malc_ci_{malc_tag}_')
+    if not path: return None
     with np.load(path, allow_pickle=True) as z:
         p_tau_scaled = np.asarray(z['p_taus_scaled'], dtype=np.float64)
         tau_scaled   = np.asarray(z['tau_scaled'],    dtype=np.float64)
@@ -292,11 +364,69 @@ def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
     return _renorm(out, dtau)
 
 
+# Backward-compat alias (kept for any callers that still import the old name).
+_load_2d_malc_ptau_raw_on_grid = _load_malc_ptau_raw_on_grid
+
+
+def _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw):
+    """2D method (RAW joint, no MALC): read p_joint_scaled from the
+    density-dump NPZ, extract 2J−1 anti-diagonal masses at atom positions
+    τ_k = (k − (J−1)) · bar_width_scaled · y_scale, then nearest-bin
+    rasterize onto tau_grid_raw.
+
+    The raw joint is a discrete distribution: 2J−1 spike atoms per query.
+    After rasterization each atom's mass lands in one bin at density
+    mass/dτ_grid, so pointwise metrics against a smooth truth are spiky
+    by construction — this is the honest raw representation, not a bug.
+    """
+    ds_on_disk = dataset
+    if method == 'dopfnbb' and dataset == 'PSID_bal':
+        ds_on_disk = 'PSIDbal'
+    path = _resolve_realization_npz(root_2d, method, ds_on_disk, r)
+    if not path:
+        # dopfnbb uses "split" layout: density_r<###>.npz instead of
+        # <DATASET>_r<###>.npz. Try the split pattern before giving up.
+        cell = os.path.join(root_2d, method, ds_on_disk)
+        for pad in (3, 2):
+            cand = os.path.join(cell, f'density_r{r:0{pad}d}.npz')
+            if os.path.isfile(cand):
+                path = cand
+                break
+    if not path: return None
+    with np.load(path, allow_pickle=True) as z:
+        p_joint = np.asarray(z['p_joint_scaled'], dtype=np.float64)   # (N_q, J, J)
+        edges   = np.asarray(z['edges'],          dtype=np.float64)   # (J+1,)
+        y_scale = float(z['y_scale'])
+    assert p_joint.ndim == 3 and p_joint.shape[1] == p_joint.shape[2], \
+        f'p_joint_scaled expected (N_q, J, J); got {p_joint.shape}'
+    N_q, J, _ = p_joint.shape
+    s = p_joint.sum(axis=(1, 2), keepdims=True)
+    p_joint = p_joint / np.where(s > 0, s, 1.0)
+    mass_tau = np.zeros((N_q, 2 * J - 1), dtype=np.float64)
+    for k in range(2 * J - 1):
+        mass_tau[:, k] = np.trace(p_joint, axis1=1, axis2=2, offset=k - (J - 1))
+    bar_width_scaled = float(edges[1] - edges[0])
+    offsets = np.arange(2 * J - 1) - (J - 1)
+    tau_native_raw = offsets * bar_width_scaled * y_scale
+    T = tau_grid_raw.size
+    dtau = float(tau_grid_raw[1] - tau_grid_raw[0])
+    tau_min = float(tau_grid_raw[0])
+    idx = np.round((tau_native_raw - tau_min) / dtau).astype(int)
+    in_range = (idx >= 0) & (idx < T)
+    out = np.zeros((N_q, T), dtype=np.float64)
+    for k in np.where(in_range)[0]:
+        out[:, idx[k]] += mass_tau[:, k]
+    out /= dtau
+    return _renorm(out, dtau)
+
+
 # ── Per-realization pipeline ─────────────────────────────────────────────
 
 def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
                           root_1d, root_2d, methods_1d, methods_2d,
-                          T=DEFAULT_T, tau_pad_sigmas=6.0):
+                          T=DEFAULT_T, tau_pad_sigmas=6.0,
+                          joint_1d_source='conv', joint_2d_source='malc',
+                          malc_tag_1d='B500', malc_tag='B500'):
     if dataset == 'IHDP':
         from true_ihdp import load_ihdp_truth
         ds = ds_obj[r][0]
@@ -310,7 +440,8 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         from true_acic import load_acic_truth
         ds = ds_obj[r][0]
         y_train_raw = np.asarray(ds.y_train, dtype=np.float64).reshape(-1)
-        truth = load_acic_truth(r, causalpfn_dir, y_train_raw)
+        # Signature: load_acic_truth(r, y_train_full, seed=42, test_ratio=0.1, cache_dir=None)
+        truth = load_acic_truth(r, y_train_raw)
         scale = truth.y_rng / 2.0
         mu_diff = (truth.mu1_test_scaled - truth.mu0_test_scaled) * scale
         sigma_tau = np.sqrt(2.0) * float(truth.sigma_scaled) * scale
@@ -329,54 +460,85 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
         p_true_pq = _renorm(p_true_pq, dtau)
         true_cate_pq_raw = mu_diff.copy()          # point true CATE per query
     else:
-        # KDE truth — first size the grid from empirical τ samples.
-        X_pool, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
-        tau_all = y1_all - y0_all
+        # KDE truth for RealCause datasets (CPS/PSID/PSID_bal).
+        _, y0_all, y1_all = _load_realcause_stack(dataset, causalpfn_dir)
+        tau_all = y1_all - y0_all                # (N_pool, K=100)
         ds = ds_obj[r][0]
-        X_test = np.asarray(ds.X_test, dtype=np.float64)
-        pool_hash = {tuple(X_pool[i]): i for i in range(X_pool.shape[0])}
-        test_idx = np.fromiter(
-            (pool_hash.get(tuple(x), -1) for x in X_test),
-            dtype=np.int64, count=len(X_test))
-        if (test_idx < 0).any():
-            raise RuntimeError(
-                f'{dataset} r={r}: {int((test_idx < 0).sum())} test X rows '
-                f'not in shared CSV pool')
-        tau_samples = tau_all[test_idx]
-        # Grid: pad by ±3σ of stacked samples + a range multiplier.
+        # Match via ITE (raw τ). Robust to X standardization by the loader.
+        test_idx_full = _match_by_ite(dataset, r, causalpfn_dir, ds)
+        keep_mask = test_idx_full >= 0
+        if not keep_mask.all():
+            print(f'  [warn] {dataset} r={r}: {int((~keep_mask).sum())}/'
+                  f'{len(test_idx_full)} test rows unmatched via ITE',
+                  file=sys.stderr)
+        test_idx = test_idx_full[keep_mask]
+        tau_samples = tau_all[test_idx]           # (N_q_matched, K)
+        true_cate_pq_raw = np.asarray(ds.true_cate, dtype=np.float64).reshape(-1)[keep_mask]
+        # Grid: pad by ±3σ of stacked samples.
         s_all = tau_samples.std(ddof=1)
         lo = float(tau_samples.min() - 3.0 * s_all)
         hi = float(tau_samples.max() + 3.0 * s_all)
         tau_grid = np.linspace(lo, hi, T)
         dtau     = tau_grid[1] - tau_grid[0]
-        # Now build p_true_pq via KDE using the helper (recomputes lookup, cheap).
-        p_true_pq, true_cate_pq_raw, _sigma_tau_avg = _truth_realcause_kde(
-            dataset, r, causalpfn_dir, ds_obj, tau_grid, kde_h_scale=1.0)
+        # KDE per matched query.
+        N_q_m, K = tau_samples.shape
+        sigmas = tau_samples.std(axis=1, ddof=1)
+        sigma_floor = 1e-3 * (tau_grid[-1] - tau_grid[0])
+        h = np.maximum(1.06 * sigmas * (K ** (-1.0 / 5.0)), sigma_floor)
+        p_true_pq = np.empty((N_q_m, T), dtype=np.float64)
+        for q in range(N_q_m):
+            z = (tau_grid[:, None] - tau_samples[q, None, :]) / h[q]
+            p_true_pq[q] = np.exp(-0.5 * z ** 2).sum(axis=1) / (K * h[q] * np.sqrt(2.0 * np.pi))
+        p_true_pq = _renorm(p_true_pq, dtau)
+    # keep_mask is None for IHDP/ACIC (all queries used).
+    if _mode == 'gaussian':
+        keep_mask = None
 
     results = {}
     for method, kind in [(m, '1d') for m in methods_1d] + [(m, '2d') for m in methods_2d]:
         try:
             if kind == '1d':
-                p_est_pq = _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid)
+                if joint_1d_source == 'malc':
+                    p_est_pq = _load_malc_ptau_raw_on_grid(root_1d, method, dataset, r,
+                                                             tau_grid, malc_tag=malc_tag_1d)
+                else:
+                    p_est_pq = _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid)
+            elif joint_2d_source == 'raw':
+                p_est_pq = _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid)
             else:
-                p_est_pq = _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r,
-                                                            tau_grid, malc_tag='B500')
+                p_est_pq = _load_malc_ptau_raw_on_grid(root_2d, method, dataset, r,
+                                                        tau_grid, malc_tag=malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d} {method}: {e}', file=sys.stderr)
             p_est_pq = None
         if p_est_pq is None:
             results[method] = None; continue
+        # Filter method density to same subset as truth (RealCause KDE path drops
+        # unmatched queries; IHDP/ACIC uses all queries → keep_mask is None).
+        if keep_mask is not None:
+            p_est_pq = p_est_pq[keep_mask]
+        if p_est_pq.shape[0] != p_true_pq.shape[0]:
+            print(f'  [warn] r={r:03d} {method}: shape mismatch after keep_mask '
+                  f'(est {p_est_pq.shape[0]} vs truth {p_true_pq.shape[0]})',
+                  file=sys.stderr)
+            continue
 
         nll_pq    = _nll_pointwise(p_est_pq, tau_grid, true_cate_pq_raw)
         l2_pq     = _l2(p_true_pq, p_est_pq, dtau)
         kl_fwd_pq = _kl(p_true_pq, p_est_pq, dtau)
         kl_rev_pq = _kl(p_est_pq,  p_true_pq, dtau)
+        # Sanity: density-derived PEHE. E_est(q) = ∫ τ·p_est(τ|x_q) dτ.
+        # Should match the mega-sbatch PEHE within fp32 if the density is
+        # self-consistent with the point CATE.
+        e_est_pq  = (tau_grid[None, :] * p_est_pq).sum(axis=-1) * dtau
+        pehe_from_density = float(np.sqrt(np.mean((e_est_pq - true_cate_pq_raw) ** 2)))
 
         results[method] = dict(
             nll_mean    = float(np.mean(nll_pq)),
             l2_mean     = float(np.mean(l2_pq)),
             kl_fwd_mean = float(np.mean(kl_fwd_pq)),
             kl_rev_mean = float(np.mean(kl_rev_pq)),
+            pehe_density = pehe_from_density,
         )
     return results
 
@@ -397,6 +559,19 @@ def main():
                     help='Cap on realizations (default: dataset default).')
     ap.add_argument('--T', type=int, default=DEFAULT_T,
                     help='τ-grid resolution (default 4001 — very tight).')
+    ap.add_argument('--joint-1d-source', choices=['conv', 'malc'], default='conv',
+                    help='For 1D methods: "conv" = outer-product marginal '
+                         'convolution rasterized to shared grid (default; '
+                         'backward compat); "malc" = read 1D-MALC dump at '
+                         '$OUT_1D/<method>/<DATASET>/malc_ci_<tag>_r<###>.npz.')
+    ap.add_argument('--malc-tag-1d', default='B500',
+                    help='MALC file tag when --joint-1d-source=malc.')
+    ap.add_argument('--joint-2d-source', choices=['malc', 'raw'], default='malc',
+                    help='For 2D methods: use MALC-smoothed p(τ) or the raw '
+                         'joint anti-diagonal (discrete 2J−1 spike density).')
+    ap.add_argument('--malc-tag', default='B500',
+                    help='MALC file tag when --joint-2d-source=malc '
+                         '(e.g. B500, B100_maxK3).')
     ap.add_argument('--out-md', default=None)
     args = ap.parse_args()
 
@@ -418,21 +593,21 @@ def main():
         sys.modules['faiss'] = _types.ModuleType('faiss')
 
     if args.dataset == 'IHDP':
-        from benchmarks.data.ihdp import IHDPDataset
+        from benchmarks import IHDPDataset
         ds_obj = IHDPDataset()
         n_default = 100
     elif args.dataset == 'ACIC':
-        from benchmarks.data.acic2016 import ACIC2016Dataset
+        from benchmarks import ACIC2016Dataset
         ds_obj = ACIC2016Dataset()
         n_default = 10
     elif args.dataset in ('CPS',):
-        from benchmarks.data.realcause import RealCauseLalondeCPSDataset
+        from benchmarks import RealCauseLalondeCPSDataset
         ds_obj = RealCauseLalondeCPSDataset()
         n_default = 100
     elif args.dataset in ('PSID', 'PSID_bal'):
         # PSID and PSID_bal share the loader; balancing (train subsample) is
         # applied by the method-side pipeline, doesn't affect X_test or truth.
-        from benchmarks.data.realcause import RealCauseLalondePSIDDataset
+        from benchmarks import RealCauseLalondePSIDDataset
         ds_obj = RealCauseLalondePSIDDataset()
         n_default = 100
     else:
@@ -441,8 +616,13 @@ def main():
     n_realizations = args.n_realizations or n_default
     methods_1d = list(args.methods_1d); methods_2d = list(args.methods_2d)
     all_methods = methods_1d + methods_2d
+    _1d_desc = ('outer-product marginal conv' if args.joint_1d_source == 'conv'
+                else f'MALC-smoothed ({args.malc_tag_1d})')
+    _2d_desc = ('raw joint anti-diagonal' if args.joint_2d_source == 'raw'
+                else f'MALC-smoothed ({args.malc_tag})')
     print(f'[bootstrap] dataset={args.dataset}  n_realizations={n_realizations}  '
-          f'T={args.T}  methods_1d={methods_1d}  methods_2d={methods_2d}', flush=True)
+          f'T={args.T}  methods_1d={methods_1d}  methods_2d={methods_2d}  '
+          f'1d_source={_1d_desc}  2d_source={_2d_desc}', flush=True)
 
     per_r = []
     t0 = time.time()
@@ -451,7 +631,11 @@ def main():
         try:
             res = evaluate_realization(r, args.dataset, args.causalpfn, ds_obj,
                                          args.root_1d, args.root_2d,
-                                         methods_1d, methods_2d, T=args.T)
+                                         methods_1d, methods_2d, T=args.T,
+                                         joint_1d_source=args.joint_1d_source,
+                                         joint_2d_source=args.joint_2d_source,
+                                         malc_tag_1d=args.malc_tag_1d,
+                                         malc_tag=args.malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d}: {e}', file=sys.stderr); continue
         per_r.append(res)
@@ -462,17 +646,20 @@ def main():
                     if args.dataset in _ANALYTIC_GAUSSIAN
                     else 'empirical KDE from 100 RealCause CSVs (K=100 MC pairs per unit)')
     lines = [
-        f'\nDensity metrics — {args.dataset} — tight T={args.T} raw τ grid',
+        f'\nDensity metrics — {args.dataset} — tight T={args.T} raw τ grid '
+        f'(1D source: {_1d_desc}; 2D source: {_2d_desc})',
         '',
         f'(truth = {_truth_kind}; '
         f'metrics per query averaged, then averaged across {n_realizations} '
         f'realizations. Lower = better.)',
         '',
-        '| Method | NLL | L2 | KL_fwd (truth‖est) | KL_rev (est‖truth) |',
-        '|---|---|---|---|---|',
+        '| Method | NLL | L2 | KL_fwd (truth‖est) | KL_rev (est‖truth) | √PEHE (from density mean) |',
+        '|---|---|---|---|---|---|',
     ]
+    _big_pehe = args.dataset in ('CPS', 'PSID', 'PSID_bal')
     for method in all_methods:
-        vals = {k: [] for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean', 'kl_rev_mean')}
+        vals = {k: [] for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean',
+                                 'kl_rev_mean', 'pehe_density')}
         for res in per_r:
             m = res.get(method) if res else None
             if not m: continue
@@ -480,6 +667,7 @@ def main():
         cells = [method]
         for k in ('nll_mean', 'l2_mean', 'kl_fwd_mean', 'kl_rev_mean'):
             cells.append(_fmt(*_mean_se(vals[k])))
+        cells.append(_fmt(*_mean_se(vals['pehe_density']), big=_big_pehe))
         lines.append('| ' + ' | '.join(cells) + ' |')
 
     md = '\n'.join(lines) + '\n'

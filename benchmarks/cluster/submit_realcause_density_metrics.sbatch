@@ -18,10 +18,18 @@
 #   task 4: PSID_bal — empirical KDE from 100-CSV MC stack (same CSVs as PSID)
 #
 # Env vars:
-#   OUT_1D       required — root of 1D density dumps (…/results_1d_density)
-#   OUT_2D       required — root of 2D density dumps (…/results_rc_2d_density)
-#   CAUSALPFN    required — CausalPFN repo root
-#   T            optional (default 4001)  — τ-grid resolution
+#   OUT_1D           required — root of 1D density dumps (…/results_1d_density)
+#   OUT_2D           required — root of 2D density dumps (…/results_rc_2d_density)
+#   CAUSALPFN        required — CausalPFN repo root
+#   T                optional (default 4001)  — τ-grid resolution
+#   JOINT_2D_SOURCE  optional (default malc)  — malc | raw
+#                    'raw' reads p_joint_scaled from density-dump NPZ and
+#                    projects anti-diagonals (no MALC smoothing).
+#   MALC_TAG         optional (default B500)  — MALC file tag when
+#                    JOINT_2D_SOURCE=malc (e.g. B500, B100_maxK3).
+#   OUT_MD_SUFFIX    optional — appended to density_metrics_<DATASET>*.md
+#                    filename. Auto-defaults to '' for MALC-B500 (backward
+#                    compat) and '_raw2d' / '_malc_<tag>' otherwise.
 
 set -euo pipefail
 mkdir -p logs_rc_density_metrics
@@ -40,6 +48,20 @@ OUT_1D="${OUT_1D:?OUT_1D required}"
 OUT_2D="${OUT_2D:?OUT_2D required}"
 CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 T="${T:-4001}"
+JOINT_2D_SOURCE="${JOINT_2D_SOURCE:-malc}"
+MALC_TAG="${MALC_TAG:-B500}"
+
+# Auto-suffix if not explicitly set: keep MALC-B500 backward compat (no
+# suffix); anything else gets tagged so raw + max_K variants don't clobber.
+if [ -z "${OUT_MD_SUFFIX+x}" ]; then
+    if [ "$JOINT_2D_SOURCE" = "raw" ]; then
+        OUT_MD_SUFFIX="_raw2d"
+    elif [ "$MALC_TAG" != "B500" ]; then
+        OUT_MD_SUFFIX="_malc_${MALC_TAG}"
+    else
+        OUT_MD_SUFFIX=""
+    fi
+fi
 
 case "$SLURM_ARRAY_TASK_ID" in
     0) DATASET=IHDP     ;;
@@ -53,16 +75,19 @@ esac
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
 
-OUT_MD="$OUT_2D/density_metrics_${DATASET}.md"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] $DATASET  T=$T  → $OUT_MD"
+OUT_MD="$OUT_2D/density_metrics_${DATASET}${OUT_MD_SUFFIX}.md"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] $DATASET  T=$T  "\
+"2d_source=$JOINT_2D_SOURCE  malc_tag=$MALC_TAG  → $OUT_MD"
 
 python -u "$REPO/realcause_eval/eval_density_metrics.py" \
-    --dataset   "$DATASET" \
-    --root-1d   "$OUT_1D" \
-    --root-2d   "$OUT_2D" \
-    --causalpfn "$CAUSALPFN" \
-    --repo      "$REPO" \
-    --T         "$T" \
-    --out-md    "$OUT_MD"
+    --dataset         "$DATASET" \
+    --root-1d         "$OUT_1D" \
+    --root-2d         "$OUT_2D" \
+    --causalpfn       "$CAUSALPFN" \
+    --repo            "$REPO" \
+    --T               "$T" \
+    --joint-2d-source "$JOINT_2D_SOURCE" \
+    --malc-tag        "$MALC_TAG" \
+    --out-md          "$OUT_MD"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] done  $DATASET"
