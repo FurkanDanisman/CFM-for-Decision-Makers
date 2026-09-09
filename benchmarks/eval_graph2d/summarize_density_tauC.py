@@ -57,6 +57,26 @@ def mean_se(values):
     return float(v.mean()), float(v.std(ddof=1) / np.sqrt(v.size)), int(v.size)
 
 
+def truth_summary(rows):
+    """Identify the reference and keep old/new L2 and KL scores separate."""
+    sources = {str(r.get('truth_noise_source', 'training_residuals')) for r in rows}
+    if len(sources) != 1:
+        raise ValueError('Mixed density truth sources in one dataset directory: '
+                         f'{sorted(sources)}. Use separate result directories '
+                         'or recompute all realizations with the same reference.')
+    source = sources.pop()
+    if source != 'generator':
+        return 'Truth: legacy Gaussian reference with training-residual sigma.'
+    sigmas = {float(r['sigma_raw']) for r in rows}
+    if len(sigmas) != 1:
+        raise ValueError('Generator noise scales differ within one dataset directory')
+    residuals = np.asarray([float(r['sigma_residual_raw']) for r in rows])
+    return (f'Truth: generator Gaussian, raw sigma={sigmas.pop():g}. '
+            f'Training-residual sigma (diagnostic, raw units): '
+            f'mean={residuals.mean():.4f}, '
+            f'range=[{residuals.min():.4f}, {residuals.max():.4f}].')
+
+
 def score(metric, mu):
     """Lower is better everywhere except `mass`, which is a coverage check
     scored by its distance from 1.0 rather than by being small."""
@@ -132,6 +152,7 @@ def main():
         if not rows:
             print('_no shards found_')
             continue
+        print(truth_summary(rows) + '\n')
         n_r = len(rows)
         n_q = int(np.mean([float(r['n_queries']) for r in rows]))
         oob = float(np.mean([float(r['frac_tau_outside_grid']) for r in rows]))

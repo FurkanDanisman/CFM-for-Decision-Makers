@@ -27,10 +27,10 @@ effect we are trying to measure. See density_eval_pipeline.md.
 
 Conventions
 -----------
-Everything lives on the harness's scaled y axis (`H._scale_y`:
-y -> 2(y - y_min)/y_rng - 1, from the *post-subsample* training context).
-Densities are w.r.t. that axis; a raw-units density would need a 2/y_rng
-Jacobian and is never mixed in here.
+Everything lives on the harness's scaled y axis (`H._scale_y`), using
+minmax or std parameters from the *post-subsample* training context.
+For y_scaled = (y_raw - y_shift) / y_scale, a scaled tau density converts to
+raw units as p_raw(tau_raw) = p_scaled(tau_raw / y_scale) / y_scale.
 
 Reference implementations mirrored (do not let these drift):
   * losses/BarDistribution2D.py::neg_log_prob_2d   -> `Joint2D.density`
@@ -594,9 +594,9 @@ def uwyk_tau_density(f0: UWYK1D, f1: UWYK1D, tau_points, n_pad_sigma=8.0,
 def truth_tau_density(mu0, mu1, sigma, tau_points):
     """tau | x ~ N(mu1 - mu0, 2 sigma^2) under the IHDP / ACIC Gaussian DGP.
 
-    Independent per-arm noise is a property of both DGPs (verified: pooled
-    corr(eps0, eps1) is null on IHDP, ACIC, CPS and PSID), so the 2 sigma^2 has
-    no covariance term.
+    Both generators draw independent Gaussian arm noise. The Tier-C driver
+    supplies the documented raw sigma=1 after applying the model's outcome
+    scale (see density_truth.py); residual estimates are diagnostic only.
     """
     tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
     s = math.sqrt(2.0) * float(sigma)
