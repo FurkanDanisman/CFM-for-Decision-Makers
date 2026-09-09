@@ -375,6 +375,15 @@ def _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw):
     if method == 'dopfnbb' and dataset == 'PSID_bal':
         ds_on_disk = 'PSIDbal'
     path = _resolve_realization_npz(root_2d, method, ds_on_disk, r)
+    if not path:
+        # dopfnbb uses "split" layout: density_r<###>.npz instead of
+        # <DATASET>_r<###>.npz. Try the split pattern before giving up.
+        cell = os.path.join(root_2d, method, ds_on_disk)
+        for pad in (3, 2):
+            cand = os.path.join(cell, f'density_r{r:0{pad}d}.npz')
+            if os.path.isfile(cand):
+                path = cand
+                break
     if not path: return None
     with np.load(path, allow_pickle=True) as z:
         p_joint = np.asarray(z['p_joint_scaled'], dtype=np.float64)   # (N_q, J, J)
