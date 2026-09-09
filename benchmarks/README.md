@@ -6,6 +6,9 @@ IHDP, ACIC 2016, Lalonde CPS, Lalonde PSID, and PSID (balanced).
 
 Metrics: `√PEHE` and `ε_ATE = |τ̂ − τ| / |τ|`, per UWYK's `eval.py`.
 
+For **CATE density evaluation** on IHDP and ACIC, including native and joint
+DoPFN alongside UWYK / g4cfm, see [eval_graph2d/README.md](eval_graph2d/README.md).
+
 ## Layout
 
 ```
