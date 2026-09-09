@@ -43,16 +43,30 @@ from compute_malc_ci_cell import (
 )
 
 
-def _load_1d_joint(npz_path, downsample_bins_to):
+def _pick_downsample_factor(K, max_J):
+    """Return the smallest factor f ≥ 1 such that K % f == 0 and K/f ≤ max_J.
+
+    Preserves exact mass conservation (only divisors of K allowed). For
+    cpfn1d K=1024 with max_J=100 → f=16 (J_out=64); for uwyk1d K=1000
+    with max_J=100 → f=10 (J_out=100); dopfn K=100 with max_J=100 →
+    f=1 (no downsample).
+    """
+    if not max_J or K <= max_J: return 1
+    for f in range(int(np.ceil(K / max_J)), K + 1):
+        if K % f == 0: return f
+    return 1        # unreachable — f=K always satisfies
+
+
+def _load_1d_joint(npz_path, downsample_max_J):
     """Return (p_joint (N_q, J, J), edges (J+1,), y_scale, y_shift, true_cate).
 
     UWYK trim: if p_y0 has K+2 columns and edges has K+1, drop the two
     tail columns and renormalize (drops small tail mass; matches the
     convention in eval_density_metrics._load_1d_ptau_raw_on_grid).
 
-    Downsample: if J > downsample_bins_to and J is divisible by it,
-    mean-pool p_y0/p_y1 (sum adjacent J/target bars, keep every
-    (J/target)-th edge). Preserves total mass exactly.
+    Downsample: if K_bars > downsample_max_J, mean-pool p_y0/p_y1 by
+    the largest factor f such that K/f ≤ downsample_max_J and K%f==0
+    (preserves total mass exactly; keeps every f-th edge).
     """
     with np.load(npz_path, allow_pickle=True) as z:
         p_y0    = np.asarray(z['p_y0_scaled'], dtype=np.float64)
@@ -72,17 +86,15 @@ def _load_1d_joint(npz_path, downsample_bins_to):
         f'{npz_path}: shape mismatch: p_y0 has {p_y0.shape[1]} bars but '
         f'{edges.size - 1} bar edges expected')
 
-    # Optional downsample by mean-pool (uwyk1d K=1000 → J=100).
-    if downsample_bins_to and K > downsample_bins_to:
-        if K % downsample_bins_to != 0:
-            raise ValueError(
-                f'{npz_path}: bar count K={K} not divisible by '
-                f'downsample-bins-to={downsample_bins_to}; can\'t mean-pool.')
-        factor = K // downsample_bins_to
-        p_y0 = p_y0.reshape(N_q, downsample_bins_to, factor).sum(axis=-1)
-        p_y1 = p_y1.reshape(N_q, downsample_bins_to, factor).sum(axis=-1)
+    # Optional downsample by mean-pool. Choose the largest divisor of K
+    # that keeps J ≤ downsample_max_J. Exact mass conservation.
+    factor = _pick_downsample_factor(K, downsample_max_J)
+    if factor > 1:
+        J_out = K // factor
+        p_y0 = p_y0.reshape(N_q, J_out, factor).sum(axis=-1)
+        p_y1 = p_y1.reshape(N_q, J_out, factor).sum(axis=-1)
         edges = edges[::factor]
-        K = downsample_bins_to
+        K = J_out
         assert edges.size == K + 1, (
             f'downsample produced {edges.size} edges for K={K}; expected {K+1}')
 
@@ -95,10 +107,10 @@ def _load_1d_joint(npz_path, downsample_bins_to):
 
 
 def _process_realization_1d(density_npz_path, out_npz_path, pool, n_workers,
-                              n_eval, malc_K, malc_B, downsample_bins_to,
+                              n_eval, malc_K, malc_B, downsample_max_J,
                               tau_grid_size=401):
     p_joint, edges, y_scale, y_shift, true_cate = _load_1d_joint(
-        density_npz_path, downsample_bins_to)
+        density_npz_path, downsample_max_J)
     N_q, J, _ = p_joint.shape
 
     # Normalize the joint per query — outer product of already-normalized
@@ -178,10 +190,13 @@ def main():
     ap.add_argument('--malc-B', type=int, default=100,
                     help='MALC bandwidth (default 100).')
     ap.add_argument('--n-eval', type=int, default=50)
-    ap.add_argument('--downsample-bins-to', type=int, default=100,
-                    help='If bar count > this, mean-pool p_y0/p_y1 down to '
-                         'this many bars. Needed for uwyk1d (K=1000 → 100). '
-                         'Set to 0 to disable.')
+    ap.add_argument('--downsample-max-J', type=int, default=100,
+                    help='Upper bound on effective J after mean-pool. Actual '
+                         'J_out is the largest divisor of K that is ≤ this. '
+                         'Preserves total mass exactly (only divisor factors '
+                         'allowed). Needed to keep MALC tractable — uwyk1d '
+                         'K=1000 → J=100, cpfn1d K=1024 → J=64. Set to 0 '
+                         'to disable.')
     ap.add_argument('--repo', default=None)
     ap.add_argument('--overwrite', action='store_true')
     ap.add_argument('--max-realizations', type=int, default=None)
@@ -205,22 +220,20 @@ def main():
         edges0 = np.asarray(z0['edges'], dtype=np.float64)
         K_raw = int(z0['p_y0_scaled'].shape[1])
     K_bars = K_raw - 2 if K_raw == edges0.size + 1 else K_raw
-    if args.downsample_bins_to and K_bars > args.downsample_bins_to:
-        if K_bars % args.downsample_bins_to != 0:
-            sys.exit(f'FATAL: K_bars={K_bars} not divisible by '
-                     f'downsample-bins-to={args.downsample_bins_to}')
-        factor = K_bars // args.downsample_bins_to
+    factor = _pick_downsample_factor(K_bars, args.downsample_max_J)
+    if factor > 1:
         edges0 = edges0[::factor]
-        J = args.downsample_bins_to
+        J = K_bars // factor
     else:
         J = K_bars
     bin_width = float(edges0[1] - edges0[0])
 
     print(f'[bootstrap] method_dir={args.method_dir}  dataset={args.dataset}  '
-          f'n_realizations={len(density_paths)}  K_bars={K_bars}  J_effective={J}  '
+          f'n_realizations={len(density_paths)}  K_bars={K_bars}  '
+          f'downsample_factor={factor}  J_effective={J}  '
           f'edges=[{edges0[0]:.4f}, {edges0[-1]:.4f}]', flush=True)
     print(f'[bootstrap] MALC K={args.malc_K}  B={args.malc_B}  n_eval={args.n_eval}  '
-          f'workers={args.n_workers}  downsample_bins_to={args.downsample_bins_to}',
+          f'workers={args.n_workers}  downsample_max_J={args.downsample_max_J}',
           flush=True)
 
     ctx = get_context('spawn')

@@ -22,9 +22,13 @@
 #   B = 100   (bandwidth, matches 2D dump default)
 #   n_eval = 50
 #
-# UWYK downsample: K_bars=1000 → J=100 via mean-pool (adjacent 10 bars
-# summed). Otherwise MALC would fit 1M-atom joints and OOM. Preserves
-# total mass exactly.
+# Downsample: --downsample-max-J N picks the largest divisor of K that
+# keeps J ≤ N, so mass conservation is exact. Actual factors for the 3
+# methods at default max_J=100:
+#   cpfn1d  K=1024 → f=16 → J=64
+#   dopfn   K=100  → f=1  → J=100 (no-op)
+#   uwyk1d  K=1000 → f=10 → J=100 (also trims 2 tail atoms first)
+# Without this MALC would fit 1M-atom joints on uwyk1d and OOM.
 #
 # Env vars:
 #   OUT_ROOT     required — root of 1D density dumps (…/results_1d_density)
@@ -33,7 +37,7 @@
 #   MALC_MAX_K   optional (default 0)  — BIC selection if > 0
 #   MALC_B       optional (default 100)
 #   N_EVAL       optional (default 50)
-#   DOWNSAMPLE_BINS_TO  optional (default 100) — 0 disables
+#   DOWNSAMPLE_MAX_J  optional (default 100) — 0 disables
 #   MAX_REAL     optional cap on realizations (smoke tests)
 #   OVERWRITE    optional (0/1) — redo existing outputs
 #   OUT_TAG      optional filename tag → malc_ci_{TAG}_r<###>.npz.
@@ -59,7 +63,7 @@ MALC_K="${MALC_K:-1}"
 MALC_MAX_K="${MALC_MAX_K:-0}"
 MALC_B="${MALC_B:-100}"
 N_EVAL="${N_EVAL:-50}"
-DOWNSAMPLE_BINS_TO="${DOWNSAMPLE_BINS_TO:-100}"
+DOWNSAMPLE_MAX_J="${DOWNSAMPLE_MAX_J:-100}"
 MAX_REAL="${MAX_REAL:-}"
 OVERWRITE="${OVERWRITE:-0}"
 OUT_TAG="${OUT_TAG:-}"
@@ -92,7 +96,7 @@ export OPENBLAS_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  CELL=$CELL_DIR  "\
-"K=$MALC_K  B=$MALC_B  n_eval=$N_EVAL  downsample=$DOWNSAMPLE_BINS_TO  workers=$N_WORKERS"
+"K=$MALC_K  B=$MALC_B  n_eval=$N_EVAL  downsample=$DOWNSAMPLE_MAX_J  workers=$N_WORKERS"
 
 _EXTRA_ARGS=()
 [ -n "$MAX_REAL" ]        && _EXTRA_ARGS+=(--max-realizations "$MAX_REAL")
@@ -107,7 +111,7 @@ python -u "$REPO/realcause_eval/compute_malc_ci_cell_1d.py" \
     --malc-max-K         "$MALC_MAX_K" \
     --malc-B             "$MALC_B" \
     --n-eval             "$N_EVAL" \
-    --downsample-bins-to "$DOWNSAMPLE_BINS_TO" \
+    --downsample-max-J   "$DOWNSAMPLE_MAX_J" \
     --repo               "$REPO" \
     "${_EXTRA_ARGS[@]}"
 
