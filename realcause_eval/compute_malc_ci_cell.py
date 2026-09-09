@@ -41,7 +41,16 @@ import numpy as np
 # ── Worker plumbing (mirrors benchmarks/methods/ours.py::_init_worker but
 #    stripped to just what we need for CI).
 _GLOBAL = {}
-_BETA_CLAMP_EPS = 1e-3    # keeps min(α ± β) ≥ ε when we clamp
+_BETA_CLAMP_EPS = 1e-3    # legacy; kept for reference
+_BETA_SAFE = 0.5          # threshold: if |β_raw| > α·(1 − _BETA_SAFE), snap β = 0.
+                          # Reason: clamping β to (−α + ε, α − ε) makes the Beta
+                          # sampling degenerate (points cluster on bin edges),
+                          # which propagates to LCMLE convergence failures
+                          # (clarabel NumericalError / DualInfeasible). β = 0
+                          # gives Beta(α, α) — well-conditioned uniform-in-bin
+                          # sampling. Trade-off: throws away EM's mean-refinement
+                          # for those queries; acceptable since the refinement
+                          # was already outside MALC's representable range.
 
 
 def _make_clamped_fit_component_2d(orig_module):
@@ -85,11 +94,15 @@ def _make_clamped_fit_component_2d(orig_module):
         mu_n_y = _em_mean_2d(p_y, grid_y, sigma=sigma_y, start=mu_mid_y)
         beta_x = 2.0 * alpha * ((mu_n_x - mu_low_x) / delta_x - 0.5)
         beta_y = 2.0 * alpha * ((mu_n_y - mu_low_y) / delta_y - 0.5)
-        # === CLAMP instead of return None ===
-        lo, hi = -alpha + _BETA_CLAMP_EPS, alpha - _BETA_CLAMP_EPS
-        beta_x = 0.0 if not _np.isfinite(beta_x) else float(_np.clip(beta_x, lo, hi))
-        beta_y = 0.0 if not _np.isfinite(beta_y) else float(_np.clip(beta_y, lo, hi))
-        # ====================================
+        # === SNAP β=0 when EM's mean is unrepresentable ===
+        # If |β| > α·(1 − _BETA_SAFE), the Beta shape (α ± β) becomes so
+        # skewed that synthetic samples cluster on bin edges and LCMLE
+        # (clarabel solver) fails. Fall back to β=0 (symmetric Beta) —
+        # loses the EM refinement but keeps LCMLE well-conditioned.
+        _bthr = alpha * (1.0 - _BETA_SAFE)
+        beta_x = 0.0 if (not _np.isfinite(beta_x) or abs(beta_x) > _bthr) else float(beta_x)
+        beta_y = 0.0 if (not _np.isfinite(beta_y) or abs(beta_y) > _bthr) else float(beta_y)
+        # ===================================================
         prob_vec = p_mat.flatten(order='F')
         bin_idx = rng.choice(len(prob_vec), size=B, p=prob_vec, replace=True)
         bi_j = bin_idx // n_y
