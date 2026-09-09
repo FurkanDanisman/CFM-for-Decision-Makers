@@ -115,7 +115,7 @@ Exact, O(J) per τ, and integrates to w₀ by construction. Only the 8 smooth ta
 
 --- -->
 
-### IHDP
+<!-- ### IHDP
 
 realizations=100, ~75 queries each, anc=anc, |tau*|>3: 0.00%
 
@@ -219,10 +219,10 @@ realizations=10, ~481 queries each, anc=noanc, |tau*|>3: 0.00%
 | **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2102+-0.0672** | **-3.9051+-0.6297** |
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0058+-0.0030 |     +0.1359+-0.0194 |
 
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._ -->
 
 
-### IHDP
+<!-- ### IHDP
 
 realizations=100, ~75 queries each, anc=v3a, |tau*|>3: 0.00%
 
@@ -277,5 +277,128 @@ Point errors in original outcome units, from the same predictions. Full-density 
 | ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
 | **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0608±0.0680** | **-1.6711±0.6555** |     +0.0843±0.2296 |
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1349±0.0192 | **+0.0000±0.0001** |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._ -->
+
+### IHDP
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
+
+realizations=100, ~75 queries each, anc=v3a, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4097±0.1180 |     0.9697±0.0761 |     26.1624±5.8964 | **1.0000±0.0000** |
+| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4101±0.1178 |     0.9712±0.0762 |     26.4405±5.9516 |     0.9999±0.0000 |
+| Joint-2D J=32        | **-0.0504±0.0364** | **1.2545±0.1156** | **0.7628±0.0655** | **21.0218±4.9739** | **1.0000±0.0000** |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         |     5.4806±0.7760 |     4.3345±0.5533 |     1.8014±0.1178 |
+| UWYK (x)indep J=32           |     5.4810±0.7761 |     4.3349±0.5534 |     1.8014±0.1177 |
+| Joint-2D J=32                |     4.3144±0.6278 | **3.1857±0.3999** |     1.0791±0.0780 |
+| Joint-2D interior mean (raw) | **4.3143±0.6278** | **3.1857±0.3999** | **1.0790±0.0780** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.998319
+  uwyk_matched: max |finite-grid moment - full mean| = 0.99857
+  joint: max |finite-grid moment - full mean| = 7.95504e-08
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2101±0.0196** | **-5.1406±0.9796** | **-1.1662±0.1629** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015±0.0003 |     +0.2781±0.0648 |     +0.0004±0.0002 |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
+### ACIC
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
+
+realizations=10, ~481 queries each, anc=v3a, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4460±0.0673 |     0.8606±0.0824 |     7.6526±0.9644 | 1.0000±0.0000 |
+| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4599±0.0655 |     0.8711±0.0799 |     7.7857±0.9658 | 1.0000±0.0000 |
+| Joint-2D J=32        | **-0.4862±0.1496** | **1.3138±0.1228** | **0.8011±0.1166** | **6.0122±1.2115** | 1.0000±0.0000 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         | **2.6996±0.4419** |     1.9516±0.3321 |     0.5677±0.1565 |
+| UWYK (x)indep J=32           |     2.6997±0.4420 |     1.9517±0.3322 |     0.5672±0.1568 |
+| Joint-2D J=32                |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
+| Joint-2D interior mean (raw) |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.399156
+  uwyk_matched: max |finite-grid moment - full mean| = 0.399538
+  joint: max |finite-grid moment - full mean| = 2.77443e-08
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0608±0.0680** | **-1.6404±0.6426** |     +0.0843±0.2296 |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1331±0.0189 | **+0.0000±0.0001** |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+### IHDP
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
+
+realizations=100, ~75 queries each, anc=v3b, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4097±0.1180 |     0.9697±0.0761 |     26.1624±5.8964 | **1.0000±0.0000** |
+| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4101±0.1178 |     0.9712±0.0762 |     26.4405±5.9516 |     0.9999±0.0000 |
+| Joint-2D J=32        | **-0.0017±0.0390** | **1.2931±0.1140** | **0.8113±0.0639** | **22.2235±5.2279** | **1.0000±0.0000** |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         |     5.4806±0.7760 |     4.3345±0.5533 |     1.8014±0.1178 |
+| UWYK (x)indep J=32           |     5.4810±0.7761 |     4.3349±0.5534 |     1.8014±0.1177 |
+| Joint-2D J=32                | **4.3538±0.5844** |     3.3551±0.3879 |     1.3035±0.0797 |
+| Joint-2D interior mean (raw) | **4.3538±0.5844** | **3.3550±0.3879** | **1.3034±0.0797** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.998319
+  uwyk_matched: max |finite-grid moment - full mean| = 0.99857
+  joint: max |finite-grid moment - full mean| = 5.2887e-07
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.1615±0.0219** | **-3.9389±0.7979** | **-1.1267±0.2054** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015±0.0003 |     +0.2781±0.0648 |     +0.0004±0.0002 |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
+### ACIC
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
+
+realizations=10, ~481 queries each, anc=v3b, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4460±0.0673 |     0.8606±0.0824 |     7.6526±0.9644 | 1.0000±0.0000 |
+| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4599±0.0655 |     0.8711±0.0799 |     7.7857±0.9658 | 1.0000±0.0000 |
+| Joint-2D J=32        | **-0.4574±0.1596** | **1.3392±0.1179** | **0.8292±0.1272** | **5.8824±1.2684** | 1.0000±0.0000 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         | **2.6996±0.4419** | **1.9516±0.3321** |     0.5677±0.1565 |
+| UWYK (x)indep J=32           |     2.6997±0.4420 |     1.9517±0.3322 |     0.5672±0.1568 |
+| Joint-2D J=32                |     2.7929±0.5463 |     1.9562±0.4014 | **0.4121±0.0852** |
+| Joint-2D interior mean (raw) |     2.7929±0.5463 |     1.9562±0.4014 | **0.4121±0.0852** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.399156
+  uwyk_matched: max |finite-grid moment - full mean| = 0.399538
+  joint: max |finite-grid moment - full mean| = 1.04639e-08
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0320±0.0793** | **-1.7703±0.5955** |     +0.0933±0.2427 |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1331±0.0189 | **+0.0000±0.0001** |
 
 _negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._

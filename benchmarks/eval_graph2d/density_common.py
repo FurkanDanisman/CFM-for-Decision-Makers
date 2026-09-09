@@ -182,8 +182,12 @@ class Joint2D:
         return (float(self.p_mat.sum(axis=1) @ centers),
                 float(self.p_mat.sum(axis=0) @ centers))
 
-    def mean(self) -> tuple[float, float]:
+    def mean(self, inner=None) -> tuple[float, float]:
         """Exact E[Y0], E[Y1] of the full density, including correlated corners.
+
+        `inner` overrides the region-0 conditional mean with an externally
+        supplied (E[Y0], E[Y1]) -- the MALC arm passes its smoothed interior
+        mean here so the 8 tail regions stay byte-identical to the raw path.
 
         Computing moments by region avoids truncating the mean to TAU_CENTERS.
         For a standard bivariate normal with correlation r, the positive
@@ -198,7 +202,8 @@ class Joint2D:
             return float(p @ centers) / max(float(p.sum()), 1e-300)
 
         regions = [
-            self.inner_mean(),
+            self.inner_mean() if inner is None else (float(inner[0]),
+                                                     float(inner[1])),
             (self.lo - h * self.sL0, boundary_mean(self.p_mat[0, :])),
             (self.hi + h * self.sR0, boundary_mean(self.p_mat[-1, :])),
             (boundary_mean(self.p_mat[:, 0]), self.lo - h * self.sL1),
@@ -649,3 +654,200 @@ def point_metrics(cate_scaled, true_cate, y_scale):
     return dict(pehe=float(np.sqrt(np.mean(error ** 2))),
                 cate_l1=float(np.mean(np.abs(error))),
                 ate_abs_err=float(abs(np.mean(error))))
+
+
+# ---------------------------------------------------------------------------
+# MALC arm: the ONE substitution, inside region 0
+# ---------------------------------------------------------------------------
+# Everything below ADDS a second path. Nothing above changes, so the raw
+# numbers already in LATEST_RESULTS.md stay reproducible bit for bit.
+#
+# What MALC is doing: the head emits a HISTOGRAM -- piecewise constant,
+# discontinuous at every bin edge, exactly zero in empty bins. MALC replaces
+# it with a smooth density and no bandwidth to tune. It cannot fit a
+# continuous MLE to binned data directly, so it de-bins by simulation: EM
+# mean correction per axis -> a Beta within-bin jitter calibrated to
+# reproduce that mean -> B sampled+jittered points -> the nonparametric MLE
+# over all LOG-CONCAVE densities on those points (a conic program). Log
+# concavity is the shape constraint that does a bandwidth's job. The output
+# is piecewise log-linear on a Delaunay triangulation of the B points.
+#
+# The price is COMPACT SUPPORT: the MLE is identically zero outside the hull
+# of those B points, so p(tau*) can be 0 and NLL +inf. That is inherent to
+# the estimator, not a bug. Callers must handle it -- see malc_hull_tau_range
+# and the fallback in eval_density_tauC_malc.py.
+MALC_B_DEFAULT = 1000        # 0.8-2.7% of queries fall outside the hull at
+                             # B=100, ~0 at B=1000. B=3000 buys nothing for 4x.
+MALC_N_Y0 = 512              # y0 quadrature nodes for the interior
+MALC_TAU_STEP = 0.0078125    # coarse tau grid, interpolated up
+MALC_MEAN_N_EVAL = 257       # grid for the interior mean
+
+
+def _malc_module():
+    """Import malc_2d lazily, so the raw path never needs MALC on sys.path."""
+    import importlib
+    import os as _os
+    import sys as _sys
+    malc_dir = _os.path.abspath(_os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)), '..', '..', 'MALC'))
+    if malc_dir not in _sys.path:
+        _sys.path.insert(0, malc_dir)
+    return importlib.import_module('malc_2d')
+
+
+def fit_malc_interior(p_mat, edges, B=MALC_B_DEFAULT, seed=0):
+    """K=1 log-concave MLE of the interior histogram. None on solver failure.
+
+    TRANSPOSE -- this is the whole reason this wrapper exists. MALC_2D indexes
+    its matrix as [y_index, x_index] and dmalc_2d takes points as (x, y),
+    while ours is p_mat[y0_bin, y1_bin]. Passing it untransposed silently
+    swaps the axes: p(tau) comes back as p(-tau), the mass still integrates to
+    1, and nothing raises. Measured cost of getting this wrong, 375 queries at
+    B=100: 23.2% of joint queries land outside the hull instead of 0.8%.
+    test_density_malc.py gate 1 pins it.
+
+    K IS FORCED TO 1, deliberately, for two independent reasons:
+      * it is well specified -- the DGP's p(y0,y1|x) is a single bivariate
+        Gaussian, which is log-concave, so a mixture would fit structure the
+        truth does not have (the BIC scan picks K*=1 for the joint anyway);
+      * it skips _init_assignments_2d, whose two Python loops over EVERY bin
+        are what makes the 1000x1000 UWYK product intractable, and it skips
+        the mixture E-step, whose fixed n_eval mesh covers 0.5% of the bins at
+        that resolution and so cannot select K there in the first place.
+    """
+    p_mat = np.asarray(p_mat, dtype=np.float64)
+    total = float(p_mat.sum())
+    if not np.isfinite(total) or total <= 0.0:
+        return None
+    edges = np.asarray(edges, dtype=np.float64)
+    try:
+        return _malc_module().MALC_2D(
+            (p_mat / total).T, edges, edges,
+            K=1, B_fit=int(B), B_select=int(B), parallel=False, seed=int(seed))
+    except Exception:
+        return None
+
+
+def malc_synthetic_points(fit) -> np.ndarray:
+    """The (B, 2) jittered points the MLE was fitted to, as (y0, y1)."""
+    pts = [np.asarray(c.fhatn.x, dtype=np.float64)
+           for c in fit.fits if c is not None]
+    return np.concatenate(pts, axis=0) if pts else np.empty((0, 2))
+
+
+def malc_hull_tau_range(fit) -> tuple[float, float]:
+    """(tau_lo, tau_hi): the tau interval the fit's support actually covers.
+
+    The MLE lives on the convex hull of its synthetic points and is zero
+    outside. tau = y1 - y0 is linear, so its range over the hull is its range
+    over the points -- two floats that explain essentially every vanishing
+    interior term (checked against the actual zeros on 375 queries at B=100
+    and B=1000: no disagreement).
+
+    It is a DIAGNOSTIC, not the test. Just inside either extreme the diagonal
+    y1 = y0 + tau clips the hull in a sliver that the y0 quadrature can step
+    over entirely, so the interior comes back 0 for a tau this interval calls
+    covered -- seen at B=25, where the hulls are small enough for that to
+    bite. Callers must therefore branch on the interior value they actually
+    computed; save this alongside it, to see how far outside a miss was.
+    """
+    x = malc_synthetic_points(fit)
+    if x.size == 0:
+        return float('nan'), float('nan')
+    t = x[:, 1] - x[:, 0]
+    return float(t.min()), float(t.max())
+
+
+def malc_inner_mean(fit, lo, hi, n_eval=MALC_MEAN_N_EVAL):
+    """(E[Y0], E[Y1]) of the fitted interior, by grid quadrature. None if empty.
+
+    Feeds Joint2D.mean(inner=...) so the MALC point estimate reuses the exact
+    same 8 tail regions as the raw one.
+    """
+    dmalc = _malc_module().dmalc_2d
+    g = np.linspace(float(lo), float(hi), int(n_eval))
+    Y0, Y1 = np.meshgrid(g, g, indexing='ij')
+    d = dmalc(fit, np.column_stack([Y0.ravel(), Y1.ravel()]))
+    d = np.maximum(np.nan_to_num(d, nan=0.0), 0.0).reshape(n_eval, n_eval)
+    z = float(d.sum())
+    if z <= 0.0:
+        return None
+    return float((d.sum(axis=1) @ g) / z), float((d.sum(axis=0) @ g) / z)
+
+
+def malc_interior_tau(fit, lo, hi, tau_points, w0, n_y0=MALC_N_Y0,
+                      coarse_step=MALC_TAU_STEP, max_points=2_000_000):
+    """w0 * \\int f_malc(y0, y0 + tau) dy0 -- region 0 only.
+
+    REPLACES the closed-form _interior_tau, which does not survive MALC: the
+    fitted density is piecewise LOG-linear on a Delaunay triangulation, not
+    piecewise constant on bins, so there are no diagonal sums to take and the
+    interior joins the quadrature.
+
+    Evaluated on a coarse tau grid and linearly interpolated up, exactly as
+    _tail_term does, because every tau point now costs n_y0 density
+    evaluations and TAU_CENTERS has 12001 of them. Measured against direct
+    evaluation on all 12001 (IHDP r000 q0, B=1000):
+
+        n_y0   max|dp| vs n_y0=8192        step        max|dp| vs direct
+         256           2.52e-04          0.0625000          9.87e-03
+         512           1.09e-04          0.0312500          2.46e-03
+        1024           4.75e-05          0.0078125          2.00e-04
+        2048           2.25e-05          0.0020000          3.28e-05
+
+    512 / 0.0078125 balances the two error sources (1.1e-4 and 2.0e-4) at
+    0.89 s for the full grid; int p dtau = 1.000000 at every setting. The MALC
+    interior is CONTINUOUS, which is why 512 nodes suffice where the raw
+    path's discontinuous tail integrand needs 4096.
+
+    NOTE the coarse step is numerically TAIL_TAU_STEP but not for its reason:
+    that one is 8 nodes per joint bin because the tail term's kinks sit on bin
+    edges. MALC's kinks are Delaunay edges, wherever the B samples landed.
+    """
+    dmalc = _malc_module().dmalc_2d
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    y0 = np.linspace(float(lo), float(hi), int(n_y0))
+    step = float(y0[1] - y0[0])
+
+    def evaluate(taus):
+        out = np.empty(taus.size, dtype=np.float64)
+        chunk = max(1, int(max_points // max(y0.size, 1)))
+        for i in range(0, taus.size, chunk):
+            t = taus[i:i + chunk]
+            Y0 = np.broadcast_to(y0, (t.size, y0.size))
+            Y1 = Y0 + t[:, None]
+            d = dmalc(fit, np.column_stack([Y0.ravel(), Y1.ravel()]))
+            d = np.maximum(np.nan_to_num(d, nan=0.0), 0.0)
+            out[i:i + chunk] = d.reshape(t.size, y0.size).sum(axis=1) * step
+        return out
+
+    span = float(tau_points.max() - tau_points.min())
+    n_coarse = int(round(span / coarse_step)) + 1 if span > 0 else 1
+    if tau_points.size <= n_coarse or n_coarse < 2:
+        return evaluate(tau_points) * float(w0)       # e.g. the single tau*
+    coarse = np.linspace(float(tau_points.min()), float(tau_points.max()),
+                         n_coarse)
+    return np.interp(tau_points, coarse, evaluate(coarse)) * float(w0)
+
+
+def malc_tau_density(fit, tail_f2d, tau_points, w0, lo, hi, pad,
+                     n_y0_malc=MALC_N_Y0, n_y0_tail=4096, align_bins=None):
+    """MALC interior + the SAME raw tails. The one substitution, region 0.
+
+    The 8 non-interior regions go through the identical _outside_only /
+    _tail_term path with the identical quadrature, so any raw-vs-MALC
+    difference is attributable to region 0 and nothing else.
+
+    Regions 1-4 keep the RAW p_mat row/column boundary conditionals on
+    purpose. A MALC boundary conditional is not available: the fitted density
+    is zero at y = +-1, because its hull never reaches the square's edge, so
+    the conditional evaluates to 0/0. Measured on IHDP r000 q0, integrating
+    the MALC density along each edge: 0.0 at y0=lo, 0.0 at y0=hi, 0.0 at
+    y1=lo. losses/BarDistribution2D.py::eval_density_2d does exactly this and
+    would silently zero out four of the nine regions; it has no callers and
+    has never been run.
+    """
+    p = malc_interior_tau(fit, lo, hi, tau_points, w0, n_y0=n_y0_malc)
+    p += _tail_term(_outside_only(tail_f2d, lo, hi), tau_points, lo, hi,
+                    pad, n_y0_tail, align_bins=align_bins)
+    return p
