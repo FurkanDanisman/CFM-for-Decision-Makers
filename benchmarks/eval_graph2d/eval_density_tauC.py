@@ -38,7 +38,7 @@ not an option here.
 Usage (GPU node):
     CKPT=<graph2d ckpt>  UWYK_CKPT=<uwyk best_model.pt>  UWYK_CFG=<yaml>
     UWYK=$PWD/g4cfm  CAUSALPFN=/path/to/CausalPFN
-    DATASET=IHDP  ANC_MODE=v6a_only  ANC_TAG=v6a  OUT=./results_density_tauC/IHDP
+    DATASET=IHDP  ANC_TAG=v6a  OUT=./results_density_tauC/IHDP
     python -u benchmarks/eval_graph2d/eval_density_tauC.py
 """
 from __future__ import annotations
@@ -55,7 +55,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.abspath(os.path.join(_HERE, '..', '..'))
 
 # The harness reads env at import time, so everything must already be set.
-os.environ.setdefault('ANC_MODE', 'v6a_only')
 _spec = importlib.util.spec_from_file_location(
     '_tauC_harness', os.path.join(_HERE, 'eval_graph2d_realcause.py'))
 H = importlib.util.module_from_spec(_spec)
@@ -75,21 +74,37 @@ from density_common import (                                        # noqa: E402
 from density_truth import harness_y_affine, load_density_truth        # noqa: E402
 
 DATASET = H.DATASET
-# ANC_MODE (read by the harness at ITS import, hence the setdefault above)
-# picks the adjacency family; ANC_TAG picks one matrix out of that family.
-# The two must agree -- e.g. v6a_only/v6a, or full/anc -- and an unrecognised
-# ANC_MODE silently falls through to full. The tag set does not depend on
-# F/n_real, so check it here instead of 20 min in, after the checkpoints and
-# the dataset have loaded.
+# This eval conditions on exactly ONE adjacency, so ANC_TAG is the only knob.
+# The harness's ANC_MODE picks a whole family for its sweep (v6a_only ->
+# v6a+noanc, full -> anc+noanc, ...) and a tag maps to the same builder in
+# every family that emits it, so the family carries no information we need --
+# we just find one that contains the tag. ANC_MODE is deliberately NOT read:
+# it was a second name for the same choice and could silently disagree.
+# Tags don't depend on F/n_real, so resolve on a dummy (4, 2) now and fail
+# here instead of 20 min in, after the checkpoints and the dataset have loaded.
 ANC_TAG = os.environ.get('ANC_TAG', 'v6a')
-_VALID_TAGS = [t for t, _ in H.build_mode_list(4, 2)]
-if ANC_TAG not in _VALID_TAGS:
+_FAMILIES = ['full', 'v6a_only', 'v6b_only', 'v4a_only', 'v5a_only',
+             'v5b_only', 'v3b_only', 'ty_only', 'ty_antisym', 'all_variants',
+             'v3_family', 'v3_v6_extended', 'focus4', 'three_edge_all',
+             'all_combos']
+if os.environ.get('ANC_VARIANT'):   # SCM case studies: the tag IS the variant
+    _FAMILIES.append('case_variant')
+ANC_FAMILY = next(
+    (f for f in _FAMILIES if ANC_TAG in dict(H.build_mode_list(4, 2, f))), None)
+if ANC_FAMILY is None:
+    _common = sorted({t for f in ('full', 'all_variants', 'v3_v6_extended',
+                                  'focus4', 'ty_only', 'ty_antisym')
+                      for t, _ in H.build_mode_list(4, 2, f)})
     raise SystemExit(
-        f'[tauC] ANC_TAG={ANC_TAG!r} is not produced by ANC_MODE='
-        f'{H.ANC_MODE!r}. Valid tags for this mode: {_VALID_TAGS[:16]}. '
-        f'Usual pairs: ANC_MODE=v6a_only ANC_TAG=v6a (no +1 edges, only the '
-        f'-1s implied by unconfoundedness) | ANC_MODE=full ANC_TAG=anc '
-        f'(build_anc_full: T->Y, X_i->T, X_i->Y asserted +1).')
+        f'[tauC] ANC_TAG={ANC_TAG!r} names no adjacency the harness builds. '
+        f'Named tags: {_common}, plus the PNB/PNBO codes of three_edge_all '
+        f'and all_combos. Usual choices: v6a (no +1 edges, only the -1s '
+        f'implied by unconfoundedness) | anc (build_anc_full: T->Y, X_i->T, '
+        f'X_i->Y asserted +1) | noanc (all-zero).')
+if os.environ.get('ANC_MODE'):
+    print(f'[tauC] note: ANC_MODE={os.environ["ANC_MODE"]!r} is ignored here; '
+          f'ANC_TAG={ANC_TAG!r} alone selects the adjacency '
+          f'(resolved via {ANC_FAMILY!r}).', flush=True)
 OUT = os.environ.get('OUT', f'./results_density_tauC/{DATASET}')
 UWYK_CKPT = os.environ['UWYK_CKPT']
 UWYK_CFG = os.environ['UWYK_CFG']
@@ -190,7 +205,7 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
     Y_obs = y_scaled.reshape(-1, 1)
     T_feed = T_tr.astype(np.float32).reshape(-1, 1)      # binary: matched to 2D
 
-    adj = dict(H.build_mode_list(F, n_real))[ANC_TAG]
+    adj = dict(H.build_mode_list(F, n_real, ANC_FAMILY))[ANC_TAG]
 
     # -- targets and truth, on the axis _scale_y just defined -------------
     truth = load_density_truth(DATASET, r, y_shift=y_shift, y_scale=y_scale,
