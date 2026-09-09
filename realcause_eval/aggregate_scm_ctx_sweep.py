@@ -121,16 +121,13 @@ def _cell_pehe_l1(sweep, ctx, model, case, thr=float('inf')):
 
 
 def _fmt(vals):
-    """median [IQR] (mean) — median is the primary statistic (matches the
-    DoPFN paper's Fig 3 median bar-plots); mean shown in parens for
-    reference. These case-study SCMs span many CATE scales, so the mean
-    is dominated by a few high-scale realizations."""
+    """mean ± SEM (n)."""
     if vals is None or len(vals) == 0:
         return '—'
-    med = float(np.median(vals))
     mean = float(np.mean(vals))
-    q1, q3 = np.percentile(vals, [25, 75])
-    return f'{med:.3f} [{q1:.3f}–{q3:.3f}] (μ={mean:.3f}, n={len(vals)})'
+    sem = float(np.std(vals, ddof=1) / np.sqrt(len(vals))) if len(vals) > 1 else float('nan')
+    sem_s = f'{sem:.3f}' if np.isfinite(sem) else '—'
+    return f'{mean:.3f} ± {sem_s} (n={len(vals)})'
 
 
 def _build_tables(sweep, thr=float('inf')):
@@ -162,21 +159,20 @@ def _build_tables(sweep, thr=float('inf')):
                     cells.append(_fmt(pehe if idx == 0 else l1))
                 lines.append('| ' + ' | '.join(cells) + ' |')
 
-        # Case-averaged view: median over the 6 case studies of each cell's
-        # median (macro-average of medians — matches the per-cell statistic).
-        lines.append(f'\n## ALL CASES (macro-median over 6 case studies)\n')
+        # Case-averaged view: mean over the 6 case studies of each cell's mean.
+        lines.append(f'\n## ALL CASES (macro-avg over 6 case studies)\n')
         header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
         lines.append(header); lines.append('|' + '---|' * (len(CONTEXTS) + 1))
         for model in MODELS:
             cells = [model]
             for ctx in CONTEXTS:
-                per_case_meds = []
+                per_case_means = []
                 for case in CASES:
                     pehe, l1, _ = _cell_pehe_l1(sweep, ctx, model, case, thr)
                     v = pehe if idx == 0 else l1
                     if v is not None and len(v):
-                        per_case_meds.append(float(np.median(v)))
-                cells.append(f'{np.median(per_case_meds):.3f}' if per_case_meds else '—')
+                        per_case_means.append(float(np.mean(v)))
+                cells.append(f'{np.mean(per_case_means):.3f}' if per_case_means else '—')
             lines.append('| ' + ' | '.join(cells) + ' |')
 
     return '\n'.join(lines_pehe) + '\n\n' + '\n'.join(lines_l1) + '\n'
@@ -199,7 +195,8 @@ def main():
     print(md)
     out_dir = args.out or os.path.join(args.sweep, 'summary')
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, 'ctx_sweep_pehe_l1.md')
+    tag = f'_drop{args.drop_abs_ate_above:g}' if args.drop_abs_ate_above is not None else '_nofilter'
+    out_path = os.path.join(out_dir, f'ctx_sweep_pehe_l1{tag}.md')
     with open(out_path, 'w') as f:
         f.write(md)
     print(f'wrote {out_path}')
