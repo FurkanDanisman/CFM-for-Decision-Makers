@@ -22,16 +22,21 @@ import sys
 import numpy as np
 
 
-def _inspect_fit(p_mat, grid_x, grid_y, B, alpha, rng):
+def _inspect_fit(p_mat, grid_x, grid_y, B, alpha, rng, clamp_beta=False,
+                  beta_eps=1e-3):
     """Reimplementation of MALC's _fit_component_2d that returns a
     diagnostic dict instead of ComponentFit2D/None.
+
+    If clamp_beta=True, clip beta into (-alpha+eps, alpha-eps) instead of
+    returning path2/path3. Records the pre-clamp beta as beta_x_raw so
+    we can see how far the clamp shifted things.
 
     Diagnostic keys returned:
       status: one of {'path1_mass', 'path2_beta_x', 'path3_beta_y',
                        'path4_lcmle', 'ok'}
       s, n_nonzero, sigma_x, sigma_y, mu_low_x, mu_mid_x, mu_n_x,
-      beta_x, beta_y, xstar_unique_count, xstar_range_x, xstar_range_y,
-      exc_msg (if path4).
+      beta_x, beta_y, beta_x_raw, beta_y_raw, xstar_unique,
+      xstar_range_x, xstar_range_y, exc_msg (if path4).
     """
     from losses.BarDistribution2D import fit_malc_inner  # noqa
     from malc_2d import _em_mean_2d, mlelcd_2d
@@ -66,18 +71,27 @@ def _inspect_fit(p_mat, grid_x, grid_y, B, alpha, rng):
     mu_n_x = _em_mean_2d(p_x, grid_x, sigma=sigma_x, start=mu_mid_x)
     mu_n_y = _em_mean_2d(p_y, grid_y, sigma=sigma_y, start=mu_mid_y)
 
-    beta_x = 2.0 * alpha * ((mu_n_x - mu_low_x) / delta_x - 0.5)
-    beta_y = 2.0 * alpha * ((mu_n_y - mu_low_y) / delta_y - 0.5)
+    beta_x_raw = 2.0 * alpha * ((mu_n_x - mu_low_x) / delta_x - 0.5)
+    beta_y_raw = 2.0 * alpha * ((mu_n_y - mu_low_y) / delta_y - 0.5)
+
+    if clamp_beta:
+        lo, hi = -alpha + beta_eps, alpha - beta_eps
+        beta_x = 0.0 if not np.isfinite(beta_x_raw) else float(np.clip(beta_x_raw, lo, hi))
+        beta_y = 0.0 if not np.isfinite(beta_y_raw) else float(np.clip(beta_y_raw, lo, hi))
+    else:
+        beta_x, beta_y = beta_x_raw, beta_y_raw
 
     base = dict(s=s, n_nonzero=n_nonzero, sigma_x=sigma_x, sigma_y=sigma_y,
                 mu_low_x=mu_low_x, mu_mid_x=mu_mid_x, mu_n_x=mu_n_x,
                 delta_x=delta_x, beta_x=beta_x, beta_y=beta_y,
+                beta_x_raw=beta_x_raw, beta_y_raw=beta_y_raw,
                 alpha=alpha)
 
-    if not np.isfinite(beta_x) or min(alpha + beta_x, alpha - beta_x) <= 0:
-        return dict(status='path2_beta_x', **base)
-    if not np.isfinite(beta_y) or min(alpha + beta_y, alpha - beta_y) <= 0:
-        return dict(status='path3_beta_y', **base)
+    if not clamp_beta:
+        if not np.isfinite(beta_x) or min(alpha + beta_x, alpha - beta_x) <= 0:
+            return dict(status='path2_beta_x', **base)
+        if not np.isfinite(beta_y) or min(alpha + beta_y, alpha - beta_y) <= 0:
+            return dict(status='path3_beta_y', **base)
 
     prob_vec = p_mat.flatten(order='F')
     bin_idx = rng.choice(len(prob_vec), size=B, p=prob_vec, replace=True)
@@ -112,6 +126,10 @@ def main():
     ap.add_argument('--B', type=int, default=500)
     ap.add_argument('--alpha', type=float, default=1.0,
                     help='MALC alpha parameter (default 1.0).')
+    ap.add_argument('--clamp-beta', action='store_true',
+                    help='Clamp beta_x/beta_y into (-alpha+eps, alpha-eps) '
+                         'instead of returning None. Reveals which path fires '
+                         'AFTER the clamp fix.')
     args = ap.parse_args()
 
     sys.path.insert(0, args.repo)
@@ -156,7 +174,8 @@ def main():
     for q in q_show:
         seed = int(hashlib.md5(f'q{q}malcK1'.encode()).hexdigest()[:8], 16) % (10 ** 8)
         rng = np.random.default_rng(seed)
-        info = _inspect_fit(p_joint[q], edges, edges, args.B, args.alpha, rng)
+        info = _inspect_fit(p_joint[q], edges, edges, args.B, args.alpha, rng,
+                             clamp_beta=args.clamp_beta)
         status = info['status']
         stats[status] = stats.get(status, 0) + 1
         prior = 'FAIL' if q in set(failed_prev) else 'OK'
