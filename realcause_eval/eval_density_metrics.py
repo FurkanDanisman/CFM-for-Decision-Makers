@@ -335,14 +335,18 @@ def _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid_raw):
     return _renorm(p_tau_mass / dtau, dtau)
 
 
-def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
-                                     malc_tag='B500'):
-    """2D method (MALC-smoothed): load p_taus_scaled, convert to raw,
-    interpolate onto shared grid."""
+def _load_malc_ptau_raw_on_grid(root, method, dataset, r, tau_grid_raw,
+                                  malc_tag='B500'):
+    """MALC-smoothed density loader (works for both 2D and 1D methods —
+    the compute_malc_ci_cell_1d dump writes the same NPZ schema as the
+    2D one). Load p_taus_scaled, convert to raw, interpolate onto grid.
+
+    root: OUT_1D for 1D methods, OUT_2D for 2D methods.
+    """
     ds_on_disk = dataset
     if method == 'dopfnbb' and dataset == 'PSID_bal':
         ds_on_disk = 'PSIDbal'
-    path = _resolve_realization_npz(root_2d, method, ds_on_disk, r,
+    path = _resolve_realization_npz(root, method, ds_on_disk, r,
                                      prefix=f'malc_ci_{malc_tag}_')
     if not path: return None
     with np.load(path, allow_pickle=True) as z:
@@ -358,6 +362,10 @@ def _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw,
                             left=0.0, right=0.0)
     dtau = float(tau_grid_raw[1] - tau_grid_raw[0])
     return _renorm(out, dtau)
+
+
+# Backward-compat alias (kept for any callers that still import the old name).
+_load_2d_malc_ptau_raw_on_grid = _load_malc_ptau_raw_on_grid
 
 
 def _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw):
@@ -417,7 +425,8 @@ def _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid_raw):
 def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
                           root_1d, root_2d, methods_1d, methods_2d,
                           T=DEFAULT_T, tau_pad_sigmas=6.0,
-                          joint_2d_source='malc', malc_tag='B500'):
+                          joint_1d_source='conv', joint_2d_source='malc',
+                          malc_tag_1d='B500', malc_tag='B500'):
     if dataset == 'IHDP':
         from true_ihdp import load_ihdp_truth
         ds = ds_obj[r][0]
@@ -489,12 +498,16 @@ def evaluate_realization(r, dataset, causalpfn_dir, ds_obj,
     for method, kind in [(m, '1d') for m in methods_1d] + [(m, '2d') for m in methods_2d]:
         try:
             if kind == '1d':
-                p_est_pq = _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid)
+                if joint_1d_source == 'malc':
+                    p_est_pq = _load_malc_ptau_raw_on_grid(root_1d, method, dataset, r,
+                                                             tau_grid, malc_tag=malc_tag_1d)
+                else:
+                    p_est_pq = _load_1d_ptau_raw_on_grid(root_1d, method, dataset, r, tau_grid)
             elif joint_2d_source == 'raw':
                 p_est_pq = _load_2d_raw_ptau_raw_on_grid(root_2d, method, dataset, r, tau_grid)
             else:
-                p_est_pq = _load_2d_malc_ptau_raw_on_grid(root_2d, method, dataset, r,
-                                                            tau_grid, malc_tag=malc_tag)
+                p_est_pq = _load_malc_ptau_raw_on_grid(root_2d, method, dataset, r,
+                                                        tau_grid, malc_tag=malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d} {method}: {e}', file=sys.stderr)
             p_est_pq = None
@@ -546,6 +559,13 @@ def main():
                     help='Cap on realizations (default: dataset default).')
     ap.add_argument('--T', type=int, default=DEFAULT_T,
                     help='τ-grid resolution (default 4001 — very tight).')
+    ap.add_argument('--joint-1d-source', choices=['conv', 'malc'], default='conv',
+                    help='For 1D methods: "conv" = outer-product marginal '
+                         'convolution rasterized to shared grid (default; '
+                         'backward compat); "malc" = read 1D-MALC dump at '
+                         '$OUT_1D/<method>/<DATASET>/malc_ci_<tag>_r<###>.npz.')
+    ap.add_argument('--malc-tag-1d', default='B500',
+                    help='MALC file tag when --joint-1d-source=malc.')
     ap.add_argument('--joint-2d-source', choices=['malc', 'raw'], default='malc',
                     help='For 2D methods: use MALC-smoothed p(τ) or the raw '
                          'joint anti-diagonal (discrete 2J−1 spike density).')
@@ -596,11 +616,13 @@ def main():
     n_realizations = args.n_realizations or n_default
     methods_1d = list(args.methods_1d); methods_2d = list(args.methods_2d)
     all_methods = methods_1d + methods_2d
+    _1d_desc = ('outer-product marginal conv' if args.joint_1d_source == 'conv'
+                else f'MALC-smoothed ({args.malc_tag_1d})')
     _2d_desc = ('raw joint anti-diagonal' if args.joint_2d_source == 'raw'
                 else f'MALC-smoothed ({args.malc_tag})')
     print(f'[bootstrap] dataset={args.dataset}  n_realizations={n_realizations}  '
           f'T={args.T}  methods_1d={methods_1d}  methods_2d={methods_2d}  '
-          f'2d_source={_2d_desc}', flush=True)
+          f'1d_source={_1d_desc}  2d_source={_2d_desc}', flush=True)
 
     per_r = []
     t0 = time.time()
@@ -610,7 +632,9 @@ def main():
             res = evaluate_realization(r, args.dataset, args.causalpfn, ds_obj,
                                          args.root_1d, args.root_2d,
                                          methods_1d, methods_2d, T=args.T,
+                                         joint_1d_source=args.joint_1d_source,
                                          joint_2d_source=args.joint_2d_source,
+                                         malc_tag_1d=args.malc_tag_1d,
                                          malc_tag=args.malc_tag)
         except Exception as e:
             print(f'  [warn] r={r:03d}: {e}', file=sys.stderr); continue
@@ -623,7 +647,7 @@ def main():
                     else 'empirical KDE from 100 RealCause CSVs (K=100 MC pairs per unit)')
     lines = [
         f'\nDensity metrics — {args.dataset} — tight T={args.T} raw τ grid '
-        f'(2D source: {_2d_desc})',
+        f'(1D source: {_1d_desc}; 2D source: {_2d_desc})',
         '',
         f'(truth = {_truth_kind}; '
         f'metrics per query averaged, then averaged across {n_realizations} '
