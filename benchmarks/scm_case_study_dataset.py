@@ -196,7 +196,11 @@ class SCMCaseStudyDataset:
                 if cate_arr.shape[0] == N:
                     cate_true = cate_arr[te_idx]
                 elif cate_arr.shape[0] == len(int_idcs):
-                    cate_true = cate_arr
+                    # cate stored per int-row (length n_int_rows). te_idx may be
+                    # an SCM_N_QUERY-capped SUBSET of int_idcs, so map to local
+                    # positions within the int block instead of returning all.
+                    local_pos = te_idx - int(n_obs_rows)
+                    cate_true = cate_arr[local_pos]
             else:
                 if cate_arr.shape[0] == N:
                     cate_true = cate_arr[te_idx]
