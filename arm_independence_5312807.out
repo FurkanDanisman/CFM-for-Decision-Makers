@@ -1,0 +1,225 @@
+
+==========================================================================
+IHDP
+==========================================================================
+  dataset                IHDP
+  design                 known-means (pooled residuals)
+  n_pairs                74700
+  n_realizations         100
+  raw_outcomes           {'n_pairs': 74700, 'pearson_r': 0.7763771290759441, 'spearman_r': 0.8788563701959804}
+  per_realization        100 rows (saved in OUT_JSON)
+  generator_truth        {'sigma_raw': 1.0, 'conditional_rho': 0.0, 'conditional_independence': True, 'conditioning': 'X and fixed realization parameters'}
+  noise0                 {'mean_raw': 0.0038249881550799546, 'sd_raw': 1.0020578347009939, 'expected_mean_raw': 0.0, 'expected_sd_raw': 1.0, 'normal_ks_stat': 0.003329303198015776, 'normal_ks_p': 0.3783282728159283}
+  noise1                 {'mean_raw': -0.001070878845566597, 'sd_raw': 1.0022116119710218, 'expected_mean_raw': 0.0, 'expected_sd_raw': 1.0, 'normal_ks_stat': 0.0020027116208840012, 'normal_ks_p': 0.9248356577354864}
+  residual_tau_variance   2.00664
+  expected_residual_tau_variance  2
+  pearson_r               0.000949514
+  ci_lo                  -0.00622168
+  ci_hi                   0.00812061
+  pearson_z               0.259509
+  spearman_r             -0.000757565
+  g_obs                   15.0701
+  g_null_mean             8.62626
+  g_null_sd               4.11442
+  g_z                     1.56616
+  g_p                     0.0845771
+  copula_z                1.56616
+  copula_p                0.0845771
+  realization_g_obs       938.349
+  realization_g_z         0.749984
+  realization_g_p         0.223881
+  rho_mde_linear          0.0102503
+  rho_bound               0.00812061
+  gaussian_mi_equivalent_nats  3.29733e-05
+  injected rho=0.01    pearson_z=   +2.79   copula_z=   +0.14   per_unit_z=   +0.14
+  injected rho=0.02    pearson_z=   +4.16   copula_z=   +1.10   per_unit_z=   +1.10
+  injected rho=0.05    pearson_z=  +12.58   copula_z=  +26.56   per_unit_z=  +26.56
+  injected rho=0.1     pearson_z=  +28.12   copula_z= +147.90   per_unit_z= +147.90
+  dependence_detected    False
+  rejected_tests         []
+  dependence_pvalues     {'pearson': 0.7952423287932051, 'pooled_g': 0.0845771144278607, 'realization_g': 0.22388059701492538}
+  decision_p_cutoff       0.0166667
+  decision_rule          Bonferroni within dataset at alpha=0.05
+  config                 {'seed': 0, 'n_perm': 200, 'n_bins': 4, 'alpha': 0.05, 'injected_rhos': [0.01, 0.02, 0.05, 0.1]}
+  seconds                 1.8
+
+==========================================================================
+ACIC
+==========================================================================
+  dataset                ACIC
+  design                 known-means (pooled residuals)
+  n_pairs                48020
+  n_realizations         10
+  raw_outcomes           {'n_pairs': 48020, 'pearson_r': 0.9665470624672649, 'spearman_r': 0.8845052508075432}
+  per_realization        10 rows (saved in OUT_JSON)
+  generator_truth        {'sigma_raw': 1.0, 'conditional_rho': 0.0, 'conditional_independence': True, 'conditioning': 'X and fixed realization parameters'}
+  noise0                 {'mean_raw': 0.0013826551445872562, 'sd_raw': 1.0000004962976472, 'expected_mean_raw': 0.0, 'expected_sd_raw': 1.0, 'normal_ks_stat': 0.004131002566385322, 'normal_ks_p': 0.38449220874833956}
+  noise1                 {'mean_raw': 0.00241064445251981, 'sd_raw': 0.9924753146456459, 'expected_mean_raw': 0.0, 'expected_sd_raw': 1.0, 'normal_ks_stat': 0.0039130871586870175, 'normal_ks_p': 0.45286904240522063}
+  residual_tau_variance   1.98021
+  expected_residual_tau_variance  2
+  pearson_r               0.00241678
+  ci_lo                  -0.00652751
+  ci_hi                   0.0113607
+  pearson_z               0.529585
+  spearman_r              0.00406625
+  g_obs                   3.47897
+  g_null_mean             8.86359
+  g_null_sd               4.09183
+  g_z                    -1.31594
+  g_p                     0.945274
+  copula_z               -1.31594
+  copula_p                0.945274
+  realization_g_obs       73.8265
+  realization_g_z        -1.30518
+  realization_g_p         0.900498
+  rho_mde_linear          0.0127845
+  rho_bound               0.0113607
+  gaussian_mi_equivalent_nats  6.45368e-05
+  injected rho=0.01    pearson_z=   +1.38   copula_z=   +1.26   per_unit_z=   +1.26
+  injected rho=0.02    pearson_z=   +4.85   copula_z=   +2.43   per_unit_z=   +2.43
+  injected rho=0.05    pearson_z=  +11.29   copula_z=  +20.12   per_unit_z=  +20.12
+  injected rho=0.1     pearson_z=  +22.31   copula_z=  +90.52   per_unit_z=  +90.52
+  dependence_detected    False
+  rejected_tests         []
+  dependence_pvalues     {'pearson': 0.596399423766278, 'pooled_g': 0.945273631840796, 'realization_g': 0.900497512437811}
+  decision_p_cutoff       0.0166667
+  decision_rule          Bonferroni within dataset at alpha=0.05
+  config                 {'seed': 0, 'n_perm': 200, 'n_bins': 4, 'alpha': 0.05, 'injected_rhos': [0.01, 0.02, 0.05, 0.1]}
+  seconds                 3.5
+
+==========================================================================
+CPS
+==========================================================================
+  dataset                CPS
+  design                 replicates (per-unit, pooled)
+  n_units                16177
+  n_draws                100
+  covariates_identical   True
+  n_units_total          16177
+  n_units_constant       0
+  raw_outcomes           {'n_pairs': 1617700, 'pearson_r': 0.06062440190892675, 'spearman_r': 0.07222325723156663}
+  per_realization        100 rows (saved in OUT_JSON)
+  per_unit_pearson_quantiles {'min': -0.34609587943820636, 'q25': -0.06949398808606662, 'median': -0.0030296520761162234, 'q75': 0.06609791100561838, 'max': 0.37527815408672965}
+  per_unit_spearman_mean -0.000440619
+  ci_method              Approximate common Fisher correlation; Gaussian iid approximation
+  rho_common             -0.00103011
+  ci_lo                  -0.00259477
+  ci_hi                   0.00053455
+  pearson_z              -1.29039
+  pearson_p               0.189055
+  var_z                   0.993616
+  var_z_stat             -0.583235
+  var_z_p                 0.691542
+  g_obs                   151499
+  g_null_mean             152455
+  g_null_sd               559.182
+  g_z                    -1.70988
+  g_p                     0.960199
+  copula_obs              6.98846
+  copula_z               -0.410421
+  copula_p                0.60199
+  zero_obs                18606.1
+  zero_null_mean          18630.9
+  zero_null_sd            170.938
+  zero_z                 -0.14524
+  zero_p                  0.60199
+  var_ratio               1.00075
+  var_ratio_ci           [0.9994501919671571, 1.0021476321963478]
+  rho_mde_linear          0.0022365
+  rho_bound               0.00259477
+  gaussian_mi_equivalent_nats  3.36644e-06
+  injected rho=0.01    pearson_z=   +9.80   copula_z=  +22.51   per_unit_z=   +1.26
+  injected rho=0.02    pearson_z=  +20.18   copula_z=  +92.53   per_unit_z=   +0.57
+  injected rho=0.05    pearson_z=  +49.47   copula_z= +539.13   per_unit_z=   +2.95
+  injected rho=0.1     pearson_z=  +98.30   copula_z=+2137.12   per_unit_z=  +16.62
+  dependence_detected    False
+  rejected_tests         []
+  dependence_pvalues     {'pearson': 0.1890547263681592, 'heterogeneous_correlation': 0.6915422885572139, 'per_unit_g': 0.9601990049751243, 'copula_g': 0.6019900497512438, 'zero_g': 0.6019900497512438}
+  decision_p_cutoff       0.01
+  decision_rule          Bonferroni within dataset at alpha=0.05
+  config                 {'seed': 0, 'n_perm': 200, 'n_bins': 4, 'alpha': 0.05, 'injected_rhos': [0.01, 0.02, 0.05, 0.1]}
+  seconds                 42.8
+
+==========================================================================
+PSID
+==========================================================================
+  dataset                PSID
+  design                 replicates (per-unit, pooled)
+  n_units                2675
+  n_draws                100
+  covariates_identical   True
+  n_units_total          2675
+  n_units_constant       0
+  raw_outcomes           {'n_pairs': 267500, 'pearson_r': -0.01166106879791821, 'spearman_r': -0.002381393567388769}
+  per_realization        100 rows (saved in OUT_JSON)
+  per_unit_pearson_quantiles {'min': -0.33979306313698954, 'q25': -0.060420877030839724, 'median': 0.0002001001591864245, 'q75': 0.06531561125154148, 'max': 0.7381058845980327}
+  per_unit_spearman_mean  0.00381551
+  ci_method              Approximate common Fisher correlation; Gaussian iid approximation
+  rho_common              0.0032746
+  ci_lo                  -0.00057315
+  ci_hi                   0.00712226
+  pearson_z               1.66804
+  pearson_p               0.109453
+  var_z                   0.995611
+  var_z_stat             -0.486885
+  var_z_p                 0.681592
+  g_obs                   25249.3
+  g_null_mean             25230.3
+  g_null_sd               220.027
+  g_z                     0.0864387
+  g_p                     0.482587
+  copula_obs              5.6852
+  copula_z               -0.890361
+  copula_p                0.810945
+  zero_obs                2612.86
+  zero_null_mean          2515.47
+  zero_null_sd            63.4717
+  zero_z                  1.53445
+  zero_p                  0.0746269
+  var_ratio               0.997367
+  var_ratio_ci           [0.9937430729905915, 1.001661409315103]
+  rho_mde_linear          0.00549986
+  rho_bound               0.00712226
+  gaussian_mi_equivalent_nats  2.53639e-05
+  injected rho=0.01    pearson_z=   +3.98   copula_z=   +5.39   per_unit_z=   -2.74
+  injected rho=0.02    pearson_z=   +6.80   copula_z=  +16.11   per_unit_z=   +0.38
+  injected rho=0.05    pearson_z=  +17.98   copula_z= +127.51   per_unit_z=   +2.55
+  injected rho=0.1     pearson_z=  +36.37   copula_z= +388.37   per_unit_z=   +8.45
+  dependence_detected    False
+  rejected_tests         []
+  dependence_pvalues     {'pearson': 0.10945273631840796, 'heterogeneous_correlation': 0.681592039800995, 'per_unit_g': 0.48258706467661694, 'copula_g': 0.8109452736318408, 'zero_g': 0.07462686567164178}
+  decision_p_cutoff       0.01
+  decision_rule          Bonferroni within dataset at alpha=0.05
+  config                 {'seed': 0, 'n_perm': 200, 'n_bins': 4, 'alpha': 0.05, 'injected_rhos': [0.01, 0.02, 0.05, 0.1]}
+  seconds                 6.6
+
+RAW SAMPLED OUTCOMES -- descriptive correlation across units and realizations
+dataset      pairs    Pearson r   Spearman r
+IHDP         74700     +0.77638     +0.87886
+ACIC         48020     +0.96655     +0.88451
+CPS        1617700     +0.06062     +0.07222
+PSID        267500     -0.01166     -0.00238
+These raw correlations include variation in the conditional means with X.
+
+========================================================================================================
+CONDITIONAL DEPENDENCE AUDIT
+========================================================================================================
+dataset      pairs       rho               95% CI  copula z  per-unit z   zero z  verdict
+-----------------------------------------------------------------------------------------
+IHDP         74700  +0.00095 [-0.00622,+0.00812]      1.57        1.57      nan  NOT REJECTED
+ACIC         48020  +0.00242 [-0.00653,+0.01136]     -1.32       -1.32      nan  NOT REJECTED
+CPS        1617700  -0.00103 [-0.00259,+0.00053]     -0.41       -1.71    -0.15  NOT REJECTED
+PSID        267500  +0.00327 [-0.00057,+0.00712]     -0.89        0.09     1.53  NOT REJECTED
+IHDP/ACIC rho: oracle residual Pearson; CPS/PSID rho: common per-unit Fisher estimate.
+CIs are Gaussian approximations. NOT REJECTED does not establish independence.
+Decisions use empirical p-values (Gaussian Pearson for IHDP/ACIC), with
+Bonferroni correction within each dataset. No correction across datasets.
+Gaussian MI equivalents in the detailed output are not general MI upper bounds.
+
+Sensitivity -- copula-omnibus p when Gaussian-copula dependence is injected:
+  dataset  rho=0.01    rho=0.02    rho=0.05    rho=0.1     
+  IHDP         0.3682     0.1443     0.0050     0.0050
+  ACIC         0.1045     0.0199     0.0050     0.0050
+  CPS          0.0050     0.0050     0.0050     0.0050
+  PSID         0.0050     0.0050     0.0050     0.0050
+  One sample per rho; this does not estimate detection probability or omnibus MDE.

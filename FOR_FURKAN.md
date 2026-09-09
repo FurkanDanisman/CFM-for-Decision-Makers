@@ -12,7 +12,19 @@ Two independent .sample() calls. And no sampler in models/distributions/distribu
 
 The observed outcome is then y0 * (1 - t) + y1 * t (models/base.py:311, and again in make_datasets.py), so consistency does hold — the factual y is literally the corresponding potential outcome draw. It's only the counterfactual arm that gets fresh noise.
 
-### Empirical Test
+### Empirical Test (New)
+
+We test whether the RealCause potential outcomes \(Y(0)\) and \(Y(1)\) are dependent **conditional on \(X\)** for IHDP, ACIC, CPS, and PSID. For IHDP/ACIC, we subtract the known conditional means \(\mu_0(X)\) and \(\mu_1(X)\) and test dependence between the resulting residuals. For CPS/PSID, we use 100 repeated RealCause draws of the same individuals and test \(Y(0)\)–\(Y(1)\) dependence across draws while holding each individual's covariates fixed. In addition to Pearson correlation, we use permutation-calibrated omnibus and stratified \(G\)-tests, with Bonferroni correction within each dataset. Failure to reject indicates no detectable dependence, not proof of exact independence.
+
+| Dataset | \(n\) pairs | Conditional Pearson \(r\) |               95% CI | Pearson \(p\) | Spearman \(\rho\) | Omnibus perm. \(p\) | Stratified perm. \(p\) | Decision     |
+| ------- | ----------: | ------------------------: | -------------------: | ------------: | ----------------: | ------------------: | ---------------------: | ------------ |
+| IHDP    |      74,700 |                  +0.00095 | [-0.00622, +0.00812] |         0.795 |          -0.00076 |              0.0846 |                 0.2239 | Not rejected |
+| ACIC    |      48,020 |                  +0.00242 | [-0.00653, +0.01136] |         0.596 |          +0.00407 |              0.9453 |                 0.9005 | Not rejected |
+| CPS     |   1,617,700 |                  -0.00103 | [-0.00259, +0.00053] |         0.189 |                 — |              0.6020 |                 0.9602 | Not rejected |
+| PSID    |     267,500 |                  +0.00327 | [-0.00057, +0.00712] |         0.109 |                 — |              0.8109 |                 0.4826 | Not rejected |
+
+
+<!-- ### Empirical Test (Stale)
 Two designs: IHDP/ACIC ship both potential outcomes and both μ_t, so noise is directly observable as eps_t = y_t − mu_t(x) and you test (eps0, eps1) pooled. CPS/PSID have no μ, but the 100 CSVs are resamples of the same units, so each unit gives 100 iid draws — test per unit, pool across units.
 
 | Dataset | Pearson \(r\) |              95% CI | Spearman \(\rho\) | \(G\)-test/permutation \(p\) |     MDE |
@@ -20,10 +32,10 @@ Two designs: IHDP/ACIC ship both potential outcomes and both μ_t, so noise is d
 | IHDP    |       0.00083 | [-0.00634, 0.00800] |          -0.00098 |                        0.980 |  0.0103 |
 | ACIC    |       0.00237 | [-0.00657, 0.01131] |           0.00405 |                        0.234 |  0.0128 |
 | CPS     |      -0.00103 | [-0.00259, 0.00053] |                 — |                        0.318 | 0.00224 |
-| PSID    |       0.00327 | [-0.00057, 0.00712] |                 — |                        0.821 | 0.00550 |
+| PSID    |       0.00327 | [-0.00057, 0.00712] |                 — |                        0.821 | 0.00550 | -->
 
 
-More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks/empirical_tests/prove_arm_independence.py
+More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks/empirical_tests/prove_arm_independence.py, FULL RESULTS in arm_independence_5312807.out
 
 # Plan
 - Datasets: IHDP, ACIC, CPD, PSID
@@ -206,5 +218,64 @@ realizations=10, ~481 queries each, anc=noanc, |tau*|>3: 0.00%
 | ------------ | ------------------------------------------------- | ------------------: | ------------------: |
 | **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2102+-0.0672** | **-3.9051+-0.6297** |
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0058+-0.0030 |     +0.1359+-0.0194 |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
+
+### IHDP
+
+realizations=100, ~75 queries each, anc=v3a, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4080±0.1180 |     0.9686±0.0762 |     26.1195±5.9006 | **1.0000±0.0000** |
+| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4083±0.1178 |     0.9701±0.0763 |     26.3955±5.9555 |     0.9999±0.0000 |
+| Joint-2D J=32        | **-0.0504±0.0364** | **1.2536±0.1155** | **0.7623±0.0655** | **20.9813±4.9811** | **1.0000±0.0000** |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         |     5.4806±0.7760 |     4.3345±0.5533 |     1.8014±0.1178 |
+| UWYK (x)indep J=32           |     5.4810±0.7761 |     4.3349±0.5534 |     1.8014±0.1177 |
+| Joint-2D J=32                |     4.3144±0.6278 | **3.1857±0.3999** |     1.0791±0.0780 |
+| Joint-2D interior mean (raw) | **4.3143±0.6278** | **3.1857±0.3999** | **1.0790±0.0780** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.998319
+  uwyk_matched: max |finite-grid moment - full mean| = 0.99857
+  joint: max |finite-grid moment - full mean| = 7.95504e-08
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2101±0.0196** | **-5.1382±0.9769** | **-1.1662±0.1629** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015±0.0003 |     +0.2760±0.0641 |     +0.0004±0.0002 |
+
+_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
+### ACIC
+
+realizations=10, ~481 queries each, anc=v3a, |tau*|>3: 0.00%
+
+| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4532±0.0673 |     0.8648±0.0813 |     7.7151±0.9422 | 1.0000±0.0000 |
+| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4671±0.0656 |     0.8753±0.0788 |     7.8500±0.9437 | 1.0000±0.0000 |
+| Joint-2D J=32        | **-0.4862±0.1496** | **1.3189±0.1227** | **0.8035±0.1163** | **6.0440±1.1985** | 1.0000±0.0000 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         | **2.6996±0.4419** |     1.9516±0.3321 |     0.5677±0.1565 |
+| UWYK (x)indep J=32           |     2.6997±0.4420 |     1.9517±0.3322 |     0.5672±0.1568 |
+| Joint-2D J=32                |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
+| Joint-2D interior mean (raw) |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.399156
+  uwyk_matched: max |finite-grid moment - full mean| = 0.399538
+  joint: max |finite-grid moment - full mean| = 2.77443e-08
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0608±0.0680** | **-1.6711±0.6555** |     +0.0843±0.2296 |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1349±0.0192 | **+0.0000±0.0001** |
 
 _negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
