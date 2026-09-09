@@ -57,6 +57,43 @@ def _pick_downsample_factor(K, max_J):
     return 1        # unreachable — f=K always satisfies
 
 
+def _is_uniform_grid(x, tol=1e-4):
+    """True if consecutive gaps in x agree to within `tol` relative to mean."""
+    w = np.diff(x)
+    if w.size == 0: return True
+    return (w.max() - w.min()) / max(w.mean(), 1e-30) < tol
+
+
+def _rasterize_atoms_to_uniform(p_y, centers, J_uniform=None, pad_frac=0.02):
+    """Treat each bar as a point mass at centers[i] with weight p_y[:, i].
+    Nearest-bin rasterize onto a uniform grid covering [centers.min(),
+    centers.max()] with a small pad so extreme atoms don't collide with
+    the boundary. Mass-conservative (multinomial → multinomial).
+
+    p_y:       (N_q, K)   per-bar probability (sums to 1 per row)
+    centers:   (K,)       atom positions (possibly non-uniform, e.g.
+                          dopfn's effective_centers with tail-adjusted mids)
+    J_uniform: uniform target bin count (default K)
+    returns:   (p_out (N_q, J_uniform), edges_uniform (J_uniform+1,))
+
+    Matches the convention in eval_density_metrics._load_1d_ptau_raw_on_grid:
+    bars ARE point masses at centers, NOT uniform-density boxes over edges.
+    """
+    N_q, K = p_y.shape
+    J = J_uniform or K
+    c_lo, c_hi = float(centers.min()), float(centers.max())
+    pad = pad_frac * (c_hi - c_lo) if c_hi > c_lo else 1.0
+    edges_uniform = np.linspace(c_lo - pad, c_hi + pad, J + 1)
+    dtau = float(edges_uniform[1] - edges_uniform[0])
+    # Nearest-bin index for each atom's center.
+    idx = np.round((centers - edges_uniform[0]) / dtau).astype(int)
+    idx = np.clip(idx, 0, J - 1)
+    p_out = np.zeros((N_q, J), dtype=np.float64)
+    for i in range(K):
+        p_out[:, idx[i]] += p_y[:, i]
+    return p_out, edges_uniform
+
+
 def _load_1d_joint(npz_path, downsample_max_J):
     """Return (p_joint (N_q, J, J), edges (J+1,), y_scale, y_shift, true_cate).
 
@@ -64,9 +101,22 @@ def _load_1d_joint(npz_path, downsample_max_J):
     tail columns and renormalize (drops small tail mass; matches the
     convention in eval_density_metrics._load_1d_ptau_raw_on_grid).
 
+    Center convention (aligns with cate_ci_from_density and
+    eval_density_metrics): bars are POINT masses at `centers`, where
+    centers = z['effective_centers'] if present (dopfn's tail-adjusted
+    first/last-bar means), else 0.5*(edges[:-1]+edges[1:]).
+
+    Uniform-grid enforcement: MALC's _fit_component_2d uses
+    `delta_x = grid_x[1] - grid_x[0]` as if bins were uniform. When
+    `centers` are non-uniform (dopfn), we nearest-bin rasterize p_y0/p_y1
+    onto a uniform grid spanning [centers.min(), centers.max()] with the
+    same J. Mass-conservative. Without this, MALC's beta computation
+    explodes and all queries fail (verified on dopfn IHDP smoke).
+
     Downsample: if K_bars > downsample_max_J, mean-pool p_y0/p_y1 by
     the largest factor f such that K/f ≤ downsample_max_J and K%f==0
-    (preserves total mass exactly; keeps every f-th edge).
+    (preserves total mass exactly; keeps every f-th edge). Applied
+    AFTER uniformization so both cases share the same downsample path.
     """
     with np.load(npz_path, allow_pickle=True) as z:
         p_y0    = np.asarray(z['p_y0_scaled'], dtype=np.float64)
@@ -75,9 +125,13 @@ def _load_1d_joint(npz_path, downsample_max_J):
         y_scale = float(z['y_scale'])
         y_shift = float(z['y_shift'])
         true_cate = np.asarray(z['true_cate_per_query'], dtype=np.float64)
+        eff_centers = (np.asarray(z['effective_centers'], dtype=np.float64)
+                        if 'effective_centers' in z.files else None)
 
     N_q, K = p_y0.shape
-    # UWYK: K bars + 2 tail atoms, K+1 edges. Trim tails.
+    # UWYK: K bars + 2 tail atoms, K+1 edges. Trim tails; effective_centers
+    # aren't written by UWYK so eff_centers stays None → falls through to
+    # bar-mid centers below.
     if K == edges.size + 1:
         p_y0 = p_y0[:, 1:-1]
         p_y1 = p_y1[:, 1:-1]
@@ -85,6 +139,20 @@ def _load_1d_joint(npz_path, downsample_max_J):
     assert K == edges.size - 1, (
         f'{npz_path}: shape mismatch: p_y0 has {p_y0.shape[1]} bars but '
         f'{edges.size - 1} bar edges expected')
+
+    # Centers: prefer effective_centers when the writer stored them (dopfn).
+    centers = eff_centers if (eff_centers is not None and eff_centers.size == K) \
+               else 0.5 * (edges[:-1] + edges[1:])
+
+    # Uniformize if centers are non-uniform (dopfn's effective_centers span
+    # a data-driven interior range; cpfn1d/uwyk1d bar mids are already
+    # uniform → this is a no-op there).
+    if not _is_uniform_grid(centers):
+        p_y0, edges = _rasterize_atoms_to_uniform(p_y0, centers)
+        p_y1, _     = _rasterize_atoms_to_uniform(p_y1, centers)
+        # After rasterization, the effective K is unchanged and edges are
+        # uniform over [centers.min(), centers.max()] + a small pad.
+        K = p_y0.shape[1]
 
     # Optional downsample by mean-pool. Choose the largest divisor of K
     # that keeps J ≤ downsample_max_J. Exact mass conservation.
@@ -215,23 +283,29 @@ def main():
     if args.max_realizations:
         density_paths = density_paths[:args.max_realizations]
 
-    # Peek at first NPZ to figure out effective J (post-trim + post-downsample).
+    # Peek by ACTUALLY running _load_1d_joint on the first NPZ — this
+    # captures uniformization (dopfn's non-uniform effective_centers →
+    # uniform edges) + downsample together, so pool init sees the same
+    # edges the workers will see.
     with np.load(density_paths[0], allow_pickle=True) as z0:
-        edges0 = np.asarray(z0['edges'], dtype=np.float64)
         K_raw = int(z0['p_y0_scaled'].shape[1])
-    K_bars = K_raw - 2 if K_raw == edges0.size + 1 else K_raw
+        edges_raw = np.asarray(z0['edges'], dtype=np.float64)
+    K_bars = K_raw - 2 if K_raw == edges_raw.size + 1 else K_raw
     factor = _pick_downsample_factor(K_bars, args.downsample_max_J)
-    if factor > 1:
-        edges0 = edges0[::factor]
-        J = K_bars // factor
-    else:
-        J = K_bars
+    p_joint0, edges0, _, _, _ = _load_1d_joint(density_paths[0], args.downsample_max_J)
+    J = int(p_joint0.shape[1])
     bin_width = float(edges0[1] - edges0[0])
 
+    _raw_desc = (f'[raw edges=[{edges_raw[0]:.4f}, {edges_raw[-1]:.4f}] '
+                 f'δ_first={edges_raw[1]-edges_raw[0]:.4g}]')
+    _grid_kind = ('uniform' if _is_uniform_grid(edges_raw)
+                  else f'non-uniform → rasterized on effective_centers')
     print(f'[bootstrap] method_dir={args.method_dir}  dataset={args.dataset}  '
           f'n_realizations={len(density_paths)}  K_bars={K_bars}  '
           f'downsample_factor={factor}  J_effective={J}  '
-          f'edges=[{edges0[0]:.4f}, {edges0[-1]:.4f}]', flush=True)
+          f'grid={_grid_kind}  '
+          f'edges_used=[{edges0[0]:.4f}, {edges0[-1]:.4f}]  '
+          f'{_raw_desc}', flush=True)
     print(f'[bootstrap] MALC K={args.malc_K}  B={args.malc_B}  n_eval={args.n_eval}  '
           f'workers={args.n_workers}  downsample_max_J={args.downsample_max_J}',
           flush=True)
