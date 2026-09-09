@@ -9,6 +9,11 @@ different objects:
   * Joint-2D  one forward pass -> BarDistribution2D head
               f(y0, y1) natively (J^2 inner bins + 9 region weights + 4 tails)
 
+DoPFN additionally uses DoPFN1D for its native FullSupportBarDistribution
+(nonuniform interior bins, half-normal outer bins), and Joint2D for its
+trained joint head. dopfn_tau_density evaluates the same diagonal integral
+analytically for the product of the native arms, including both tails.
+
 Both are reduced to p(tau) by the SAME operator:
 
     p(tau) = \\int f(y0, y0 + tau) dy0
@@ -70,7 +75,9 @@ import numpy as np
 # 0.01 to 0.002 -- but it is not adequate where the truth is narrow, which is
 # exactly the ~22/100 IHDP realizations with < 5 old-grid points per sigma_tau.
 TAU_MIN, TAU_MAX = -3.0, 3.0
-TAU_STEP = 0.0005
+TAU_STEP = 0.0005  # Also divides joint DoPFN's J=10 width (0.2).
+# Native DoPFN's adaptive border differences need not land on this grid.
+# Its density is evaluated exactly, but grid metrics use trapezoid as above.
 _N_TAU = int(round((TAU_MAX - TAU_MIN) / TAU_STEP)) + 1        # 12001
 TAU_CENTERS = np.linspace(TAU_MIN, TAU_MAX, _N_TAU)
 TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
@@ -390,6 +397,113 @@ class UWYK1D:
             sL=self.sL, sR=self.sR,
             edges=new_edges, widths=w_new,
         )
+
+
+class DoPFN1D(UWYK1D):
+    """Native FullSupportBarDistribution on the harness outcome axis.
+
+    The first/last logits are half-normal masses anchored at borders[1/-2],
+    not finite bars. All other bars may have unequal widths. Recompute widths
+    from returned borders: some upstream predict_full versions rescale borders
+    to outcome units but leave criterion.bucket_widths in normalized units.
+    Reference: jr2021/Do-PFN, model/bar_distribution.py::FullSupportBarDistribution.
+    """
+
+    @classmethod
+    def from_pred(cls, pred, borders, *, y_shift=0.0, y_scale=1.0,
+                  tail_scales=None):
+        from scipy.special import ndtri
+
+        borders = np.asarray(borders, dtype=np.float64)
+        pred = np.asarray(pred, dtype=np.float64).reshape(-1)
+        if (borders.ndim != 1 or len(borders) != len(pred) + 1
+                or len(pred) < 3 or not np.isfinite(borders).all()
+                or np.any(np.diff(borders) <= 0)):
+            raise ValueError('DoPFN requires finite, strictly increasing borders '
+                             'and one logit per bin (at least three bins)')
+        if not np.isfinite(y_scale) or y_scale <= 0:
+            raise ValueError('y_scale must be finite and positive')
+        # HalfNormal(scale).cdf(width) = 0.5 in the native criterion.
+        scales = (np.diff(borders)[[0, -1]] / ndtri(0.75)
+                  if tail_scales is None else np.asarray(tail_scales, dtype=float))
+        if scales.shape != (2,) or not np.isfinite(scales).all() or np.any(scales <= 0):
+            raise ValueError('DoPFN tail scales must be two finite positive values')
+        edges = (borders[1:-1] - y_shift) / y_scale
+        lp = _log_softmax(pred)
+        return cls(float(lp[0]), lp[1:-1], float(lp[-1]),
+                   float(scales[0] / y_scale), float(scales[1] / y_scale),
+                   edges, np.diff(edges))
+
+
+def _normal_interval(lo, hi):
+    """Standard normal mass between bounds, avoiding cancellation in the right tail."""
+    from scipy.special import ndtr
+
+    lo, hi = np.broadcast_arrays(lo, hi)
+    return np.maximum(np.where(lo > 0, ndtr(-lo) - ndtr(-hi),
+                               ndtr(hi) - ndtr(lo)), 0.0)
+
+
+def dopfn_tau_density(f0: DoPFN1D, f1: DoPFN1D, tau_points):
+    """Exact independence integral for unequal bars and half-normal tails.
+
+    Rectangle overlaps are piecewise linear with knots at all arm-border
+    differences. Bar/tail terms are normal CDF differences; tail/tail terms
+    integrate the product of two Gaussians over intersecting half-lines.
+    Thus no rebinning, finite-y truncation or tail quadrature is needed.
+    The metric grid still approximates integrals in tau (native knots need
+    not align with TAU_CENTERS).
+    """
+    tau = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    p0, p1 = np.exp(f0.log_pBars), np.exp(f1.log_pBars)
+    h0, h1 = p0 / f0.widths, p1 / f1.widths
+    # Each density jump induces a slope change in the correlation. Integrate
+    # the sorted slope changes once, then interpolate the exact linear pieces.
+    jumps0 = np.diff(np.r_[0.0, h0, 0.0])
+    jumps1 = np.diff(np.r_[0.0, h1, 0.0])
+    knots, inverse = np.unique(
+        (f1.edges[None, :] - f0.edges[:, None]).ravel(), return_inverse=True)
+    changes = np.bincount(inverse, weights=(-jumps0[:, None] * jumps1).ravel())
+    slopes = np.cumsum(changes)
+    values = np.r_[0.0, np.cumsum(slopes[:-1] * np.diff(knots))]
+    values[-1] = 0.0  # exact compact-support endpoint, remove roundoff drift
+    out = np.maximum(np.interp(tau, knots, values, left=0.0, right=0.0), 0.0)
+
+    def tails(f):
+        return ((-1, f.edges[0], f.sL, math.exp(f.log_pL)),
+                (+1, f.edges[-1], f.sR, math.exp(f.log_pR)))
+
+    def bar_tail(bars, heights, tail_model, delta):
+        result = np.zeros(delta.shape)
+        for sign, anchor, scale, weight in tails(tail_model):
+            # Integrate tail density at y + delta over each finite bar of y.
+            lo = (bars.edges[:-1, None] + delta - anchor) / scale
+            hi = (bars.edges[1:, None] + delta - anchor) / scale
+            if sign < 0:
+                hi = np.minimum(hi, 0.0)
+            else:
+                lo = np.maximum(lo, 0.0)
+            result += 2 * weight * (heights @ _normal_interval(lo, hi))
+        return result
+
+    out += bar_tail(f0, h0, f1, tau)
+    out += bar_tail(f1, h1, f0, -tau)
+    for sign0, a0, s0, w0 in tails(f0):
+        for sign1, a1, s1, w1 in tails(f1):
+            # N(y; a0,s0) N(y; a1-tau,s1) = N(tau; a1-a0,S) N(y;m,s).
+            variance = s0 * s0 + s1 * s1
+            s = s0 * s1 / math.sqrt(variance)
+            m = (a0 * s1 * s1 + (a1 - tau) * s0 * s0) / variance
+            lo, hi = np.full(tau.shape, -np.inf), np.full(tau.shape, np.inf)
+            for sign, boundary in ((sign0, a0), (sign1, a1 - tau)):
+                if sign < 0:
+                    hi = np.minimum(hi, boundary)
+                else:
+                    lo = np.maximum(lo, boundary)
+            density = np.exp(-0.5 * (tau - (a1 - a0)) ** 2 / variance)
+            density /= math.sqrt(2 * math.pi * variance)
+            out += 4 * w0 * w1 * density * _normal_interval((lo - m) / s, (hi - m) / s)
+    return out
 
 
 # ---------------------------------------------------------------------------

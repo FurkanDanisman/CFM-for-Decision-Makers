@@ -62,10 +62,18 @@
 set -euo pipefail
 mkdir -p logs_density_tauC
 
-REPO="/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers"
+REPO="${REPO:-/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers}"
 
-export UWYK="$REPO/g4cfm"
-export CAUSALPFN="/home/lukez/projects/aip-rgrosse/lukez/CausalPFN"
+export UWYK="${UWYK:-$REPO/g4cfm}"
+export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
+
+# Select uwyk (legacy default), dopfn, or all. The DoPFN checkout must include
+# its pretrained artifacts even when loading our joint checkpoint.
+# Example: MODEL_FAMILY=dopfn DOPFN_ROOT=/path/to/Do-PFN sbatch ...
+export MODEL_FAMILY="${MODEL_FAMILY:-uwyk}"
+export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN:-}}"
+export DOPFN_JOINT_CKPT="${DOPFN_JOINT_CKPT:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
+export DOPFN_QUERY_CHUNK="${DOPFN_QUERY_CHUNK:-20}"
 
 # ── checkpoints ────────────────────────────────────────────────────────────
 # Joint-2D: our graph2d head. step_50000 matches the "Ours V6A - 5206104" row
@@ -105,7 +113,19 @@ export ACIC_CACHE_DIR="${ACIC_CACHE_DIR:-$REPO/data/acic_cache}"
 
 export OUT_ROOT="${OUT_ROOT:-$REPO/results_density_tauC/$SLURM_ARRAY_JOB_ID}"
 
-for f in "$CKPT" "$UWYK_CKPT" "$UWYK_CFG"; do
+inputs=()
+case "$MODEL_FAMILY" in
+    uwyk|all) inputs+=("$CKPT" "$UWYK_CKPT" "$UWYK_CFG") ;;
+    dopfn) ;;
+    *) echo "FATAL: MODEL_FAMILY must be uwyk, dopfn, or all" >&2; exit 1 ;;
+esac
+if [[ "$MODEL_FAMILY" == dopfn || "$MODEL_FAMILY" == all ]]; then
+    [ -n "$DOPFN_ROOT" ] || { echo "FATAL: set DOPFN_ROOT" >&2; exit 1; }
+    inputs+=("$DOPFN_JOINT_CKPT" "$DOPFN_ROOT/artifacts/dopfn_model.pkl"
+             "$DOPFN_ROOT/artifacts/dopfn_config.pkl"
+             "$DOPFN_ROOT/artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt")
+fi
+for f in "${inputs[@]}"; do
     [ -f "$f" ] || { echo "FATAL: missing $f" >&2; exit 1; }
 done
 # load_acic_truth reads x.csv purely for a row count, but will reach out to
@@ -147,7 +167,7 @@ export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%F %T')] tauC density  dataset=$DATASET  r=[$REAL_START,$REAL_END)" \
-     " anc=$ANC_TAG  N_Y0=$N_Y0  OUT=$OUT"
+     " family=$MODEL_FAMILY  anc=$ANC_TAG  N_Y0=$N_Y0  OUT=$OUT"
 
 # The model-free validation gates are cheap (~2 min) and every number below is
 # meaningless if they fail. Run them once, on the first task only.
@@ -155,6 +175,7 @@ if [ "$T" -eq 0 ]; then
     echo "--- validation gates ---"
     python -u "$REPO/benchmarks/eval_graph2d/test_density_common.py" \
         || { echo "FATAL: density gates failed; not running the eval." >&2; exit 3; }
+    python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_dopfn.py'
     echo "--- gates passed ---"
 fi
 

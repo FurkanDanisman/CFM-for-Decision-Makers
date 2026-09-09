@@ -27,14 +27,16 @@ from pathlib import Path
 
 import numpy as np
 
-METHODS = ('uwyk_native', 'uwyk_matched', 'joint')
+METHODS = ('uwyk_native', 'uwyk_matched', 'joint', 'dopfn_native', 'dopfn_joint')
 LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
-         'uwyk_matched': 'UWYK (x)indep J=32',
-         'joint': 'Joint-2D J=32'}
+         'uwyk_matched': 'UWYK (x)indep matched bins',
+         'joint': 'UWYK Joint-2D',
+         'dopfn_native': 'DoPFN (x)indep native',
+         'dopfn_joint': 'DoPFN Joint-2D'}
 # All four are errors or diagnostics; lower is better except `mass`, which
 # should sit at 1.0 and is a grid-coverage check, not a score.
 METRICS = ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass')
-POINT_METHODS = (*METHODS, 'joint_inner')
+POINT_METHODS = (*METHODS, 'joint_inner', 'dopfn_joint_inner')
 POINT_METRICS = ('pehe', 'cate_l1', 'ate_abs_err')
 MISSING = '--'
 
@@ -119,13 +121,15 @@ def md_table(headers, rows, aligns=None):
 
 def point_table(rows):
     """Point errors from the same logits; old density-only shards stay valid."""
-    if not any('pehe_joint' in r for r in rows):
+    if not any(f'pehe_{m}' in r for r in rows for m in POINT_METHODS):
         return None
-    labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)'}
-    body = [[labels[m]] for m in POINT_METHODS]
+    labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)',
+              'dopfn_joint_inner': 'DoPFN Joint-2D interior mean (raw)'}
+    methods = [m for m in POINT_METHODS if any(f'pehe_{m}' in r for r in rows)]
+    body = [[labels[m]] for m in methods]
     for metric in POINT_METRICS:
         cells, scores = [], []
-        for method in POINT_METHODS:
+        for method in methods:
             key = f'{metric}_{method}'
             if not all(key in r for r in rows):
                 cells.append(MISSING)
@@ -159,13 +163,14 @@ def main():
         print(f'realizations={n_r}, ~{n_q} queries each, '
               f'anc={rows[0]["anc_tag"]}, |tau*|>3: {oob:.2%}\n')
 
+        methods = [m for m in METHODS if any(f'nll_{m}' in r for r in rows)]
         table = {}
-        body = [[LABEL[m]] for m in METHODS]
+        body = [[LABEL[m]] for m in methods]
         for metric in METRICS:
             cells, scores = [], []
-            for m in METHODS:
+            for m in methods:
                 key = f'{metric}_{m}'
-                if key not in rows[0]:
+                if not all(key in r for r in rows):
                     cells.append(MISSING)
                     scores.append(None)
                     continue
@@ -184,7 +189,7 @@ def main():
                   'predictions. Full-density means except the interior row; '
                   'CATE L1 is per-query MAE, ATE error is unnormalised.\n')
             print(points)
-            for m in METHODS:
+            for m in methods:
                 key = f'grid_mean_max_abs_diff_{m}'
                 if all(key in r for r in rows):
                     print(f'  {m}: max |finite-grid moment - full mean| = '
@@ -207,7 +212,10 @@ def main():
         contrasts = [('**HEADLINE**', 'model gap as run',
                       'uwyk_native', 'joint'),
                      ('bridge', 'resolution handicap',
-                      'uwyk_native', 'uwyk_matched')]
+                      'uwyk_native', 'uwyk_matched'),
+                     ('DoPFN', 'model gap as run',
+                      'dopfn_native', 'dopfn_joint')]
+        contrasts = [c for c in contrasts if c[2] in methods and c[3] in methods]
         cbody = [[kind, f'{what} ({a} -> {b})']
                  for kind, what, a, b in contrasts]
         contrast_metrics = ('nll', 'kl_rev', 'pehe') if points else ('nll', 'kl_rev')
@@ -221,11 +229,11 @@ def main():
         print(md_table(['', 'contrast', 'dNLL', 'dKLrev'] + (['dPEHE'] if points else []),
                        cbody, ['l', 'l'] + ['r'] * len(contrast_metrics)))
         print()
-        print('_negative = joint better; the bridge row should be ~0, which '
-              'is what licenses reading the headline as a model gap and not a '
-              'resolution artefact._')
+        print('_negative = destination method has lower error. The UWYK bridge '
+              'measures rebinning effects; DoPFN compares native bins with its '
+              'joint head, without a resolution-matched control._')
 
-        bad = [m for m in METHODS
+        bad = [m for m in methods
                if (m, 'mass') in table and abs(table[(m, 'mass')] - 1) > 0.01]
         if bad:
             print(f'\n**WARNING:** p(tau) mass off 1.0 by >1% for {bad} -- the '
