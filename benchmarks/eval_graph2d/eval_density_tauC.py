@@ -16,6 +16,9 @@ Also scores the joint's interior-only mean (joint_inner). All point estimates
 come from the SAME logits used for density scoring, with no extra forwards.
 SAVE_PREDICTIONS=1 (default) writes logits, axes and truth under OUT/predictions
 so subsequent numerical checks can run on CPU without either checkpoint.
+Truth uses the documented generator noise sigma=1 in raw outcome units.
+Full-training factual residual scales are saved as diagnostics only. Both
+minmax and std truth scaling follow the model's actual context transform.
 
 Methods (rows):
     uwyk_native   UWYK's K=1000 bars, convolved under independence
@@ -69,6 +72,7 @@ from density_common import (                                        # noqa: E402
     Joint2D, UWYK1D, joint_tau_density, uwyk_tau_density,
     truth_tau_density, l2_distance, kl, mass, point_metrics, TAU_CENTERS,
 )
+from density_truth import harness_y_affine, load_density_truth        # noqa: E402
 
 DATASET = H.DATASET
 # ANC_MODE (read by the harness at ITS import, hence the setdefault above)
@@ -107,55 +111,6 @@ REAL_END = os.environ.get('REAL_END')            # exclusive; None = all
 ACIC_CACHE = (os.environ.get('ACIC_CACHE_DIR')
               or os.environ.get('ACIC_CACHE')
               or os.path.join(_REPO, 'data', 'acic_cache'))
-
-
-# ---------------------------------------------------------------------------
-# Observed potential outcomes (tau* targets). CausalPFN's loaders keep only
-# `true_cate`, so both datasets are read from their source files directly --
-# the same thing true_ihdp.py / true_acic.py already do for mu0/mu1.
-# ---------------------------------------------------------------------------
-def observed_y0_y1(dataset: str, r: int):
-    if dataset == 'IHDP':
-        d = np.load(os.path.join(os.environ['CAUSALPFN'], 'benchmarks', 'IHDP',
-                                 'ihdp_npci_1-100.test.npz'))
-        t = d['t'][..., r].reshape(-1)
-        yf = d['yf'][..., r].reshape(-1)
-        ycf = d['ycf'][..., r].reshape(-1)
-        # IHDPDataset builds X_test straight from the npz with no permutation,
-        # so npz row order == cd.X_test row order.
-        return (np.where(t == 0, yf, ycf).astype(np.float64),
-                np.where(t == 1, yf, ycf).astype(np.float64))
-    if dataset == 'ACIC':
-        sys.path.insert(0, os.path.join(_REPO, 'benchmarks'))
-        from l2_acic.true_acic import _load_zy_frame          # noqa
-        sim = _load_zy_frame(r, cache_dir=ACIC_CACHE)
-        sim.columns = ['z', 'y0', 'y1', 'mu0', 'mu1']
-        n = len(sim)
-        # Must match true_acic.py::load_acic_truth byte-for-byte, or y0/y1 and
-        # mu0/mu1 refer to different units.
-        perm = np.random.default_rng(42 + r).permutation(n)
-        test_idx = perm[int(n * (1 - 0.1)):]
-        return (sim['y0'].values[test_idx].astype(np.float64),
-                sim['y1'].values[test_idx].astype(np.float64))
-    raise ValueError(f'Tier C v1 covers IHDP and ACIC only, got {dataset}')
-
-
-def load_truth(dataset: str, r: int, y_train_ctx: np.ndarray):
-    """mu0, mu1, sigma on the scaled axis.
-
-    y_train_ctx MUST be the post-subsample training y the harness handed to
-    _scale_y. IHDP's 672 training rows sit under EVAL_MAX_CONTEXT=1000 so the
-    cap is a no-op there, but ACIC's ~4.3k rows are subsampled -- passing the
-    full training y instead would put truth and model on different axes.
-    """
-    sys.path.insert(0, os.path.join(_REPO, 'benchmarks'))
-    if dataset == 'IHDP':
-        from l2_ihdp.true_ihdp import load_ihdp_truth
-        t = load_ihdp_truth(r, os.environ['CAUSALPFN'], y_train_ctx)
-    else:
-        from l2_acic.true_acic import load_acic_truth
-        t = load_acic_truth(r, y_train_ctx, cache_dir=ACIC_CACHE)
-    return t.mu0_test_scaled, t.mu1_test_scaled, float(t.sigma_scaled)
 
 
 # ---------------------------------------------------------------------------
@@ -230,25 +185,24 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
     X_tr_std, X_te_std = H._standardize_train_test(X_tr_raw, X_te_raw)
     X_tr = H._pad_features(X_tr_std, F)
     X_te = H._pad_features(X_te_std, F)
-    y_scaled, ymin, yrange = H._scale_y(y_tr_raw)
+    y_scaled, y_offset, y_span = H._scale_y(y_tr_raw)
+    y_shift, y_scale = harness_y_affine(y_offset, y_span, H.Y_SCALING)
     Y_obs = y_scaled.reshape(-1, 1)
     T_feed = T_tr.astype(np.float32).reshape(-1, 1)      # binary: matched to 2D
 
     adj = dict(H.build_mode_list(F, n_real))[ANC_TAG]
 
     # -- targets and truth, on the axis _scale_y just defined -------------
-    y0_raw, y1_raw = observed_y0_y1(DATASET, r)
-    to_scaled = lambda y: (2.0 * (y - ymin) / yrange - 1.0)
-    tau_star = to_scaled(y1_raw) - to_scaled(y0_raw)     # offsets cancel
-    mu0, mu1, sigma = load_truth(DATASET, r, y_tr_raw)
+    truth = load_density_truth(DATASET, r, y_shift=y_shift, y_scale=y_scale,
+                               causalpfn_dir=H.CAUSALPFN,
+                               acic_cache_dir=ACIC_CACHE)
+    mu0, mu1, sigma = truth.mu0_scaled, truth.mu1_scaled, truth.sigma_scaled
+    tau_star = truth.tau_star_scaled
+    truth_metadata = truth.noise_metadata()
 
-    # ALIGNMENT GUARD. observed_y0_y1 and load_truth both index the source
-    # files directly and each reconstructs the test split on its own -- IHDP by
-    # assuming npz row order survives into cd.X_test, ACIC by replaying the
-    # rng. If either is off, rows silently refer to different units and every
-    # number downstream is quietly wrong. cd.true_cate is mu1-mu0 in raw units,
-    # so it pins the ordering against the truth loader.
-    cate_from_truth = (mu1 - mu0) * (yrange / 2.0)
+    # The truth reader loads means and paired outcomes in a single test order.
+    # Check that order against the model dataset's raw-unit true_cate.
+    cate_from_truth = (mu1 - mu0) * y_scale
     true_cate = np.asarray(cate.true_cate, dtype=np.float64).reshape(-1)
     if cate_from_truth.shape != true_cate.shape:
         raise RuntimeError(
@@ -260,9 +214,9 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
             f'r={r}: truth mu1-mu0 does not match cd.true_cate (max abs diff '
             f'{misalign:.3e}) -- test-row ordering is misaligned between '
             f'{DATASET}\'s loader and the truth/potential-outcome readers')
-    if len(y0_raw) != true_cate.size:
+    if len(tau_star) != true_cate.size:
         raise RuntimeError(
-            f'r={r}: {len(y0_raw)} potential-outcome rows vs {true_cate.size} '
+            f'r={r}: {len(tau_star)} potential-outcome rows vs {true_cate.size} '
             f'test queries')
 
     # -- Joint-2D: one forward pass ---------------------------------------
@@ -291,13 +245,14 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
             joint_logits=logits, uwyk_pred0=pred0, uwyk_pred1=pred1,
             J=J, edges2d=edges2d, bar_edges=bar_edges, bar_widths=bar_widths,
             base_sL=base_sL, base_sR=base_sR,
-            y_scale=yrange / 2.0, y_shift=ymin + yrange / 2.0,
+            y_scale=y_scale, y_shift=y_shift,
             true_cate=true_cate, mu0_scaled=mu0, mu1_scaled=mu1,
-            sigma_scaled=sigma, tau_star_scaled=tau_star,
+            tau_star_scaled=tau_star, **truth_metadata,
             adj_joint=adj, adj_uwyk=adj_uwyk,
             n_context=X_tr_raw.shape[0], context_seed=H.EVAL_CONTEXT_SEED + r,
             ckpt=H.CKPT, uwyk_ckpt=UWYK_CKPT, uwyk_cfg=UWYK_CFG,
-            y_scaling=H.Y_SCALING, x_clip_quantile=H.X_CLIP_QUANTILE,
+            y_scaling=H.Y_SCALING, std_target=H.STD_TARGET,
+            x_clip_quantile=H.X_CLIP_QUANTILE,
             bias_edge_scale=H.BIAS_EDGE_SCALE, t_intv_override=H.T_INTV_OVERRIDE,
             n_y0=N_Y0, tau_grid=TAU_CENTERS,
         )
@@ -309,7 +264,6 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
     for q in range(n_q):
         p_true = truth_tau_density(mu0[q], mu1[q], sigma, TAU_CENTERS)
         t_star = np.array([tau_star[q]])
-        d_true = float(truth_tau_density(mu0[q], mu1[q], sigma, t_star)[0])
 
         f0 = UWYK1D.from_pred(pred0[q], bar_edges, bar_widths, base_sL, base_sR)
         f1 = UWYK1D.from_pred(pred1[q], bar_edges, bar_widths, base_sL, base_sR)
@@ -341,21 +295,23 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F):
 
     out = {'dataset': DATASET, 'realization': r, 'n_queries': n_q,
            'n_context': int(X_tr_raw.shape[0]), 'anc_tag': ANC_TAG,
-           'sigma_scaled': sigma,
-           'y_scale': yrange / 2.0, 'true_cate': true_cate,
+           **truth_metadata,
+           'y_scale': y_scale, 'y_shift': y_shift,
+           'y_scaling': H.Y_SCALING, 'std_target': H.STD_TARGET,
+           'true_cate': true_cate,
            'frac_tau_outside_grid': float(np.mean(np.abs(tau_star) > 3.0))}
     for name, rr in rows.items():
         for k in rr[0]:
             out[f'{k}_{name}'] = float(np.mean([x[k] for x in rr]))
     for name, means in cate_means.items():
-        for metric, value in point_metrics(means, true_cate, yrange / 2.0).items():
+        for metric, value in point_metrics(means, true_cate, y_scale).items():
             out[f'{metric}_{name}'] = value
-        out[f'cate_pred_{name}'] = np.asarray(means) * (yrange / 2.0)
+        out[f'cate_pred_{name}'] = np.asarray(means) * y_scale
         if name in grid_means:
             # Unnormalised integral over the finite tau grid, diagnostic only.
             # The reported PEHE uses exact full-density means above.
             out[f'grid_mean_max_abs_diff_{name}'] = float(np.max(np.abs(
-                np.asarray(grid_means[name]) - means)) * (yrange / 2.0))
+                np.asarray(grid_means[name]) - means)) * y_scale)
     return out
 
 
@@ -393,7 +349,9 @@ def main():
             f'{m}: nll={row[f"nll_{m}"]:7.3f} l2={row[f"l2_{m}"]:6.3f} '
             f'klrev={row[f"kl_rev_{m}"]:7.4f} pehe={row[f"pehe_{m}"]:7.3f}'
             for m in ('uwyk_native', 'uwyk_matched', 'joint'))
-            + f'   ({time.time()-t0:.0f}s)', flush=True)
+            + f'  sigma_raw={row["sigma_raw"]:.3f}'
+              f' residual_sigma_raw={row["sigma_residual_raw"]:.3f}'
+              f'   ({time.time()-t0:.0f}s)', flush=True)
 
 
 if __name__ == '__main__':
