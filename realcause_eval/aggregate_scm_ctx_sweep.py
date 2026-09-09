@@ -29,7 +29,24 @@ import os
 import numpy as np
 
 
-MODELS   = ['dopfn_native', 'dopfn_bb', 'cpfn2d', 'cpfn1d', 'graph2d', 'uwyk']
+# Each spec: (display_name, dir_name, kind, tag)
+#   kind ∈ {'uniform', 'graph2d', 'dopfn_bb'}
+#   tag  : for graph2d, which ancestor variant's keys to read ('v3b' | 'noanc');
+#          ignored otherwise.
+# graph2d writes BOTH v3b and noanc keys in one npz (anc_mode=v3b_only), so
+# graph2d_v3b / graph2d_noanc read the same dir with different key suffixes.
+# uwyk_v3b reads the v3b run dir (uwyk/); uwyk_noanc reads a separate run
+# dir (uwyk_noanc/) that must be produced with ANC_VARIANT=noanc.
+MODEL_SPECS = [
+    ('dopfn_native', 'dopfn_native', 'uniform',  None),
+    ('dopfn_bb',     'dopfn_bb',     'dopfn_bb',  None),
+    ('cpfn2d',       'cpfn2d',       'uniform',   None),
+    ('cpfn1d',       'cpfn1d',       'uniform',   None),
+    ('graph2d_noanc','graph2d',      'graph2d',   'noanc'),
+    ('graph2d_v3b',  'graph2d',      'graph2d',   'v3b'),
+    ('uwyk_noanc',   'uwyk_noanc',   'uniform',   None),
+    ('uwyk_v3b',     'uwyk',         'uniform',   None),
+]
 CONTEXTS = [50, 100, 250, 500, 1000]
 CASES    = ['Observed_Confounder', 'Observed_Mediator',
             'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
@@ -43,20 +60,20 @@ def _first(z, keys):
     return None
 
 
-def _cell_pehe_l1(sweep, ctx, model, case, thr=float('inf')):
-    """Return (pehe_array, l1_array, n_dropped) for one cell.
+def _cell_pehe_l1(sweep, ctx, spec, case, thr=float('inf')):
+    """Return (pehe_array, l1_array, n_dropped) for one (spec, ctx, case).
 
-    Realizations with |true_ATE| > thr are dropped (outlier SCM draws).
-    true_ATE is identical across models for a given (case, realization),
-    so the same realizations are dropped for every model → fair compare.
-    Returns (None, None, 0) if the cell has no readable output.
+    spec = (display_name, dir_name, kind, tag). Realizations with
+    |true_ATE| > thr are dropped (outlier SCM draws); true_ATE is
+    model-independent so the same realizations drop across all specs.
     """
-    cell = os.path.join(sweep, f'ctx{ctx}', model, case)
+    _name, dir_name, kind, tag = spec
+    cell = os.path.join(sweep, f'ctx{ctx}', dir_name, case)
     if not os.path.isdir(cell):
         return None, None, 0
 
     # ── dopfn_bb: single summary.npz with per-realization arrays.
-    if model == 'dopfn_bb':
+    if kind == 'dopfn_bb':
         cand = os.path.join(cell, 'summary.npz')
         if not os.path.isfile(cand):
             return None, None, 0
@@ -77,15 +94,15 @@ def _cell_pehe_l1(sweep, ctx, model, case, thr=float('inf')):
             n_drop = 0
         return pehe, l1, n_drop
 
-    # ── graph2d: <CASE>_r{NNN}.npz with per-tag keys (v3b ancestor, raw method).
-    if model == 'graph2d':
+    # ── graph2d: <CASE>_r{NNN}.npz; pick the tag's keys (v3b or noanc).
+    if kind == 'graph2d':
         paths = sorted(glob.glob(os.path.join(cell, f'{case}_r*.npz')))
+        pe_keys = [f'pehe_raw_{tag}', f'pehe_full_{tag}', f'pehe_em_{tag}']
+        at_keys = [f'ate_raw_{tag}',  f'ate_full_{tag}',  f'ate_em_{tag}']
         pehe_l, l1_l, n_drop = [], [], 0
         for p in paths:
             with np.load(p, allow_pickle=True) as z:
-                pe = _first(z, ['pehe_raw_v3b', 'pehe_full_v3b', 'pehe_em_v3b'])
-                at = _first(z, ['ate_raw_v3b', 'ate_full_v3b', 'ate_em_v3b'])
-                tr = _first(z, ['true_ate'])
+                pe = _first(z, pe_keys); at = _first(z, at_keys); tr = _first(z, ['true_ate'])
             if pe is None:
                 continue
             if tr is not None and abs(float(tr)) > thr:
@@ -138,11 +155,12 @@ def _build_tables(sweep, thr=float('inf')):
 
     # Report how many realizations get dropped per case (from dopfn_native's
     # true_ate — identical across models). ctx-independent, so use ctx=50.
+    _dn_spec = MODEL_SPECS[0]   # dopfn_native
     if np.isfinite(thr):
         drop_report = ['\n## Dropped realizations per case (|true_ATE| > '
                        f'{thr:g})\n', '| Case | n_dropped / 100 |', '|---|---|']
         for case in CASES:
-            _, _, nd = _cell_pehe_l1(sweep, CONTEXTS[0], 'dopfn_native', case, thr)
+            _, _, nd = _cell_pehe_l1(sweep, CONTEXTS[0], _dn_spec, case, thr)
             drop_report.append(f'| {case} | {nd} |')
         lines_pehe = drop_report + [''] + lines_pehe
 
@@ -152,10 +170,10 @@ def _build_tables(sweep, thr=float('inf')):
             header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
             lines.append(header)
             lines.append('|' + '---|' * (len(CONTEXTS) + 1))
-            for model in MODELS:
-                cells = [model]
+            for spec in MODEL_SPECS:
+                cells = [spec[0]]
                 for ctx in CONTEXTS:
-                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, model, case, thr)
+                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
                     cells.append(_fmt(pehe if idx == 0 else l1))
                 lines.append('| ' + ' | '.join(cells) + ' |')
 
@@ -163,12 +181,12 @@ def _build_tables(sweep, thr=float('inf')):
         lines.append(f'\n## ALL CASES (macro-avg over 6 case studies)\n')
         header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
         lines.append(header); lines.append('|' + '---|' * (len(CONTEXTS) + 1))
-        for model in MODELS:
-            cells = [model]
+        for spec in MODEL_SPECS:
+            cells = [spec[0]]
             for ctx in CONTEXTS:
                 per_case_means = []
                 for case in CASES:
-                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, model, case, thr)
+                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
                     v = pehe if idx == 0 else l1
                     if v is not None and len(v):
                         per_case_means.append(float(np.mean(v)))
