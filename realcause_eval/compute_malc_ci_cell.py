@@ -41,6 +41,72 @@ import numpy as np
 # ── Worker plumbing (mirrors benchmarks/methods/ours.py::_init_worker but
 #    stripped to just what we need for CI).
 _GLOBAL = {}
+_BETA_CLAMP_EPS = 1e-3    # keeps min(α ± β) ≥ ε when we clamp
+
+
+def _make_clamped_fit_component_2d(orig_module):
+    """Return a drop-in replacement for malc_2d._fit_component_2d that
+    CLAMPS beta_x/beta_y into (-α + ε, α - ε) instead of returning None
+    when EM shifts the mean too far. Root-cause: MALC's Beta-parameterized
+    tail atoms require min(α ± β) > 0, which fails for ~48-85% of queries
+    on cpfn1d/uwyk1d PSID/PSID_bal (see diagnose_malc_failure.py).
+
+    Mirrors malc_2d._fit_component_2d verbatim except for the beta check.
+    """
+    import numpy as _np
+    _em_mean_2d = getattr(orig_module, '_em_mean_2d')
+    mlelcd_2d   = getattr(orig_module, 'mlelcd_2d')
+    ComponentFit2D = getattr(orig_module, 'ComponentFit2D')
+
+    def _clamped(p_mat, grid_x, grid_y, B, alpha, rng, tol_gap=1e-8):
+        p_mat = _np.maximum(p_mat, 0.0)
+        s = p_mat.sum()
+        if s < 1e-10 or _np.sum(p_mat > 1e-10) < 2:
+            return None
+        p_mat = p_mat / s
+        n_y, n_x = p_mat.shape
+        delta_x = grid_x[1] - grid_x[0]
+        delta_y = grid_y[1] - grid_y[0]
+        p_x = p_mat.sum(axis=0)
+        p_y = p_mat.sum(axis=1)
+        grid_left_x = grid_x[:-1]
+        grid_left_y = grid_y[:-1]
+        centers_x = 0.5 * (grid_left_x + grid_x[1:])
+        centers_y = 0.5 * (grid_left_y + grid_y[1:])
+        mu_low_x = float(_np.sum(p_x * grid_left_x))
+        mu_low_y = float(_np.sum(p_y * grid_left_y))
+        mu_mid_x = 0.5 * (mu_low_x + float(_np.sum(p_x * grid_x[1:])))
+        mu_mid_y = 0.5 * (mu_low_y + float(_np.sum(p_y * grid_y[1:])))
+        sigma_x = float(_np.sqrt(_np.sum(p_x * (centers_x - mu_mid_x) ** 2) + delta_x ** 2 / 12.0))
+        sigma_y = float(_np.sqrt(_np.sum(p_y * (centers_y - mu_mid_y) ** 2) + delta_y ** 2 / 12.0))
+        if not _np.isfinite(sigma_x) or sigma_x <= 0: sigma_x = delta_x
+        if not _np.isfinite(sigma_y) or sigma_y <= 0: sigma_y = delta_y
+        mu_n_x = _em_mean_2d(p_x, grid_x, sigma=sigma_x, start=mu_mid_x)
+        mu_n_y = _em_mean_2d(p_y, grid_y, sigma=sigma_y, start=mu_mid_y)
+        beta_x = 2.0 * alpha * ((mu_n_x - mu_low_x) / delta_x - 0.5)
+        beta_y = 2.0 * alpha * ((mu_n_y - mu_low_y) / delta_y - 0.5)
+        # === CLAMP instead of return None ===
+        lo, hi = -alpha + _BETA_CLAMP_EPS, alpha - _BETA_CLAMP_EPS
+        beta_x = 0.0 if not _np.isfinite(beta_x) else float(_np.clip(beta_x, lo, hi))
+        beta_y = 0.0 if not _np.isfinite(beta_y) else float(_np.clip(beta_y, lo, hi))
+        # ====================================
+        prob_vec = p_mat.flatten(order='F')
+        bin_idx = rng.choice(len(prob_vec), size=B, p=prob_vec, replace=True)
+        bi_j = bin_idx // n_y
+        bi_i = bin_idx % n_y
+        zstar_x = delta_x * rng.beta(alpha + beta_x, alpha - beta_x, size=B)
+        zstar_y = delta_y * rng.beta(alpha + beta_y, alpha - beta_y, size=B)
+        xstar = _np.column_stack([grid_left_x[bi_j] + zstar_x, grid_left_y[bi_i] + zstar_y])
+        try:
+            fhatn = mlelcd_2d(xstar, jitter=1e-10,
+                               seed=int(rng.integers(2**31 - 1)),
+                               tol_gap=tol_gap, tol_feas=tol_gap)
+        except Exception:
+            return None
+        return ComponentFit2D(fhatn=fhatn, mu_hat=_np.array([mu_n_x, mu_n_y]),
+                               alpha=alpha, beta=_np.array([beta_x, beta_y]),
+                               grid_x=grid_x, grid_y=grid_y, p_mat=p_mat, xstar=xstar)
+    return _clamped
 
 
 def _init_worker(edges_np, J, bin_width, n_eval, malc_K, malc_B, repo, malc_dir,
@@ -51,7 +117,13 @@ def _init_worker(edges_np, J, bin_width, n_eval, malc_K, malc_B, repo, malc_dir,
     if repo     and repo     not in sys.path: sys.path.insert(0, repo)
     if malc_dir and malc_dir not in sys.path: sys.path.insert(0, malc_dir)
     from losses.BarDistribution2D import fit_malc_inner
+    import malc_2d
     from malc_2d import dmalc_2d
+    # Monkey-patch MALC's _fit_component_2d with the beta-clamped version.
+    # MALC_2D_fit / mixture-EM / BIC-scan all call _fit_component_2d by
+    # bare name → module __globals__ lookup → this substitution reaches
+    # every code path inside malc_2d.
+    malc_2d._fit_component_2d = _make_clamped_fit_component_2d(malc_2d)
     _GLOBAL['fit']   = fit_malc_inner
     _GLOBAL['dmalc'] = dmalc_2d
     _GLOBAL['edges'] = edges_np
