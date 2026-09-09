@@ -14,8 +14,10 @@
 #
 #   METHOD_SET     env:  '1d' (cpfn1d/dopfn/uwyk1d) or '2d' (cpfn2d/graph2d/dopfnbb).
 #   SOURCE         env:  'malc' | 'joint' | 'marginals'.
-#                        For METHOD_SET=1d,  SOURCE must be 'marginals'.
+#                        For METHOD_SET=1d,  SOURCE ∈ {'marginals', 'malc'}.
 #                        For METHOD_SET=2d,  SOURCE ∈ {'joint', 'malc'}.
+#                        malc requires the corresponding compute_malc_ci_cell*
+#                        dump to already exist next to the density NPZs.
 #   MALC_TAG       env:  required when SOURCE=malc  (e.g. B100, B500, B1000).
 #   OUT_TAG        env:  overrides the default output filename tag.
 #
@@ -52,7 +54,6 @@ case "$METHOD_SET" in
 esac
 case "$SOURCE" in
     malc)
-        [ "$METHOD_SET" = "2d" ] || { echo "FATAL: SOURCE=malc requires METHOD_SET=2d" >&2; exit 2; }
         [ -n "$MALC_TAG" ]      || { echo "FATAL: SOURCE=malc requires MALC_TAG"       >&2; exit 2; }
         ;;
     joint)
