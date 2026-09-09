@@ -22,13 +22,15 @@
 #   B = 100   (bandwidth, matches 2D dump default)
 #   n_eval = 50
 #
-# Downsample: --downsample-max-J N picks the largest divisor of K that
-# keeps J ≤ N, so mass conservation is exact. Actual factors for the 3
-# methods at default max_J=100:
-#   cpfn1d  K=1024 → f=16 → J=64
-#   dopfn   K=100  → f=1  → J=100 (no-op)
-#   uwyk1d  K=1000 → f=10 → J=100 (also trims 2 tail atoms first)
-# Without this MALC would fit 1M-atom joints on uwyk1d and OOM.
+# Downsample: DEFAULT IS OFF (max_J=0 → no downsample, full K passed to
+# MALC). Actual K per method:
+#   cpfn1d  K=1024 → 1024² = 1.05M atoms per query
+#   dopfn   K=100  →  100² = 10K   atoms per query
+#   uwyk1d  K=1000 (after tail-trim from K+2=1002) → 1M atoms per query
+# MALC compute grows with atom count; the K=1024/1000 cells are the
+# tail. If a cell doesn't finish in the 6h wall, override DOWNSAMPLE_MAX_J
+# (e.g. =100 → cpfn1d→J=64, uwyk1d→J=100, dopfn no-op; largest divisor
+# ≤ max_J is used so mass conservation is exact).
 #
 # Env vars:
 #   OUT_ROOT     required — root of 1D density dumps (…/results_1d_density)
@@ -61,9 +63,9 @@ OUT_ROOT="${OUT_ROOT:?OUT_ROOT required — same one the 1D density-dump job wro
 N_WORKERS="${N_WORKERS:-32}"
 MALC_K="${MALC_K:-1}"
 MALC_MAX_K="${MALC_MAX_K:-0}"
-MALC_B="${MALC_B:-100}"
+MALC_B="${MALC_B:-500}"
 N_EVAL="${N_EVAL:-50}"
-DOWNSAMPLE_MAX_J="${DOWNSAMPLE_MAX_J:-100}"
+DOWNSAMPLE_MAX_J="${DOWNSAMPLE_MAX_J:-0}"   # 0 = no downsample (pass full K to MALC)
 MAX_REAL="${MAX_REAL:-}"
 OVERWRITE="${OVERWRITE:-0}"
 OUT_TAG="${OUT_TAG:-}"
