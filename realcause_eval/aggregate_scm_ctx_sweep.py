@@ -82,8 +82,11 @@ def _cell_pehe_l1(sweep, ctx, model, case):
             return None, None
         return np.array(pehe_l), (np.array(l1_l) if l1_l else None)
 
-    # ── uniform: r{NNN}.npz with pehe_raw + (ate_pred|ate_raw) + true_ate.
+    # ── uniform: dopfn_native/uwyk write r{NNN}.npz; cpfn2d/cpfn1d write
+    #    {CASE}_r{NNN}.npz (tag includes DATASET). Try both.
     paths = sorted(glob.glob(os.path.join(cell, 'r*.npz')))
+    if not paths:
+        paths = sorted(glob.glob(os.path.join(cell, f'{case}_r*.npz')))
     pehe_l, l1_l = [], []
     for p in paths:
         with np.load(p, allow_pickle=True) as z:
@@ -101,12 +104,16 @@ def _cell_pehe_l1(sweep, ctx, model, case):
 
 
 def _fmt(vals):
+    """median [IQR] (mean) — median is the primary statistic (matches the
+    DoPFN paper's Fig 3 median bar-plots); mean shown in parens for
+    reference. These case-study SCMs span many CATE scales, so the mean
+    is dominated by a few high-scale realizations."""
     if vals is None or len(vals) == 0:
         return '—'
-    m = float(np.mean(vals))
-    se = float(np.std(vals, ddof=1) / np.sqrt(len(vals))) if len(vals) > 1 else float('nan')
-    se_s = f'{se:.3f}' if np.isfinite(se) else '—'
-    return f'{m:.3f} ± {se_s} (n={len(vals)})'
+    med = float(np.median(vals))
+    mean = float(np.mean(vals))
+    q1, q3 = np.percentile(vals, [25, 75])
+    return f'{med:.3f} [{q1:.3f}–{q3:.3f}] (μ={mean:.3f}, n={len(vals)})'
 
 
 def _build_tables(sweep):
@@ -126,20 +133,21 @@ def _build_tables(sweep):
                     cells.append(_fmt(pehe if idx == 0 else l1))
                 lines.append('| ' + ' | '.join(cells) + ' |')
 
-        # Also a case-averaged view (mean over the 6 case studies of the per-cell mean).
-        lines.append(f'\n## ALL CASES (macro-avg over 6 case studies)\n')
+        # Case-averaged view: median over the 6 case studies of each cell's
+        # median (macro-average of medians — matches the per-cell statistic).
+        lines.append(f'\n## ALL CASES (macro-median over 6 case studies)\n')
         header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
         lines.append(header); lines.append('|' + '---|' * (len(CONTEXTS) + 1))
         for model in MODELS:
             cells = [model]
             for ctx in CONTEXTS:
-                per_case_means = []
+                per_case_meds = []
                 for case in CASES:
                     pehe, l1 = _cell_pehe_l1(sweep, ctx, model, case)
                     v = pehe if idx == 0 else l1
                     if v is not None and len(v):
-                        per_case_means.append(float(np.mean(v)))
-                cells.append(f'{np.mean(per_case_means):.3f}' if per_case_means else '—')
+                        per_case_meds.append(float(np.median(v)))
+                cells.append(f'{np.median(per_case_meds):.3f}' if per_case_meds else '—')
             lines.append('| ' + ' | '.join(cells) + ' |')
 
     return '\n'.join(lines_pehe) + '\n\n' + '\n'.join(lines_l1) + '\n'
