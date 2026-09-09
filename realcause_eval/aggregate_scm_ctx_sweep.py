@@ -43,31 +43,44 @@ def _first(z, keys):
     return None
 
 
-def _cell_pehe_l1(sweep, ctx, model, case):
-    """Return (pehe_array, l1_array) over realizations for one cell, or (None, None)."""
+def _cell_pehe_l1(sweep, ctx, model, case, thr=float('inf')):
+    """Return (pehe_array, l1_array, n_dropped) for one cell.
+
+    Realizations with |true_ATE| > thr are dropped (outlier SCM draws).
+    true_ATE is identical across models for a given (case, realization),
+    so the same realizations are dropped for every model → fair compare.
+    Returns (None, None, 0) if the cell has no readable output.
+    """
     cell = os.path.join(sweep, f'ctx{ctx}', model, case)
     if not os.path.isdir(cell):
-        return None, None
+        return None, None, 0
 
     # ── dopfn_bb: single summary.npz with per-realization arrays.
     if model == 'dopfn_bb':
         cand = os.path.join(cell, 'summary.npz')
         if not os.path.isfile(cand):
-            return None, None
+            return None, None, 0
         with np.load(cand, allow_pickle=True) as z:
             pehe = _first(z, ['pehe'])
             ate_pred = _first(z, ['ate_pred'])
             true_ate = _first(z, ['true_ate'])
         if pehe is None:
-            return None, None
+            return None, None, 0
         l1 = (np.abs(ate_pred - true_ate) if (ate_pred is not None and true_ate is not None)
               else None)
-        return pehe, l1
+        if true_ate is not None:
+            keep = np.abs(true_ate) <= thr
+            n_drop = int((~keep).sum())
+            pehe = pehe[keep]
+            if l1 is not None: l1 = l1[keep]
+        else:
+            n_drop = 0
+        return pehe, l1, n_drop
 
     # ── graph2d: <CASE>_r{NNN}.npz with per-tag keys (v3b ancestor, raw method).
     if model == 'graph2d':
         paths = sorted(glob.glob(os.path.join(cell, f'{case}_r*.npz')))
-        pehe_l, l1_l = [], []
+        pehe_l, l1_l, n_drop = [], [], 0
         for p in paths:
             with np.load(p, allow_pickle=True) as z:
                 pe = _first(z, ['pehe_raw_v3b', 'pehe_full_v3b', 'pehe_em_v3b'])
@@ -75,19 +88,21 @@ def _cell_pehe_l1(sweep, ctx, model, case):
                 tr = _first(z, ['true_ate'])
             if pe is None:
                 continue
+            if tr is not None and abs(float(tr)) > thr:
+                n_drop += 1; continue
             pehe_l.append(float(pe))
             if at is not None and tr is not None:
                 l1_l.append(abs(float(at) - float(tr)))
         if not pehe_l:
-            return None, None
-        return np.array(pehe_l), (np.array(l1_l) if l1_l else None)
+            return None, None, n_drop
+        return np.array(pehe_l), (np.array(l1_l) if l1_l else None), n_drop
 
     # ── uniform: dopfn_native/uwyk write r{NNN}.npz; cpfn2d/cpfn1d write
     #    {CASE}_r{NNN}.npz (tag includes DATASET). Try both.
     paths = sorted(glob.glob(os.path.join(cell, 'r*.npz')))
     if not paths:
         paths = sorted(glob.glob(os.path.join(cell, f'{case}_r*.npz')))
-    pehe_l, l1_l = [], []
+    pehe_l, l1_l, n_drop = [], [], 0
     for p in paths:
         with np.load(p, allow_pickle=True) as z:
             pe = _first(z, ['pehe_raw'])
@@ -95,12 +110,14 @@ def _cell_pehe_l1(sweep, ctx, model, case):
             tr = _first(z, ['true_ate'])
         if pe is None:
             continue
+        if tr is not None and abs(float(tr)) > thr:
+            n_drop += 1; continue
         pehe_l.append(float(pe))
         if at is not None and tr is not None:
             l1_l.append(abs(float(at) - float(tr)))
     if not pehe_l:
-        return None, None
-    return np.array(pehe_l), (np.array(l1_l) if l1_l else None)
+        return None, None, n_drop
+    return np.array(pehe_l), (np.array(l1_l) if l1_l else None), n_drop
 
 
 def _fmt(vals):
@@ -116,9 +133,21 @@ def _fmt(vals):
     return f'{med:.3f} [{q1:.3f}–{q3:.3f}] (μ={mean:.3f}, n={len(vals)})'
 
 
-def _build_tables(sweep):
-    lines_pehe = ['# PEHE — SCM case-study context-size sweep\n']
-    lines_l1   = ['# L1-ATE (|ATE_pred − ATE_true|) — SCM case-study context-size sweep\n']
+def _build_tables(sweep, thr=float('inf')):
+    hdr_note = (f' (outliers |true_ATE|>{thr:g} dropped)' if np.isfinite(thr)
+                else ' (no outlier filtering)')
+    lines_pehe = [f'# PEHE — SCM case-study context-size sweep{hdr_note}\n']
+    lines_l1   = [f'# L1-ATE (|ATE_pred − ATE_true|) — SCM case-study context-size sweep{hdr_note}\n']
+
+    # Report how many realizations get dropped per case (from dopfn_native's
+    # true_ate — identical across models). ctx-independent, so use ctx=50.
+    if np.isfinite(thr):
+        drop_report = ['\n## Dropped realizations per case (|true_ATE| > '
+                       f'{thr:g})\n', '| Case | n_dropped / 100 |', '|---|---|']
+        for case in CASES:
+            _, _, nd = _cell_pehe_l1(sweep, CONTEXTS[0], 'dopfn_native', case, thr)
+            drop_report.append(f'| {case} | {nd} |')
+        lines_pehe = drop_report + [''] + lines_pehe
 
     for metric, lines, idx in (('PEHE', lines_pehe, 0), ('L1_ATE', lines_l1, 1)):
         for case in CASES:
@@ -129,7 +158,7 @@ def _build_tables(sweep):
             for model in MODELS:
                 cells = [model]
                 for ctx in CONTEXTS:
-                    pehe, l1 = _cell_pehe_l1(sweep, ctx, model, case)
+                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, model, case, thr)
                     cells.append(_fmt(pehe if idx == 0 else l1))
                 lines.append('| ' + ' | '.join(cells) + ' |')
 
@@ -143,7 +172,7 @@ def _build_tables(sweep):
             for ctx in CONTEXTS:
                 per_case_meds = []
                 for case in CASES:
-                    pehe, l1 = _cell_pehe_l1(sweep, ctx, model, case)
+                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, model, case, thr)
                     v = pehe if idx == 0 else l1
                     if v is not None and len(v):
                         per_case_meds.append(float(np.median(v)))
@@ -159,9 +188,14 @@ def main():
                     help='Root holding ctx<N>/<model>/<case>/ dirs.')
     ap.add_argument('--out', default=None,
                     help='Output dir for the .md tables (default: <sweep>/summary).')
+    ap.add_argument('--drop-abs-ate-above', type=float, default=None,
+                    help='Drop realizations whose |true_ATE| exceeds this. '
+                         'Same realizations dropped across all models (true_ATE '
+                         'is model-independent). Default: no filtering.')
     args = ap.parse_args()
 
-    md = _build_tables(args.sweep)
+    thr = args.drop_abs_ate_above if args.drop_abs_ate_above is not None else float('inf')
+    md = _build_tables(args.sweep, thr=thr)
     print(md)
     out_dir = args.out or os.path.join(args.sweep, 'summary')
     os.makedirs(out_dir, exist_ok=True)
