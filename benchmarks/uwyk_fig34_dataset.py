@@ -162,6 +162,54 @@ class UWYKFig34Dataset:
                 f"(scanned {len(paths)} under {self.cell_dir})"
             )
 
+    def _stratified_subsample(self, t_train: np.ndarray, r: int) -> np.ndarray:
+        """Pick `max_context` rows, stratified by treatment arm.
+
+        Sampling uniformly can empty an arm: at N=50 that happened in ~1 of 91
+        realizations. Any harness taking a per-arm statistic then gets nan --
+        uwyk1d's default T_ENCODING='target' feeds the model mean(Y|T=t), so a
+        single collapsed realization poisons its whole run.
+
+        Each arm keeps its share of the cap, rounded down, with a floor of
+        min(2, arm size) so a per-arm mean and variance both stay defined. Any
+        rounding remainder goes to the larger arm, which keeps the treated
+        fraction close to the full-context value.
+
+        Seeded from (realization, cap) only, so every method sees identical rows.
+        """
+        rng = np.random.default_rng([self.source_realizations[r],
+                                     int(self.max_context)])
+        cap = int(self.max_context)
+        arms = [np.flatnonzero(t_train == v) for v in (0.0, 1.0)]
+        if any(a.size == 0 for a in arms):
+            # Single-arm to begin with — nothing to preserve; fall back to plain.
+            idx = rng.choice(t_train.shape[0], cap, replace=False)
+            idx.sort()
+            return idx
+
+        n_tot = sum(a.size for a in arms)
+        take = [min(a.size, max(min(2, a.size), int(a.size * cap // n_tot)))
+                for a in arms]
+        # Hand any leftover to the larger arm, then trim if the floors overshot.
+        leftover = cap - sum(take)
+        order = sorted((0, 1), key=lambda i: -arms[i].size)
+        for i in order:
+            if leftover <= 0:
+                break
+            add = min(leftover, arms[i].size - take[i])
+            take[i] += add
+            leftover -= add
+        while sum(take) > cap:
+            i = max(order, key=lambda j: take[j])
+            if take[i] <= min(2, arms[i].size):
+                break
+            take[i] -= 1
+
+        idx = np.concatenate([rng.choice(a, k, replace=False)
+                              for a, k in zip(arms, take)])
+        idx.sort()
+        return idx
+
     def _mask_for(self, tau: np.ndarray) -> np.ndarray:
         if self.subset == "zero":
             return tau == 0
@@ -185,11 +233,7 @@ class UWYKFig34Dataset:
             tau = np.asarray(z["true_cate"], dtype=np.float32).reshape(-1)
 
         if self.max_context is not None and X_train.shape[0] > self.max_context:
-            rng = np.random.default_rng(
-                [self.source_realizations[r], int(self.max_context)])
-            idx = rng.choice(X_train.shape[0], int(self.max_context), replace=False)
-            idx.sort()   # keep row order stable; harnesses do not assume it, but
-                         # a stable order makes any dumped context diffable
+            idx = self._stratified_subsample(t_train, r)
             X_train, t_train, y_train = X_train[idx], t_train[idx], y_train[idx]
 
         mask = self._mask_for(tau)
