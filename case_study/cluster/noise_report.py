@@ -67,6 +67,9 @@ def main():
     ap.add_argument("--repo", default=os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
     ap.add_argument("--out", default=None, help="Optional CSV path.")
+    ap.add_argument("--scoreboard", action="store_true",
+                    help="Also print per-model win counts (lowest PEHE per case) "
+                         "for each k, plus the per-case winner list.")
     a = ap.parse_args()
 
     sys.path.insert(0, os.path.join(a.repo, "realcause_eval"))
@@ -97,12 +100,75 @@ def main():
                 print("-" * (16 + 10 * len(ks)))
                 print("\n".join(lines))
 
+    if a.scoreboard:
+        _scoreboard(A, a.root, ks)
+
     if a.out and rows_csv:
         with open(a.out, "w") as f:
             f.write("case,model,k,pehe_raw\n")
             for r in rows_csv:
                 f.write("%s,%s,%s,%.6f\n" % r)
         print(f"\n[noise_report] wrote {a.out}")
+
+
+# Model groupings for the scoreboard. cpfn2d = CausalPFN's 2D head ("theirs").
+_TWOD = ["dopfn_bb", "cpfn2d", "graph2d_noanc", "graph2d_v3a", "graph2d_v3b"]
+_OURS_2D = ["dopfn_bb", "graph2d_noanc", "graph2d_v3a", "graph2d_v3b"]
+_REFERENCE = "cpfn2d"
+
+
+def _scoreboard(A, root, ks):
+    spec_of = {s[0]: s for s in A.MODEL_SPECS}
+
+    def pehe_at(k):  # {case: {model: pehe_raw}}
+        out = {}
+        for case in A.CASES:
+            d = {}
+            for name, spec in spec_of.items():
+                v = _pehe(A, os.path.join(root, f"k{k}"), spec, case, "raw")
+                if v is not None:
+                    d[name] = v
+            out[case] = d
+        return out
+
+    def wins(pe, models):
+        w = {m: 0 for m in models}
+        for case in A.CASES:
+            cand = {m: pe[case][m] for m in models if m in pe[case]}
+            if cand:
+                w[min(cand, key=cand.get)] += 1
+        return w
+
+    print("\n" + "═" * 60)
+    print("SCOREBOARD — wins /6 (lowest PEHE-raw per case), by σ_ε scale k")
+    print("═" * 60)
+
+    for scope, models in (("ALL models", [s[0] for s in A.MODEL_SPECS]),
+                          ("2D heads only (cpfn2d = theirs)", _TWOD)):
+        print(f"\n── {scope} ──")
+        print("model".ljust(16) + "".join(f"k={k}".rjust(7) for k in ks))
+        tallies = {k: wins(pehe_at(k), models) for k in ks}
+        for m in sorted(models, key=lambda x: _ORDER.get(x, 99)):
+            print(_LABEL.get(m, m).ljust(16)
+                  + "".join(f"{tallies[k].get(m, 0):7d}" for k in ks))
+
+    # Head-to-head: each of OURS vs their 2D head (cpfn2d), collapsing graph2d
+    # to its best anc variant per case.
+    print("\n── head-to-head vs cpfn2d (theirs), wins /6 ──")
+    print("matchup".ljust(28) + "".join(f"k={k}".rjust(7) for k in ks))
+    for label, ours in (("Do-PFN_bb  vs cpfn2d", ["dopfn_bb"]),
+                        ("Graph2d(best) vs cpfn2d",
+                         ["graph2d_noanc", "graph2d_v3a", "graph2d_v3b"])):
+        row = label.ljust(28)
+        for k in ks:
+            pe = pehe_at(k); ow = 0
+            for case in A.CASES:
+                ours_v = [pe[case][m] for m in ours if m in pe[case]]
+                if ours_v and _REFERENCE in pe[case] and min(ours_v) < pe[case][_REFERENCE]:
+                    ow += 1
+            row += f"{ow:7d}"
+        print(row)
+    print()
 
 
 if __name__ == "__main__":
