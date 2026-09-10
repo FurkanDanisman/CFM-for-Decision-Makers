@@ -7,9 +7,10 @@ treat queries from one realization as independent and understate the SE.
 
     python benchmarks/eval_graph2d/summarize_density_tauC.py results_density_tauC
 
-Output is markdown (per-method table + contrast table per dataset), so it can be
-pasted straight into LATEST_RESULTS.md; the columns are padded so it stays
-readable as plain terminal text too.  The best cell in each column is bolded --
+Output is markdown (one model-family table plus its contrasts per dataset), so
+it can be pasted straight into LATEST_RESULTS.md; mixed shards are separated
+into UWYK and DoPFN sections. Use --model to select one family. The columns are
+padded so they stay readable as plain terminal text too. The best cell is bolded --
 lowest value for the error metrics and the contrasts, closest to 1.0 for `mass`
 -- and a column whose entries all tie at display precision gets no bold, since
 there is no winner to mark.
@@ -28,6 +29,11 @@ from pathlib import Path
 import numpy as np
 
 METHODS = ('uwyk_native', 'uwyk_matched', 'joint', 'dopfn_native', 'dopfn_joint')
+MODEL_METHODS = {
+    'uwyk': ('uwyk_native', 'uwyk_matched', 'joint'),
+    'dopfn': ('dopfn_native', 'dopfn_joint'),
+}
+MODEL_LABEL = {'uwyk': 'UWYK / g4cfm', 'dopfn': 'DoPFN'}
 LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
          'uwyk_matched': 'UWYK (x)indep matched bins',
          'joint': 'UWYK Joint-2D',
@@ -119,13 +125,21 @@ def md_table(headers, rows, aligns=None):
                      + [row(r) for r in rows])
 
 
-def point_table(rows):
+def point_table(rows, density_methods=None):
     """Point errors from the same logits; old density-only shards stay valid."""
-    if not any(f'pehe_{m}' in r for r in rows for m in POINT_METHODS):
+    if density_methods is None:
+        point_methods = POINT_METHODS
+    else:
+        point_methods = list(density_methods)
+        if 'joint' in density_methods:
+            point_methods.append('joint_inner')
+        if 'dopfn_joint' in density_methods:
+            point_methods.append('dopfn_joint_inner')
+    if not any(f'pehe_{m}' in r for r in rows for m in point_methods):
         return None
     labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)',
               'dopfn_joint_inner': 'DoPFN Joint-2D interior mean (raw)'}
-    methods = [m for m in POINT_METHODS if any(f'pehe_{m}' in r for r in rows)]
+    methods = [m for m in point_methods if any(f'pehe_{m}' in r for r in rows)]
     body = [[labels[m]] for m in methods]
     for metric in POINT_METRICS:
         cells, scores = [], []
@@ -144,95 +158,79 @@ def point_table(rows):
                     body, ['l', 'r', 'r', 'r'])
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('results_dir', type=Path)
-    ap.add_argument('--datasets', nargs='*', default=['IHDP', 'ACIC'])
-    args = ap.parse_args()
+def render_family(dataset, rows, model):
+    """Render one model family so unrelated backbones never share a table."""
+    methods = [m for m in MODEL_METHODS[model]
+               if any(f'nll_{m}' in r for r in rows)]
+    print(f'\n### {dataset} — {MODEL_LABEL[model]}\n')
+    if not methods:
+        print(f'_no {MODEL_LABEL[model]} results found_')
+        return
 
-    for dataset in args.datasets:
-        rows = load(args.results_dir, dataset)
-        print(f'\n### {dataset}\n')
-        if not rows:
-            print('_no shards found_')
-            continue
-        print(truth_summary(rows) + '\n')
-        methods = [m for m in METHODS if any(f'nll_{m}' in r for r in rows)]
-        n_r = len(rows)
-        n_q = int(np.mean([float(r['n_queries']) for r in rows]))
-        oob = float(np.mean([float(r['frac_tau_outside_grid']) for r in rows]))
-        has_uwyk = any(m.startswith('uwyk_') or m == 'joint' for m in methods)
-        has_dopfn = any(m.startswith('dopfn_') for m in methods)
-        graph_parts = []
-        if has_uwyk:
-            graph_parts.append(f'UWYK graph={rows[0]["anc_tag"]}')
-        if has_dopfn:
-            graph_parts.append('DoPFN graph=none')
-        print(f'realizations={n_r}, ~{n_q} queries each, '
-              f'{", ".join(graph_parts)}, |tau*|>3: {oob:.2%}\n')
+    print(truth_summary(rows) + '\n')
+    n_r = len(rows)
+    n_q = int(np.mean([float(r['n_queries']) for r in rows]))
+    oob = float(np.mean([float(r['frac_tau_outside_grid']) for r in rows]))
+    graph = f'graph={rows[0]["anc_tag"]}' if model == 'uwyk' else 'graph=none'
+    print(f'realizations={n_r}, ~{n_q} queries each, {graph}, '
+          f'|tau*|>3: {oob:.2%}\n')
 
-        table = {}
-        body = [[LABEL[m]] for m in methods]
-        for metric in METRICS:
-            cells, scores = [], []
-            for m in methods:
-                key = f'{metric}_{m}'
-                if not all(key in r for r in rows):
-                    cells.append(MISSING)
-                    scores.append(None)
-                    continue
-                mu, se, _ = mean_se([r[key] for r in rows])
-                table[(m, metric)] = mu
-                cells.append(f'{mu:.4f}±{se:.4f}')
-                scores.append(score(metric, mu))
-            for row_cells, cell in zip(body, bold_best(cells, scores)):
-                row_cells.append(cell)
-        print(md_table(['method', *METRICS], body,
-                       ['l'] + ['r'] * len(METRICS)))
+    table = {}
+    body = [[LABEL[m]] for m in methods]
+    for metric in METRICS:
+        cells, scores = [], []
+        for method in methods:
+            key = f'{metric}_{method}'
+            if not all(key in r for r in rows):
+                cells.append(MISSING)
+                scores.append(None)
+                continue
+            mu, se, _ = mean_se([r[key] for r in rows])
+            table[(method, metric)] = mu
+            cells.append(f'{mu:.4f}±{se:.4f}')
+            scores.append(score(metric, mu))
+        for row_cells, cell in zip(body, bold_best(cells, scores)):
+            row_cells.append(cell)
+    print(md_table(['method', *METRICS], body,
+                   ['l'] + ['r'] * len(METRICS)))
 
-        points = point_table(rows)
-        if points is not None:
-            print('\nPoint errors in original outcome units, from the same '
-                  'predictions. Full-density means except the interior row; '
-                  'CATE L1 is per-query MAE, ATE error is unnormalised.\n')
-            print(points)
-            large_grid_mean_gap = []
-            for m in methods:
-                key = f'grid_mean_max_abs_diff_{m}'
-                if all(key in r for r in rows):
-                    gap = max(float(r[key]) for r in rows)
-                    print(f'  {m}: max |finite-grid moment - full mean| = {gap:.6g}')
-                    if gap > 1.0:
-                        large_grid_mean_gap.append(m)
-            if large_grid_mean_gap:
-                print('\n**TAIL NOTE:** The finite tau grid omits distant tail '
-                      f'mass for {large_grid_mean_gap}. NLL is evaluated at the '
-                      'observed tau and point errors use exact full-density means; '
-                      'L2/KL/mass are finite-grid quantities. In particular, '
-                      'KL_rev is not the full-support reverse KL when omitted tail '
-                      'mass lies far from the truth.')
+    points = point_table(rows, methods)
+    if points is not None:
+        print('\nPoint errors in original outcome units, from the same '
+              'predictions. Full-density means except the interior row; '
+              'CATE L1 is per-query MAE, ATE error is unnormalised.\n')
+        print(points)
+        large_grid_mean_gap = []
+        for method in methods:
+            key = f'grid_mean_max_abs_diff_{method}'
+            if all(key in r for r in rows):
+                gap = max(float(r[key]) for r in rows)
+                print(f'  {method}: max |finite-grid moment - full mean| = {gap:.6g}')
+                if gap > 1.0:
+                    large_grid_mean_gap.append(method)
+        if large_grid_mean_gap:
+            print('\n**TAIL NOTE:** The finite tau grid omits distant tail '
+                  f'mass for {large_grid_mean_gap}. NLL is evaluated at the '
+                  'observed tau and point errors use exact full-density means; '
+                  'L2/KL/mass are finite-grid quantities. In particular, '
+                  'KL_rev is not the full-support reverse KL when omitted tail '
+                  'mass lies far from the truth.')
 
-        # The contrasts the design exists to produce.  Paired over realizations:
-        # the mean is identical to the difference of the column means, but the
-        # SE is the SE of the within-realization difference, which is far
-        # tighter than the two column SEs suggest.
-        def delta(a, b, metric):
-            ka, kb = f'{metric}_{a}', f'{metric}_{b}'
-            if not all(ka in r and kb in r for r in rows):
-                return MISSING, None
-            mu, se, _ = mean_se([float(r[kb]) - float(r[ka]) for r in rows])
-            return f'{mu:+.4f}±{se:.4f}', mu
+    def delta(a, b, metric):
+        ka, kb = f'{metric}_{a}', f'{metric}_{b}'
+        if not all(ka in r and kb in r for r in rows):
+            return MISSING, None
+        mu, se, _ = mean_se([float(r[kb]) - float(r[ka]) for r in rows])
+        return f'{mu:+.4f}±{se:.4f}', mu
 
-        # The two rows are not competitors -- bolding here just marks the
-        # larger improvement, which is the headline unless the bridge has
-        # stopped being a ~0 control.
-        contrasts = [('**HEADLINE**', 'model gap as run',
-                      'uwyk_native', 'joint'),
-                     ('bridge', 'resolution handicap',
-                      'uwyk_native', 'uwyk_matched'),
-                     ('DoPFN', 'model gap as run',
-                      'dopfn_native', 'dopfn_joint')]
-        contrasts = [c for c in contrasts if c[2] in methods and c[3] in methods]
+    candidates = {
+        'uwyk': [('**HEADLINE**', 'model gap as run', 'uwyk_native', 'joint'),
+                 ('bridge', 'resolution handicap', 'uwyk_native', 'uwyk_matched')],
+        'dopfn': [('**HEADLINE**', 'model gap as run',
+                   'dopfn_native', 'dopfn_joint')],
+    }
+    contrasts = [c for c in candidates[model] if c[2] in methods and c[3] in methods]
+    if contrasts:
         cbody = [[kind, f'{what} ({a} -> {b})']
                  for kind, what, a, b in contrasts]
         contrast_metrics = ('nll', 'kl_rev', 'pehe') if points else ('nll', 'kl_rev')
@@ -241,20 +239,45 @@ def main():
                                   for _, _, a, b in contrasts])
             for row_cells, cell in zip(cbody, bold_best(cells, scores)):
                 row_cells.append(cell)
-
         print()
-        print(md_table(['', 'contrast', 'dNLL', 'dKLrev'] + (['dPEHE'] if points else []),
-                       cbody, ['l', 'l'] + ['r'] * len(contrast_metrics)))
-        print()
-        print('_negative = destination method has lower error. The UWYK bridge '
-              'measures rebinning effects; DoPFN compares native bins with its '
-              'joint head, without a resolution-matched control._')
+        print(md_table(['', 'contrast', 'dNLL', 'dKLrev']
+                       + (['dPEHE'] if points else []), cbody,
+                       ['l', 'l'] + ['r'] * len(contrast_metrics)))
+        print('\n_negative = destination method has lower error._')
+        if model == 'uwyk' and 'uwyk_matched' in methods:
+            print('_The bridge measures the effect of rebinning UWYK._')
+        if model == 'dopfn':
+            print('_Native DoPFN and its joint head use different resolutions; '
+                  'this is an as-run comparison._')
 
-        bad = [m for m in methods
-               if (m, 'mass') in table and abs(table[(m, 'mass')] - 1) > 0.01]
-        if bad:
-            print(f'\n**WARNING:** p(tau) mass off 1.0 by >1% for {bad} -- the '
-                  f'tau grid is clipping real density; widen TAU_EDGES.')
+    bad = [m for m in methods
+           if (m, 'mass') in table and abs(table[(m, 'mass')] - 1) > 0.01]
+    if bad:
+        print(f'\n**WARNING:** p(tau) mass off 1.0 by >1% for {bad} -- the '
+              f'tau grid is clipping real density; widen TAU_EDGES.')
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('results_dir', type=Path)
+    ap.add_argument('--datasets', nargs='*', default=['IHDP', 'ACIC'])
+    ap.add_argument(
+        '--model', choices=('auto', 'all', *MODEL_METHODS), default='auto',
+        help='Model family to display. auto/all render each available family '
+             'in a separate table (default).')
+    args = ap.parse_args()
+
+    for dataset in args.datasets:
+        rows = load(args.results_dir, dataset)
+        if not rows:
+            print(f'\n### {dataset}\n\n_no shards found_')
+            continue
+        available = [model for model, candidates in MODEL_METHODS.items()
+                     if any(any(f'nll_{method}' in row for row in rows)
+                            for method in candidates)]
+        selected = available if args.model in ('auto', 'all') else [args.model]
+        for model in selected:
+            render_family(dataset, rows, model)
 
 
 if __name__ == '__main__':

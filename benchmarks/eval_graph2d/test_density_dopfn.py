@@ -17,7 +17,7 @@ from scipy.integrate import quad
 
 from density_common import DoPFN1D, dopfn_tau_density, mass
 from density_truth import DensityTruth, harness_y_affine
-from summarize_density_tauC import point_table
+from summarize_density_tauC import point_table, render_family
 
 
 class DoPFNDensityTest(unittest.TestCase):
@@ -254,6 +254,29 @@ class DoPFNRegressor(Base):
         self.assertIn('DoPFN (x)indep native', table)
         self.assertIn('DoPFN Joint-2D interior mean', table)
         self.assertNotIn('UWYK', table)
+
+    def test_summary_separates_model_families_and_graph_headers(self):
+        row = dict(n_queries=2, frac_tau_outside_grid=0.0, anc_tag='v6a',
+                   truth_noise_source='generator', sigma_raw=1.0,
+                   sigma_residual_raw=1.0)
+        for method in ('uwyk_native', 'uwyk_matched', 'joint',
+                       'dopfn_native', 'dopfn_joint'):
+            for metric in ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass'):
+                row[f'{metric}_{method}'] = 1.0
+
+        outputs = {}
+        for model in ('uwyk', 'dopfn'):
+            stream = io.StringIO()
+            with redirect_stdout(stream):
+                render_family('IHDP', [row, row], model)
+            outputs[model] = stream.getvalue()
+
+        self.assertIn('### IHDP — UWYK / g4cfm', outputs['uwyk'])
+        self.assertIn('graph=v6a', outputs['uwyk'])
+        self.assertNotIn('DoPFN', outputs['uwyk'])
+        self.assertIn('### IHDP — DoPFN', outputs['dopfn'])
+        self.assertIn('graph=none', outputs['dopfn'])
+        self.assertNotIn('UWYK', outputs['dopfn'])
 
     def test_runner_families_share_context_and_save_replayable_predictions(self):
         """Run the actual evaluator with deterministic model outputs and truth.
