@@ -6,19 +6,22 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-59
+#SBATCH --array=0-69
 #
 # 1D-vs-2D head comparison on the UWYK ComplexMech (Fig-4 prior) PEHE benchmark.
 #
-#   6 models x 5 node counts x 2 query subsets = 60 tasks.
+#   7 model-runs x 5 node counts x 2 query subsets = 70 tasks.
 #
 #   models      dopfn_native | dopfn_bb   (1D vs 2D)
 #               uwyk1d       | graph2d    (1D vs 2D)
 #               cpfn1d       | cpfn2d     (1D vs 2D)
 #
 #   Task id -> model: id/10 indexes MODELS, so the first task of each model is
-#       0 dopfn_native   10 dopfn_bb   20 uwyk1d
-#      30 graph2d        40 cpfn1d     50 cpfn2d
+#       0 dopfn_native   10 dopfn_bb        20 uwyk1d
+#      30 graph2d        40 cpfn1d          50 cpfn2d_pooled
+#      60 cpfn2d_log
+#   uwyk1d and graph2d run ANC_MODE=v3_family, which emits noanc + v3a + v3b
+#   (plus v3c/v3d/v6a) from a single pass — three table rows per model.
 #   and within a model, (id%10)/2 indexes nodes (5,20,30,40,50) while id%2
 #   picks the subset (0=nonzero, 1=zero).
 #   node counts 5, 20, 30, 40, 50
@@ -79,7 +82,7 @@ CKPT_DOPFN_BB="${CKPT_DOPFN_BB:-$DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 
 # ── task dispatch: model x nodes x subset ────────────────────────────────────
-MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d)
+MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled cpfn2d_log)
 NODES=(5 20 30 40 50)
 SUBSETS=(nonzero zero)
 
@@ -137,6 +140,7 @@ case "$MODEL" in
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+        --anc-mode v3_family \
         --eval-max-context "$CTX" --eval-context-seed "$SEED"
     ;;
   graph2d)
@@ -144,6 +148,7 @@ case "$MODEL" in
     python -u "$REPO/realcause_eval/Table1/graph2d.py" \
         --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_GRAPH2D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
+        --anc-mode v3_family --density-primary-mode noanc \
         --eval-max-context "$CTX" --eval-context-seed "$SEED"
     ;;
   cpfn1d)
@@ -152,11 +157,17 @@ case "$MODEL" in
         --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_CPFN1D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN"
     ;;
-  cpfn2d)
+  cpfn2d_pooled|cpfn2d_log)
+    # NB: the cpfn2d wrapper's own default is per_arm; both rows here are
+    # explicit, so neither reproduces a default-args run.
     [ -f "$CKPT_CPFN2D" ] || { echo "FATAL: ckpt $CKPT_CPFN2D" >&2; exit 1; }
+    case "$MODEL" in
+      cpfn2d_pooled) SMODE=pooled ;;
+      cpfn2d_log)    SMODE=log ;;
+    esac
     python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
         --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_CPFN2D" \
-        --repo "$REPO" --causalpfn "$CAUSALPFN"
+        --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode "$SMODE"
     ;;
   *) echo "unknown model: $MODEL" >&2; exit 2 ;;
 esac
