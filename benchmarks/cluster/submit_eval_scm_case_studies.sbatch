@@ -88,7 +88,7 @@ case "$MODEL" in
         # DoPFN-bb reused eval_dopfn_bb_raw.py; different arg style (positional flags)
         SCRIPT="$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py"
         DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
-        EXTRA_ARGS="--repo $REPO --dopfn $DOPFN_ROOT --causalpfn $CAUSALPFN --checkpoint $CKPT --dataset $DATASET --out $OUT/summary.npz"
+        EXTRA_ARGS="--repo $REPO --dopfn $DOPFN_ROOT --causalpfn $CAUSALPFN --checkpoint $CKPT --dataset $DATASET --out $OUT/summary.npz --y-scaling ${BB_Y_SCALING:-min_max} --std-target ${BB_STD_TARGET:-0.3}"
         ;;
     fn50)
         # fn=50: InterventionalPFN architecture (distinct from cpfn2d).

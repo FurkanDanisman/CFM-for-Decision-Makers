@@ -171,7 +171,7 @@ def main():
                          'main pipeline default 500 for speed; L2/KL not evaluated here so '
                          'precision matters less).')
     ap.add_argument('--y-scaling', default='min_max',
-                    choices=['min_max', 'std', 'iqr', 'trim_min_max',
+                    choices=['min_max', 'std', 'std_per_arm', 'iqr', 'trim_min_max',
                              'power_transform', 'log_transform'],
                     help='How to rescale Y_ctx for the model. Outlier-heavy '
                          'realizations compress the true CATE below bin_width under '
@@ -411,6 +411,7 @@ def main():
         #     to normal) on y_train, then linearly rescales pt(y) to [-1, 1].
         #     Un-scale is nonlinear: pt.inverse_transform(scaled → pt space).
         # Both paths expose an `unscale_arr(scaled_arr)` callable used later.
+        _per_arm = None   # set to (y0s,y0sc,y1s,y1sc) by the std_per_arm branch
         if args.y_scaling == 'log_transform':
             # Reference: benchmarks/methods/ours.py lines 263-275.
             # y_log_shift = min(y_train) - 1 → log(y - shift) has min = 0.
@@ -465,6 +466,28 @@ def main():
                     return raw
                 y_scale = _pt_rng / 2.0  # rough effective slope, for σ diagnostics
                 y_center = float(_pt.inverse_transform(np.array([[0.5 * (_pt_min + _pt_max)]]))[0, 0])
+        elif args.y_scaling == 'std_per_arm':
+            # Per-arm standardization: center+scale each treatment arm separately
+            # so the between-arm ATE gap does NOT inflate the scale. On the fixed
+            # [-1,1] J-bin grid, a pooled scale inflated by a large ATE shift
+            # crushes the within-arm CID below bin width (the failure mode on the
+            # +ATE-shifted case studies); per-arm removes that gap.
+            # σ(y_scaled) = std_target per arm (default 0.3 → ±3σ inside [-1,1]).
+            _yf = np.asarray(Y_ctx, dtype=np.float64).reshape(-1)
+            _tf = np.asarray(T_ctx, dtype=np.float64).reshape(-1)
+            _y0 = _yf[_tf < 0.5]; _y1 = _yf[_tf > 0.5]
+            _st = max(args.std_target, 1e-6)
+            y0s  = float(_y0.mean()) if _y0.size else 0.0
+            y0sc = float(max(_y0.std(), 1e-6) / _st) if _y0.size else 1.0
+            y1s  = float(_y1.mean()) if _y1.size else 0.0
+            y1sc = float(max(_y1.std(), 1e-6) / _st) if _y1.size else 1.0
+            _per_arm = (y0s, y0sc, y1s, y1sc)
+            Y_ctx_s = np.where(_tf > 0.5, (_yf - y1s) / y1sc,
+                               (_yf - y0s) / y0sc).astype(np.float32)
+            # Pooled fallback for the (unused-by-our-metrics) EM/full/MALC paths so
+            # they still run; the inner/raw CATE below uses the per-arm centers.
+            y_center = float(_yf.mean()); y_scale = float(max(_yf.std(), 1e-6) / _st)
+            unscale_arr = lambda a: np.asarray(a, dtype=np.float64) * y_scale + y_center
         else:
             y_center, y_scale = _compute_y_scale(
                 y_train_full, args.y_scaling,
@@ -491,6 +514,14 @@ def main():
         # for power_transform it's pt.inverse_transform(...) — the same trick
         # Do-PFN uses in preprocess_y ("new_borders = pt.inverse_transform(...)").
         raw_centers_inner = unscale_arr(centers_scaled)  # (J,) raw user y
+        # Per-arm mode: each arm's marginal mean must be un-scaled with ITS OWN
+        # (center, scale). In pooled mode both alias raw_centers_inner (no change).
+        if _per_arm is not None:
+            _y0s, _y0sc, _y1s, _y1sc = _per_arm
+            raw_centers_inner_0 = centers_scaled * _y0sc + _y0s
+            raw_centers_inner_1 = centers_scaled * _y1sc + _y1s
+        else:
+            raw_centers_inner_0 = raw_centers_inner_1 = raw_centers_inner
         if args.malc_upsample:
             raw_centers_fine = unscale_arr(fine_centers)  # (n_ev,) raw user y
         # Store per-query MEANS in RAW y space directly. This is correct for
@@ -553,8 +584,8 @@ def main():
 
         # Inner-region means (raw + scaled). Both raw_centers_inner and
         # centers_scaled have shape (J,) → dot product with (n_test, J).
-        m0_inner_raw[:] = p_marg0_all @ raw_centers_inner
-        m1_inner_raw[:] = p_marg1_all @ raw_centers_inner
+        m0_inner_raw[:] = p_marg0_all @ raw_centers_inner_0
+        m1_inner_raw[:] = p_marg1_all @ raw_centers_inner_1
         mean0_inner_s_arr = p_marg0_all @ centers_scaled
         mean1_inner_s_arr = p_marg1_all @ centers_scaled
 
