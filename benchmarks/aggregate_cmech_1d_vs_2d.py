@@ -83,6 +83,26 @@ def load_model_cell(root: str, model: str, dataset: str, anc_tag: str):
     return out
 
 
+def null_pehe(n_nodes: int, subset: str, data_root: str) -> float:
+    """PEHE of predicting tau=0 everywhere: mean over datasets of RMS(tau).
+
+    Without this column the table is unreadable. A model scoring AT the null is
+    predicting no effect at all, which on the nonzero subset means it has no
+    skill -- and on the zero subset the null is exactly 0, so the score is a
+    pure false-positive measure (lower = fewer hallucinated effects).
+    """
+    cell = os.path.join(data_root, "complexmech", f"{n_nodes}node",
+                        "path_TY", "hide_0.0")
+    vals = []
+    for p in sorted(glob.glob(os.path.join(cell, "r*.npz"))):
+        with np.load(p) as z:
+            tau = np.asarray(z["true_cate"], dtype=np.float64)
+        tau = tau[tau != 0] if subset == "nonzero" else tau[tau == 0]
+        if tau.size:
+            vals.append(float(np.sqrt((tau ** 2).mean())))
+    return float(np.mean(vals)) if vals else float("nan")
+
+
 def query_counts(n_nodes: int, data_root: str) -> tuple[dict, dict]:
     """(zero_counts, nonzero_counts) keyed by realization, from the benchmark."""
     cell = os.path.join(data_root, "complexmech", f"{n_nodes}node",
@@ -124,10 +144,14 @@ def main() -> None:
                     continue
                 va = np.array([a[r] for r in shared])
                 vb = np.array([b[r] for r in shared])
+                nl = null_pehe(n, subset, args.data_root)
                 rows.append({
                     "pair": f"{one_d} -> {two_d}", "n_nodes": n, "subset": subset,
                     "n_datasets": len(shared),
+                    "null": nl,
                     "pehe_1d": float(va.mean()), "pehe_2d": float(vb.mean()),
+                    "r1d": float(va.mean() / nl) if nl > 0 else float("nan"),
+                    "r2d": float(vb.mean() / nl) if nl > 0 else float("nan"),
                     "delta": float(vb.mean() - va.mean()),
                     "pct": float(100.0 * (vb.mean() - va.mean()) / va.mean())
                            if va.mean() else float("nan"),
@@ -139,13 +163,19 @@ def main() -> None:
             f"no results under {args.root}. Expected "
             f"{args.root}/<model>/CMECH_n<N>_<subset>/")
 
-    hdr = ["pair", "n_nodes", "subset", "n_datasets", "pehe_1d", "pehe_2d",
-           "delta", "pct", "n_2d_better"]
+    hdr = ["pair", "n_nodes", "subset", "n_datasets", "null", "pehe_1d",
+           "pehe_2d", "r1d", "r2d", "delta", "pct", "n_2d_better"]
     lines = [
         "# ComplexMech PEHE — does the 2D head help?", "",
         f"anc tag for uwyk1d/graph2d: `{args.anc_tag}`.  "
         "`delta` = 2D - 1D, so **negative means the 2D head is better**.",
         "`n_2d_better` counts datasets where 2D beat 1D, out of `n_datasets`.",
+        "",
+        "`null` is the PEHE of predicting tau=0 everywhere; `r1d`/`r2d` are each "
+        "model over it.",
+        "**A ratio of ~1.00 means the model predicts no effect and has no skill** "
+        "- read those rows as inert, not as a tie. On the zero subset the null is "
+        "exactly 0, so the score there is a pure false-positive measure.",
         "PEHE is in the generator's [-1, 1] target units — comparable across "
         "models and node counts here, but not to RealCause PEHE numbers.", "",
         "| " + " | ".join(hdr) + " |",
