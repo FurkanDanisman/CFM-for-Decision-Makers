@@ -30,10 +30,40 @@ import subprocess
 import sys
 
 
+# ── UWYK_Fig3_4 ComplexMech PEHE benchmark hook ──────────────────────────────
+# Dispatches dataset names like CMECH_n20_nonzero to
+# benchmarks/uwyk_fig34_dataset.py. Path-robust: this file may sit in
+# benchmarks/<sub>/ or realcause_eval/<sub>/.
+def _cmech_bench_dir():
+    import os as _os, sys as _sys
+    _d = _os.path.dirname(_os.path.abspath(__file__))
+    for _ in range(5):
+        _c = _os.path.join(_d, 'benchmarks')
+        if _os.path.isdir(_c):
+            if _c not in _sys.path:
+                _sys.path.insert(0, _c)
+            return _c
+        _d = _os.path.dirname(_d)
+    return None
+
+
+def _cmech_names():
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import dataset_names
+    except ImportError:
+        return ()
+    return tuple(dataset_names())
+
+
+_CMECH_CASES = _cmech_names()
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', required=True,
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'])
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'] + list(_CMECH_CASES))
     p.add_argument('--outdir', required=True,
                     help='Per-realization npzs land at OUTDIR/<DATASET>_r<###>.npz.')
     p.add_argument('--ckpt', required=True,
