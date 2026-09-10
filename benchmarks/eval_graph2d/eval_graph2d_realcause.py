@@ -973,6 +973,19 @@ def build_mode_list(F, n_real, anc_mode=None):
         case = DATASET if DATASET in _SCM_CASES else 'Observed_Confounder'
         return ((variant, build_case_adj(case, F, n_real, variant)),
                 ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'case_family':
+        # CASE-CORRECT ancestor family for SCM case studies. Uses the per-case
+        # DAG (build_case_adj → _case_ancestor_pairs), so mediators (T→X→Y),
+        # spurious X (Unobserved_Confounder), and front-door structures are
+        # encoded correctly — unlike v3_family/v3b_only which hardcode the
+        # confounder layout (X→T, X→Y) for EVERY case. Emits noanc + v3a
+        # (paper_anc, +1 edges only) + v3b (full, +1 edges with reverses=-1).
+        case = DATASET if DATASET in _SCM_CASES else 'Observed_Confounder'
+        return (
+            ('noanc', build_case_adj(case, F, n_real, 'noanc')),
+            ('v3a',   build_case_adj(case, F, n_real, 'paper_anc')),
+            ('v3b',   build_case_adj(case, F, n_real, 'full')),
+        )
     if anc_mode == 'v3_v6_extended':
         # Sweep: v3a/v3b/v3c/v3e + v6a/v6b + noanc.
         # v3d, v3f, v6c dropped — they set diag=+1 which UWYK's PAM rejects
