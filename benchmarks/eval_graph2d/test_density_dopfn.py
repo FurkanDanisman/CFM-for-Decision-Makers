@@ -1,12 +1,14 @@
 """Numerical and inference-contract tests; no pretrained artifacts required."""
 import ast
-from contextlib import nullcontext
+from contextlib import nullcontext, redirect_stdout
 import importlib.util
+import inspect
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -97,6 +99,90 @@ class DoPFNDensityTest(unittest.TestCase):
 
 
 class DoPFNAdapterTest(unittest.TestCase):
+    def test_predict_patches_live_validation_after_module_restore_and_constructor(self):
+        try:
+            import sklearn.utils.validation as validation
+        except ImportError:
+            self.skipTest('Install sklearn to exercise its real validation API')
+        import torch
+        from density_dopfn import DoPFNDensityModels
+
+        original = inspect.unwrap(validation.check_array)
+        name = 'scripts.transformer_prediction_interface.base'
+        detached = ModuleType(name)
+        detached.__dict__.update(np=np, torch=torch, SimpleNamespace=SimpleNamespace,
+                                 original=original, check_array=original)
+        exec('''
+class Base:
+    @staticmethod
+    def check_training_data(clf, x, y):
+        return (check_array(x, dtype=np.float32, force_all_finite=False),
+                check_array(y, dtype=np.float32, ensure_2d=False, force_all_finite=False))
+
+    def fit(self, x, y):
+        self.x, self.y = self.check_training_data(self, x, y)
+
+    def predict_common_setup(self, x):
+        return check_array(x.numpy(), dtype=np.float32, force_all_finite=False)
+
+    def predict_full(self, x):
+        x = self.predict_common_setup(x)
+        criterion = SimpleNamespace(
+            borders=torch.tensor([-2., -1., 1., 2.]),
+            halfnormal_with_p_weight_before=lambda w: torch.distributions.HalfNormal(w / 0.67448975))
+        return dict(logits=np.zeros((len(x), 3)), criterion=criterion)
+
+class DoPFNRegressor(Base):
+    def __init__(self):
+        # An import/pickle during construction can rebind the old reference.
+        global check_array
+        check_array = original
+''', detached.__dict__)
+        replacement = ModuleType(name)
+        replacement.check_array = original
+        cached_dopfn = ModuleType('dopfn')
+        cached_dopfn._repatch_dopfn_check_array = lambda: None
+        models = object.__new__(DoPFNDensityModels)
+        models.device, models.query_chunk = torch.device('cpu'), 1
+        models.regressor_class = detached.DoPFNRegressor
+        models.joint = lambda **kw: {'predictions': torch.zeros(1, kw['X_query'].shape[1], 17)}
+        models.J, models.edges = 2, np.linspace(-1, 1, 3)
+        models.checkpoint = '/fake/joint.pt'
+        models._modules = {name: replacement}
+        x = np.array([[1., 2.], [3., 4.]], dtype=np.float32)
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as root, redirect_stdout(output), patch.dict(
+                sys.modules, {'dopfn': cached_dopfn}):
+            models.root = root
+            # Without the direct binding this fails on modern sklearn even
+            # if a sys.modules scan successfully patches the replacement.
+            if 'force_all_finite' not in inspect.signature(original).parameters:
+                reg = models.regressor_class()
+                with self.assertRaisesRegex(TypeError, 'force_all_finite'):
+                    reg.fit(x, [0., 1.])
+            for _ in range(2):
+                arms, logits, _ = models.predict(x, [0., 1.], [0., 1.], x,
+                                                 x, [-1., 1.], x, y_shift=0., y_scale=1.)
+                self.assertEqual(logits.shape, (2, 17))
+                self.assertEqual(len(arms[0]), 2)
+            self.assertIs(sys.modules['dopfn'], cached_dopfn)
+        self.assertEqual(output.getvalue().count('[dopfn-compat]'), 1)
+        self.assertIn('validated=check_training_data,predict_common_setup', output.getvalue())
+        self.assertEqual(Path(models._compat_shim.__file__).resolve(),
+                         Path(__file__).resolve().parents[1] / 'methods/dopfn.py')
+
+    def test_outdated_shim_reports_the_exact_file_to_sync(self):
+        from density_dopfn import _load_check_array_compat
+
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'benchmarks/methods/dopfn.py'
+            path.parent.mkdir(parents=True)
+            path.write_text('def _repatch_dopfn_check_array(): pass\n')
+            with patch('density_dopfn._REPO', Path(root)):
+                with self.assertRaisesRegex(RuntimeError, 'Outdated DoPFN compatibility shim') as error:
+                    _load_check_array_compat()
+            self.assertIn(str(path), str(error.exception))
+
     def test_chunking_treatment_columns_all_features_and_stale_widths(self):
         import torch
         from density_dopfn import DoPFNDensityModels

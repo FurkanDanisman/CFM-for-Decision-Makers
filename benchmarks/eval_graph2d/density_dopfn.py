@@ -6,6 +6,8 @@ module cache and relative artifact paths scoped to its inference calls.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import importlib.util
+import inspect
 import os
 from pathlib import Path
 import sys
@@ -24,6 +26,20 @@ def _collides(name):
     return name.split('.')[0] in _PREFIXES
 
 
+def _load_check_array_compat():
+    """Load this checkout's shim by filename, bypassing cached `import dopfn`."""
+    path = _REPO / 'benchmarks/methods/dopfn.py'
+    spec = importlib.util.spec_from_file_location('_tauc_dopfn_compat', path)
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    if 'regressor' not in inspect.signature(shim._repatch_dopfn_check_array).parameters:
+        raise RuntimeError(
+            f'Outdated DoPFN compatibility shim: {path}. Sync '
+            'benchmarks/methods/dopfn.py together with density_dopfn.py '
+            'to the checkout used by this job, then start a new process.')
+    return shim
+
+
 class DoPFNDensityModels:
     def __init__(self, root, checkpoint, device='cpu', query_chunk=20):
         self.root = str(Path(root).expanduser().resolve())
@@ -39,6 +55,7 @@ class DoPFNDensityModels:
             if not path.is_file():
                 raise FileNotFoundError(f'Missing DoPFN input: {path}')
         self._modules = {}
+        self._compat_shim = _load_check_array_compat()
         with self.environment():
             # Reuse the point benchmark's sklearn and dataset import shims.
             sys.path.insert(0, str(_REPO / 'benchmarks/empirical_tests'))
@@ -55,6 +72,34 @@ class DoPFNDensityModels:
             state = {k.removeprefix('_orig_mod.'): v for k, v in ck['model_state_dict'].items()}
             self.joint.load_state_dict(state, strict=True)
             self.joint.to(self.device).eval()
+
+    def _prepare_regressor(self, reg):
+        # Bind immediately before fit, after restoring modules and constructing
+        # the regressor. Constructor/pickle imports may retain an older alias.
+        if not hasattr(self, '_compat_shim'):
+            self._compat_shim = _load_check_array_compat()
+        self._compat_shim._repatch_dopfn_check_array(reg)
+        checked = []
+        for name in ('check_training_data', 'predict_common_setup'):
+            method = getattr(reg, name, None)
+            function = getattr(method, '__func__', method)
+            if function is None:
+                continue
+            function = inspect.unwrap(function)
+            check = getattr(function, '__globals__', {}).get('check_array')
+            if check is not None:
+                # Exercise the actual callable used by DoPFN. This catches a
+                # partial deployment before checkpoint loading inside fit().
+                probe = np.array([[0.0, np.nan]], dtype=np.float32)
+                check(probe, force_all_finite=False)
+                check(probe, ensure_all_finite=False)
+                checked.append(name)
+        if checked and not getattr(self, '_compat_reported', False):
+            import sklearn
+            print(f'[dopfn-compat] sklearn={sklearn.__version__} '
+                  f'shim={self._compat_shim.__file__} '
+                  f'validated={",".join(checked)}', flush=True)
+            self._compat_reported = True
 
     @contextmanager
     def environment(self):
@@ -83,6 +128,7 @@ class DoPFNDensityModels:
         with self.environment():
             reg = self.regressor_class()
             reg.device = str(self.device)
+            self._prepare_regressor(reg)
             x_train = np.column_stack((treatment, X_raw)).astype(np.float32)
             reg.fit(torch.from_numpy(x_train), torch.as_tensor(y_raw, dtype=torch.float32))
             arms = []
