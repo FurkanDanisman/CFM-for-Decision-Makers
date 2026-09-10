@@ -15,6 +15,12 @@
 #   models      dopfn_native | dopfn_bb   (1D vs 2D)
 #               uwyk1d       | graph2d    (1D vs 2D)
 #               cpfn1d       | cpfn2d     (1D vs 2D)
+#
+#   Task id -> model: id/10 indexes MODELS, so the first task of each model is
+#       0 dopfn_native   10 dopfn_bb   20 uwyk1d
+#      30 graph2d        40 cpfn1d     50 cpfn2d
+#   and within a model, (id%10)/2 indexes nodes (5,20,30,40,50) while id%2
+#   picks the subset (0=nonzero, 1=zero).
 #   node counts 5, 20, 30, 40, 50
 #   subsets     nonzero (true tau != 0)  |  zero (true tau == 0 exactly)
 #

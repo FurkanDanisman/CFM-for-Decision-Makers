@@ -67,8 +67,17 @@ OUT_ROOT=$SCRATCH/cmech_smoke MAX_REAL=1 \
   sbatch --array=30 $REPO/benchmarks/cluster/submit_cmech_pehe_1d_vs_2d.sbatch
 ```
 
-(task 30 = `cpfn1d` on `CMECH_n5_nonzero`; task 0 = `dopfn_native`,
-10 = `dopfn_bb`, 20 = `uwyk1d`, 40 = `graph2d`... see the header.)
+First task of each model: **0** `dopfn_native`, **10** `dopfn_bb`,
+**20** `uwyk1d`, **30** `graph2d`, **40** `cpfn1d`, **50** `cpfn2d`.
+Within a model, `(id%10)/2` indexes nodes (5,20,30,40,50) and `id%2` picks the
+subset (0 = nonzero, 1 = zero). Smoke-test one task per model — the six
+harnesses differ enough that one passing does not imply the rest do:
+
+```bash
+OUT_ROOT=$SCRATCH/cmech_smoke MAX_REAL=1 \
+  sbatch --array=0,10,20,30,40,50 \
+  $REPO/benchmarks/cluster/submit_cmech_pehe_1d_vs_2d.sbatch
+```
 
 Checkpoints default to the Table 1 paths and are overridable via
 `CKPT_CPFN1D`, `CKPT_CPFN2D`, `CKPT_GRAPH2D`, `CKPT_DOPFN_BB`, `UWYK_CKPT_DIR`.
