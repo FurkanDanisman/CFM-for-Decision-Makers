@@ -81,6 +81,13 @@ def _parse_args():
     p.add_argument("--only-cases", type=str, nargs="*", default=None,
                    help="Optional list of case studies to regenerate; default: all 6.")
     p.add_argument("--overwrite", action="store_true", default=False)
+    p.add_argument("--cate-shift", type=float, default=0.0,
+                   help="DGP-level constant additive treatment effect β: "
+                        "Y = f_Y(pa_Y) + β·T, baked into y_obs/y_int/mu_1/cate "
+                        "(and MC do(1) samples). Shifts the whole CATE "
+                        "distribution off 0 so predict-zero is no longer "
+                        "competitive. Applied BEFORE the |true_ATE| rejection "
+                        "check, so --max-abs-ate filters the shifted ATE.")
     p.add_argument("--max-abs-ate", type=float, default=float("inf"),
                    help="Rejection-sampling cap on |true_ATE|. Realizations whose "
                         "|mean(cate over first --n-query-eval rows)| exceeds this "
@@ -301,6 +308,22 @@ def _sample_case_study_realization(args, case_study: str, seed: int):
     y_int_np = y_int.squeeze(1).cpu().numpy().astype(np.float32).reshape(-1)
 
     attribute_names = list(X_keys)
+
+    # ── DGP-level constant additive treatment effect: Y = f_Y(pa_Y) + β·T.
+    # T→Y in every case study and Y is a SINK (nothing consumes Y), so adding
+    # β·T at sample time is identical to writing it into Y's structural
+    # equation. This shifts the whole CATE distribution away from 0 so the
+    # trivial "predict-zero" estimator is no longer competitive — unlike the
+    # loader's post-hoc SCM_TRUE_ATE_SHIFT, this is baked into the data.
+    beta = float(getattr(args, "cate_shift", 0.0) or 0.0)
+    if beta != 0.0:
+        T_obs = x_obs_np[:, 0]          # 0/1 (already binarised above)
+        T_int = x_int_np[:, 0]
+        y_obs_np = (y_obs_np + beta * T_obs).astype(np.float32)
+        y_int_np = (y_int_np + beta * T_int).astype(np.float32)
+        mu_1 = mu_1 + beta              # mu_0 unchanged (do(T=0))
+        if (isinstance(y_do1_samples, np.ndarray) and y_do1_samples.size):
+            y_do1_samples = (y_do1_samples + beta).astype(np.float32)
 
     # Per-row true CATE = mu_1 - mu_0 (independent of the T actually drawn).
     cate_per_row = (mu_1 - mu_0).astype(np.float32)

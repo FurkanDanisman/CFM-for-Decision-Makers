@@ -52,6 +52,7 @@ N_MC_SAMPLES="${N_MC_SAMPLES:-0}"
 MAX_ABS_ATE="${MAX_ABS_ATE:-inf}"      # rejection-sampling cap on |true_ATE|
 N_QUERY_EVAL="${N_QUERY_EVAL:-100}"    # must match eval's SCM_N_QUERY
 OUT_SUBDIR="${OUT_SUBDIR:-prior_sampling_rho02}"  # distinct dir per dataset
+CATE_SHIFT="${CATE_SHIFT:-0.0}"        # DGP-level constant treatment effect β
 
 [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not a dir: $DOPFN_ROOT" >&2; exit 2; }
 
@@ -88,6 +89,7 @@ python -u "$REPO/benchmarks/scripts/regen_case_study_pkls.py" \
     --nonlins     "$NONLINS" \
     --max-abs-ate "$MAX_ABS_ATE" \
     --n-query-eval "$N_QUERY_EVAL" \
+    --cate-shift  "$CATE_SHIFT" \
     --n-mc-samples "$N_MC_SAMPLES" \
     "${EXTRA[@]}"
 
