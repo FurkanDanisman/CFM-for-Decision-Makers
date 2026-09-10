@@ -4,8 +4,9 @@
 # benchmarks/scm_case_study_dataset.py uses its default DoPFN-pkl loader
 # (DOPFN_DATA_ROOT). No shift (SCM_TRUE_ATE_SHIFT=0) — original data as-is.
 #
-# Standardization: dopfn_bb std/0.3; cpfn2d std_target=3.0 (the ±10-edge analog
-# of 0.3, same σ/edge ratio); cpfn1d run BOTH per_arm and pooled.
+# Standardization: dopfn_bb std/0.3 (paper/Table-1 setting); cpfn2d pooled
+# (its established setting in every prior run — NOT changed here); cpfn1d run
+# BOTH per_arm and pooled. Override cpfn2d via CPFN2D_STD_MODE / CPFN2D_STD_TARGET.
 #
 # Usage:
 #   DEPLOY_ROOT=$SCRATCH/rpfn_bench_kit \
@@ -46,7 +47,8 @@ want native && sub MODEL=dopfn_native CKPT=none OUT_ROOT="$C/dopfn_native"
 want bb && sub MODEL=dopfn_bb CKPT="$DOPFNBB_CKPT" BB_Y_SCALING=std BB_STD_TARGET=0.3 \
     OUT_ROOT="$C/dopfn_bb"
 
-want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=std_target STD_TARGET=3.0 \
+want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" \
+    STD_MODE="${CPFN2D_STD_MODE:-pooled}" STD_TARGET="${CPFN2D_STD_TARGET:-1}" \
     OUT_ROOT="$C/cpfn2d"
 
 # cpfn1d: BOTH per-arm and pooled.
