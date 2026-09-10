@@ -325,3 +325,28 @@ def _cate_from_paired_rows(X_te: np.ndarray, T_te: np.ndarray, Y_te: np.ndarray)
             return Y_te[1::2] - Y_te[0::2]
     # Fallback — no pairing detected
     return np.zeros(n, dtype=np.float32)
+
+
+# ── Opt-in npz backend ────────────────────────────────────────────────────────
+# When CASE_STUDY_DATA_ROOT is set, the six case studies are read from the npz
+# files produced by `case_study/generation.py` instead of DoPFN's pkls. Every
+# eval script force-inserts `benchmarks/` on sys.path and then does
+# `from scm_case_study_dataset import SCMCaseStudyDataset`, so THIS module is the
+# single reliable chokepoint — a PYTHONPATH shim would be beaten by that insert.
+# We shadow the name above with the npz loader (single source of truth lives at
+# case_study/eval/scm_case_study_dataset.py). Default (env unset) behaviour is
+# unchanged — the pkl loader above stays in force.
+if os.environ.get("CASE_STUDY_DATA_ROOT"):
+    import importlib.util as _ilu
+    _repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _impl = os.path.join(_repo, "case_study", "eval", "scm_case_study_dataset.py")
+    if os.path.isfile(_impl):
+        _spec = _ilu.spec_from_file_location("scm_case_study_dataset_npz", _impl)
+        _mod = _ilu.module_from_spec(_spec)
+        import sys as _sys
+        _sys.modules[_spec.name] = _mod          # so @dataclass can resolve
+        _spec.loader.exec_module(_mod)
+        SCMCaseStudyDataset = _mod.SCMCaseStudyDataset   # shadow the pkl class
+        _CATE_Slice = _mod._CATE_Slice
+        print(f"[scm_case_study_dataset] npz backend active "
+              f"(CASE_STUDY_DATA_ROOT={os.environ['CASE_STUDY_DATA_ROOT']})", flush=True)
