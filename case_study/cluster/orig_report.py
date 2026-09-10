@@ -22,7 +22,7 @@ DISPLAY = [
     ("graph2d_v3a", "Graph2d_v3a"), ("uwyk_v3a", "UWYK_v3a"),
     ("graph2d_v3b", "Graph2d_v3b"), ("uwyk_v3b", "UWYK_v3b"),
     ("cpfn1d_perarm", "cpfn1d per-arm"), ("cpfn1d_pooled", "cpfn1d pooled"),
-    ("cpfn2d", "cpfn2d"),
+    ("cpfn2d_pooled", "cpfn2d pooled"), ("cpfn2d_perarm", "cpfn2d per-arm"),
 ]
 _ORDER = {n: i for i, (n, _) in enumerate(DISPLAY)}
 _LABEL = dict(DISPLAY)
@@ -68,10 +68,12 @@ def main():
     sys.path.insert(0, os.path.join(a.repo, "realcause_eval"))
     import aggregate_scm_ctx_sweep as A
 
-    # Extend the standard specs with the two cpfn1d variants.
-    specs = [s for s in A.MODEL_SPECS if s[0] != "cpfn1d"]
+    # Replace single cpfn1d/cpfn2d with their pooled + per_arm variants.
+    specs = [s for s in A.MODEL_SPECS if s[0] not in ("cpfn1d", "cpfn2d")]
     specs += [("cpfn1d_perarm", "cpfn1d_perarm", "uniform", None),
-              ("cpfn1d_pooled", "cpfn1d_pooled", "uniform", None)]
+              ("cpfn1d_pooled", "cpfn1d_pooled", "uniform", None),
+              ("cpfn2d_pooled", "cpfn2d_pooled", "uniform", None),
+              ("cpfn2d_perarm", "cpfn2d_perarm", "uniform", None)]
     specs.sort(key=lambda s: _ORDER.get(s[0], 99))
 
     cases = A.CASES

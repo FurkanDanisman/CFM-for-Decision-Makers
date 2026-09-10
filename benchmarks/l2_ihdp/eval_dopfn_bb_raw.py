@@ -404,6 +404,7 @@ def main():
     # ── Iterate over realizations ─────────────────────────────────────────
     pehe_list, eps_ate_list = [], []
     true_ate_list, ate_pred_list = [], []   # for uniform L1-ATE in the aggregator
+    ate_pred_em_list = []                    # em/full ATE mean → em L1-ATE
     pehe_em_k1_list, eps_em_k1_list = [], []
     pehe_malc_list, eps_malc_list = [], []
     pehe_malc_em_list, eps_malc_em_list = [], []
@@ -729,6 +730,7 @@ def main():
         eps_ate_malc_em   = float(abs(cate_pred_malc_em.mean()  - _ate_true) / _ate_denom) if args.malc_upsample else float('nan')
         pehe_list.append(pehe_raw); eps_ate_list.append(eps_ate_raw)
         true_ate_list.append(_ate_true); ate_pred_list.append(float(cate_pred_raw.mean()))
+        ate_pred_em_list.append(float(cate_pred_em.mean()))
 
         # ── Optional Do-PFN reference on the same split ──────────────────
         if args.also_dopfn and DoPFNRegressor is not None:
@@ -819,6 +821,7 @@ def main():
         save_kw = dict(
             pehe=pehe_arr, eps_ate=eps_arr,
             true_ate=np.array(true_ate_list), ate_pred=np.array(ate_pred_list),
+            ate_pred_em=np.array(ate_pred_em_list),
             pehe_em=pehe_em_k1_arr, eps_ate_em=eps_em_k1_arr,
             sigma_em_y0=std_y0_arr, sigma_em_y1=std_y1_arr,
             step=step, checkpoint=args.checkpoint,
