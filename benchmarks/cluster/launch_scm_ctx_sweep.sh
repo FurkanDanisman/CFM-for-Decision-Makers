@@ -50,8 +50,9 @@ for CTX in 50 100 250 500 1000; do
   env $common MODEL=cpfn1d CKPT="$CPFN1D_CKPT" STD_MODE=per_arm \
       OUT_ROOT="$SWEEP/ctx${CTX}/cpfn1d" sbatch "$SBATCH"
 
-  # graph2d v3_family emits v3a + v3b + noanc (+ v3c/v3d/v6a, unused) keys.
-  env $common MODEL=graph2d CKPT="$GRAPH2D_CKPT" GRAPH2D_ANC_MODE=v3_family \
+  # graph2d case_family emits CASE-CORRECT noanc + v3a + v3b keys (per-case
+  # DAG via build_case_adj — mediators/spurious/front-door encoded right).
+  env $common MODEL=graph2d CKPT="$GRAPH2D_CKPT" GRAPH2D_ANC_MODE=case_family \
       OUT_ROOT="$SWEEP/ctx${CTX}/graph2d" sbatch "$SBATCH"
 
   # uwyk: three ancestor variants — full(=v3b), paper_anc(=v3a), noanc.
