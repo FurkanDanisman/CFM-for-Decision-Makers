@@ -231,6 +231,23 @@ def _warm_up(cfg: dict, uwyk, regime: str, kwargs: dict) -> None:
         pass
 
 
+def _to_binary(t, t0: float, t1: float):
+    """Map the SCM's two treatment levels to {0, 1}: t1 -> 1, t0 -> 0.
+
+    BinarizingMechanism draws t0/t1 from observed T quantiles, so the treatment
+    column leaves BasicProcessing on those raw levels (e.g. {70.14, 76.29}), not
+    {0, 1}. Every eval harness slices on `T == 1`, which on raw levels selects
+    nothing and yields nan metrics -- so the remap has to happen here.
+
+    Uses nearest-level assignment rather than a midpoint threshold so arm labels
+    stay tied to (t0, t1) even if t1 < t0; Y_do0/Y_do1 are defined by those
+    levels, so an inverted mapping would silently swap the arms.
+    """
+    import numpy as _np
+    t = _np.asarray(t, dtype=_np.float64)
+    return (_np.abs(t - t1) <= _np.abs(t - t0)).astype(_np.float32)
+
+
 def generate_realization(
     cfg: dict,
     sampler,
@@ -430,11 +447,13 @@ def generate_realization(
         anc = padded
 
     return {
-        "X_train": X_tr.numpy(), "T_train": T_tr.reshape(-1).numpy(),
+        "X_train": X_tr.numpy(),
+        # Remapped to {0,1}; the raw levels are kept as t0_value / t1_value.
+        "T_train": _to_binary(T_tr.reshape(-1).numpy(), t0_value, t1_value),
         "Y_train": Y_tr.reshape(-1).numpy(),
         "X_test": X_test.numpy(),
-        "T_test_do0": T_te[:n_test].reshape(-1).numpy(),
-        "T_test_do1": T_te[n_test:].reshape(-1).numpy(),
+        "T_test_do0": _to_binary(T_te[:n_test].reshape(-1).numpy(), t0_value, t1_value),
+        "T_test_do1": _to_binary(T_te[n_test:].reshape(-1).numpy(), t0_value, t1_value),
         "Y_do0": Y_do0.numpy(), "Y_do1": Y_do1.numpy(),
         "true_cate": (Y_do1 - Y_do0).numpy(),
         "anc_matrix": anc.numpy(), "adj_matrix": adj_raw.numpy(),
@@ -573,6 +592,19 @@ def self_test(args) -> None:
         # X must be identical across arms and T must actually differ.
         assert not np.array_equal(rec["T_test_do0"], rec["T_test_do1"]), \
             f"{tag}: both arms got the same treatment level"
+
+        # T must reach the harnesses as {0,1}: they all slice on `T == 1`, and
+        # raw quantile levels select nothing and produce nan metrics.
+        for key in ("T_train", "T_test_do0", "T_test_do1"):
+            vals = np.unique(rec[key])
+            assert np.isin(vals, (0.0, 1.0)).all(), \
+                f"{tag}: {key} not in {{0,1}} (got {vals[:5]})"
+        assert set(np.unique(rec["T_train"])) == {0.0, 1.0}, \
+            f"{tag}: T_train is single-arm ({np.unique(rec['T_train'])})"
+        assert (rec["T_test_do0"] == 0).all() and (rec["T_test_do1"] == 1).all(), \
+            f"{tag}: do-arms mislabelled"
+        _f1 = float(rec["T_train"].mean())
+        print(f"[ok] {tag}: T in {{0,1}}, treated fraction {_f1:.3f}")
 
         # Regenerating the same realization must reproduce it bitwise, or the
         # benchmark cannot be rebuilt and method comparisons across runs are
