@@ -59,7 +59,7 @@ import numpy as np
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_DATA = os.path.join(_REPO_ROOT, "UWYK_Fig3_4", "data")
 
-NODE_COUNTS = (5, 20, 30, 40, 50)
+NODE_COUNTS = (5, 10, 20, 30, 40, 50)
 SUBSETS = ("all", "nonzero", "zero")
 
 _NAME_RE = re.compile(r"^CMECH_n(\d+)(?:_(nonzero|zero|all))?$")
@@ -94,6 +94,7 @@ class _CATESlice:
     n_real_features: int = -1
     n_zero_queries: int = -1
     n_nonzero_queries: int = -1
+    n_context: int = -1
 
 
 class UWYKFig34Dataset:
@@ -101,13 +102,34 @@ class UWYKFig34Dataset:
 
     def __init__(self, name: str, data_root: str | None = None,
                  prior: str = "complexmech", regime: str = "path_TY",
-                 hide: float = 0.0):
+                 hide: float = 0.0, max_context: int | None = None):
+        """max_context: cap the training context to this many rows.
+
+        Subsampling happens HERE rather than via each harness's own
+        --eval-max-context flag, because those flags do not share a default
+        (graph2d/uwyk1d use 1000, cpfn1d/cpfn2d use 0 = uncapped) and
+        dopfn_native/dopfn_bb have no such flag at all. Doing it in one place
+        guarantees every method sees the identical rows for a given
+        (realization, cap), which is the whole point of the comparison.
+
+        The draw is seeded from (realization, cap) only, so it is reproducible
+        and does not depend on which method is running or in what order.
+        Composes safely with the harness caps: those are >= this one, so they
+        become no-ops.
+
+        Reads UWYK_FIG34_MAX_CONTEXT when not passed explicitly.
+        """
         parsed = parse_name(name)
         if parsed is None:
             raise ValueError(f"not a UWYK_Fig3_4 dataset name: {name!r}")
         self.name = name
         self.n_nodes, self.subset = parsed
         self.prior, self.regime, self.hide = prior, regime, hide
+
+        if max_context is None:
+            env = os.environ.get("UWYK_FIG34_MAX_CONTEXT", "").strip()
+            max_context = int(env) if env else None
+        self.max_context = max_context if (max_context or 0) > 0 else None
 
         root = data_root or os.environ.get("UWYK_FIG34_DATA", _DEFAULT_DATA)
         self.cell_dir = os.path.join(root, prior, f"{self.n_nodes}node",
@@ -162,6 +184,14 @@ class UWYKFig34Dataset:
             y_train = np.asarray(z["Y_train"], dtype=np.float32).reshape(-1)
             tau = np.asarray(z["true_cate"], dtype=np.float32).reshape(-1)
 
+        if self.max_context is not None and X_train.shape[0] > self.max_context:
+            rng = np.random.default_rng(
+                [self.source_realizations[r], int(self.max_context)])
+            idx = rng.choice(X_train.shape[0], int(self.max_context), replace=False)
+            idx.sort()   # keep row order stable; harnesses do not assume it, but
+                         # a stable order makes any dumped context diffable
+            X_train, t_train, y_train = X_train[idx], t_train[idx], y_train[idx]
+
         mask = self._mask_for(tau)
         sl = _CATESlice(
             X_train=X_train,
@@ -173,6 +203,7 @@ class UWYKFig34Dataset:
             n_real_features=n_real,
             n_zero_queries=int((tau == 0).sum()),
             n_nonzero_queries=int((tau != 0).sum()),
+            n_context=int(X_train.shape[0]),
         )
         return sl, None
 
