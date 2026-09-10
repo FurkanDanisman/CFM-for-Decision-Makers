@@ -83,7 +83,7 @@ def load_model_cell(root: str, model: str, dataset: str, anc_tag: str):
     return out
 
 
-def null_pehe(n_nodes: int, subset: str, data_root: str) -> float:
+def null_pehe(n_nodes: int, subset: str, data_root: str) -> tuple[float, float]:
     """PEHE of predicting tau=0 everywhere: mean over datasets of RMS(tau).
 
     Without this column the table is unreadable. A model scoring AT the null is
@@ -100,7 +100,9 @@ def null_pehe(n_nodes: int, subset: str, data_root: str) -> float:
         tau = tau[tau != 0] if subset == "nonzero" else tau[tau == 0]
         if tau.size:
             vals.append(float(np.sqrt((tau ** 2).mean())))
-    return float(np.mean(vals)) if vals else float("nan")
+    if not vals:
+        return float("nan"), float("nan")
+    return float(np.mean(vals)), float(np.median(vals))
 
 
 def query_counts(n_nodes: int, data_root: str) -> tuple[dict, dict]:
@@ -144,18 +146,23 @@ def main() -> None:
                     continue
                 va = np.array([a[r] for r in shared])
                 vb = np.array([b[r] for r in shared])
-                nl = null_pehe(n, subset, args.data_root)
+                nl_mean, nl_med = null_pehe(n, subset, args.data_root)
+                m1, m2 = float(np.median(va)), float(np.median(vb))
                 rows.append({
                     "pair": f"{one_d} -> {two_d}", "n_nodes": n, "subset": subset,
                     "n_datasets": len(shared),
-                    "null": nl,
-                    "pehe_1d": float(va.mean()), "pehe_2d": float(vb.mean()),
-                    "r1d": float(va.mean() / nl) if nl > 0 else float("nan"),
-                    "r2d": float(vb.mean() / nl) if nl > 0 else float("nan"),
-                    "delta": float(vb.mean() - va.mean()),
-                    "pct": float(100.0 * (vb.mean() - va.mean()) / va.mean())
-                           if va.mean() else float("nan"),
+                    # Medians first: the per-dataset PEHE distribution is heavy
+                    # tailed (a handful of realizations dominate any mean), so
+                    # the median is the number to read. Means kept for
+                    # comparability with UWYK, whose Fig 4 bootstraps the mean.
+                    "null_med": nl_med, "med_1d": m1, "med_2d": m2,
+                    "r1d": float(m1 / nl_med) if nl_med > 0 else float("nan"),
+                    "r2d": float(m2 / nl_med) if nl_med > 0 else float("nan"),
+                    "med_delta": m2 - m1,
                     "n_2d_better": int((vb < va).sum()),
+                    "null_mean": nl_mean,
+                    "mean_1d": float(va.mean()), "mean_2d": float(vb.mean()),
+                    "mean_delta": float(vb.mean() - va.mean()),
                 })
 
     if not rows:
@@ -163,13 +170,21 @@ def main() -> None:
             f"no results under {args.root}. Expected "
             f"{args.root}/<model>/CMECH_n<N>_<subset>/")
 
-    hdr = ["pair", "n_nodes", "subset", "n_datasets", "null", "pehe_1d",
-           "pehe_2d", "r1d", "r2d", "delta", "pct", "n_2d_better"]
+    hdr = ["pair", "n_nodes", "subset", "n_datasets", "null_med", "med_1d",
+           "med_2d", "r1d", "r2d", "med_delta", "n_2d_better",
+           "null_mean", "mean_1d", "mean_2d", "mean_delta"]
     lines = [
         "# ComplexMech PEHE — does the 2D head help?", "",
         f"anc tag for uwyk1d/graph2d: `{args.anc_tag}`.  "
-        "`delta` = 2D - 1D, so **negative means the 2D head is better**.",
-        "`n_2d_better` counts datasets where 2D beat 1D, out of `n_datasets`.",
+        "`med_delta` = 2D - 1D, so **negative means the 2D head is better**.",
+        "`n_2d_better` counts datasets where 2D beat 1D, out of `n_datasets`. "
+        "With a heavy-tailed per-dataset spread this sign test is the most "
+        "robust column in the table.",
+        "",
+        "**Read the median columns.** Per-dataset PEHE is heavy tailed, so a "
+        "handful of realizations dominate any mean. `mean_*` are kept only for "
+        "comparability with UWYK, whose Fig 4 bootstraps the mean (their Fig 3 "
+        "uses the median).",
         "",
         "`null` is the PEHE of predicting tau=0 everywhere; `r1d`/`r2d` are each "
         "model over it.",
