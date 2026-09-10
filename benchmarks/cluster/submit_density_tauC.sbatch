@@ -176,6 +176,7 @@ if [ "$T" -eq 0 ]; then
     python -u "$REPO/benchmarks/eval_graph2d/test_density_common.py" \
         || { echo "FATAL: density gates failed; not running the eval." >&2; exit 3; }
     python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_dopfn.py'
+    python -m unittest discover -s "$REPO/benchmarks/methods" -p 'test_dopfn_compat.py'
     echo "--- gates passed ---"
 fi
 

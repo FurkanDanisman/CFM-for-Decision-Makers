@@ -16,6 +16,10 @@ containing `scripts/`, `model/`, and the pretrained files
 The regular model uses
 `scripts.transformer_prediction_interface.base.DoPFNRegressor`, as in the
 point benchmarks, but calls `predict_full()` for each treatment arm.
+The shared shim in `benchmarks/methods/dopfn.py` accepts both scikit-learn
+finite-validation keyword names (`force_all_finite` and `ensure_all_finite`)
+and translates to the installed API. No scikit-learn downgrade is needed for
+the removed-keyword error on newer installations.
 The joint model uses `DoPFNBackboneWith2DHead` and defaults to
 `Required_checkpoints/dopfn_bb_j10_step_150000.pt` (J=10, 150,000 steps).
 The checkpoint's `num_features=6` records its training setting; it is not an
@@ -90,5 +94,6 @@ Validation:
 
 ```bash
 python benchmarks/eval_graph2d/test_density_common.py
-python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_*.py'
+python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_dopfn.py'
+python -m unittest discover -s benchmarks/methods -p 'test_dopfn_compat.py'
 ```

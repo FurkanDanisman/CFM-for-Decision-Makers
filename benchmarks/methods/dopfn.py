@@ -3,53 +3,54 @@
 Matches Do-PFN's own inference_example.py: the treatment goes as the first
 column of the covariate matrix, then `fit(x, y)` + `predict_cate(x_test)`.
 
-sklearn-version shim: Do-PFN's transformer_prediction_interface/base.py
-calls `sklearn.utils.check_array(..., ensure_all_finite=...)`. That kwarg
-was only added in sklearn 1.6 (the old name is `force_all_finite`). But
-Do-PFN's own semi-real pkls were pickled before sklearn added the
-`missing_go_to_left` tree field (< 1.3), so on those datasets we have to
-run against sklearn < 1.3. This shim renames the kwarg on the way in so
-both requirements can coexist. It's a no-op on modern sklearn.
+sklearn-version shim: Do-PFN revisions use either `force_all_finite` or
+`ensure_all_finite` in check_array. sklearn added the new name in 1.6 and
+removed the old name in 1.8. Some semi-real dataset pickles also require
+older sklearn. Translate only the unsupported spelling, using the installed
+function's signature, so both old and new environments work.
 """
 from __future__ import annotations
 import numpy as np
 import torch
 
-# Patch check_array (both the utils.validation location and the top-level
-# alias) so Do-PFN can call it with `ensure_all_finite` on pre-1.6 sklearn.
-# ALSO patches DoPFN's own module-local `check_array` reference if DoPFN's
-# transformer_prediction_interface.base is already importable — because
-# `from sklearn.utils.validation import check_array` at DoPFN's module top
-# binds a separate reference that survives our patching of sklearn.
 def _install_check_array_shim():
+    """Adapt both keyword spellings and refresh DoPFN's bound import aliases."""
     try:
-        import inspect
+        import sklearn.utils as utils
         import sklearn.utils.validation as _v
-        _sig = inspect.signature(_v.check_array)
-        needs_patch = 'ensure_all_finite' not in _sig.parameters
-        _orig = _v.check_array
+    except ImportError:
+        return  # sklearn remains optional until a model is actually loaded.
 
-        def _shim(*a, **kw):
-            if 'ensure_all_finite' in kw:
-                kw['force_all_finite'] = kw.pop('ensure_all_finite')
-            return _orig(*a, **kw)
+    from functools import wraps
+    import inspect
+    import sys
 
-        if needs_patch:
-            _v.check_array = _shim
-            import sklearn.utils
-            if hasattr(sklearn.utils, 'check_array'):
-                sklearn.utils.check_array = _shim
-            # DoPFN's base.py does `from sklearn.utils.validation import check_array`
-            # at module load; patch its local ref if the module is already loaded.
-            import sys as _sys
-            for _name in list(_sys.modules):
-                if _name.endswith('.transformer_prediction_interface.base') \
-                        or _name == 'scripts.transformer_prediction_interface.base':
-                    _mod = _sys.modules[_name]
-                    if hasattr(_mod, 'check_array'):
-                        _mod.check_array = _shim
-    except Exception:
-        pass  # best-effort — the actual sklearn call will raise if it matters
+    original = _v.check_array
+    check_array = original
+    if not getattr(original, '_dopfn_finite_keyword_compat', False):
+        parameters = inspect.signature(original).parameters
+        old, new = 'force_all_finite', 'ensure_all_finite'
+        if (old in parameters) != (new in parameters):
+            supported, unsupported = (new, old) if new in parameters else (old, new)
+
+            @wraps(original)
+            def check_array(*args, **kwargs):
+                if unsupported in kwargs:
+                    if supported in kwargs:
+                        raise TypeError('Pass only one of force_all_finite and '
+                                        'ensure_all_finite, not both')
+                    kwargs[supported] = kwargs.pop(unsupported)
+                return original(*args, **kwargs)
+
+            check_array._dopfn_finite_keyword_compat = True
+
+    _v.check_array = utils.check_array = check_array
+    # Always refresh aliases, even when a wrapper was already installed.
+    # DoPFN may have bound the original function before this call.
+    for name, module in list(sys.modules.items()):
+        if name.endswith('.transformer_prediction_interface.base'):
+            if hasattr(module, 'check_array'):
+                module.check_array = check_array
 
 
 _install_check_array_shim()
@@ -57,7 +58,7 @@ _install_check_array_shim()
 
 def _repatch_dopfn_check_array():
     """Call this AFTER importing DoPFN's DoPFNRegressor to catch late-bound
-    check_array references. Idempotent + no-op if sklearn is >= 1.6."""
+    check_array references. Repeated calls reuse the same wrapper."""
     _install_check_array_shim()
 
 
