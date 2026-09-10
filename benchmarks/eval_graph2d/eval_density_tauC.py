@@ -100,16 +100,17 @@ DATASET = H.DATASET
 # it was a second name for the same choice and could silently disagree.
 # Tags don't depend on F/n_real, so resolve on a dummy (4, 2) now and fail
 # here instead of 20 min in, after the checkpoints and the dataset have loaded.
-ANC_TAG = os.environ.get('ANC_TAG', 'v6a')
+ANC_TAG = os.environ.get('ANC_TAG', 'v6a') if USE_UWYK else 'none'
 _FAMILIES = ['full', 'v6a_only', 'v6b_only', 'v4a_only', 'v5a_only',
              'v5b_only', 'v3b_only', 'ty_only', 'ty_antisym', 'all_variants',
              'v3_family', 'v3_v6_extended', 'focus4', 'three_edge_all',
              'all_combos']
 if os.environ.get('ANC_VARIANT'):   # SCM case studies: the tag IS the variant
     _FAMILIES.append('case_variant')
-ANC_FAMILY = next(
+ANC_FAMILY = (next(
     (f for f in _FAMILIES if ANC_TAG in dict(H.build_mode_list(4, 2, f))), None)
-if ANC_FAMILY is None:
+    if USE_UWYK else None)
+if USE_UWYK and ANC_FAMILY is None:
     _common = sorted({t for f in ('full', 'all_variants', 'v3_v6_extended',
                                   'focus4', 'ty_only', 'ty_antisym')
                       for t, _ in H.build_mode_list(4, 2, f)})
@@ -119,7 +120,7 @@ if ANC_FAMILY is None:
         f'and all_combos. Usual choices: v6a (no +1 edges, only the -1s '
         f'implied by unconfoundedness) | anc (build_anc_full: T->Y, X_i->T, '
         f'X_i->Y asserted +1) | noanc (all-zero).')
-if os.environ.get('ANC_MODE'):
+if USE_UWYK and os.environ.get('ANC_MODE'):
     print(f'[tauC] note: ANC_MODE={os.environ["ANC_MODE"]!r} is ignored here; '
           f'ANC_TAG={ANC_TAG!r} alone selects the adjacency '
           f'(resolved via {ANC_FAMILY!r}).', flush=True)
@@ -391,7 +392,10 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    print(f'[tauC] dataset={DATASET} family={MODEL_FAMILY} anc={ANC_TAG} '
+    graph_desc = (f'UWYK_graph={ANC_TAG}' if USE_UWYK else 'UWYK_graph=n/a')
+    if USE_DOPFN:
+        graph_desc += ' DoPFN_graph=none'
+    print(f'[tauC] dataset={DATASET} family={MODEL_FAMILY} {graph_desc} '
           f'ctx={H.EVAL_MAX_CONTEXT or "(full)"} n_y0={N_Y0}', flush=True)
 
     ds = H.get_dataset(DATASET)

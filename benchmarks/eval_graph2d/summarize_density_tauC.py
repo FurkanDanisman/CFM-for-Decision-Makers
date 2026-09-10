@@ -157,13 +157,20 @@ def main():
             print('_no shards found_')
             continue
         print(truth_summary(rows) + '\n')
+        methods = [m for m in METHODS if any(f'nll_{m}' in r for r in rows)]
         n_r = len(rows)
         n_q = int(np.mean([float(r['n_queries']) for r in rows]))
         oob = float(np.mean([float(r['frac_tau_outside_grid']) for r in rows]))
+        has_uwyk = any(m.startswith('uwyk_') or m == 'joint' for m in methods)
+        has_dopfn = any(m.startswith('dopfn_') for m in methods)
+        graph_parts = []
+        if has_uwyk:
+            graph_parts.append(f'UWYK graph={rows[0]["anc_tag"]}')
+        if has_dopfn:
+            graph_parts.append('DoPFN graph=none')
         print(f'realizations={n_r}, ~{n_q} queries each, '
-              f'anc={rows[0]["anc_tag"]}, |tau*|>3: {oob:.2%}\n')
+              f'{", ".join(graph_parts)}, |tau*|>3: {oob:.2%}\n')
 
-        methods = [m for m in METHODS if any(f'nll_{m}' in r for r in rows)]
         table = {}
         body = [[LABEL[m]] for m in methods]
         for metric in METRICS:
@@ -189,11 +196,21 @@ def main():
                   'predictions. Full-density means except the interior row; '
                   'CATE L1 is per-query MAE, ATE error is unnormalised.\n')
             print(points)
+            large_grid_mean_gap = []
             for m in methods:
                 key = f'grid_mean_max_abs_diff_{m}'
                 if all(key in r for r in rows):
-                    print(f'  {m}: max |finite-grid moment - full mean| = '
-                          f'{max(float(r[key]) for r in rows):.6g}')
+                    gap = max(float(r[key]) for r in rows)
+                    print(f'  {m}: max |finite-grid moment - full mean| = {gap:.6g}')
+                    if gap > 1.0:
+                        large_grid_mean_gap.append(m)
+            if large_grid_mean_gap:
+                print('\n**TAIL NOTE:** The finite tau grid omits distant tail '
+                      f'mass for {large_grid_mean_gap}. NLL is evaluated at the '
+                      'observed tau and point errors use exact full-density means; '
+                      'L2/KL/mass are finite-grid quantities. In particular, '
+                      'KL_rev is not the full-support reverse KL when omitted tail '
+                      'mass lies far from the truth.')
 
         # The contrasts the design exists to produce.  Paired over realizations:
         # the mean is identical to the difference of the column means, but the
