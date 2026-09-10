@@ -6,20 +6,22 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-69
+#SBATCH --array=0-209
 #
 # 1D-vs-2D head comparison on the UWYK ComplexMech (Fig-4 prior) PEHE benchmark.
 #
-#   7 model-runs x 5 node counts x 2 query subsets = 70 tasks.
+#   7 model-runs x 6 node counts x 5 context sizes = 210 tasks.
+#   Subset is `nonzero` only (on `zero` the true tau is identically 0).
 #
 #   models      dopfn_native | dopfn_bb   (1D vs 2D)
 #               uwyk1d       | graph2d    (1D vs 2D)
 #               cpfn1d       | cpfn2d     (1D vs 2D)
 #
 #   Task id -> model: id/10 indexes MODELS, so the first task of each model is
-#       0 dopfn_native   10 dopfn_bb        20 uwyk1d
-#      30 graph2d        40 cpfn1d          50 cpfn2d_pooled
-#      60 cpfn2d_log
+#       0 dopfn_native   30 dopfn_bb        60 uwyk1d    90 graph2d
+#     120 cpfn1d        150 cpfn2d_pooled  180 cpfn2d_log
+#   within a model: (id%30)/5 indexes nodes (5,10,20,30,40,50),
+#                   id%5 indexes context (50,100,250,500,1000)
 #   uwyk1d and graph2d run ANC_MODE=v3_family, which emits noanc + v3a + v3b
 #   (plus v3c/v3d/v6a) from a single pass — three table rows per model.
 #   and within a model, (id%10)/2 indexes nodes (5,20,30,40,50) while id%2
@@ -83,23 +85,32 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_m
 
 # ── task dispatch: model x nodes x subset ────────────────────────────────────
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled cpfn2d_log)
-NODES=(5 20 30 40 50)
-SUBSETS=(nonzero zero)
+NODES=(5 10 20 30 40 50)
+CONTEXTS=(50 100 250 500 1000)
+SUBSET=nonzero
 
-N_NODES=${#NODES[@]}; N_SUB=${#SUBSETS[@]}
-PER_MODEL=$(( N_NODES * N_SUB ))
+N_NODES=${#NODES[@]}; N_CTX=${#CONTEXTS[@]}
+PER_MODEL=$(( N_NODES * N_CTX ))
 MODEL_IDX=$(( SLURM_ARRAY_TASK_ID / PER_MODEL ))
 REM=$(( SLURM_ARRAY_TASK_ID % PER_MODEL ))
-NODE_IDX=$(( REM / N_SUB ))
-SUB_IDX=$(( REM % N_SUB ))
+NODE_IDX=$(( REM / N_CTX ))
+CTX_IDX=$(( REM % N_CTX ))
 
 MODEL="${MODELS[$MODEL_IDX]}"
 NODE="${NODES[$NODE_IDX]}"
-SUBSET="${SUBSETS[$SUB_IDX]}"
+CTX="${CONTEXTS[$CTX_IDX]}"
 DATASET="CMECH_n${NODE}_${SUBSET}"
 
+# Context subsampling happens in benchmarks/uwyk_fig34_dataset.py, NOT via each
+# harness's --eval-max-context: those flags disagree on defaults (graph2d/uwyk1d
+# 1000, cpfn* 0 = uncapped) and dopfn_native/dopfn_bb have none. Capping in the
+# adapter guarantees every method sees the identical rows for a given
+# (realization, cap).
+export UWYK_FIG34_MAX_CONTEXT="$CTX"
+
 export DATASET
-export OUT="$OUT_ROOT/$MODEL/$DATASET"
+# One results tree per context size, so each N gets its own table.
+export OUT="$OUT_ROOT/N${CTX}/$MODEL/$DATASET"
 mkdir -p "$OUT"
 
 # ── env / activation ─────────────────────────────────────────────────────────
@@ -110,14 +121,14 @@ export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "[$(date '+%F %T')] task=$SLURM_ARRAY_TASK_ID  model=$MODEL  dataset=$DATASET"
+echo "[$(date '+%F %T')] task=$SLURM_ARRAY_TASK_ID  model=$MODEL  dataset=$DATASET  N=$CTX"
 echo "  OUT=$OUT"
-echo "  UWYK_FIG34_DATA=$UWYK_FIG34_DATA"
+echo "  UWYK_FIG34_DATA=$UWYK_FIG34_DATA   context=$CTX"
 
-# Context cap: these datasets ship 1000 training rows, which is already the cap
-# used for the RealCause runs, so no subsampling happens. Kept explicit so the
-# comparison is on the same footing as Table 1.
-CTX=1000
+# Harness-side cap, deliberately left at the full 1000: the adapter has already
+# cut the context to $UWYK_FIG34_MAX_CONTEXT, so this must not clip further or
+# it would subsample twice.
+HARNESS_CTX=1000
 SEED=43
 
 case "$MODEL" in
@@ -141,7 +152,7 @@ case "$MODEL" in
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
         --anc-mode v3_family \
-        --eval-max-context "$CTX" --eval-context-seed "$SEED"
+        --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   graph2d)
     [ -f "$CKPT_GRAPH2D" ] || { echo "FATAL: ckpt $CKPT_GRAPH2D" >&2; exit 1; }
@@ -149,7 +160,7 @@ case "$MODEL" in
         --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_GRAPH2D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
         --anc-mode v3_family --density-primary-mode noanc \
-        --eval-max-context "$CTX" --eval-context-seed "$SEED"
+        --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   cpfn1d)
     [ -f "$CKPT_CPFN1D" ] || { echo "FATAL: ckpt $CKPT_CPFN1D" >&2; exit 1; }

@@ -55,7 +55,7 @@ METHODS = [
     ("cpfn2d-pooled",  "cpfn2d_pooled", None),
     ("cpfn2d-log",     "cpfn2d_log",    None),
 ]
-NODE_COUNTS = (5, 20, 30, 40, 50)
+NODE_COUNTS = (5, 10, 20, 30, 40, 50)
 
 
 def _first(z, names):
@@ -151,8 +151,35 @@ def main():
     ap.add_argument("--subsets", nargs="+", default=["nonzero"],
                     choices=["nonzero", "zero"])
     ap.add_argument("--out", default=None)
+    ap.add_argument("--all-contexts", action="store_true",
+                    help="--root holds N<ctx>/ subdirs (as the sbatch writes): "
+                         "emit one table per context size.")
     args = ap.parse_args()
 
+    if args.all_contexts:
+        subs = sorted(
+            (int(os.path.basename(d)[1:]), d)
+            for d in glob.glob(os.path.join(args.root, "N*"))
+            if os.path.isdir(d) and os.path.basename(d)[1:].isdigit())
+        if not subs:
+            raise SystemExit(f"no N<ctx>/ subdirs under {args.root}")
+        parts = []
+        for ctx, d in subs:
+            sub = argparse.Namespace(**vars(args))
+            sub.root, sub.all_contexts, sub.out = d, False, None
+            parts.append(f"\n\n## Context N = {ctx}\n\n" + _build(sub))
+        md = "# ComplexMech — per-method tables by context size\n" + "".join(parts)
+        out = args.out or os.path.join(args.root, "cmech_methods_all_contexts.md")
+        with open(out, "w") as f:
+            f.write(md)
+        print(md)
+        print(f"[written] {out}")
+        return
+
+    print(_build(args))
+
+
+def _build(args):
     rows = []
     for subset in args.subsets:
         for n in args.nodes:
@@ -188,13 +215,13 @@ def main():
                  f"{_fmt(r['pehe'],'std')} | {_fmt(r['pehe'],'sem')} | "
                  f"{_fmt(r['ate'],'std')} | {_fmt(r['ate'],'sem')} |")
     md = "\n".join(L) + "\n"
-    print(md)
     with open(os.path.join(args.root, "cmech_methods.json"), "w") as f:
         json.dump(rows, f, indent=2, default=str)
-    out = args.out or os.path.join(args.root, "cmech_methods.md")
-    with open(out, "w") as f:
-        f.write(md)
-    print(f"[written] {out}")
+    if args.out is not None or not getattr(args, "_nested", False):
+        out = args.out or os.path.join(args.root, "cmech_methods.md")
+        with open(out, "w") as f:
+            f.write(md)
+    return md
 
 
 if __name__ == "__main__":
