@@ -168,7 +168,7 @@ class _SampledSCM:
     additive Y-noise cancels in mu_1 - mu_0)."""
 
     def __init__(self, nodes: List[Node], N: int, rng: np.random.Generator,
-                 cate_shift: float = 0.0):
+                 cate_shift: float = 0.0, noise_scale: float = 1.0):
         self.nodes = nodes
         self.t_name = next(n.name for n in nodes if n.is_treatment)
         self.y_name = next(n.name for n in nodes if n.is_outcome)
@@ -184,8 +184,12 @@ class _SampledSCM:
                                                        if n.is_outcome).parents)
 
         # Per-realization noise scales (verified against the shipped pkls).
+        # `noise_scale` multiplies σ_ε only — it does NOT change the true CATE
+        # (μ are noiseless), just the width of the conditional Y distribution.
+        # Used for the σ_ε resolution sweep (scale=1 == the original data).
         self.exo_std = float(rng.uniform(1.0, 3.0))
-        self.noise_std = float(0.3 * rng.beta(1.0, 5.0))
+        self.noise_scale = float(noise_scale)
+        self.noise_std = float(noise_scale * 0.3 * rng.beta(1.0, 5.0))
 
         self._weights: Dict[str, np.ndarray] = {}
         self._activation: Dict[str, str] = {}
@@ -248,12 +252,14 @@ class _SampledSCM:
 
 
 def generate_realization(case_study: str, n_context: int, seed: int,
-                         cate_shift: float = 0.0) -> Realization:
+                         cate_shift: float = 0.0,
+                         noise_scale: float = 1.0) -> Realization:
     """Sample one SCM realization. Raises ValueError on non-finite draws
     (nonlinearity blow-up) so the caller can resample with another seed."""
     nodes = build_dag(case_study)
     rng = np.random.default_rng(seed)
-    scm = _SampledSCM(nodes, N=n_context, rng=rng, cate_shift=cate_shift)
+    scm = _SampledSCM(nodes, N=n_context, rng=rng, cate_shift=cate_shift,
+                      noise_scale=noise_scale)
 
     obs = scm.forward()                                    # observational
     mu_0 = scm.forward(do_T=0.0, y_noiseless=True)[scm.y_name]
@@ -299,14 +305,15 @@ def _cell_seed(seed_base: int, case_idx: int, N: int, r: int, attempt: int) -> i
 
 def generate_sweep(out_dir: str, cases: List[str], context_sizes: List[int],
                    n_realizations: int, seed_base: int, overwrite: bool,
-                   cate_shift: float = 0.0, max_resamples: int = 50) -> dict:
+                   cate_shift: float = 0.0, noise_scale: float = 1.0,
+                   max_resamples: int = 50) -> dict:
     """Generate the full (case x N x realization) grid of .npz files and a
     manifest. Returns the manifest dict (also written to manifest.json)."""
     t0 = time.time()
     manifest = {
         "cases": cases, "context_sizes": context_sizes,
         "n_realizations": n_realizations, "seed_base": seed_base,
-        "cate_shift": cate_shift,
+        "cate_shift": cate_shift, "noise_scale": noise_scale,
         "source": "reimplementation of github.com/jr2021/Do-PFN case studies",
         "cells": [],
     }
@@ -322,7 +329,8 @@ def generate_sweep(out_dir: str, cases: List[str], context_sizes: List[int],
                 for attempt in range(max_resamples):
                     seed = _cell_seed(seed_base, case_idx, N, r, attempt)
                     try:
-                        real = generate_realization(case, N, seed, cate_shift)
+                        real = generate_realization(case, N, seed, cate_shift,
+                                                    noise_scale)
                         break
                     except ValueError:
                         resampled += 1
@@ -366,6 +374,12 @@ def _parse_args():
                         "Observed_Mediator_and_Confounder, Unobserved_Confounder). "
                         "Re-centers their CATE/ATE on beta; Backdoor/Frontdoor "
                         "(no direct T->Y) stay centered at 0. Default 0.")
+    p.add_argument("--noise-scale", type=float, default=1.0,
+                   help="Multiplier on the endogenous additive-noise std σ_ε "
+                        "(σ_ε = noise_scale · 0.3 · Beta(1,5)). Does NOT change the "
+                        "true CATE, only the conditional-Y width. scale=1 == the "
+                        "original data; large values widen the CID so coarse bins "
+                        "resolve it (σ_ε resolution sweep). Default 1.0.")
     p.add_argument("--overwrite", action="store_true",
                    help="Regenerate cells even if the .npz already exists.")
     return p.parse_args()
@@ -375,7 +389,7 @@ def main():
     a = _parse_args()
     generate_sweep(out_dir=a.out_dir, cases=a.cases, context_sizes=a.context_sizes,
                    n_realizations=a.n_realizations, seed_base=a.seed_base,
-                   cate_shift=a.cate_shift,
+                   cate_shift=a.cate_shift, noise_scale=a.noise_scale,
                    overwrite=a.overwrite)
 
 
