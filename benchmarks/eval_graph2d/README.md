@@ -2,7 +2,9 @@
 
 `eval_density_tauC.py` scores the conditional distribution of
 `tau = Y(1) - Y(0)` and reports point errors for its mean (CATE).
-Choose `MODEL_FAMILY=uwyk` (default), `dopfn`, or `all`.
+Choose the model with `--model uwyk`, `--model dopfn`, or `--model all`.
+`MODEL_FAMILY` provides the same selection for the Slurm launcher and remains
+available for existing commands; the command-line flag takes precedence.
 
 | Family | Density rows | Model inputs |
 | --- | --- | --- |
@@ -36,12 +38,12 @@ inference feature cap.
 For a one-realization DoPFN smoke run, from the repository root:
 
 ```bash
-MODEL_FAMILY=dopfn \
 DOPFN_ROOT=/path/to/Do-PFN \
 CAUSALPFN=/path/to/CausalPFN \
-DATASET=IHDP REAL_START=0 REAL_END=1 EVAL_MAX_CONTEXT=1000 \
+REAL_START=0 REAL_END=1 EVAL_MAX_CONTEXT=1000 \
 OUT=./results_density_tauC/dopfn/IHDP \
-python -u benchmarks/eval_graph2d/eval_density_tauC.py
+python -u benchmarks/eval_graph2d/eval_density_tauC.py \
+  --model dopfn --dataset IHDP
 ```
 
 Set `DATASET=ACIC` and change `OUT` to the corresponding `ACIC` directory
@@ -62,14 +64,22 @@ controls query batching for both DoPFN models. Combined runs take longer
 than the existing three-row evaluation; adjust Slurm time if needed.
 
 ```bash
-python benchmarks/eval_graph2d/summarize_density_tauC.py results_density_tauC/dopfn
+python benchmarks/eval_graph2d/summarize_density_tauC.py \
+  results_density_tauC/dopfn --model dopfn
 ```
 
-The summary detects available rows and adds a paired DoPFN native-to-joint
-contrast. Its run metadata labels the selected adjacency as `UWYK graph=...`
-and always reports `DoPFN graph=none`; `ANC_TAG` is ignored by DoPFN-only
-runs. Use a separate output directory for each configuration to avoid
-overwriting shards or mixing model families across realizations.
+`--model uwyk` displays only UWYK/g4cfm, with its selected graph. `--model
+dopfn` displays only native and joint DoPFN, with `graph=none`. The default
+`--model auto` detects every available family but prints each one as a separate
+section, never in a combined table. `--model all` is an explicit synonym for
+that behavior. Existing mixed result shards remain usable, so changing the
+summary selection does not require rerunning inference.
+
+New adapters can be added as another entry in `MODEL_METHODS` and
+`MODEL_LABEL` in `summarize_density_tauC.py`; the evaluator also needs the
+corresponding inference adapter before accepting a new `--model` value. Use a
+separate output directory for each evaluation configuration to avoid
+overwriting shards or mixing configurations across realizations.
 
 All models share the deterministically selected context rows and the outcome
 axis defined by `Y_SCALING=minmax` (default) or `Y_SCALING=std` with

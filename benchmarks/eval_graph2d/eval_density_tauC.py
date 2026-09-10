@@ -28,7 +28,8 @@ Methods (rows):
     dopfn_native  DoPFNRegressor.predict_full, convolved under independence
     dopfn_joint   DoPFN backbone with the trained 2D head, diagonal-integrated
 
-MODEL_FAMILY=uwyk (default), dopfn, or all selects model pairs. DoPFN needs
+--model uwyk (default), dopfn, or all selects model pairs. MODEL_FAMILY is the
+equivalent environment setting used by Slurm. DoPFN needs
 DOPFN_ROOT (upstream checkout with artifacts); DOPFN_JOINT_CKPT defaults to
 Required_checkpoints/dopfn_bb_j10_step_150000.pt. DOPFN_QUERY_CHUNK defaults
 to 20. DoPFN-only runs do not load UWYK checkpoints. See README.md here.
@@ -52,17 +53,26 @@ Usage (GPU node):
 """
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import os
 import sys
 import time
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.abspath(os.path.join(_HERE, '..', '..'))
+_model_parser = argparse.ArgumentParser(
+    description='Evaluate CATE densities for one model family on IHDP or ACIC.')
+_model_parser.add_argument('--model', choices=('uwyk', 'dopfn', 'all'),
+                           help='Model family (overrides MODEL_FAMILY).')
+_model_parser.add_argument('--dataset', choices=('IHDP', 'ACIC'),
+                           help='Dataset (the DATASET environment variable is also accepted).')
+_model_args, _ = _model_parser.parse_known_args()
+
 import numpy as np
 import torch
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_REPO = os.path.abspath(os.path.join(_HERE, '..', '..'))
-MODEL_FAMILY = os.environ.get('MODEL_FAMILY', 'uwyk').lower()
+MODEL_FAMILY = (_model_args.model or os.environ.get('MODEL_FAMILY', 'uwyk')).lower()
 if MODEL_FAMILY not in ('uwyk', 'dopfn', 'all'):
     raise ValueError('MODEL_FAMILY must be uwyk, dopfn, or all')
 USE_UWYK = MODEL_FAMILY in ('uwyk', 'all')
