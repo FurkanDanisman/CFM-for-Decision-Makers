@@ -16,6 +16,10 @@ The observed outcome is then y0 * (1 - t) + y1 * t (models/base.py:311, and agai
 
 We test whether the RealCause potential outcomes \(Y(0)\) and \(Y(1)\) are dependent **conditional on \(X\)** for IHDP, ACIC, CPS, and PSID. For IHDP/ACIC, we subtract the known conditional means \(\mu_0(X)\) and \(\mu_1(X)\) and test dependence between the resulting residuals. For CPS/PSID, we use 100 repeated RealCause draws of the same individuals and test \(Y(0)\)–\(Y(1)\) dependence across draws while holding each individual's covariates fixed. In addition to Pearson correlation, we use permutation-calibrated omnibus and stratified \(G\)-tests, with Bonferroni correction within each dataset. Failure to reject indicates no detectable dependence, not proof of exact independence.
 
+* **Raw Pearson:** Correlation between the actual potential outcomes $Y(0)$ and $Y(1)$.
+* **Conditional Pearson:** Correlation after subtracting the known conditional means:
+  $$\epsilon_0 = Y(0) - \mu_0(X), \quad \epsilon_1 = Y(1) - \mu_1(X)$$
+
 | Dataset | \(n\) pairs | Conditional Pearson \(r\) |               95% CI | Pearson \(p\) | Spearman \(\rho\) | Omnibus perm. \(p\) | Stratified perm. \(p\) | Decision     |
 | ------- | ----------: | ------------------------: | -------------------: | ------------: | ----------------: | ------------------: | ---------------------: | ------------ |
 | IHDP    |      74,700 |                  +0.00095 | [-0.00622, +0.00812] |         0.795 |          -0.00076 |              0.0846 |                 0.2239 | Not rejected |
