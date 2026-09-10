@@ -23,6 +23,7 @@ DISPLAY = [
     ("graph2d_v3b", "Graph2d_v3b"), ("uwyk_v3b", "UWYK_v3b"),
     ("cpfn1d_perarm", "cpfn1d per-arm"), ("cpfn1d_pooled", "cpfn1d pooled"),
     ("cpfn2d_pooled", "cpfn2d pooled"), ("cpfn2d_perarm", "cpfn2d per-arm"),
+    ("cpfn2d_log", "cpfn2d log"),
 ]
 _ORDER = {n: i for i, (n, _) in enumerate(DISPLAY)}
 _LABEL = dict(DISPLAY)
@@ -73,7 +74,8 @@ def main():
     specs += [("cpfn1d_perarm", "cpfn1d_perarm", "uniform", None),
               ("cpfn1d_pooled", "cpfn1d_pooled", "uniform", None),
               ("cpfn2d_pooled", "cpfn2d_pooled", "uniform", None),
-              ("cpfn2d_perarm", "cpfn2d_perarm", "uniform", None)]
+              ("cpfn2d_perarm", "cpfn2d_perarm", "uniform", None),
+              ("cpfn2d_log", "cpfn2d_log", "uniform", None)]
     specs.sort(key=lambda s: _ORDER.get(s[0], 99))
 
     cases = A.CASES
