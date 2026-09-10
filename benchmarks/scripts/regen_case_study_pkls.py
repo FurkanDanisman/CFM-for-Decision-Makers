@@ -81,6 +81,16 @@ def _parse_args():
     p.add_argument("--only-cases", type=str, nargs="*", default=None,
                    help="Optional list of case studies to regenerate; default: all 6.")
     p.add_argument("--overwrite", action="store_true", default=False)
+    p.add_argument("--max-abs-ate", type=float, default=float("inf"),
+                   help="Rejection-sampling cap on |true_ATE|. Realizations whose "
+                        "|mean(cate over first --n-query-eval rows)| exceeds this "
+                        "are discarded (seed advances) until n_per_case ACCEPTED. "
+                        "Default inf = accept every draw (legacy behaviour).")
+    p.add_argument("--n-query-eval", type=int, default=100,
+                   help="How many leading interventional rows the eval will use "
+                        "as queries (must match SCM_N_QUERY). The rejection ATE is "
+                        "computed over exactly these rows so acceptance matches the "
+                        "eval-time true_ATE. Default 100.")
     p.add_argument("--n-mc-samples", type=int, default=0,
                    help="Number of Monte-Carlo Y-noise draws for empirical truth "
                         "densities per query. Each draw is a paired (eps_obs, eps_int) "
@@ -580,41 +590,55 @@ def main():
           f"n_per_case={args.n_per_case}  seq_len={args.seq_len}  "
           f"num_features={args.num_features}", flush=True)
 
+    # Rejection sampling: keep advancing the seed until n_per_case accepted
+    # realizations have |true_ATE| <= max_abs_ate. true_ATE here is
+    # mean(cate over the FIRST n_query_eval int rows) — exactly what the
+    # loader (SCM_N_QUERY) computes at eval, so acceptance is consistent
+    # with the eval-time metric. max_abs_ate = inf → accept everything.
+    max_abs_ate = float(args.max_abs_ate)
+    n_query_eval = int(args.n_query_eval)
+
     t0 = time.time()
     for case in CASE_STUDIES:
         if case not in only:
             continue
         case_dir = os.path.join(out_root, case)
         os.makedirs(case_dir, exist_ok=True)
-        for i in range(1, args.n_per_case + 1):
-            out_path = os.path.join(case_dir, f"{case}_{i}.pkl")
-            if os.path.exists(out_path) and not args.overwrite:
-                continue
-            seed = int(args.seed_base) + i
+        accepted = 0
+        rejected = 0
+        seed = int(args.seed_base)
+        while accepted < args.n_per_case:
+            seed += 1
+            # Safety valve: don't loop forever if the threshold is impossibly tight.
+            if rejected > 50 * args.n_per_case:
+                print(f"[regen] {case}: ABORT — {rejected} rejections without "
+                      f"reaching {args.n_per_case}; threshold {max_abs_ate} too tight?",
+                      flush=True)
+                break
             try:
                 row = _sample_case_study_realization(args, case, seed=seed)
             except Exception as e:
-                print(f"[regen] {case}_{i}  SEED={seed}  ERROR: "
+                print(f"[regen] {case}  seed={seed}  ERROR: "
                       f"{type(e).__name__}: {e}", flush=True)
+                rejected += 1
                 continue
+            cate = np.asarray(row["cate"], dtype=np.float64).reshape(-1)
+            eval_cate = cate[:n_query_eval] if cate.size >= n_query_eval else cate
+            ate = abs(float(np.mean(eval_cate))) if eval_cate.size else float("inf")
+            if np.isfinite(max_abs_ate) and ate > max_abs_ate:
+                rejected += 1
+                continue
+            accepted += 1
+            out_path = os.path.join(case_dir, f"{case}_{accepted}.pkl")
             _assemble_and_save(row, out_path)
-            if i == 1 or i % 25 == 0 or i == args.n_per_case:
+            if accepted == 1 or accepted % 25 == 0 or accepted == args.n_per_case:
                 dt = time.time() - t0
-                # Prefer MC-based stats when available (mu-based cate is misleading
-                # under DoPFN's LayerNorm-coupled DGP).
-                y0s = row.get("y_do0_samples"); y1s = row.get("y_do1_samples")
-                if (isinstance(y0s, np.ndarray) and y0s.ndim == 2 and y0s.size > 0):
-                    y_int_arr = row["y_int"]
-                    y_scale = max(0.5 * (y_int_arr.max() - y_int_arr.min()), 1e-9)
-                    tau_std = (y1s - y0s) / y_scale  # standardized per-realization
-                    mc_msg = (f"MC[τ̃ mean={float(tau_std.mean()):+.3f}  "
-                              f"std={float(tau_std.std()):.3f}  "
-                              f"K={y0s.shape[1]}]")
-                else:
-                    mc_msg = f"MC[off]  mu[τ mean={row['cate'].mean():+.3f}]"
-                print(f"[regen] {case:32s}  i={i:3d}/{args.n_per_case}  "
-                      f"seed={seed}  sigma_eps={row['sigma_eps']:.4f}  "
-                      f"{mc_msg}  ({dt:.0f}s)", flush=True)
+                print(f"[regen] {case:32s}  accepted={accepted:3d}/{args.n_per_case}  "
+                      f"rejected={rejected:3d}  seed={seed}  "
+                      f"|ATE|={ate:.3f}  sigma_eps={row['sigma_eps']:.4f}  "
+                      f"({dt:.0f}s)", flush=True)
+        print(f"[regen] {case}: done  accepted={accepted}  rejected={rejected}  "
+              f"(accept rate {accepted/max(accepted+rejected,1):.1%})", flush=True)
     print(f"[regen] done ({time.time() - t0:.0f}s)", flush=True)
 
 

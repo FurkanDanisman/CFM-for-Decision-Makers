@@ -137,63 +137,77 @@ def _cell_pehe_l1(sweep, ctx, spec, case, thr=float('inf')):
     return np.array(pehe_l), (np.array(l1_l) if l1_l else None), n_drop
 
 
-def _fmt(vals):
-    """mean ± SEM (n)."""
+def _fmt(vals, stat):
+    """stat='mean' → mean ± SEM (n); stat='median' → median [Q1–Q3] (n)."""
     if vals is None or len(vals) == 0:
         return '—'
-    mean = float(np.mean(vals))
-    sem = float(np.std(vals, ddof=1) / np.sqrt(len(vals))) if len(vals) > 1 else float('nan')
-    sem_s = f'{sem:.3f}' if np.isfinite(sem) else '—'
-    return f'{mean:.3f} ± {sem_s} (n={len(vals)})'
+    n = len(vals)
+    if stat == 'mean':
+        m = float(np.mean(vals))
+        sem = float(np.std(vals, ddof=1) / np.sqrt(n)) if n > 1 else float('nan')
+        sem_s = f'{sem:.3f}' if np.isfinite(sem) else '—'
+        return f'{m:.3f} ± {sem_s} (n={n})'
+    med = float(np.median(vals))
+    q1, q3 = np.percentile(vals, [25, 75])
+    return f'{med:.3f} [{q1:.3f}–{q3:.3f}] (n={n})'
+
+
+def _macro(vals, stat):
+    return float(np.mean(vals)) if stat == 'mean' else float(np.median(vals))
 
 
 def _build_tables(sweep, thr=float('inf')):
     hdr_note = (f' (outliers |true_ATE|>{thr:g} dropped)' if np.isfinite(thr)
                 else ' (no outlier filtering)')
-    lines_pehe = [f'# PEHE — SCM case-study context-size sweep{hdr_note}\n']
-    lines_l1   = [f'# L1-ATE (|ATE_pred − ATE_true|) — SCM case-study context-size sweep{hdr_note}\n']
+    out_blocks = []
 
-    # Report how many realizations get dropped per case (from dopfn_native's
-    # true_ate — identical across models). ctx-independent, so use ctx=50.
-    _dn_spec = MODEL_SPECS[0]   # dopfn_native
-    if np.isfinite(thr):
-        drop_report = ['\n## Dropped realizations per case (|true_ATE| > '
-                       f'{thr:g})\n', '| Case | n_dropped / 100 |', '|---|---|']
-        for case in CASES:
-            _, _, nd = _cell_pehe_l1(sweep, CONTEXTS[0], _dn_spec, case, thr)
-            drop_report.append(f'| {case} | {nd} |')
-        lines_pehe = drop_report + [''] + lines_pehe
+    for stat in ('mean', 'median'):
+        stat_label = 'MEAN ± SEM' if stat == 'mean' else 'MEDIAN [Q1–Q3]'
+        lines_pehe = [f'# PEHE ({stat_label}) — SCM case-study context sweep{hdr_note}\n']
+        lines_l1   = [f'# L1-ATE ({stat_label}) — SCM case-study context sweep{hdr_note}\n']
 
-    for metric, lines, idx in (('PEHE', lines_pehe, 0), ('L1_ATE', lines_l1, 1)):
-        for case in CASES:
-            lines.append(f'\n## {case}\n')
+        # Drop-count report (once, at the top of the mean block).
+        _dn_spec = MODEL_SPECS[0]   # dopfn_native
+        if np.isfinite(thr) and stat == 'mean':
+            drop_report = ['\n## Dropped realizations per case (|true_ATE| > '
+                           f'{thr:g})\n', '| Case | n_dropped / 100 |', '|---|---|']
+            for case in CASES:
+                _, _, nd = _cell_pehe_l1(sweep, CONTEXTS[0], _dn_spec, case, thr)
+                drop_report.append(f'| {case} | {nd} |')
+            lines_pehe = drop_report + [''] + lines_pehe
+
+        for metric, lines, idx in (('PEHE', lines_pehe, 0), ('L1_ATE', lines_l1, 1)):
+            for case in CASES:
+                lines.append(f'\n## {case}\n')
+                header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
+                lines.append(header)
+                lines.append('|' + '---|' * (len(CONTEXTS) + 1))
+                for spec in MODEL_SPECS:
+                    cells = [spec[0]]
+                    for ctx in CONTEXTS:
+                        pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
+                        cells.append(_fmt(pehe if idx == 0 else l1, stat))
+                    lines.append('| ' + ' | '.join(cells) + ' |')
+
+            # Case-averaged (macro over 6 case studies of each cell's stat).
+            lines.append(f'\n## ALL CASES (macro-{stat} over 6 case studies)\n')
             header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
-            lines.append(header)
-            lines.append('|' + '---|' * (len(CONTEXTS) + 1))
+            lines.append(header); lines.append('|' + '---|' * (len(CONTEXTS) + 1))
             for spec in MODEL_SPECS:
                 cells = [spec[0]]
                 for ctx in CONTEXTS:
-                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
-                    cells.append(_fmt(pehe if idx == 0 else l1))
+                    per_case = []
+                    for case in CASES:
+                        pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
+                        v = pehe if idx == 0 else l1
+                        if v is not None and len(v):
+                            per_case.append(_macro(v, stat))
+                    cells.append(f'{_macro(per_case, stat):.3f}' if per_case else '—')
                 lines.append('| ' + ' | '.join(cells) + ' |')
 
-        # Case-averaged view: mean over the 6 case studies of each cell's mean.
-        lines.append(f'\n## ALL CASES (macro-avg over 6 case studies)\n')
-        header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
-        lines.append(header); lines.append('|' + '---|' * (len(CONTEXTS) + 1))
-        for spec in MODEL_SPECS:
-            cells = [spec[0]]
-            for ctx in CONTEXTS:
-                per_case_means = []
-                for case in CASES:
-                    pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
-                    v = pehe if idx == 0 else l1
-                    if v is not None and len(v):
-                        per_case_means.append(float(np.mean(v)))
-                cells.append(f'{np.mean(per_case_means):.3f}' if per_case_means else '—')
-            lines.append('| ' + ' | '.join(cells) + ' |')
+        out_blocks.append('\n'.join(lines_pehe) + '\n\n' + '\n'.join(lines_l1))
 
-    return '\n'.join(lines_pehe) + '\n\n' + '\n'.join(lines_l1) + '\n'
+    return ('\n\n' + '=' * 70 + '\n\n').join(out_blocks) + '\n'
 
 
 def main():

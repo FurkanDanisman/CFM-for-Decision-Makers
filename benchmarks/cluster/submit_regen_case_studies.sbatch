@@ -49,6 +49,9 @@ NONLINS="${NONLINS:-sophisticated_sampling_1_rescaling_normalization}"
 ONLY_CASES="${ONLY_CASES:-}"
 OVERWRITE="${OVERWRITE:-0}"
 N_MC_SAMPLES="${N_MC_SAMPLES:-0}"
+MAX_ABS_ATE="${MAX_ABS_ATE:-inf}"      # rejection-sampling cap on |true_ATE|
+N_QUERY_EVAL="${N_QUERY_EVAL:-100}"    # must match eval's SCM_N_QUERY
+OUT_SUBDIR="${OUT_SUBDIR:-prior_sampling_rho02}"  # distinct dir per dataset
 
 [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not a dir: $DOPFN_ROOT" >&2; exit 2; }
 
@@ -74,6 +77,7 @@ echo "  Y_NOISE_CORR=$Y_NOISE_CORR  N_PER_CASE=$N_PER_CASE  SEQ_LEN=$SEQ_LEN"
 python -u "$REPO/benchmarks/scripts/regen_case_study_pkls.py" \
     --dopfn-root  "$DOPFN_ROOT" \
     --out-dir     "$OUT_DIR" \
+    --out-subdir  "$OUT_SUBDIR" \
     --y-noise-corr "$Y_NOISE_CORR" \
     --n-per-case  "$N_PER_CASE" \
     --seed-base   "$SEED_BASE" \
@@ -82,6 +86,8 @@ python -u "$REPO/benchmarks/scripts/regen_case_study_pkls.py" \
     --noise-std   "$NOISE_STD" \
     --exo-std     "$EXO_STD" \
     --nonlins     "$NONLINS" \
+    --max-abs-ate "$MAX_ABS_ATE" \
+    --n-query-eval "$N_QUERY_EVAL" \
     --n-mc-samples "$N_MC_SAMPLES" \
     "${EXTRA[@]}"
 
