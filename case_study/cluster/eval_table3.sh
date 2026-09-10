@@ -65,9 +65,10 @@ want native && sub MODEL=dopfn_native CKPT=none OUT_ROOT="$C/dopfn_native"
 want bb && sub MODEL=dopfn_bb CKPT="$DOPFNBB_CKPT" BB_Y_SCALING=std BB_STD_TARGET=0.3 \
     OUT_ROOT="$C/dopfn_bb"
 
-# cpfn2d: pooled AND per_arm.
+# cpfn2d: pooled, per_arm, and log (log1p(Y-min) then pooled std on log-Y).
 want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=pooled  OUT_ROOT="$C/cpfn2d_pooled"
 want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=per_arm OUT_ROOT="$C/cpfn2d_perarm"
+want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=log     OUT_ROOT="$C/cpfn2d_log"
 
 # cpfn1d: per_arm AND pooled.
 want cpfn1d && sub MODEL=cpfn1d CKPT="$CPFN1D_CKPT" STD_MODE=per_arm OUT_ROOT="$C/cpfn1d_perarm"
