@@ -56,6 +56,46 @@ from scm_case_study_dataset import SCMCaseStudyDataset  # noqa: E402
 # RealCause loaders (importing here is safe — they're lightweight).
 _REALCAUSE = ('IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal')
 
+
+# ── UWYK_Fig3_4 ComplexMech PEHE benchmark hook ──────────────────────────────
+# Dispatches dataset names like CMECH_n20_nonzero to
+# benchmarks/uwyk_fig34_dataset.py. Path-robust: this file may sit in
+# benchmarks/<sub>/ or realcause_eval/<sub>/.
+def _cmech_bench_dir():
+    import os as _os, sys as _sys
+    _d = _os.path.dirname(_os.path.abspath(__file__))
+    for _ in range(5):
+        _c = _os.path.join(_d, 'benchmarks')
+        if _os.path.isdir(_c):
+            if _c not in _sys.path:
+                _sys.path.insert(0, _c)
+            return _c
+        _d = _os.path.dirname(_d)
+    return None
+
+
+def _cmech_names():
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import dataset_names
+    except ImportError:
+        return ()
+    return tuple(dataset_names())
+
+
+def _cmech_dataset(name):
+    """UWYK_Fig3_4 ComplexMech dataset for `name`, or None if not one of ours."""
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import UWYKFig34Dataset, parse_name
+    except ImportError:
+        return None
+    return UWYKFig34Dataset(name) if parse_name(name) else None
+
+
+_CMECH_CASES = _cmech_names()
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _get_dataset(name: str):
     if name in _REALCAUSE:
         from benchmarks import (IHDPDataset, ACIC2016Dataset,
@@ -68,6 +108,9 @@ def _get_dataset(name: str):
             'PSID':     RealCauseLalondePSIDDataset(),
             'PSID_bal': RealCauseLalondePSIDDataset(),
         }[name]
+    _cm = _cmech_dataset(name)
+    if _cm is not None:
+        return _cm
     return SCMCaseStudyDataset(name)
 
 

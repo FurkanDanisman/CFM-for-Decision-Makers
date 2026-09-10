@@ -122,6 +122,48 @@ def _np(a):
     return np.asarray(a)
 
 
+
+
+# ── UWYK_Fig3_4 ComplexMech PEHE benchmark hook ──────────────────────────────
+# Dispatches dataset names like CMECH_n20_nonzero to
+# benchmarks/uwyk_fig34_dataset.py. Path-robust: this file may sit in
+# benchmarks/<sub>/ or realcause_eval/<sub>/.
+def _cmech_bench_dir():
+    import os as _os, sys as _sys
+    _d = _os.path.dirname(_os.path.abspath(__file__))
+    for _ in range(5):
+        _c = _os.path.join(_d, 'benchmarks')
+        if _os.path.isdir(_c):
+            if _c not in _sys.path:
+                _sys.path.insert(0, _c)
+            return _c
+        _d = _os.path.dirname(_d)
+    return None
+
+
+def _cmech_names():
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import dataset_names
+    except ImportError:
+        return ()
+    return tuple(dataset_names())
+
+
+def _cmech_dataset(name):
+    """UWYK_Fig3_4 ComplexMech dataset for `name`, or None if not one of ours."""
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import UWYKFig34Dataset, parse_name
+    except ImportError:
+        return None
+    return UWYKFig34Dataset(name) if parse_name(name) else None
+
+
+_CMECH_CASES = _cmech_names()
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--repo',            required=True)
@@ -134,7 +176,7 @@ def main():
                    'Frontdoor_Criterion', 'Backdoor_Criterion']
     ap.add_argument('--dataset', default='IHDP',
                     choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal',
-                             'law_race', 'sales'] + _SCM_CASES,
+                             'law_race', 'sales'] + _SCM_CASES + list(_CMECH_CASES),
                     help='Which benchmark dataset to eval on. IHDP/ACIC/CPS/PSID/PSIDbal '
                          'expose cd.true_cate directly; law_race and sales are Do-PFN '
                          'semi-real (Kusner et al. 2017 / retail sales), split via '
@@ -239,6 +281,8 @@ def main():
         if _rp_bench not in _sys.path: _sys.path.insert(0, _rp_bench)
         from scm_case_study_dataset import SCMCaseStudyDataset
         _LOADERS[args.dataset] = lambda: SCMCaseStudyDataset(args.dataset)
+    if args.dataset in _CMECH_CASES:
+        _LOADERS[args.dataset] = lambda: _cmech_dataset(args.dataset)
     if args.dataset in ('law_race', 'sales'):
         # Do-PFN semi-real dataset — different interface (splits via
         # ds.generate_valid_split). Import DoPFN's `datasets` module fresh

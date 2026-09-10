@@ -1,0 +1,181 @@
+"""Exposes the UWYK_Fig3_4 ComplexMech benchmark as an IHDPDataset-compatible
+dataset, so every existing RealCause eval script consumes it unchanged.
+
+Same trick as `scm_case_study_dataset.py`: the eval harnesses only ever touch
+`ds.n_tables` and `ds[r] -> (cate_slice, adj_slice)` with
+`X_train / t_train / y_train / X_test / true_cate`, so a shim is all it takes.
+
+Dataset names
+-------------
+    CMECH_n<N>            all test queries
+    CMECH_n<N>_nonzero    queries whose true effect is != 0
+    CMECH_n<N>_zero       queries whose true effect is exactly 0
+
+N in {5, 20, 30, 40, 50}. Regime is always `path_TY` (the other two UWYK
+regimes have tau identically zero, so PEHE there is not informative).
+
+Why the zero / nonzero split
+----------------------------
+12-27% of ComplexMech queries have an *exactly* zero treatment effect: tree and
+saturating mechanisms often do not respond at all to flipping T. Those queries
+ask "can the model report no effect?", which is a different skill from grading a
+non-zero effect, and pooling them hides which one a method is good at.
+
+The split is bimodal at the dataset level, not spread evenly across queries --
+at n=5, 72 of 100 realizations contain no zero-effect query at all. So a subset
+does not exist for every realization. This class exposes ONLY the realizations
+where the requested subset is non-empty; `n_tables` reflects that, and
+`source_realizations[i]` maps back to the generating realization index so a
+result can be traced to its dataset.
+
+Because the split is over disjoint query sets, the pooled PEHE is recoverable
+exactly from the two parts:
+
+    pehe_all^2 = (n0 * pehe_zero^2 + n1 * pehe_nonzero^2) / (n0 + n1)
+
+so running the two subsets is sufficient; `CMECH_n<N>` is provided for checking.
+
+Units
+-----
+Y and tau are on the generator's [-1, 1] target scale (UWYK's own
+`target_negative_one_one_scaling`). PEHE is therefore in those units and is
+comparable across methods and node counts, but NOT to RealCause PEHE numbers,
+which are in each dataset's own outcome units.
+
+Env
+---
+    UWYK_FIG34_DATA   root holding <prior>/<N>node/<regime>/hide_<h>/r*.npz
+                      (default: <repo>/UWYK_Fig3_4/data)
+"""
+from __future__ import annotations
+
+import glob
+import os
+import re
+from dataclasses import dataclass
+
+import numpy as np
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DEFAULT_DATA = os.path.join(_REPO_ROOT, "UWYK_Fig3_4", "data")
+
+NODE_COUNTS = (5, 20, 30, 40, 50)
+SUBSETS = ("all", "nonzero", "zero")
+
+_NAME_RE = re.compile(r"^CMECH_n(\d+)(?:_(nonzero|zero|all))?$")
+
+
+def dataset_names() -> tuple[str, ...]:
+    """Every name this adapter answers to — for eval-script `choices` lists."""
+    out = []
+    for n in NODE_COUNTS:
+        out.append(f"CMECH_n{n}")
+        out.extend(f"CMECH_n{n}_{s}" for s in ("nonzero", "zero"))
+    return tuple(out)
+
+
+def parse_name(name: str) -> tuple[int, str] | None:
+    """'CMECH_n20_zero' -> (20, 'zero'); None if not one of ours."""
+    m = _NAME_RE.match(name)
+    if not m:
+        return None
+    return int(m.group(1)), (m.group(2) or "all")
+
+
+@dataclass
+class _CATESlice:
+    X_train: np.ndarray
+    t_train: np.ndarray
+    y_train: np.ndarray
+    X_test: np.ndarray
+    true_cate: np.ndarray
+    # Provenance, so a row in the results table can be traced to its dataset.
+    source_realization: int = -1
+    n_real_features: int = -1
+    n_zero_queries: int = -1
+    n_nonzero_queries: int = -1
+
+
+class UWYKFig34Dataset:
+    """IHDPDataset-shaped view over one (node count, subset) cell."""
+
+    def __init__(self, name: str, data_root: str | None = None,
+                 prior: str = "complexmech", regime: str = "path_TY",
+                 hide: float = 0.0):
+        parsed = parse_name(name)
+        if parsed is None:
+            raise ValueError(f"not a UWYK_Fig3_4 dataset name: {name!r}")
+        self.name = name
+        self.n_nodes, self.subset = parsed
+        self.prior, self.regime, self.hide = prior, regime, hide
+
+        root = data_root or os.environ.get("UWYK_FIG34_DATA", _DEFAULT_DATA)
+        self.cell_dir = os.path.join(root, prior, f"{self.n_nodes}node",
+                                     regime, f"hide_{hide}")
+        paths = sorted(
+            glob.glob(os.path.join(self.cell_dir, "r*.npz")),
+            key=lambda p: int(os.path.basename(p)[1:-4]),
+        )
+        if not paths:
+            raise FileNotFoundError(
+                f"no realizations under {self.cell_dir}. Generate them first:\n"
+                f"  python UWYK_Fig3_4/generate_pehe_benchmark.py --prior {prior} "
+                f"--nodes {self.n_nodes} --regimes {regime} --hide-fractions {hide}"
+            )
+
+        # Keep only realizations where the requested subset has queries.
+        self._paths: list[str] = []
+        self.source_realizations: list[int] = []
+        for p in paths:
+            with np.load(p) as z:
+                tau = z["true_cate"]
+            if self._mask_for(tau).sum() > 0:
+                self._paths.append(p)
+                self.source_realizations.append(int(os.path.basename(p)[1:-4]))
+        self.n_tables = len(self._paths)
+        self.n_skipped = len(paths) - self.n_tables
+        if self.n_tables == 0:
+            raise ValueError(
+                f"{name}: no realization has any '{self.subset}' query "
+                f"(scanned {len(paths)} under {self.cell_dir})"
+            )
+
+    def _mask_for(self, tau: np.ndarray) -> np.ndarray:
+        if self.subset == "zero":
+            return tau == 0
+        if self.subset == "nonzero":
+            return tau != 0
+        return np.ones_like(tau, dtype=bool)
+
+    def __len__(self) -> int:
+        return self.n_tables
+
+    def __getitem__(self, r: int):
+        with np.load(self._paths[r]) as z:
+            n_real = int(z["n_real_features"])
+            # Trailing columns are zero padding from the generator; keeping them
+            # would feed the eval harnesses constant features and make their
+            # standardisation divide by ~0.
+            X_train = np.asarray(z["X_train"][:, :n_real], dtype=np.float32)
+            X_test_full = np.asarray(z["X_test"][:, :n_real], dtype=np.float32)
+            t_train = np.asarray(z["T_train"], dtype=np.float32).reshape(-1)
+            y_train = np.asarray(z["Y_train"], dtype=np.float32).reshape(-1)
+            tau = np.asarray(z["true_cate"], dtype=np.float32).reshape(-1)
+
+        mask = self._mask_for(tau)
+        sl = _CATESlice(
+            X_train=X_train,
+            t_train=t_train,
+            y_train=y_train,
+            X_test=X_test_full[mask],
+            true_cate=tau[mask],
+            source_realization=self.source_realizations[r],
+            n_real_features=n_real,
+            n_zero_queries=int((tau == 0).sum()),
+            n_nonzero_queries=int((tau != 0).sum()),
+        )
+        return sl, None
+
+
+def get_dataset(name: str, **kw) -> UWYKFig34Dataset:
+    return UWYKFig34Dataset(name, **kw)
