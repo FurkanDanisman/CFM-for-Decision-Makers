@@ -92,6 +92,41 @@ class CheckArrayCompatibilityTest(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, 'both'):
             utils.check_array([1], force_all_finite=False, ensure_all_finite=True)
 
+    def test_regressor_keeps_globals_from_an_evicted_module(self):
+        def modern(array, *, ensure_all_finite=True):
+            return ensure_all_finite
+
+        shim, utils, _ = self.load_shim(modern)
+        name = 'scripts.transformer_prediction_interface.base'
+        detached = types.ModuleType(name)
+        detached.check_array = modern
+        exec('''
+class Base:
+    @staticmethod
+    def check_training_data(clf, x, y):
+        return check_array(x, force_all_finite=False)
+
+    def predict_common_setup(self, x):
+        return check_array(x, force_all_finite=False)
+
+class DoPFNRegressor(Base):
+    pass
+''', detached.__dict__)
+        replacement = types.ModuleType(name)
+        replacement.check_array = modern
+        with patch.dict(sys.modules, {name: replacement}):
+            reg = detached.DoPFNRegressor()
+            # Patching only sys.modules updates the replacement, not reg's
+            # retained function globals. Exercise the actual instance instead.
+            shim._repatch_dopfn_check_array()
+            with self.assertRaisesRegex(TypeError, 'force_all_finite'):
+                reg.check_training_data(reg, [1], [2])
+            shim._repatch_dopfn_check_array(reg)
+            self.assertIs(reg.check_training_data(reg, [1], [2]), False)
+            self.assertIs(reg.predict_common_setup([1]), False)
+            self.assertIs(detached.check_array, utils.check_array)
+            self.assertIs(replacement.check_array, utils.check_array)
+
 
 if __name__ == '__main__':
     unittest.main()

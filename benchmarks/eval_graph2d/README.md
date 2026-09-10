@@ -20,6 +20,14 @@ The shared shim in `benchmarks/methods/dopfn.py` accepts both scikit-learn
 finite-validation keyword names (`force_all_finite` and `ensure_all_finite`)
 and translates to the installed API. No scikit-learn downgrade is needed for
 the removed-keyword error on newer installations.
+The density adapter loads this shim by its file path and binds it to the
+actual regressor immediately before `fit()`, including validation methods
+whose modules were replaced during model loading. Before the first fit it
+prints `[dopfn-compat] sklearn=... shim=... validated=...` after checking both
+keyword spellings. If the error persists after updating, sync **both**
+`benchmarks/methods/dopfn.py` and `benchmarks/eval_graph2d/density_dopfn.py`
+to the cluster checkout used by the job and start a new job. A run reaching
+`fit()` without that log line is not using the updated adapter.
 The joint model uses `DoPFNBackboneWith2DHead` and defaults to
 `Required_checkpoints/dopfn_bb_j10_step_150000.pt` (J=10, 150,000 steps).
 The checkpoint's `num_features=6` records its training setting; it is not an

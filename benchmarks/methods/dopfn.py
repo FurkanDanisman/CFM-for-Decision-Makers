@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-def _install_check_array_shim():
+def _install_check_array_shim(regressor=None):
     """Adapt both keyword spellings and refresh DoPFN's bound import aliases."""
     try:
         import sklearn.utils as utils
@@ -52,14 +52,31 @@ def _install_check_array_shim():
             if hasattr(module, 'check_array'):
                 module.check_array = check_array
 
+    # A class can outlive its sys.modules entry when the benchmark swaps
+    # DoPFN/UWYK modules or loads pickled objects. Patch the global dictionaries
+    # held by the actual training/query validation methods, not just the module
+    # currently registered under their name. Both methods are inherited by
+    # DoPFNRegressor, so looking at the subclass's own __dict__ is insufficient.
+    if regressor is not None:
+        for name in ('check_training_data', 'predict_common_setup'):
+            method = getattr(regressor, name, None)
+            function = getattr(method, '__func__', method)
+            if function is not None:
+                function = inspect.unwrap(function)
+                namespace = getattr(function, '__globals__', {})
+                if 'check_array' in namespace:
+                    namespace['check_array'] = check_array
+    return check_array
+
 
 _install_check_array_shim()
 
 
-def _repatch_dopfn_check_array():
+def _repatch_dopfn_check_array(regressor=None):
     """Call this AFTER importing DoPFN's DoPFNRegressor to catch late-bound
-    check_array references. Repeated calls reuse the same wrapper."""
-    _install_check_array_shim()
+    check_array references. Pass the actual class/instance when modules may
+    have been evicted. Repeated calls reuse the same wrapper."""
+    return _install_check_array_shim(regressor)
 
 
 def _to_np(a):
