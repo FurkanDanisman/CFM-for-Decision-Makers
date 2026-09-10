@@ -280,6 +280,70 @@ Point errors in original outcome units, from the same predictions. Full-density 
 
 _negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._ -->
 
+# Raw
+
+### IHDP
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
+
+realizations=100, ~75 queries each, anc=noanc, |tau*|>3: 0.00%
+
+| method                     |               nll |                l2 |            kl_fwd |             kl_rev |          mass |
+| -------------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ------------: |
+| UWYK (x)indep K=1000       |     0.3415±0.0330 |     1.5399±0.1098 |     1.1514±0.0672 |     29.6141±6.3778 | 1.0000±0.0000 |
+| UWYK (x)indep matched bins |     0.3426±0.0329 |     1.5394±0.1097 |     1.1525±0.0672 |     29.8720±6.4265 | 1.0000±0.0000 |
+| UWYK Joint-2D              | **0.0103±0.0358** | **1.2964±0.1144** | **0.8208±0.0656** | **24.6051±5.4753** | 1.0000±0.0000 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         |     6.2789±0.7908 |     5.1695±0.5638 |     2.7218±0.1030 |
+| UWYK (x)indep matched bins   |     6.2802±0.7910 |     5.1709±0.5640 |     2.7221±0.1030 |
+| UWYK Joint-2D                | **4.5190±0.6318** |     3.4015±0.4025 | **1.2799±0.0793** |
+| Joint-2D interior mean (raw) | **4.5190±0.6318** | **3.4014±0.4025** | **1.2799±0.0793** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.364768
+  uwyk_matched: max |finite-grid moment - full mean| = 0.365283
+  joint: max |finite-grid moment - full mean| = 2.30171e-07
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.3312±0.0092** | **-5.0090±0.9872** | **-1.7599±0.1653** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0011±0.0003 |     +0.2579±0.0597 |     +0.0013±0.0002 |
+
+_negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
+
+### ACIC
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
+
+realizations=10, ~481 queries each, anc=noanc, |tau*|>3: 0.00%
+
+| method                     |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| -------------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| UWYK (x)indep K=1000       |     -0.2536±0.1118 |     1.5791±0.0566 |     1.0328±0.0731 |    10.6714±1.2296 | 1.0000±0.0000 |
+| UWYK (x)indep matched bins |     -0.2478±0.1092 |     1.5843±0.0564 |     1.0383±0.0715 |    10.8056±1.2318 | 1.0000±0.0000 |
+| UWYK Joint-2D              | **-0.4638±0.1481** | **1.3377±0.1164** | **0.8232±0.1155** | **6.8293±1.3340** | 1.0000±0.0000 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000         |     3.3019±0.4730 |     2.5166±0.3596 |     1.2980±0.1865 |
+| UWYK (x)indep matched bins   |     3.3022±0.4730 |     2.5170±0.3596 |     1.2984±0.1866 |
+| UWYK Joint-2D                | **2.7751±0.5009** |     1.9218±0.3516 | **0.3581±0.0837** |
+| Joint-2D interior mean (raw) | **2.7751±0.5009** | **1.9217±0.3516** | **0.3581±0.0837** |
+  uwyk_native: max |finite-grid moment - full mean| = 0.202875
+  uwyk_matched: max |finite-grid moment - full mean| = 0.203023
+  joint: max |finite-grid moment - full mean| = 1.16339e-07
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2102±0.0672** | **-3.8421±0.6009** | **-0.5268±0.1353** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0058±0.0030 |     +0.1342±0.0190 |     +0.0004±0.0002 |
+
+_negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
+
 ### IHDP
 
 Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
@@ -341,6 +405,7 @@ Point errors in original outcome units, from the same predictions. Full-density 
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1331±0.0189 | **+0.0000±0.0001** |
 
 _negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
 ### IHDP
 
 Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
@@ -402,3 +467,60 @@ Point errors in original outcome units, from the same predictions. Full-density 
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1331±0.0189 | **+0.0000±0.0001** |
 
 _negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+
+---
+# MALC
+
+### IHDP
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
+
+realizations=100, ~75 queries each, anc=noanc, |tau*|>3: 0.00%
+
+| method                     |               nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| -------------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| UWYK (x)indep K=1000       |     0.3407±0.0331 |     1.5410±0.1098 |     1.1633±0.0665 |     29.1809±6.3625 | **1.0000±0.0000** |
+| UWYK (x)indep matched bins |     0.3441±0.0332 |     1.5427±0.1097 |     1.1773±0.0667 |     28.3922±6.2847 |     1.0001±0.0000 |
+| UWYK Joint-2D              | **0.0584±0.0332** | **1.3549±0.1142** | **0.9112±0.0658** | **24.4112±5.7727** |     1.0003±0.0001 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator             |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| -------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000       |     6.2816±0.7872 |     5.1661±0.5626 |     2.7169±0.1032 |
+| UWYK (x)indep matched bins |     6.3010±0.7904 |     5.1737±0.5638 |     2.6976±0.0982 |
+| UWYK Joint-2D              | **4.5613±0.6343** | **3.4248±0.4050** | **1.2897±0.0838** |
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2823±0.0092** | **-4.7698±0.8039** | **-1.7203±0.1590** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0034±0.0029 |     -0.7888±0.1678 |     +0.0193±0.0154 |
+
+_negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
+
+### ACIC
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
+
+realizations=10, ~481 queries each, anc=noanc, |tau*|>3: 0.00%
+
+| method                     |                nll |                l2 |            kl_fwd |            kl_rev |              mass |
+| -------------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000       |     -0.2562±0.1079 |     1.5860±0.0573 |     1.0326±0.0716 |     9.8515±1.1781 | **1.0000±0.0000** |
+| UWYK (x)indep matched bins |     -0.2495±0.1027 |     1.6012±0.0574 |     1.0402±0.0695 |     9.3056±1.1119 |     1.0001±0.0000 |
+| UWYK Joint-2D              | **-0.4391±0.1417** | **1.4091±0.1094** | **0.9378±0.0923** | **6.1693±1.2007** |     1.0006±0.0002 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator             |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| -------------------------- | ----------------: | ----------------: | ----------------: |
+| UWYK (x)indep K=1000       |     3.3488±0.4667 |     2.5461±0.3557 |     1.3051±0.1876 |
+| UWYK (x)indep matched bins |     3.3634±0.4619 |     2.5663±0.3543 |     1.2814±0.1923 |
+| UWYK Joint-2D              | **2.8159±0.4911** | **1.9628±0.3447** | **0.3524±0.0836** |
+
+|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
+| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.1828±0.0650** | **-3.6822±0.4536** | **-0.5329±0.1421** |
+| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0068±0.0087 |     -0.5459±0.2695 |     +0.0146±0.0188 |
+
+_negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
