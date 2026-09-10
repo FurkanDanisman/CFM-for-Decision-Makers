@@ -129,7 +129,10 @@ def load_realization(dname: str, r: int):
         cd, ad = RealCauseLalondePSIDDataset()[r]
         cd = _psid_balance_subsample(cd)
     else:
-        raise ValueError(dname)
+        _cm = _cmech_dataset(dname)
+        if _cm is None:
+            raise ValueError(dname)
+        cd, ad = _cm[r]
     return cd, ad
 
 
@@ -216,15 +219,60 @@ def dopfn_pipeline(cate_dataset, reg, return_density=False):
             edges.astype(np.float32), centers.astype(np.float32))
 
 
+
+
+# ── UWYK_Fig3_4 ComplexMech PEHE benchmark hook ──────────────────────────────
+# Dispatches dataset names like CMECH_n20_nonzero to
+# benchmarks/uwyk_fig34_dataset.py. Path-robust: this file may sit in
+# benchmarks/<sub>/ or realcause_eval/<sub>/.
+def _cmech_bench_dir():
+    import os as _os, sys as _sys
+    _d = _os.path.dirname(_os.path.abspath(__file__))
+    for _ in range(5):
+        _c = _os.path.join(_d, 'benchmarks')
+        if _os.path.isdir(_c):
+            if _c not in _sys.path:
+                _sys.path.insert(0, _c)
+            return _c
+        _d = _os.path.dirname(_d)
+    return None
+
+
+def _cmech_names():
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import dataset_names
+    except ImportError:
+        return ()
+    return tuple(dataset_names())
+
+
+def _cmech_dataset(name):
+    """UWYK_Fig3_4 ComplexMech dataset for `name`, or None if not one of ours."""
+    _cmech_bench_dir()
+    try:
+        from uwyk_fig34_dataset import UWYKFig34Dataset, parse_name
+    except ImportError:
+        return None
+    return UWYKFig34Dataset(name) if parse_name(name) else None
+
+
+_CMECH_CASES = _cmech_names()
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 # ── driver -------------------------------------------------------------------
 def _dataset_n_tables(dname: str) -> int:
+    _cm = _cmech_dataset(dname)
+    if _cm is not None:
+        return _cm.n_tables
     return {'IHDP': 100, 'ACIC': 10, 'CPS': 100, 'PSID': 100, 'PSIDbal': 100}[dname]
 
 
 def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', required=True,
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal'])
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSIDbal'] + list(_CMECH_CASES))
     p.add_argument('--realization', type=int, default=None,
                     help='If given, run only that realization. Else run all '
                          'realizations of the dataset sequentially.')

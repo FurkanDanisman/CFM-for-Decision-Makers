@@ -1,0 +1,8 @@
+# Generated benchmark data (~94 MB for 500 realizations) and analysis outputs.
+# Deliberately not committed: generate_pehe_benchmark.py reproduces these
+# BITWISE from the seed (asserted by --self-test), so the cluster regenerates
+# them in ~3 min rather than pushing 94 MB through git.
+#   python UWYK_Fig3_4/generate_pehe_benchmark.py --prior complexmech \
+#       --nodes 5 20 30 40 50 --regimes path_TY --hide-fractions 0.0 \
+#       --n-realizations 100 --out-dir UWYK_Fig3_4/data
+data/
