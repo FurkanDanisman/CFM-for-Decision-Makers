@@ -232,7 +232,8 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
     Y_obs = y_scaled.reshape(-1, 1)
     T_feed = T_tr.astype(np.float32).reshape(-1, 1)      # binary: matched to 2D
 
-    adj = dict(H.build_mode_list(F, n_real, ANC_FAMILY))[ANC_TAG]
+    adj = (dict(H.build_mode_list(F, n_real, ANC_FAMILY))[ANC_TAG]
+           if uwyk is not None else None)
 
     # -- targets and truth, on the axis _scale_y just defined -------------
     truth = load_density_truth(DATASET, r, y_shift=y_shift, y_scale=y_scale,

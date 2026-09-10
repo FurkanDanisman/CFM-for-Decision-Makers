@@ -239,7 +239,8 @@ class DoPFNAdapterTest(unittest.TestCase):
                                              _preprocess_adjacency_matrix=lambda adj: adj)
                             if family != 'dopfn' else None)
                     namespace = dict(vars(common), np=np, torch=torch, os=os, H=harness,
-                                     DATASET=dataset, ANC_TAG='v6a', MODEL_FAMILY=family,
+                                     DATASET=dataset, ANC_TAG='v6a', ANC_FAMILY='v6a_only',
+                                     MODEL_FAMILY=family,
                                      UWYK_CKPT='/fake/uwyk.pt', UWYK_CFG='/fake/config.yaml',
                                      ACIC_CACHE='', SAVE_PREDICTIONS=True, OUT=out, N_Y0=128,
                                      TAU_CENTERS=np.linspace(-3, 3, 121),
