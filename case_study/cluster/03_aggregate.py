@@ -20,10 +20,43 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import sys
 
 import numpy as np
+
+
+def _pehe_em(A, sweep, ctx, spec, case):
+    """Per-realization EM/full PEHE array for one cell, mirroring
+    aggregate_scm_ctx_sweep._cell_pehe_l1's file layout but reading the
+    finer readout key. Models without a density readout (dopfn_native fine 1D
+    head; uwyk point regressor) have no pehe_em → fall back to their raw PEHE,
+    so em == raw for them (correct: their mean is already the full readout)."""
+    name, dirn, kind, tag = spec
+    cell = os.path.join(sweep, f"ctx{ctx}", dirn, case)
+    if not os.path.isdir(cell):
+        return None
+    if kind == "dopfn_bb":
+        f = os.path.join(cell, "summary.npz")
+        if not os.path.isfile(f):
+            return None
+        with np.load(f, allow_pickle=True) as z:
+            return A._first(z, ["pehe_em", "pehe"])
+    if kind == "graph2d":
+        keys = [f"pehe_em_{tag}", f"pehe_full_{tag}", f"pehe_raw_{tag}"]
+        paths = sorted(glob.glob(os.path.join(cell, f"{case}_r*.npz")))
+    else:  # uniform
+        keys = ["pehe_em", "pehe_full", "pehe_raw", "pehe"]
+        paths = (sorted(glob.glob(os.path.join(cell, "r*.npz")))
+                 or sorted(glob.glob(os.path.join(cell, f"{case}_r*.npz"))))
+    out = []
+    for p in paths:
+        with np.load(p, allow_pickle=True) as z:
+            pe = A._first(z, keys)
+        if pe is not None:
+            out.append(float(pe))
+    return np.array(out) if out else None
 
 # Fixed display order + labels (internal aggregator name -> shown label).
 DISPLAY = [
@@ -55,7 +88,7 @@ def main():
     sys.path.insert(0, os.path.join(a.repo, "realcause_eval"))
     import aggregate_scm_ctx_sweep as A
 
-    records = []  # (model, ctx, case, pehe, l1, n)
+    records = []  # (model, ctx, case, pehe_raw, pehe_em, l1, n)
     for spec in A.MODEL_SPECS:
         model = spec[0]
         for ctx in a.contexts:
@@ -63,8 +96,12 @@ def main():
                 pehe, l1, _ = A._cell_pehe_l1(a.sweep, ctx, tuple(spec), case)
                 if pehe is None or not len(pehe):
                     continue
-                records.append((model, ctx, case,
-                                float(np.mean(pehe)), float(np.mean(l1)), int(len(pehe))))
+                pe_em = _pehe_em(A, a.sweep, ctx, tuple(spec), case)
+                pehe_em = float(np.mean(pe_em)) if pe_em is not None and len(pe_em) \
+                    else float(np.mean(pehe))
+                l1_mean = float(np.mean(l1)) if l1 is not None and len(l1) else float("nan")
+                records.append((model, ctx, case, float(np.mean(pehe)),
+                                pehe_em, l1_mean, int(len(pehe))))
 
     if not records:
         print(f"[aggregate] no results found under {a.sweep} for contexts {a.contexts}.\n"
@@ -76,12 +113,13 @@ def main():
                .replace("_and_Confounder", "+Conf").replace("_Confounder", "Conf")
                .replace("_Mediator", "Med") for c in cases}
 
-    for metric, idx in (("PEHE", 3), ("L1-ATE", 4)):
+    for metric, idx in (("PEHE (raw/inner)", 3), ("PEHE (em/full)", 4),
+                        ("L1-ATE", 5)):
         for ctx in a.contexts:
             rows = {m: {} for m in dict.fromkeys(r[0] for r in records)}
-            for m, c, case, pehe, l1, n in records:
+            for m, c, case, pehe, pehe_em, l1, n in records:
                 if c == ctx:
-                    rows[m][case] = (pehe, l1)[0 if idx == 3 else 1]
+                    rows[m][case] = {3: pehe, 4: pehe_em, 5: l1}[idx]
             present = [m for m in rows if rows[m]]
             present.sort(key=lambda m: _ORDER.get(m, len(_ORDER)))
             if not present:
@@ -99,10 +137,10 @@ def main():
     if a.out:
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
         with open(a.out, "w") as f:
-            f.write("model,context,case,pehe,l1_ate,n\n")
+            f.write("model,context,case,pehe,pehe_em,l1_ate,n\n")
             for rec in sorted(records, key=lambda r: (_ORDER.get(r[0], 99), r[1],
                                                       cases.index(r[2]) if r[2] in cases else 99)):
-                f.write("%s,%d,%s,%.6f,%.6f,%d\n" % rec)
+                f.write("%s,%d,%s,%.6f,%.6f,%.6f,%d\n" % rec)
         print(f"\n[aggregate] wrote {len(records)} rows -> {a.out}")
 
 
