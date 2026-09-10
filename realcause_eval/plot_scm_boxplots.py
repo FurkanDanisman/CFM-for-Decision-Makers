@@ -32,9 +32,11 @@ CASES = ['Observed_Confounder', 'Observed_Mediator',
          'Frontdoor_Criterion', 'Backdoor_Criterion']
 
 # (1D name, 2D name) — matched by MODEL_SPECS display names.
+# graph-conditioned comparison split into noanc and v3a variants.
 PAIRS = [
-    ('cpfn1d',      'cpfn2d'),
-    ('uwyk_noanc',  'graph2d_noanc'),
+    ('cpfn1d',       'cpfn2d'),
+    ('uwyk_noanc',   'graph2d_noanc'),
+    ('uwyk_v3a',     'graph2d_v3a'),
     ('dopfn_native', 'dopfn_bb'),
 ]
 
@@ -70,10 +72,14 @@ def _make_fig(sweep, ctx, name, spec_by_name, cell_fn, out_dir):
                 xlabels.append(f'{n1}\nvs\n{n2}'.replace('_noanc', '').replace('_native', ''))
                 pos += 0.8
 
+            # Box spans Q1–Q3 (IQR), line = median. whis=(25,75) collapses the
+            # whiskers onto the box edges and showfliers=False drops the outlier
+            # dots — so nothing extends past the IQR and the axis auto-fits the
+            # boxes (no outlier stretching). Median/IQR still use all 100 reals.
             bp = ax.boxplot(box_data, positions=positions, widths=0.7,
-                            patch_artist=True, showfliers=True,
-                            medianprops=dict(color='black', lw=1.4),
-                            flierprops=dict(marker='o', ms=2.5, alpha=0.4))
+                            patch_artist=True, showfliers=False,
+                            whis=(25, 75), showcaps=False,
+                            medianprops=dict(color='black', lw=1.4))
             for patch, cc in zip(bp['boxes'], colors):
                 patch.set_facecolor(cc); patch.set_alpha(0.8)
             ax.set_title(f'{case}  —  {metric}', fontsize=9)
