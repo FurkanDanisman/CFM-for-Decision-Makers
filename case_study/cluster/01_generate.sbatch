@@ -33,13 +33,14 @@ CATE_SHIFT="${CATE_SHIFT:-2}"
 CONTEXTS="${CONTEXTS:-200 500 1000}"
 N_REAL="${N_REAL:-100}"
 SEED_BASE="${SEED_BASE:-0}"
+NOISE_SCALE="${NOISE_SCALE:-1}"               # σ_ε multiplier (resolution sweep)
 _tag="$(printf '%+g' "$CATE_SHIFT")"          # e.g. +2, -5, +0
 DATA_ROOT="${DATA_ROOT:-$DEPLOY_ROOT/case_study_data/shift${_tag}}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
 
-echo "[$(date '+%F %T')] generate case studies  beta=$CATE_SHIFT  contexts=[$CONTEXTS]"
+echo "[$(date '+%F %T')] generate case studies  beta=$CATE_SHIFT  noise_scale=$NOISE_SCALE  contexts=[$CONTEXTS]"
 echo "  DATA_ROOT=$DATA_ROOT  n_real=$N_REAL  seed_base=$SEED_BASE"
 
 python -u "$REPO/case_study/generation.py" \
@@ -47,6 +48,7 @@ python -u "$REPO/case_study/generation.py" \
     --context-sizes  $CONTEXTS \
     --n-realizations "$N_REAL" \
     --seed-base      "$SEED_BASE" \
-    --cate-shift     "$CATE_SHIFT"
+    --cate-shift     "$CATE_SHIFT" \
+    --noise-scale    "$NOISE_SCALE"
 
 echo "[$(date '+%F %T')] done -> $DATA_ROOT"
