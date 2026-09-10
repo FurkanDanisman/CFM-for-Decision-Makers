@@ -66,7 +66,9 @@ python benchmarks/eval_graph2d/summarize_density_tauC.py results_density_tauC/do
 ```
 
 The summary detects available rows and adds a paired DoPFN native-to-joint
-contrast. Use a separate output directory for each configuration to avoid
+contrast. Its run metadata labels the selected adjacency as `UWYK graph=...`
+and always reports `DoPFN graph=none`; `ANC_TAG` is ignored by DoPFN-only
+runs. Use a separate output directory for each configuration to avoid
 overwriting shards or mixing model families across realizations.
 
 All models share the deterministically selected context rows and the outcome

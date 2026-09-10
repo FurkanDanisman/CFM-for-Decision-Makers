@@ -16,13 +16,13 @@
 # PARALLELISM: the array splits over REALIZATIONS, not over models.
 #   0-9   IHDP realizations in blocks of 10   (100 total)
 #   10-11 ACIC realizations in blocks of 5    (10 total)
-# Both models run in ONE process per task, on purpose. Splitting UWYK from the
-# joint would be safe -- every preprocessing step is deterministic given
+# All selected models run in ONE process per task, on purpose. Splitting them
+# would be safe -- every shared preprocessing step is deterministic given
 # (dataset, r, EVAL_MAX_CONTEXT, EVAL_CONTEXT_SEED) -- but it buys only 2x and
-# it trades a *guarantee* that both models saw byte-identical context, X
-# standardisation, y scaling and adjacency for an *assumption* that two
-# processes recompute them identically. UWYK's wrapper subsequently propagates
-# adjacency, so the actual graph inputs can differ (recorded in the dumps).
+# it trades a *guarantee* that models saw byte-identical context and outcome
+# scaling for an *assumption* that separate processes recompute them identically.
+# The UWYK pair receives the selected adjacency (the wrapper may propagate it);
+# neither DoPFN model accepts or receives graph information.
 # Realizations are independent by
 # construction, so splitting there is both wider (12x) and strictly safer.
 #
@@ -98,9 +98,8 @@ export UWYK_CFG="${UWYK_CFG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
 #                                   unconfoundedness (diag, Y->T, Y->X, T->X)
 #   ANC_MODE=full     ANC_TAG=anc   build_anc_full: T->Y, X_i->T, X_i->Y
 #                                   asserted +1, then propagate fills the -1s
-# Same +/-1 matrix is handed to BOTH models either way. Setting ANC_MODE alone
-# leaves ANC_TAG=v6a, which the eval now rejects up front rather than at the
-# first realization.
+# The +/-1 matrix is handed only to the UWYK pair. Neither DoPFN model receives
+# it. ANC_TAG is ignored in a DoPFN-only run.
 export ANC_MODE="${ANC_MODE:-v6a_only}"
 export ANC_TAG="${ANC_TAG:-v6a}"
 # UWYK's config caps training context at 1000; feeding more is outside what it
@@ -166,8 +165,15 @@ export PYTHONUNBUFFERED=1
 # in deps we do not have; same one the graph2d and uwyk1d evals use.
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
+if [[ "$MODEL_FAMILY" == dopfn ]]; then
+    GRAPH_DESC="UWYK_graph=n/a DoPFN_graph=none"
+elif [[ "$MODEL_FAMILY" == all ]]; then
+    GRAPH_DESC="UWYK_graph=$ANC_TAG DoPFN_graph=none"
+else
+    GRAPH_DESC="UWYK_graph=$ANC_TAG"
+fi
 echo "[$(date '+%F %T')] tauC density  dataset=$DATASET  r=[$REAL_START,$REAL_END)" \
-     " family=$MODEL_FAMILY  anc=$ANC_TAG  N_Y0=$N_Y0  OUT=$OUT"
+     " family=$MODEL_FAMILY  $GRAPH_DESC  N_Y0=$N_Y0  OUT=$OUT"
 
 # The model-free validation gates are cheap (~2 min) and every number below is
 # meaningless if they fail. Run them once, on the first task only.
