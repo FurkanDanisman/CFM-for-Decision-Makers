@@ -163,7 +163,7 @@ def _macro(vals, stat):
     return float(np.mean(vals)) if stat == 'mean' else float(np.median(vals))
 
 
-def _build_tables(sweep, thr=float('inf')):
+def _build_tables(sweep, thr=float('inf'), macro_only=False):
     hdr_note = (f' (outliers |true_ATE|>{thr:g} dropped)' if np.isfinite(thr)
                 else ' (no outlier filtering)')
     out_blocks = []
@@ -184,17 +184,18 @@ def _build_tables(sweep, thr=float('inf')):
             lines_pehe = drop_report + [''] + lines_pehe
 
         for metric, lines, idx in (('PEHE', lines_pehe, 0), ('L1_ATE', lines_l1, 1)):
-            for case in CASES:
-                lines.append(f'\n## {case}\n')
-                header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
-                lines.append(header)
-                lines.append('|' + '---|' * (len(CONTEXTS) + 1))
-                for spec in MODEL_SPECS:
-                    cells = [spec[0]]
-                    for ctx in CONTEXTS:
-                        pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
-                        cells.append(_fmt(pehe if idx == 0 else l1, stat))
-                    lines.append('| ' + ' | '.join(cells) + ' |')
+            if not macro_only:
+                for case in CASES:
+                    lines.append(f'\n## {case}\n')
+                    header = '| Model | ' + ' | '.join(f'ctx={c}' for c in CONTEXTS) + ' |'
+                    lines.append(header)
+                    lines.append('|' + '---|' * (len(CONTEXTS) + 1))
+                    for spec in MODEL_SPECS:
+                        cells = [spec[0]]
+                        for ctx in CONTEXTS:
+                            pehe, l1, _ = _cell_pehe_l1(sweep, ctx, spec, case, thr)
+                            cells.append(_fmt(pehe if idx == 0 else l1, stat))
+                        lines.append('| ' + ' | '.join(cells) + ' |')
 
             # Case-averaged (macro over 6 case studies of each cell's stat).
             lines.append(f'\n## ALL CASES (macro-{stat} over 6 case studies)\n')
@@ -227,10 +228,13 @@ def main():
                     help='Drop realizations whose |true_ATE| exceeds this. '
                          'Same realizations dropped across all models (true_ATE '
                          'is model-independent). Default: no filtering.')
+    ap.add_argument('--macro-only', action='store_true',
+                    help='Print only the macro (over-6-case-studies) tables, '
+                         'skipping the per-case tables. Compact.')
     args = ap.parse_args()
 
     thr = args.drop_abs_ate_above if args.drop_abs_ate_above is not None else float('inf')
-    md = _build_tables(args.sweep, thr=thr)
+    md = _build_tables(args.sweep, thr=thr, macro_only=args.macro_only)
     print(md)
     out_dir = args.out or os.path.join(args.sweep, 'summary')
     os.makedirs(out_dir, exist_ok=True)
