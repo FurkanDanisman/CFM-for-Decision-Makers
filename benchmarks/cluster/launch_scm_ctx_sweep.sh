@@ -50,13 +50,20 @@ for CTX in 50 100 250 500 1000; do
   env $common MODEL=cpfn1d CKPT="$CPFN1D_CKPT" STD_MODE=per_arm \
       OUT_ROOT="$SWEEP/ctx${CTX}/cpfn1d" sbatch "$SBATCH"
 
-  env $common MODEL=graph2d CKPT="$GRAPH2D_CKPT" GRAPH2D_ANC_MODE=v3b_only \
+  # graph2d v3_family emits v3a + v3b + noanc (+ v3c/v3d/v6a, unused) keys.
+  env $common MODEL=graph2d CKPT="$GRAPH2D_CKPT" GRAPH2D_ANC_MODE=v3_family \
       OUT_ROOT="$SWEEP/ctx${CTX}/graph2d" sbatch "$SBATCH"
 
+  # uwyk: three ancestor variants — full(=v3b), paper_anc(=v3a), noanc.
   env $common MODEL=uwyk CKPT="$UWYK_DIR/best_model.pt" \
       UWYK_CONFIG="$UWYK_DIR/best_model_config.yaml" ANC_VARIANT=full \
       UWYK="$DEPLOY_ROOT/external/uwyk" UWYK_SRC="$DEPLOY_ROOT/external/uwyk/src" \
       OUT_ROOT="$SWEEP/ctx${CTX}/uwyk" sbatch "$SBATCH"
+
+  env $common MODEL=uwyk CKPT="$UWYK_DIR/best_model.pt" \
+      UWYK_CONFIG="$UWYK_DIR/best_model_config.yaml" ANC_VARIANT=paper_anc \
+      UWYK="$DEPLOY_ROOT/external/uwyk" UWYK_SRC="$DEPLOY_ROOT/external/uwyk/src" \
+      OUT_ROOT="$SWEEP/ctx${CTX}/uwyk_v3a" sbatch "$SBATCH"
 
   env $common MODEL=uwyk CKPT="$UWYK_DIR/best_model.pt" \
       UWYK_CONFIG="$UWYK_DIR/best_model_config.yaml" ANC_VARIANT=noanc \

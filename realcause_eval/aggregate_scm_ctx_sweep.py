@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import glob
 import os
 
@@ -43,8 +44,10 @@ MODEL_SPECS = [
     ('cpfn2d',       'cpfn2d',       'uniform',   None),
     ('cpfn1d',       'cpfn1d',       'uniform',   None),
     ('graph2d_noanc','graph2d',      'graph2d',   'noanc'),
+    ('graph2d_v3a',  'graph2d',      'graph2d',   'v3a'),
     ('graph2d_v3b',  'graph2d',      'graph2d',   'v3b'),
     ('uwyk_noanc',   'uwyk_noanc',   'uniform',   None),
+    ('uwyk_v3a',     'uwyk_v3a',     'uniform',   None),
     ('uwyk_v3b',     'uwyk',         'uniform',   None),
 ]
 CONTEXTS = [50, 100, 250, 500, 1000]
@@ -60,12 +63,16 @@ def _first(z, keys):
     return None
 
 
+@functools.lru_cache(maxsize=None)
 def _cell_pehe_l1(sweep, ctx, spec, case, thr=float('inf')):
     """Return (pehe_array, l1_array, n_dropped) for one (spec, ctx, case).
 
     spec = (display_name, dir_name, kind, tag). Realizations with
     |true_ATE| > thr are dropped (outlier SCM draws); true_ATE is
     model-independent so the same realizations drop across all specs.
+
+    Memoized — each cell's ~100 npz files are read ONCE per run instead of
+    ~8× (mean/median × PEHE/L1 × per-case/macro all query the same cells).
     """
     _name, dir_name, kind, tag = spec
     cell = os.path.join(sweep, f'ctx{ctx}', dir_name, case)
