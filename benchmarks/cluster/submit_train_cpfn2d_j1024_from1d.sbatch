@@ -109,6 +109,27 @@ else
     exit 1
 fi
 
+# Head-slice patch: compute the output head ONLY on query positions.
+# CausalPFN's model.forward runs self.head over the FULL sequence and then
+# returns pred[context_length:], so every context position pays the projection
+# and is discarded. Harmless at nbins~1024; fatal at J=1024, where the 2D head
+# emits 1,048,599 logits per position (observed: a 128 GiB allocation for
+# 32,768 positions). Linear and tanh are pointwise over positions, so this is
+# bit-identical for the positions actually returned -- pure waste removal.
+#
+# NOTE: this edits $CAUSALPFN/src/causalpfn/models/model.py, which is SHARED by
+# every run using this deploy tree. Output is unchanged for all of them (1D
+# included). Original saved as model.py.beforeheadslice; set HEAD_SLICE=0 to
+# skip, and revert with the path the installer prints.
+HEAD_SLICE="${HEAD_SLICE:-1}"
+if [ "$HEAD_SLICE" = "1" ]; then
+    SLICE_DIR="${SLICE_DIR:-$DEPLOY_ROOT/R-PFN/rpfn_patches/causalpfn_head_slice}"
+    [ -x "$SLICE_DIR/install.sh" ] || { echo "FATAL: $SLICE_DIR/install.sh missing" >&2; exit 1; }
+    DEPLOY_ROOT="$DEPLOY_ROOT" CAUSALPFN="$CAUSALPFN" "$SLICE_DIR/install.sh"
+else
+    echo "[head-slice] SKIPPED (HEAD_SLICE=0) -- expect OOM at J=1024"
+fi
+
 WARMSTART_LOCAL="${WARMSTART_LOCAL:-$DEPLOY_ROOT/warmstart/tabdpt_long_context.ckpt}"
 [ -f "$WARMSTART_LOCAL" ] || {
     echo "FATAL: warmstart ckpt not found at $WARMSTART_LOCAL" >&2; exit 1;
