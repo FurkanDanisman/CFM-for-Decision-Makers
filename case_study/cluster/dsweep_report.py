@@ -36,9 +36,8 @@ import numpy as np
 # (dir_name, kind, tag)
 MODELS = [
     ("dopfn_native", "uniform", None), ("dopfn_bb", "dopfn_bb", None),
-    ("cpfn2d_pooled", "uniform", None), ("cpfn2d_perarm", "uniform", None),
-    ("cpfn2d_log", "uniform", None),
-    ("cpfn1d_perarm", "uniform", None), ("cpfn1d_pooled", "uniform", None),
+    ("cpfn2d_pooled", "uniform", None),          # cpfn2d: pooled only
+    ("cpfn1d_perarm", "uniform", None),          # cpfn1d: per-arm only
     ("graph2d", "graph2d", "noanc"), ("graph2d", "graph2d", "v3a"),
     ("graph2d", "graph2d", "v3b"),
     ("uwyk", "uniform", None), ("uwyk_v3a", "uniform", None),
@@ -55,12 +54,13 @@ def _scalar(v):
 
 
 def _stats(vals):
-    """(mean, sem, median) over finite values."""
+    """(mean, sem, median, q1, q3) over finite values."""
     a = np.asarray([x for x in vals if x is not None and np.isfinite(x)], dtype=float)
     if a.size == 0:
-        return float("nan"), float("nan"), float("nan")
+        return (float("nan"),) * 5
     sem = float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else 0.0
-    return float(a.mean()), sem, float(np.median(a))
+    q1, q3 = (float(x) for x in np.percentile(a, [25, 75]))
+    return float(a.mean()), sem, float(np.median(a)), q1, q3
 
 
 def collect(A, cell, kind, tag):
@@ -106,9 +106,9 @@ def collect(A, cell, kind, tag):
     return out
 
 
-_HEADER = ("shift,d,N,case,model,"
-           "pehe_raw,pehe_raw_sem,pehe_raw_med,pehe_em,pehe_em_sem,pehe_em_med,"
-           "l1_raw,l1_raw_sem,l1_raw_med,l1_em,l1_em_sem,l1_em_med,n\n")
+_SUFFIX = ["", "_sem", "_med", "_q1", "_q3"]        # 5 stats per metric
+_HEADER = ",".join(["shift", "d", "N", "case", "model"]
+                   + [m + s for m in METRICS for s in _SUFFIX] + ["n"]) + "\n"
 
 
 def _row(shift, d, N, case, label, coll):
@@ -116,7 +116,7 @@ def _row(shift, d, N, case, label, coll):
     vals = []
     for m in METRICS:
         vals.extend(_stats(coll[m]))
-    return ("%s,%d,%d,%s,%s," + ",".join(["%.6f"] * 12) + ",%d\n") % (
+    return ("%s,%d,%d,%s,%s," + ",".join(["%.6f"] * (5 * len(METRICS))) + ",%d\n") % (
         (shift, d, N, case, label) + tuple(vals) + (n,))
 
 
