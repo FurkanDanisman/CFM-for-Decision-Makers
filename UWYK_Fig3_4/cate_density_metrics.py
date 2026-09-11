@@ -75,6 +75,41 @@ def tau_pmf_indep(p0: np.ndarray, p1: np.ndarray) -> np.ndarray:
     return s / tot if tot > 0 else s
 
 
+def tau_pmf_comonotonic(p0: np.ndarray, p1: np.ndarray, J: int) -> np.ndarray:
+    """1D head, opposite coupling: perfectly rank-dependent (comonotonic).
+
+    Independence is not neutral here — it is one extreme. On this benchmark the
+    two arms share their exogenous noise, so corr(Y0, Y1) is 0.93-0.99 and the
+    true tau is 3.6-11x narrower than a convolution predicts. Scoring 1D heads
+    ONLY under independence would therefore measure the coupling assumption
+    rather than the head.
+
+    The comonotonic coupling is the other extreme: pair the quantiles, i.e.
+    Y1 = F1^-1(F0(Y0)). It gives the NARROWEST tau consistent with the same two
+    marginals, so together the two bracket what any 1D head could achieve
+    without modelling dependence. Built by the northwest-corner rule on the two
+    CDFs.
+    """
+    p0 = np.asarray(p0, dtype=np.float64)
+    p1 = np.asarray(p1, dtype=np.float64)
+    F0, F1 = np.cumsum(p0), np.cumsum(p1)
+    out = np.zeros(2 * J - 1, dtype=np.float64)
+    i = j = 0
+    prev = 0.0
+    while i < J and j < J:
+        c = min(F0[i], F1[j])
+        m = c - prev
+        if m > 0:
+            out[(j - i) + (J - 1)] += m
+        prev = c
+        if F0[i] <= F1[j]:
+            i += 1
+        else:
+            j += 1
+    tot = out.sum()
+    return out / tot if tot > 0 else out
+
+
 # ── scoring rules ─────────────────────────────────────────────────────────────
 
 def _quantile(t: np.ndarray, F: np.ndarray, q: float) -> float:
@@ -145,7 +180,7 @@ def _bin_width(z, J):
     return 2.0 / J
 
 
-def score_file(path, tag=None):
+def score_file(path, tag=None, coupling="indep"):
     """All per-query scores for one realization npz. None if it has no density."""
     with np.load(path, allow_pickle=True) as z:
         def g(base):
@@ -171,7 +206,11 @@ def score_file(path, tag=None):
             J = p0.shape[-1]
             bw = _bin_width(z, J)
             atoms = tau_atoms(J, bw) * y_scale
-            pmfs = (tau_pmf_indep(p0[q], p1[q]) for q in range(p0.shape[0]))
+            if coupling == "comonotonic":
+                pmfs = (tau_pmf_comonotonic(p0[q], p1[q], J)
+                        for q in range(p0.shape[0]))
+            else:
+                pmfs = (tau_pmf_indep(p0[q], p1[q]) for q in range(p0.shape[0]))
             n_q = p0.shape[0]
         else:
             return None
@@ -208,6 +247,13 @@ def main():
                     choices=["nonzero", "zero", "total"])
     ap.add_argument("--max-real", type=int, default=None,
                     help="cap realizations per method (quick look)")
+    ap.add_argument("--coupling", default="indep",
+                    choices=["indep", "comonotonic"],
+                    help="how 1D heads turn two marginals into p(tau). "
+                         "indep = convolution (widest); comonotonic = quantile "
+                         "coupling (narrowest). 2D heads ignore this. On this "
+                         "benchmark the arms are near-comonotonic, so reporting "
+                         "only `indep` scores the assumption, not the head.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -220,7 +266,7 @@ def main():
             files = files[: args.max_real]
         acc, n_files = [], 0
         for f in files:
-            got = score_file(f, tag)
+            got = score_file(f, tag, args.coupling)
             if got:
                 acc += got
                 n_files += 1
@@ -246,7 +292,7 @@ def main():
 
     hdr = ["method", "n_real", "n_query", "coverage95", "length", "crps", "wis"]
     L = [f"# CATE density calibration — d={args.nodes}, N={args.context}, "
-         f"{args.subset}", "",
+         f"{args.subset}, 1D coupling = {args.coupling}", "",
          "2D heads: diagonal projection of the joint. 1D heads: independence",
          "convolution of the two arm marginals. Raw densities, no MALC.", "",
          "coverage95 should be ~0.95; below means over-confident, above means",
@@ -261,7 +307,8 @@ def main():
     md = "\n".join(L) + "\n"
     print(md)
     out = args.out or os.path.join(
-        args.root, f"cate_density_d{args.nodes}_N{args.context}_{args.subset}.md")
+        args.root, f"cate_density_d{args.nodes}_N{args.context}_{args.subset}"
+        f"_{args.coupling}.md")
     with open(out, "w") as f:
         f.write(md)
     with open(out.replace(".md", ".json"), "w") as f:
