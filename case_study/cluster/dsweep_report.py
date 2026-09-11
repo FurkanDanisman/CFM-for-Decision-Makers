@@ -129,6 +129,8 @@ def main():
     ap.add_argument("--combine-shifts", nargs="*", default=None,
                     help="Pool realizations across these shift subdirs of --root.")
     ap.add_argument("--combine-label", default=None, help="shift label for the pooled rows.")
+    ap.add_argument("--d-values", nargs="*", type=int, default=None,
+                    help="Only read these d (skips npz for others — big I/O saving).")
     ap.add_argument("--repo", default=os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args()
@@ -152,6 +154,8 @@ def main():
                 if not m:
                     continue
                 d, N = int(m.group(1)), int(m.group(2))
+                if a.d_values and d not in a.d_values:
+                    continue
                 for dirn, kind, tag in MODELS:
                     lab = dirn if tag is None else f"{dirn}_{tag}"
                     for case in cases:
@@ -180,6 +184,8 @@ def main():
                 shift, d, N = "orig", 0, int(m.group(1))
             else:
                 shift, d, N = "shift" + m.group(1), int(m.group(2)), int(m.group(3))
+            if a.d_values and d not in a.d_values:
+                continue
             for dirn, kind, tag in MODELS:
                 lab = dirn if tag is None else f"{dirn}_{tag}"
                 for case in cases:
