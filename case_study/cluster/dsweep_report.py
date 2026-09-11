@@ -132,7 +132,7 @@ def main():
             if a.flat:
                 shift, d, N = "orig", 0, int(m.group(1))
             else:
-                shift, d, N = m.group(1), int(m.group(2)), int(m.group(3))
+                shift, d, N = "shift" + m.group(1), int(m.group(2)), int(m.group(3))
             for dirn, kind, tag in MODELS:
                 label = dirn if tag is None else f"{dirn}_{tag}"
                 for case in cases:
@@ -142,7 +142,7 @@ def main():
                     r = read_cell(A, cell, kind, tag)
                     if r is None:
                         continue
-                    fh.write("shift%s,%d,%d,%s,%s,"
+                    fh.write("%s,%d,%d,%s,%s,"
                              "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n" % (
                                  shift, d, N, case, label,
                                  r["pehe_raw"][0], r["pehe_raw"][1],
