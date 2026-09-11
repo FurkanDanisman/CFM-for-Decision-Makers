@@ -23,34 +23,67 @@ import pandas as pd
 _MODEL_ORDER = ["dopfn_native", "dopfn_bb", "graph2d_noanc", "uwyk_noanc",
                 "graph2d_v3a", "uwyk_v3a", "graph2d_v3b", "uwyk_v3b",
                 "cpfn1d_perarm", "cpfn1d_pooled", "cpfn2d_pooled", "cpfn2d_log"]
+_CASE_ORDER = ["Observed_Confounder", "Observed_Mediator",
+               "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
+               "Frontdoor_Criterion", "Backdoor_Criterion"]
 
 
-def _pivot(df, by, metric, case):
-    sub = df if case is None else df[df["case"] == case]
-    agg = "mean"
-    piv = sub.pivot_table(index="model", columns=by, values=metric, aggfunc=agg)
+def _order_rows(piv):
     order = [m for m in _MODEL_ORDER if m in piv.index] + \
             [m for m in piv.index if m not in _MODEL_ORDER]
     return piv.reindex(order)
 
 
+def _pivot(df, by, metric, case):
+    sub = df if case is None else df[df["case"] == case]
+    return _order_rows(sub.pivot_table(index="model", columns=by,
+                                       values=metric, aggfunc="mean"))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", required=True)
-    ap.add_argument("--by", choices=["d", "N"], default="d", help="Columns axis.")
+    ap.add_argument("--by", choices=["d", "N"], default="d", help="Columns axis (non-panel mode).")
     ap.add_argument("--metric", default="pehe_raw",
                     choices=["pehe_raw", "pehe_em", "l1_raw", "l1_em"])
     ap.add_argument("--shift", default="shift+2")
-    ap.add_argument("--n", type=int, default=500, help="Fixed N (when --by d).")
+    ap.add_argument("--n", type=int, default=500, help="Fixed N.")
     ap.add_argument("--d", type=int, default=3, help="Fixed d (when --by N).")
     ap.add_argument("--case", default=None, help="One case, or omit for mean over cases.")
-    ap.add_argument("--all-shifts", action="store_true", help="One table per shift.")
+    ap.add_argument("--all-shifts", action="store_true")
+    ap.add_argument("--panels", choices=["none", "d", "N"], default="none",
+                    help="'d' -> one model x case table per d (fixed N,shift); "
+                         "'N' -> one per N (fixed d,shift). Table-3 style.")
     a = ap.parse_args()
-
     df = pd.read_csv(a.csv)
+
+    # ── Panel mode: columns = the 6 cases, one table per d (or per N) ──
+    if a.panels != "none":
+        panel_ax = a.panels
+        fixed = ("N", a.n) if panel_ax == "d" else ("d", a.d)
+        sh_df = df[df["shift"] == a.shift]
+        vals = sorted(sh_df[panel_ax].unique())
+        cols = [c for c in _CASE_ORDER if c in set(sh_df["case"])]
+        print(f"\n############ {a.metric}  {a.shift}  {fixed[0]}={fixed[1]}  "
+              f"(rows=model, cols=case; one table per {panel_ax}) ############")
+        for v in vals:
+            sub = sh_df[(sh_df[panel_ax] == v) & (sh_df[fixed[0]] == fixed[1])]
+            if sub.empty:
+                continue
+            piv = _order_rows(sub.pivot_table(index="model", columns="case",
+                                              values=a.metric, aggfunc="mean"))
+            piv = piv.reindex(columns=[c for c in cols if c in piv.columns])
+            piv.columns = [c.replace("Observed_", "Obs").replace("_Criterion", "")
+                            .replace("_and_Confounder", "+Cf").replace("_Confounder", "Cf")
+                            .replace("_Mediator", "Med") for c in piv.columns]
+            print(f"\n══ {panel_ax}={v} ══")
+            print(piv.round(3).to_string())
+        print()
+        return
+
+    # ── Default: rows=model, cols = --by axis ──
     shifts = sorted(df["shift"].unique()) if a.all_shifts else [a.shift]
     fixed = ("N", a.n) if a.by == "d" else ("d", a.d)
-
     for sh in shifts:
         d = df[(df["shift"] == sh) & (df[fixed[0]] == fixed[1])]
         if d.empty:
