@@ -1,0 +1,66 @@
+"""Readable pivots from the d_variation CSV (case_study/cluster/dsweep_report.py).
+
+Rows = model, columns = the swept axis (--by: d or N), values = one metric,
+for a chosen (shift, N-or-d, case-or-mean). Fast — reads the CSV, not the npz.
+
+Examples:
+    # PEHE-raw vs d, shift+2, N=500, averaged over the 6 cases:
+    python dsweep_pivot.py --csv $RES/dsweep.csv --shift shift+2 --n 500
+
+    # em PEHE vs d for one case:
+    python dsweep_pivot.py --csv $RES/dsweep.csv --shift shift+2 --n 500 \
+        --case Backdoor_Criterion --metric pehe_em
+
+    # PEHE-raw vs N (fix d), all shifts printed separately:
+    python dsweep_pivot.py --csv $RES/dsweep.csv --by N --d 3 --all-shifts
+"""
+from __future__ import annotations
+
+import argparse
+
+import pandas as pd
+
+_MODEL_ORDER = ["dopfn_native", "dopfn_bb", "graph2d_noanc", "uwyk_noanc",
+                "graph2d_v3a", "uwyk_v3a", "graph2d_v3b", "uwyk_v3b",
+                "cpfn1d_perarm", "cpfn1d_pooled", "cpfn2d_pooled", "cpfn2d_log"]
+
+
+def _pivot(df, by, metric, case):
+    sub = df if case is None else df[df["case"] == case]
+    agg = "mean"
+    piv = sub.pivot_table(index="model", columns=by, values=metric, aggfunc=agg)
+    order = [m for m in _MODEL_ORDER if m in piv.index] + \
+            [m for m in piv.index if m not in _MODEL_ORDER]
+    return piv.reindex(order)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--csv", required=True)
+    ap.add_argument("--by", choices=["d", "N"], default="d", help="Columns axis.")
+    ap.add_argument("--metric", default="pehe_raw",
+                    choices=["pehe_raw", "pehe_em", "l1_raw", "l1_em"])
+    ap.add_argument("--shift", default="shift+2")
+    ap.add_argument("--n", type=int, default=500, help="Fixed N (when --by d).")
+    ap.add_argument("--d", type=int, default=3, help="Fixed d (when --by N).")
+    ap.add_argument("--case", default=None, help="One case, or omit for mean over cases.")
+    ap.add_argument("--all-shifts", action="store_true", help="One table per shift.")
+    a = ap.parse_args()
+
+    df = pd.read_csv(a.csv)
+    shifts = sorted(df["shift"].unique()) if a.all_shifts else [a.shift]
+    fixed = ("N", a.n) if a.by == "d" else ("d", a.d)
+
+    for sh in shifts:
+        d = df[(df["shift"] == sh) & (df[fixed[0]] == fixed[1])]
+        if d.empty:
+            print(f"\n(no rows for {sh}, {fixed[0]}={fixed[1]})"); continue
+        piv = _pivot(d, a.by, a.metric, a.case)
+        scope = a.case or "mean over 6 cases"
+        print(f"\n══ {a.metric}  vs {a.by}   {sh}  {fixed[0]}={fixed[1]}  ({scope}) ══")
+        print(piv.round(3).to_string())
+    print()
+
+
+if __name__ == "__main__":
+    main()
