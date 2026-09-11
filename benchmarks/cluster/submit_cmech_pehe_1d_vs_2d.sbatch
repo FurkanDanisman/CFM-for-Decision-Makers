@@ -11,6 +11,8 @@
 # 1D-vs-2D head comparison on the UWYK ComplexMech (Fig-4 prior) PEHE benchmark.
 #
 #   7 model-runs x 6 node counts x 5 context sizes = 210 tasks.
+#   DENSITY_DUMP=1 additionally writes per-query densities for the
+#   CATE-calibration metrics (coverage / length / WIS / CRPS).
 #   Subset defaults to `nonzero`. Re-run with SUBSET=zero for the
 #   zero-effect queries; aggregate_cmech_methods.py --subsets total then
 #   combines the two exactly (they are disjoint).
@@ -114,6 +116,13 @@ DATASET="CMECH_n${NODE}_${SUBSET}"
 # (realization, cap).
 export UWYK_FIG34_MAX_CONTEXT="$CTX"
 
+# DENSITY_DUMP=1 makes every harness write p_y0/p_y1/p_joint per query, which
+# UWYK_Fig3_4/cate_density_metrics.py needs. uwyk1d, dopfn_native and dopfn_bb
+# read it straight from the environment; graph2d / cpfn1d / cpfn2d go through
+# wrappers that SET DensityDump explicitly and would otherwise clobber it to 0,
+# so those get it as a flag below. Off by default — the dumps are large.
+export DENSITY_DUMP="${DENSITY_DUMP:-0}"
+
 export DATASET
 # One results tree per context size, so each N gets its own table.
 export OUT="$OUT_ROOT/N${CTX}/$MODEL/$DATASET"
@@ -163,7 +172,7 @@ case "$MODEL" in
   graph2d)
     [ -f "$CKPT_GRAPH2D" ] || { echo "FATAL: ckpt $CKPT_GRAPH2D" >&2; exit 1; }
     python -u "$REPO/realcause_eval/Table1/graph2d.py" \
-        --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_GRAPH2D" \
+        --dataset "$DATASET" --outdir "$OUT" --density-dump "$DENSITY_DUMP" --ckpt "$CKPT_GRAPH2D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
         --anc-mode v3ab_only --density-primary-mode noanc \
         --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
@@ -171,7 +180,7 @@ case "$MODEL" in
   cpfn1d)
     [ -f "$CKPT_CPFN1D" ] || { echo "FATAL: ckpt $CKPT_CPFN1D" >&2; exit 1; }
     python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
-        --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_CPFN1D" \
+        --dataset "$DATASET" --outdir "$OUT" --density-dump "$DENSITY_DUMP" --ckpt "$CKPT_CPFN1D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN"
     ;;
   cpfn2d_pooled|cpfn2d_log)
@@ -183,7 +192,7 @@ case "$MODEL" in
       cpfn2d_log)    SMODE=log ;;
     esac
     python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
-        --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_CPFN2D" \
+        --dataset "$DATASET" --outdir "$OUT" --density-dump "$DENSITY_DUMP" --ckpt "$CKPT_CPFN2D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode "$SMODE"
     ;;
   *) echo "unknown model: $MODEL" >&2; exit 2 ;;
