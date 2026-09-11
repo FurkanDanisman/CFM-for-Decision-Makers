@@ -43,7 +43,7 @@ PAIRS = (("dopfn_native", "dopfn_bb"),
          ("uwyk1d", "graph2d"),
          ("cpfn1d", "cpfn2d"))
 MODELS = tuple(m for pair in PAIRS for m in pair)
-NODE_COUNTS = (5, 20, 30, 40, 50)
+NODE_COUNTS = (5, 10, 20, 30, 40, 50)
 SUBSETS = ("nonzero", "zero")
 
 
