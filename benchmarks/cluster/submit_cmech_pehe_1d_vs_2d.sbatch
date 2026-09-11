@@ -22,8 +22,10 @@
 #     120 cpfn1d        150 cpfn2d_pooled  180 cpfn2d_log
 #   within a model: (id%30)/5 indexes nodes (5,10,20,30,40,50),
 #                   id%5 indexes context (50,100,250,500,1000)
-#   uwyk1d and graph2d run ANC_MODE=v3_family, which emits noanc + v3a + v3b
-#   (plus v3c/v3d/v6a) from a single pass — three table rows per model.
+#   uwyk1d and graph2d run ANC_MODE=v3ab_only, emitting noanc + v3a + v3b in
+#   one pass — three table rows per model. NOT v3_family: that also carries
+#   v3d, whose +1 diagonal UWYK's own wrapper rejects ("Inconsistent PAM:
+#   found T[i,i] == 1"), which killed every uwyk1d task.
 #   and within a model, (id%10)/2 indexes nodes (5,20,30,40,50) while id%2
 #   picks the subset (0=nonzero, 1=zero).
 #   node counts 5, 20, 30, 40, 50
@@ -151,7 +153,7 @@ case "$MODEL" in
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-        --anc-mode v3_family \
+        --anc-mode v3ab_only \
         --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   graph2d)
@@ -159,7 +161,7 @@ case "$MODEL" in
     python -u "$REPO/realcause_eval/Table1/graph2d.py" \
         --dataset "$DATASET" --outdir "$OUT" --ckpt "$CKPT_GRAPH2D" \
         --repo "$REPO" --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
-        --anc-mode v3_family --density-primary-mode noanc \
+        --anc-mode v3ab_only --density-primary-mode noanc \
         --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   cpfn1d)

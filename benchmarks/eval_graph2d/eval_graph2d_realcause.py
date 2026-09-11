@@ -972,6 +972,17 @@ def build_mode_list(F, n_real, anc_mode=None):
         # user shorthand: UWYK's original anc with -1 on the symmetry.
         return (('v3b',   build_anc_v3b(F, n_real)),
                 ('noanc', build_anc_none(F, n_real)))
+    if anc_mode == 'v3ab_only':
+        # noanc + v3a + v3b, and nothing else. Exists because v3_family also
+        # carries v3d, whose diagonal is +1 ("self-ancestor"), and UWYK's own
+        # wrapper validates the PAM and raises
+        #   ValueError: Inconsistent PAM: found T[i,i] == 1
+        # inside propagate_ancestor_knowledge. graph2d's model does not
+        # validate, so v3_family runs there and dies for uwyk1d only.
+        # Also 3 forward passes per realization instead of 6.
+        return (('v3a',   build_anc_v3a(F, n_real)),
+                ('v3b',   build_anc_v3b(F, n_real)),
+                ('noanc', build_anc_none(F, n_real)))
     if anc_mode == 'all_combos':
         # 4^3 = 64 combinations of (T→Y, X→T, X→Y) encoded as P|N|B|O.
         # Diagonal always 0; padded region always -1.
