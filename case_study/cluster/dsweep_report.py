@@ -37,13 +37,17 @@ MODELS = [
 ]
 
 
-def _mean(a):
-    a = [x for x in a if x is not None and np.isfinite(x)]
-    return float(np.mean(a)) if a else float("nan")
+def _ms(a):
+    """(mean, SEM) over finite values."""
+    a = np.asarray([x for x in a if x is not None and np.isfinite(x)], dtype=float)
+    if a.size == 0:
+        return float("nan"), float("nan")
+    sem = float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else 0.0
+    return float(a.mean()), sem
 
 
 def read_cell(A, cell, kind, tag):
-    """Return (pehe_raw, pehe_em, l1_raw, l1_em, n) means for one model/case dir."""
+    """Return dict {pehe_raw:(m,sem), pehe_em, l1_raw, l1_em, n} for one cell."""
     if kind == "dopfn_bb":
         f = os.path.join(cell, "summary.npz")
         if not os.path.isfile(f):
@@ -54,10 +58,10 @@ def read_cell(A, cell, kind, tag):
             ta = A._first(z, ["true_ate"])
         if pr is None:
             return None
-        l1r = np.abs(ap - ta) if ap is not None and ta is not None else None
-        l1e = np.abs(ae - ta) if ae is not None and ta is not None else None
-        return (_mean(pr), _mean(pe), _mean(l1r) if l1r is not None else float("nan"),
-                _mean(l1e) if l1e is not None else float("nan"), len(pr))
+        l1r = np.abs(ap - ta) if ap is not None and ta is not None else [None]
+        l1e = np.abs(ae - ta) if ae is not None and ta is not None else [None]
+        return {"pehe_raw": _ms(pr), "pehe_em": _ms(pe),
+                "l1_raw": _ms(l1r), "l1_em": _ms(l1e), "n": len(pr)}
 
     if kind == "graph2d":
         pr_k = [f"pehe_raw_{tag}"]; pe_k = [f"pehe_em_{tag}", f"pehe_full_{tag}", f"pehe_raw_{tag}"]
@@ -83,8 +87,9 @@ def read_cell(A, cell, kind, tag):
             else:
                 l1rs.append(_scalar(A._first(z, er_k)))
                 l1es.append(_scalar(A._first(z, ee_k)))
-    return (_mean(prs), _mean(pes), _mean(l1rs), _mean(l1es),
-            len([x for x in prs if x is not None]))
+    return {"pehe_raw": _ms(prs), "pehe_em": _ms(pes),
+            "l1_raw": _ms(l1rs), "l1_em": _ms(l1es),
+            "n": len([x for x in prs if x is not None])}
 
 
 def _scalar(v):
@@ -110,7 +115,9 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     n_rows = 0
     with open(a.out, "w") as fh:
-        fh.write("shift,d,N,case,model,pehe_raw,pehe_em,l1_raw,l1_em,n\n")
+        fh.write("shift,d,N,case,model,"
+                 "pehe_raw,pehe_raw_sem,pehe_em,pehe_em_sem,"
+                 "l1_raw,l1_raw_sem,l1_em,l1_em_sem,n\n")
         for cd in ctx_dirs:
             m = rx.match(cd)
             if not m:
@@ -125,8 +132,13 @@ def main():
                     r = read_cell(A, cell, kind, tag)
                     if r is None:
                         continue
-                    fh.write(f"shift{shift},{d},{N},{case},{label},"
-                             f"{r[0]:.6f},{r[1]:.6f},{r[2]:.6f},{r[3]:.6f},{r[4]}\n")
+                    fh.write("shift%s,%d,%d,%s,%s,"
+                             "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n" % (
+                                 shift, d, N, case, label,
+                                 r["pehe_raw"][0], r["pehe_raw"][1],
+                                 r["pehe_em"][0], r["pehe_em"][1],
+                                 r["l1_raw"][0], r["l1_raw"][1],
+                                 r["l1_em"][0], r["l1_em"][1], r["n"]))
                     n_rows += 1
     print(f"[dsweep_report] wrote {n_rows} rows -> {a.out}")
     if n_rows == 0:
