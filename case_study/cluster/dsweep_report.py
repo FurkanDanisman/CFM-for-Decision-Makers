@@ -28,7 +28,8 @@ import numpy as np
 # (dir_name, kind, tag)
 MODELS = [
     ("dopfn_native", "uniform", None), ("dopfn_bb", "dopfn_bb", None),
-    ("cpfn2d_pooled", "uniform", None), ("cpfn2d_log", "uniform", None),
+    ("cpfn2d_pooled", "uniform", None), ("cpfn2d_perarm", "uniform", None),
+    ("cpfn2d_log", "uniform", None),
     ("cpfn1d_perarm", "uniform", None), ("cpfn1d_pooled", "uniform", None),
     ("graph2d", "graph2d", "noanc"), ("graph2d", "graph2d", "v3a"),
     ("graph2d", "graph2d", "v3b"),
