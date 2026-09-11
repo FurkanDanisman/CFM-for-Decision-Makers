@@ -179,9 +179,16 @@ case "$MODEL" in
     ;;
   cpfn1d)
     [ -f "$CKPT_CPFN1D" ] || { echo "FATAL: ckpt $CKPT_CPFN1D" >&2; exit 1; }
+    # eval_causalpfn_v0_realcause.py hard-asserts that the dumped density mean
+    # reproduces cate_raw, which only holds when the two arms share y_shift /
+    # y_scale — i.e. STD_MODE=pooled. The wrapper defaults to per_arm, so a
+    # density run with the default raises and the task dies. NB this makes the
+    # density run's cpfn1d point estimates pooled-scaled, not per_arm.
+    CPFN1D_STD="per_arm"
+    [ "$DENSITY_DUMP" = "1" ] && CPFN1D_STD="pooled"
     python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
         --dataset "$DATASET" --outdir "$OUT" --density-dump "$DENSITY_DUMP" --ckpt "$CKPT_CPFN1D" \
-        --repo "$REPO" --causalpfn "$CAUSALPFN"
+        --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode "$CPFN1D_STD"
     ;;
   cpfn2d_pooled|cpfn2d_log)
     # NB: the cpfn2d wrapper's own default is per_arm; both rows here are

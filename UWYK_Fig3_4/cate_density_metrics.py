@@ -257,21 +257,28 @@ def main():
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    ds = f"CMECH_n{args.nodes}_{args.subset}"
+    # `total` = every query. These metrics are per-query means, so unlike PEHE
+    # (an RMS needing weighted pooling) the two disjoint subsets simply
+    # concatenate.
+    subsets = (["nonzero", "zero"] if args.subset == "total" else [args.subset])
     rows = []
     for label, subdir, tag in METHODS:
-        d = os.path.join(args.root, f"N{args.context}", subdir, ds)
-        files = sorted(glob.glob(os.path.join(d, "*.npz")))
-        if args.max_real:
-            files = files[: args.max_real]
         acc, n_files = [], 0
-        for f in files:
-            got = score_file(f, tag, args.coupling)
-            if got:
-                acc += got
-                n_files += 1
+        for sub in subsets:
+            d = os.path.join(args.root, f"N{args.context}", subdir,
+                             f"CMECH_n{args.nodes}_{sub}")
+            files = sorted(glob.glob(os.path.join(d, "*.npz")))
+            if args.max_real:
+                files = files[: args.max_real]
+            for f in files:
+                got = score_file(f, tag, args.coupling)
+                if got:
+                    acc += got
+                    n_files += 1
         if not acc:
-            print(f"[skip] {label}: no density dumps under {d}")
+            print(f"[skip] {label}: no density dumps for "
+                  f"{'/'.join(subsets)} under "
+                  f"{os.path.join(args.root, f'N{args.context}', subdir)}")
             continue
         arr = {k: np.array([a[k] for a in acc]) for k in acc[0]}
         rows.append(dict(
