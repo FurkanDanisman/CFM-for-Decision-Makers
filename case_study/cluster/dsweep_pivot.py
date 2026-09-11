@@ -62,11 +62,46 @@ def main():
                     help="Panel mode: show PEHE + L1 for this readout.")
     ap.add_argument("--stat", choices=["mean", "median"], default="mean",
                     help="mean -> 'mean±SEM'; median -> 'median'.")
+    ap.add_argument("--pooled", action="store_true",
+                    help="Use case=ALL rows (all cases pooled): one table per d, "
+                         "rows=model, cols=N, cells mean±SEM. PEHE + L1.")
     a = ap.parse_args()
     df = pd.read_csv(a.csv)
     _short = lambda c: (c.replace("Observed_", "Obs").replace("_Criterion", "")
                         .replace("_and_Confounder", "+Cf").replace("_Confounder", "Cf")
                         .replace("_Mediator", "Med"))
+
+    # ── Pooled mode: all cases pooled (case=ALL); one PEHE + one L1 table ──
+    #    per d; rows=model, cols=N; cells mean±SEM. ──
+    if a.pooled:
+        sub_all = df[(df["shift"] == a.shift) & (df["case"] == "ALL")]
+        if a.d_values:
+            sub_all = sub_all[sub_all["d"].isin(a.d_values)]
+        if sub_all.empty:
+            print(f"(no case=ALL rows for shift={a.shift}; build the CSV with "
+                  f"dsweep_report --pool-cases)"); return
+        dvals = [int(x) for x in sorted(sub_all["d"].unique())]
+        nvals = [int(x) for x in sorted(sub_all["N"].unique())]
+        metrics = [(f"PEHE ({a.readout})", f"pehe_{a.readout}"),
+                   (f"L1-ATE ({a.readout})", f"l1_{a.readout}")]
+        print(f"\n############ {a.shift}  ALL cases pooled  readout={a.readout}  "
+              f"(mean±SEM; rows=model, cols=N; one block per d) ############")
+        for dv in dvals:
+            sd = sub_all[sub_all["d"] == dv]
+            models = [x for x in _MODEL_ORDER if x in set(sd["model"])] + \
+                     [x for x in sd["model"].unique() if x not in _MODEL_ORDER]
+            print(f"\n════════ d={dv} ════════")
+            for title, m in metrics:
+                data = {}
+                for nv in nvals:
+                    nn = sd[sd["N"] == nv].set_index("model")
+                    data[f"N{nv}"] = {mdl: f"{nn.at[mdl, m]:.3f}±{nn.at[mdl, m+'_sem']:.3f}"
+                                      for mdl in models if mdl in nn.index}
+                tbl = pd.DataFrame(data).reindex(index=models)[[f"N{nv}" for nv in nvals]]
+                print(f"\n  -- {title} --")
+                print(tbl.to_string())
+        print()
+        return
 
     # ── Panel mode 'case': one PEHE + one L1 table per case; rows=model, ──
     #    cols=d; cells = "mean±sem | median[q1,q3]"; fixed N + shift. ──

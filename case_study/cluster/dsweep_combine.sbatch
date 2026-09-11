@@ -31,14 +31,16 @@ RES="${RES:?RES required (results root)}"
 SHIFTS="${COMBINE_SHIFTS:-shift0 shift+2 shift-2 shift+5 shift-5}"
 LABEL="${COMBINE_LABEL:-all5}"
 D_VALUES="${D_VALUES:-5 10 20 30 40 50}"
-OUT="${OUT:-$RES/combined_${LABEL}.csv}"
+_PC="${POOL_CASES:+--pool-cases}"                 # POOL_CASES=1 -> pool all cases
+_suffix="${POOL_CASES:+_allcases}"
+OUT="${OUT:-$RES/combined_${LABEL}${_suffix}.csv}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
-echo "[$(date '+%F %T')] combine [$SHIFTS] -> $LABEL  d=[$D_VALUES]  RES=$RES"
+echo "[$(date '+%F %T')] combine [$SHIFTS] -> $LABEL  d=[$D_VALUES]  pool_cases=${POOL_CASES:-0}  RES=$RES"
 
 python -u "$REPO/case_study/cluster/dsweep_report.py" --root "$RES" \
     --combine-shifts $SHIFTS --combine-label "$LABEL" \
-    --d-values $D_VALUES --out "$OUT"
+    --d-values $D_VALUES $_PC --out "$OUT"
 
 echo "[$(date '+%F %T')] done -> $OUT"

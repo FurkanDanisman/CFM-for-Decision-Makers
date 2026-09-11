@@ -131,6 +131,9 @@ def main():
     ap.add_argument("--combine-label", default=None, help="shift label for the pooled rows.")
     ap.add_argument("--d-values", nargs="*", type=int, default=None,
                     help="Only read these d (skips npz for others — big I/O saving).")
+    ap.add_argument("--pool-cases", action="store_true",
+                    help="Combine mode: also pool realizations across the 6 cases -> "
+                         "one row per (d,N,model) with case=ALL.")
     ap.add_argument("--repo", default=os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
     a = ap.parse_args()
@@ -158,6 +161,22 @@ def main():
                     continue
                 for dirn, kind, tag in MODELS:
                     lab = dirn if tag is None else f"{dirn}_{tag}"
+                    if a.pool_cases:
+                        # pool realizations across ALL shifts AND ALL cases
+                        pooled = {mt: [] for mt in METRICS}
+                        got = False
+                        for sh in shifts:
+                            for case in cases:
+                                c = collect(A, os.path.join(a.root, sh, f"d{d}",
+                                            f"ctx{N}", dirn, case), kind, tag)
+                                if c is None:
+                                    continue
+                                got = True
+                                for mt in METRICS:
+                                    pooled[mt] += c[mt]
+                        if got:
+                            fh.write(_row(label, d, N, "ALL", lab, pooled)); n_rows += 1
+                        continue
                     for case in cases:
                         cells = [os.path.join(a.root, sh, f"d{d}", f"ctx{N}", dirn, case)
                                  for sh in shifts]
