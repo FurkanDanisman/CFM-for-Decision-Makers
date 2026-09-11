@@ -1,0 +1,99 @@
+{
+  "sweep": "n_covariates x cate_shift",
+  "shifts": {
+    "shift+2": 2.0,
+    "shift-2": -2.0,
+    "shift+5": 5.0,
+    "shift-5": -5.0
+  },
+  "d_values": [
+    2,
+    3,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50
+  ],
+  "context_sizes": [
+    50,
+    100,
+    250,
+    500,
+    1000
+  ],
+  "n_realizations": 100,
+  "seed_base": 0,
+  "hidden_scaling": "max(1, d // 10)",
+  "covariate_scaling": "causal-roles",
+  "seed_note": "seeds do NOT depend on cate_shift, so a given (d, case, N, realization) is the SAME sampled SCM in every shift root; only beta differs. Backdoor/Frontdoor have no direct T->Y edge and are therefore bit-identical across shifts.",
+  "roots": {
+    "shift+2": {
+      "path": "shift+2",
+      "n_files": 24000,
+      "d_dirs": [
+        "d10",
+        "d2",
+        "d20",
+        "d3",
+        "d30",
+        "d40",
+        "d5",
+        "d50"
+      ]
+    },
+    "shift-2": {
+      "path": "shift-2",
+      "n_files": 24000,
+      "d_dirs": [
+        "d10",
+        "d2",
+        "d20",
+        "d3",
+        "d30",
+        "d40",
+        "d5",
+        "d50"
+      ]
+    },
+    "shift+5": {
+      "path": "shift+5",
+      "n_files": 24000,
+      "d_dirs": [
+        "d10",
+        "d2",
+        "d20",
+        "d3",
+        "d30",
+        "d40",
+        "d5",
+        "d50"
+      ]
+    },
+    "shift-5": {
+      "path": "shift-5",
+      "n_files": 24000,
+      "d_dirs": [
+        "d10",
+        "d2",
+        "d20",
+        "d3",
+        "d30",
+        "d40",
+        "d5",
+        "d50"
+      ]
+    }
+  },
+  "shift0_legacy": {
+    "path": "shift0",
+    "cate_shift": 0.0,
+    "context_sizes": [
+      200,
+      500,
+      1000
+    ],
+    "note": "pre-existing beta=0 sweep; DIFFERENT context sizes"
+  }
+}
