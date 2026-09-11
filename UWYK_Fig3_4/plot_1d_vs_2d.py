@@ -12,8 +12,9 @@ different measures on different scales.
 
 The dashed line is the null: the score of predicting tau=0 for every query. A
 bar reaching it has no skill, so it is the reference the eye needs, not zero.
-Bars are labelled with their value, which also supplies the non-colour encoding
-the palette check requires.
+Bars carry no value labels by default (--bar-labels re-enables them); the y axis
+carries the magnitudes. The palette clears the >= 3:1 contrast check on its own,
+so no label-based relief is required for it.
 
 Palette #D97706 / #B91C1C validated with the dataviz six-checks (light surface):
 CVD separation dE 16.2 deutan / 14.6 tritan, normal-vision 18.8, both >= 3:1
@@ -110,11 +111,16 @@ def draw_one(rows, mi, args, out_path, show_legend):
            label="2D head", error_kw=dict(ecolor=INK_MUTED, lw=1.1))
 
     top = max(max(np.add(v1, e1)), max(np.add(v2, e2)))
-    ax.set_ylim(0, top * (1.30 if show_legend else 1.16))
-    for xs, vals in ((x - w/2 - gap/2, v1), (x + w/2 + gap/2, v2)):
-        for xi, v in zip(xs, vals):
-            ax.text(xi, v + top * 0.025, f"{v:.3f}", ha="center", va="bottom",
-                    fontsize=7.5, color=INK)
+    if args.bar_labels:
+        ax.set_ylim(0, top * (1.30 if show_legend else 1.16))
+        for xs, vals in ((x - w/2 - gap/2, v1), (x + w/2 + gap/2, v2)):
+            for xi, v in zip(xs, vals):
+                ax.text(xi, v + top * 0.025, f"{v:.3f}", ha="center",
+                        va="bottom", fontsize=7.5, color=INK)
+    else:
+        # No value labels: the y axis carries the magnitudes. Less headroom is
+        # needed, which lets the bars fill more of the panel.
+        ax.set_ylim(0, top * (1.22 if show_legend else 1.06))
 
     ax.set_xticks(x)
     ax.set_xticklabels([r[0] for r in rows], fontsize=9, color=INK)
@@ -182,6 +188,9 @@ def main():
                          "cell (default N=50, d=5)")
     ap.add_argument("--legend-context", type=int, default=50)
     ap.add_argument("--legend-nodes", type=int, default=5)
+    ap.add_argument("--bar-labels", action="store_true",
+                    help="print each bar's value above it (off by default; the "
+                         "y axis already carries the magnitude)")
     args = ap.parse_args()
     if args.outdir is None:
         args.outdir = os.path.join(args.root, "figures")
