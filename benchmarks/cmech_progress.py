@@ -32,8 +32,8 @@ NODES = (5, 10, 20, 30, 40, 50)
 CONTEXTS = (50, 100, 250, 500, 1000)
 
 
-def cell_count(root, ctx, model, n):
-    d = os.path.join(root, f"N{ctx}", model, f"CMECH_n{n}_nonzero")
+def cell_count(root, ctx, model, n, subset):
+    d = os.path.join(root, f"N{ctx}", model, f"CMECH_n{n}_{subset}")
     if not os.path.isdir(d):
         return None
     summary = os.path.join(d, "summary.npz")
@@ -46,13 +46,15 @@ def cell_count(root, ctx, model, n):
     return n_files if n_files else None
 
 
-def expected(n, data_root):
+def expected(n, data_root, subset):
     """How many realizations the benchmark actually holds for this cell."""
     cell = os.path.join(data_root, "complexmech", f"{n}node", "path_TY", "hide_0.0")
     tot = 0
     for p in glob.glob(os.path.join(cell, "r*.npz")):
         with np.load(p) as z:
-            if (np.asarray(z["true_cate"]) != 0).any():
+            tau = np.asarray(z["true_cate"])
+            m = (tau != 0) if subset == "nonzero" else (tau == 0)
+            if m.any():
                 tot += 1
     return tot
 
@@ -66,12 +68,14 @@ def main():
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "UWYK_Fig3_4", "data")))
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--subset", default="nonzero", choices=["nonzero", "zero"],
+                    help="which query subset to audit (run once per subset)")
     ap.add_argument("--thin-frac", type=float, default=0.9,
                     help="flag a cell as THIN below this fraction of expected")
     args = ap.parse_args()
 
-    exp = {n: expected(n, args.data_root) for n in NODES}
-    print("expected realizations per node count (nonzero subset): "
+    exp = {n: expected(n, args.data_root, args.subset) for n in NODES}
+    print(f"expected realizations per node count ({args.subset} subset): "
           + "  ".join(f"n={n}:{exp[n]}" for n in NODES) + "\n")
 
     done = total = 0
@@ -83,7 +87,7 @@ def main():
             cells = []
             for n in NODES:
                 total += 1
-                c = cell_count(args.root, ctx, m, n)
+                c = cell_count(args.root, ctx, m, n, args.subset)
                 if c is None:
                     cells.append("  --")
                     missing.append((ctx, m, n))
