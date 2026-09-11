@@ -528,3 +528,66 @@ Point errors in original outcome units, from the same predictions. Full-density 
 | bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0068±0.0087 |     -0.5459±0.2695 |     +0.0146±0.0188 |
 
 _negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
+
+---
+
+# Do-PFN Raw
+### IHDP — DoPFN
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
+
+realizations=100, ~75 queries each, graph=none, |tau*|>3: 0.00%
+
+| method                |               nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| --------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| DoPFN (x)indep native | **0.1849±0.0354** | **1.4193±0.1118** | **0.9942±0.0704** |     29.3664±6.5775 |     0.9998±0.0000 |
+| DoPFN Joint-2D        |     0.5781±0.0475 |     1.6428±0.1104 |     1.3866±0.0749 | **25.2715±5.9922** | **1.0000±0.0000** |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator                     |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------------- | ----------------: | ----------------: | ----------------: |
+| DoPFN (x)indep native              |     6.6013±0.9953 |     4.4945±0.6109 |     2.4695±0.4023 |
+| DoPFN Joint-2D                     | **5.7038±0.8368** | **4.4645±0.5963** | **1.5492±0.1466** |
+| DoPFN Joint-2D interior mean (raw) |     5.7064±0.8374 |     4.4726±0.5969 |     1.5647±0.1461 |
+  dopfn_native: max |finite-grid moment - full mean| = 50.3259
+  dopfn_joint: max |finite-grid moment - full mean| = 0.000571078
+
+**TAIL NOTE:** The finite tau grid omits distant tail mass for ['dopfn_native']. NLL is evaluated at the observed tau and point errors use exact full-density means; L2/KL/mass are finite-grid quantities. In particular, KL_rev is not the full-support reverse KL when omitted tail mass lies far from the truth.
+
+|              | contrast                                       |           dNLL |         dKLrev |          dPEHE |
+| ------------ | ---------------------------------------------- | -------------: | -------------: | -------------: |
+| **HEADLINE** | model gap as run (dopfn_native -> dopfn_joint) | +0.3932±0.0336 | -4.0949±1.0072 | -0.8975±0.2663 |
+
+_negative = destination method has lower error._
+_Native DoPFN and its joint head use different resolutions; this is an as-run comparison._
+
+### ACIC — DoPFN
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
+
+realizations=10, ~481 queries each, graph=none, |tau*|>3: 0.00%
+
+| method                |                nll |                l2 |            kl_fwd |            kl_rev |              mass |
+| --------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ----------------: |
+| DoPFN (x)indep native |     -0.0245±0.1144 |     1.7014±0.0452 |     1.2603±0.0704 |    14.9594±1.6459 |     0.9998±0.0000 |
+| DoPFN Joint-2D        | **-0.2285±0.2289** | **1.5219±0.0903** | **1.0554±0.1944** | **6.1542±1.3511** | **1.0000±0.0000** |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator                     |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------------- | ----------------: | ----------------: | ----------------: |
+| DoPFN (x)indep native              |     4.1553±0.5434 |     3.3656±0.4353 |     2.4312±0.3214 |
+| DoPFN Joint-2D                     | **3.2313±0.5948** | **2.4505±0.4441** | **0.8903±0.1348** |
+| DoPFN Joint-2D interior mean (raw) |     3.2328±0.6041 |     2.4534±0.4550 |     0.9367±0.1365 |
+  dopfn_native: max |finite-grid moment - full mean| = 10.1372
+  dopfn_joint: max |finite-grid moment - full mean| = 0.000368183
+
+**TAIL NOTE:** The finite tau grid omits distant tail mass for ['dopfn_native']. NLL is evaluated at the observed tau and point errors use exact full-density means; L2/KL/mass are finite-grid quantities. In particular, KL_rev is not the full-support reverse KL when omitted tail mass lies far from the truth.
+
+|              | contrast                                       |           dNLL |         dKLrev |          dPEHE |
+| ------------ | ---------------------------------------------- | -------------: | -------------: | -------------: |
+| **HEADLINE** | model gap as run (dopfn_native -> dopfn_joint) | -0.2040±0.1471 | -8.8052±1.1319 | -0.9240±0.2902 |
+
+_negative = destination method has lower error._
+_Native DoPFN and its joint head use different resolutions; this is an as-run comparison._
