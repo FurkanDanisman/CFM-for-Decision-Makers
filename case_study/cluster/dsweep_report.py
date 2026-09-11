@@ -105,13 +105,20 @@ def main():
     ap.add_argument("--out", required=True, help="Output CSV path.")
     ap.add_argument("--repo", default=os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
+    ap.add_argument("--flat", action="store_true",
+                    help="Root is a flat ctx<N>/<model>/<case> tree (original-data "
+                         "/ table3 layout, no shift/d nesting). Emits shift=orig, d=0.")
     a = ap.parse_args()
     sys.path.insert(0, os.path.join(a.repo, "realcause_eval"))
     import aggregate_scm_ctx_sweep as A
     cases = A.CASES
 
-    rx = re.compile(r".*/shift([^/]+)/d(\d+)/ctx(\d+)$")
-    ctx_dirs = sorted(glob.glob(os.path.join(a.root, "shift*", "d*", "ctx*")))
+    if a.flat:
+        rx = re.compile(r".*/ctx(\d+)$")
+        ctx_dirs = sorted(glob.glob(os.path.join(a.root, "ctx*")))
+    else:
+        rx = re.compile(r".*/shift([^/]+)/d(\d+)/ctx(\d+)$")
+        ctx_dirs = sorted(glob.glob(os.path.join(a.root, "shift*", "d*", "ctx*")))
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     n_rows = 0
     with open(a.out, "w") as fh:
@@ -122,7 +129,10 @@ def main():
             m = rx.match(cd)
             if not m:
                 continue
-            shift, d, N = m.group(1), int(m.group(2)), int(m.group(3))
+            if a.flat:
+                shift, d, N = "orig", 0, int(m.group(1))
+            else:
+                shift, d, N = m.group(1), int(m.group(2)), int(m.group(3))
             for dirn, kind, tag in MODELS:
                 label = dirn if tag is None else f"{dirn}_{tag}"
                 for case in cases:
