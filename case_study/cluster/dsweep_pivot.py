@@ -22,7 +22,8 @@ import pandas as pd
 
 _MODEL_ORDER = ["dopfn_native", "dopfn_bb", "graph2d_noanc", "uwyk_noanc",
                 "graph2d_v3a", "uwyk_v3a", "graph2d_v3b", "uwyk_v3b",
-                "cpfn1d_perarm", "cpfn1d_pooled", "cpfn2d_pooled", "cpfn2d_log"]
+                "cpfn1d_perarm", "cpfn1d_pooled",
+                "cpfn2d_pooled", "cpfn2d_perarm", "cpfn2d_log"]
 _CASE_ORDER = ["Observed_Confounder", "Observed_Mediator",
                "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
                "Frontdoor_Criterion", "Backdoor_Criterion"]
