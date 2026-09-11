@@ -165,8 +165,17 @@ def interval_95(t, p):
 
 def score_query(t, p, y):
     lo, hi = interval_95(t, p)
+    # Predictive mean and sd are carried alongside the scores as a units check.
+    # A density living on the wrong scale still produces finite CRPS/coverage,
+    # it just looks like a very bad model — so the only way to tell a broken
+    # unit conversion from a genuinely poor forecast is to compare the
+    # predictive spread against the spread of the truth. cpfn1d hard-asserts
+    # this at dump time; the other harnesses do not.
+    mu = float(np.sum(t * p))
+    sd = float(np.sqrt(max(np.sum((t - mu) ** 2 * p), 0.0)))
     return dict(cover=float(lo <= y <= hi), length=float(hi - lo),
-                crps=crps_discrete(t, p, y), wis=wis_discrete(t, p, y))
+                crps=crps_discrete(t, p, y), wis=wis_discrete(t, p, y),
+                pred_mean=mu, pred_sd=sd, bias=mu - y, y_true=y)
 
 
 # ── per-realization driver ────────────────────────────────────────────────────
@@ -281,8 +290,12 @@ def main():
                   f"{os.path.join(args.root, f'N{args.context}', subdir)}")
             continue
         arr = {k: np.array([a[k] for a in acc]) for k in acc[0]}
+        true_sd = float(arr["y_true"].std())
         rows.append(dict(
             method=label, n_real=n_files, n_query=len(acc),
+            pred_sd=float(arr["pred_sd"].mean()), true_sd=true_sd,
+            sd_ratio=float(arr["pred_sd"].mean() / true_sd) if true_sd > 0 else float("nan"),
+            bias=float(arr["bias"].mean()),
             coverage95=float(arr["cover"].mean()),
             length=float(arr["length"].mean()),
             length_sem=float(arr["length"].std(ddof=1) / np.sqrt(len(acc))),
@@ -297,7 +310,8 @@ def main():
             f"no density dumps under {args.root}/N{args.context}. "
             "Re-run the evals with DENSITY_DUMP=1.")
 
-    hdr = ["method", "n_real", "n_query", "coverage95", "length", "crps", "wis"]
+    hdr = ["method", "n_real", "n_query", "coverage95", "length", "crps", "wis",
+           "pred_sd", "true_sd", "sd_ratio", "bias"]
     L = [f"# CATE density calibration — d={args.nodes}, N={args.context}, "
          f"{args.subset}, 1D coupling = {args.coupling}", "",
          "2D heads: diagonal projection of the joint. 1D heads: independence",
@@ -306,11 +320,17 @@ def main():
          "the intervals are wider than they need to be. Read it WITH length —",
          "a wide interval buys coverage for free. CRPS and WIS are proper, so",
          "lower is better on both and they penalise that trade-off.", "",
+         "`sd_ratio` = mean predictive sd / sd of the true tau. A UNITS CHECK:",
+         "a density dumped on the wrong scale still scores finitely, it just",
+         "looks like a bad model. Values near 1 are well-calibrated in spread;",
+         "a ratio in the tens means the density is on the wrong axis, not that",
+         "the model is that much worse. `bias` is mean(E[tau]) - tau_true.", "",
          "| " + " | ".join(hdr) + " |", "|" + "|".join("---" for _ in hdr) + "|"]
     for r in rows:
         L.append("| {method} | {n_real} | {n_query} | {coverage95:.3f} | "
                  "{length:.4f} ± {length_sem:.4f} | {crps:.4f} ± {crps_sem:.4f} | "
-                 "{wis:.4f} ± {wis_sem:.4f} |".format(**r))
+                 "{wis:.4f} ± {wis_sem:.4f} | {pred_sd:.4f} | {true_sd:.4f} | "
+                 "{sd_ratio:.1f} | {bias:+.4f} |".format(**r))
     md = "\n".join(L) + "\n"
     print(md)
     out = args.out or os.path.join(
