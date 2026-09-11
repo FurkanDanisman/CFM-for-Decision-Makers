@@ -11,7 +11,9 @@
 # 1D-vs-2D head comparison on the UWYK ComplexMech (Fig-4 prior) PEHE benchmark.
 #
 #   7 model-runs x 6 node counts x 5 context sizes = 210 tasks.
-#   Subset is `nonzero` only (on `zero` the true tau is identically 0).
+#   Subset defaults to `nonzero`. Re-run with SUBSET=zero for the
+#   zero-effect queries; aggregate_cmech_methods.py --subsets total then
+#   combines the two exactly (they are disjoint).
 #
 #   models      dopfn_native | dopfn_bb   (1D vs 2D)
 #               uwyk1d       | graph2d    (1D vs 2D)
@@ -89,7 +91,9 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_m
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled cpfn2d_log)
 NODES=(5 10 20 30 40 50)
 CONTEXTS=(50 100 250 500 1000)
-SUBSET=nonzero
+# Override with SUBSET=zero to run the zero-effect queries into the same
+# tree; DATASET already carries the subset, so no path change is needed.
+SUBSET="${SUBSET:-nonzero}"
 
 N_NODES=${#NODES[@]}; N_CTX=${#CONTEXTS[@]}
 PER_MODEL=$(( N_NODES * N_CTX ))
