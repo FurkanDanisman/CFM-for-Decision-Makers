@@ -15,8 +15,9 @@
 #   SHIFTS  default "+2 -2 +5 -5"
 #   DS      default "2 3 5 10 20 30 40 50"
 #   NS      default "50 100 250 500 1000"
-#   MODELS  default "bb cpfn2d cpfn1d graph2d"  (native/uwyk excluded — still
-#           failing from the earlier run; add them once their error is fixed)
+#   MODELS  default "native bb cpfn2d cpfn1d graph2d uwyk"  (native/uwyk write
+#           r###.npz rather than <case>_r###.npz — that naming, not a failure,
+#           was why an earlier '*_r*.npz' find missed them)
 #   CONFIRM must be 1 to actually submit.
 set -euo pipefail
 
@@ -27,7 +28,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 SHIFTS="${SHIFTS:-+2 -2 +5 -5}"
 DS="${DS:-2 3 5 10 20 30 40 50}"
 NS="${NS:-50 100 250 500 1000}"
-export MODELS="${MODELS:-bb cpfn2d cpfn1d graph2d}"
+export MODELS="${MODELS:-native bb cpfn2d cpfn1d graph2d uwyk}"
 
 # ~array jobs per (shift,d,N): bb(1)+cpfn2d(2:pooled,log)+cpfn1d(2)+graph2d(1)=6
 per_cell=0
