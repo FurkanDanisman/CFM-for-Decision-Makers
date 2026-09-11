@@ -56,7 +56,9 @@ def main():
                     help="'d' -> one model x case table per d (fixed N,shift); "
                          "'N' -> one per N (fixed d,shift). Table-3 style.")
     ap.add_argument("--readout", choices=["raw", "em"], default="raw",
-                    help="Panel mode: show PEHE + L1 for this readout, mean±SEM.")
+                    help="Panel mode: show PEHE + L1 for this readout.")
+    ap.add_argument("--stat", choices=["mean", "median"], default="mean",
+                    help="mean -> 'mean±SEM'; median -> 'median'.")
     a = ap.parse_args()
     df = pd.read_csv(a.csv)
     _short = lambda c: (c.replace("Observed_", "Obs").replace("_Criterion", "")
@@ -73,8 +75,9 @@ def main():
         cols = [c for c in _CASE_ORDER if c in set(sh_df["case"])]
         metrics = [(f"PEHE ({a.readout})", f"pehe_{a.readout}"),
                    (f"L1-ATE ({a.readout})", f"l1_{a.readout}")]
+        disp = "mean±SEM" if a.stat == "mean" else "median"
         print(f"\n############ {a.shift}  {fixed[0]}={fixed[1]}  readout={a.readout}"
-              f"  (mean±SEM; rows=model, cols=case; one block per {panel_ax}) ############")
+              f"  ({disp}; rows=model, cols=case; one block per {panel_ax}) ############")
         for v in vals:
             sub = sh_df[(sh_df[panel_ax] == v) & (sh_df[fixed[0]] == fixed[1])]
             if sub.empty:
@@ -83,17 +86,20 @@ def main():
                      [m for m in sub["model"].unique() if m not in _MODEL_ORDER]
             print(f"\n════════ {panel_ax}={v} ════════")
             for title, metric in metrics:
-                sem = metric + "_sem"
                 data = {}
                 for case in cols:
                     cc = sub[sub["case"] == case].set_index("model")
                     col = {}
                     for mdl in models:
-                        if mdl in cc.index:
-                            col[mdl] = f"{cc.at[mdl, metric]:.3f}±{cc.at[mdl, sem]:.3f}"
+                        if mdl not in cc.index:
+                            continue
+                        if a.stat == "mean":
+                            col[mdl] = f"{cc.at[mdl, metric]:.3f}±{cc.at[mdl, metric+'_sem']:.3f}"
+                        else:
+                            col[mdl] = f"{cc.at[mdl, metric+'_med']:.3f}"
                     data[_short(case)] = col
                 tbl = pd.DataFrame(data).reindex(index=models)
-                print(f"\n  -- {title} --")
+                print(f"\n  -- {title} ({disp}) --")
                 print(tbl.to_string())
         print()
         return

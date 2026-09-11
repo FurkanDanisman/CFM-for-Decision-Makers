@@ -1,19 +1,27 @@
 """Aggregate the d_variation eval grid into one tidy long-form CSV.
 
-Walks <root>/shift<S>/d<K>/ctx<N>/<model>/<case>/... and writes rows:
-    shift, d, N, case, model, pehe_raw, pehe_em, l1_raw, l1_em, n
-so you can pivot however you like (PEHE vs d, vs N, per shift, etc.).
+Walks <root>/shift<S>/d<K>/ctx<N>/<model>/<case>/... and writes, per
+(shift, d, N, case, model), the mean / SEM / median of each metric over the
+realizations:
+    shift,d,N,case,model,
+    pehe_raw,pehe_raw_sem,pehe_raw_med, pehe_em,pehe_em_sem,pehe_em_med,
+    l1_raw,l1_raw_sem,l1_raw_med,      l1_em,l1_em_sem,l1_em_med, n
 
-Metric sources (per realization, then mean over realizations):
-  uniform (cpfn*, native, uwyk*): pehe_raw / pehe_em ; err_raw / err_em (already
-      L1 |ate_hat - true_ate| for the case studies)
-  dopfn_bb (summary.npz arrays): pehe / pehe_em ; |ate_pred - true_ate| and
-      |ate_pred_em - true_ate|
-  graph2d (per-realization, per anc tag): pehe_raw_<tag> / pehe_em_<tag> ;
-      |ate_raw_<tag> - true_ate| (em L1 = |ate_em_<tag> - true_ate| if present)
+Modes:
+  (default)         grid layout shift<S>/d<K>/ctx<N>/...
+  --flat            flat layout ctx<N>/<model>/<case>/... (original/table3 run);
+                    rows tagged shift=orig, d=0.
+  --combine-shifts S1 S2 ...   pool realizations ACROSS those shift roots for
+                    each (d,N,case,model) — one row per cell, tagged with
+                    --combine-label. Only cells present in ALL listed shifts are
+                    emitted (so mismatched contexts drop out automatically).
+                    Pooling is done on the raw per-realization values, so the
+                    median and SEM are correct for the combined set.
 
 Usage:
-    python case_study/cluster/dsweep_report.py --root <RESULTS_ROOT> --out grid.csv
+    python dsweep_report.py --root <RESULTS_ROOT> --out grid.csv
+    python dsweep_report.py --root <RESULTS_ROOT> --combine-shifts shift0 shift+2 \
+        --combine-label shift0+2 --out combined.csv
 """
 from __future__ import annotations
 
@@ -36,19 +44,27 @@ MODELS = [
     ("uwyk", "uniform", None), ("uwyk_v3a", "uniform", None),
     ("uwyk_noanc", "uniform", None),
 ]
+METRICS = ["pehe_raw", "pehe_em", "l1_raw", "l1_em"]
 
 
-def _ms(a):
-    """(mean, SEM) over finite values."""
-    a = np.asarray([x for x in a if x is not None and np.isfinite(x)], dtype=float)
+def _scalar(v):
+    if v is None:
+        return None
+    v = np.asarray(v).reshape(-1)
+    return float(v[0]) if v.size else None
+
+
+def _stats(vals):
+    """(mean, sem, median) over finite values."""
+    a = np.asarray([x for x in vals if x is not None and np.isfinite(x)], dtype=float)
     if a.size == 0:
-        return float("nan"), float("nan")
+        return float("nan"), float("nan"), float("nan")
     sem = float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else 0.0
-    return float(a.mean()), sem
+    return float(a.mean()), sem, float(np.median(a))
 
 
-def read_cell(A, cell, kind, tag):
-    """Return dict {pehe_raw:(m,sem), pehe_em, l1_raw, l1_em, n} for one cell."""
+def collect(A, cell, kind, tag):
+    """Return {metric: [per-realization values]} for one model/case dir, or None."""
     if kind == "dopfn_bb":
         f = os.path.join(cell, "summary.npz")
         if not os.path.isfile(f):
@@ -59,10 +75,9 @@ def read_cell(A, cell, kind, tag):
             ta = A._first(z, ["true_ate"])
         if pr is None:
             return None
-        l1r = np.abs(ap - ta) if ap is not None and ta is not None else [None]
-        l1e = np.abs(ae - ta) if ae is not None and ta is not None else [None]
-        return {"pehe_raw": _ms(pr), "pehe_em": _ms(pe),
-                "l1_raw": _ms(l1r), "l1_em": _ms(l1e), "n": len(pr)}
+        l1r = list(np.abs(ap - ta)) if ap is not None and ta is not None else []
+        l1e = list(np.abs(ae - ta)) if ae is not None and ta is not None else []
+        return {"pehe_raw": list(pr), "pehe_em": list(pe), "l1_raw": l1r, "l1_em": l1e}
 
     if kind == "graph2d":
         pr_k = [f"pehe_raw_{tag}"]; pe_k = [f"pehe_em_{tag}", f"pehe_full_{tag}", f"pehe_raw_{tag}"]
@@ -70,62 +85,93 @@ def read_cell(A, cell, kind, tag):
         paths = sorted(glob.glob(os.path.join(cell, "*_r*.npz")))
     else:  # uniform
         pr_k = ["pehe_raw", "pehe"]; pe_k = ["pehe_em", "pehe_full", "pehe_raw", "pehe"]
+        er_k = ["err_raw"]; ee_k = ["err_em"]  # already L1 for the case studies
         paths = (sorted(glob.glob(os.path.join(cell, "r*.npz")))
                  or sorted(glob.glob(os.path.join(cell, "*_r*.npz"))))
-        er_k = ["err_raw"]; ee_k = ["err_em"]  # already L1 for case studies
     if not paths:
         return None
-    prs, pes, l1rs, l1es = [], [], [], []
+    out = {m: [] for m in METRICS}
     for p in paths:
         with np.load(p, allow_pickle=True) as z:
-            prs.append(_scalar(A._first(z, pr_k)))
-            pes.append(_scalar(A._first(z, pe_k)))
+            out["pehe_raw"].append(_scalar(A._first(z, pr_k)))
+            out["pehe_em"].append(_scalar(A._first(z, pe_k)))
             if kind == "graph2d":
                 ar = _scalar(A._first(z, ar_k)); ae = _scalar(A._first(z, ae_k))
                 ta = _scalar(A._first(z, ["true_ate"]))
-                l1rs.append(abs(ar - ta) if ar is not None and ta is not None else None)
-                l1es.append(abs(ae - ta) if ae is not None and ta is not None else None)
+                out["l1_raw"].append(abs(ar - ta) if ar is not None and ta is not None else None)
+                out["l1_em"].append(abs(ae - ta) if ae is not None and ta is not None else None)
             else:
-                l1rs.append(_scalar(A._first(z, er_k)))
-                l1es.append(_scalar(A._first(z, ee_k)))
-    return {"pehe_raw": _ms(prs), "pehe_em": _ms(pes),
-            "l1_raw": _ms(l1rs), "l1_em": _ms(l1es),
-            "n": len([x for x in prs if x is not None])}
+                out["l1_raw"].append(_scalar(A._first(z, er_k)))
+                out["l1_em"].append(_scalar(A._first(z, ee_k)))
+    return out
 
 
-def _scalar(v):
-    if v is None:
-        return None
-    v = np.asarray(v).reshape(-1)
-    return float(v[0]) if v.size else None
+_HEADER = ("shift,d,N,case,model,"
+           "pehe_raw,pehe_raw_sem,pehe_raw_med,pehe_em,pehe_em_sem,pehe_em_med,"
+           "l1_raw,l1_raw_sem,l1_raw_med,l1_em,l1_em_sem,l1_em_med,n\n")
+
+
+def _row(shift, d, N, case, label, coll):
+    n = max((len(coll[m]) for m in METRICS), default=0)
+    vals = []
+    for m in METRICS:
+        vals.extend(_stats(coll[m]))
+    return ("%s,%d,%d,%s,%s," + ",".join(["%.6f"] * 12) + ",%d\n") % (
+        (shift, d, N, case, label) + tuple(vals) + (n,))
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True, help="Grid root (holds shift<S>/d<K>/ctx<N>/...).")
-    ap.add_argument("--out", required=True, help="Output CSV path.")
+    ap.add_argument("--root", required=True)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--flat", action="store_true",
+                    help="Flat ctx<N>/<model>/<case> root (original/table3); shift=orig,d=0.")
+    ap.add_argument("--combine-shifts", nargs="*", default=None,
+                    help="Pool realizations across these shift subdirs of --root.")
+    ap.add_argument("--combine-label", default=None, help="shift label for the pooled rows.")
     ap.add_argument("--repo", default=os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
-    ap.add_argument("--flat", action="store_true",
-                    help="Root is a flat ctx<N>/<model>/<case> tree (original-data "
-                         "/ table3 layout, no shift/d nesting). Emits shift=orig, d=0.")
     a = ap.parse_args()
     sys.path.insert(0, os.path.join(a.repo, "realcause_eval"))
     import aggregate_scm_ctx_sweep as A
     cases = A.CASES
-
-    if a.flat:
-        rx = re.compile(r".*/ctx(\d+)$")
-        ctx_dirs = sorted(glob.glob(os.path.join(a.root, "ctx*")))
-    else:
-        rx = re.compile(r".*/shift([^/]+)/d(\d+)/ctx(\d+)$")
-        ctx_dirs = sorted(glob.glob(os.path.join(a.root, "shift*", "d*", "ctx*")))
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     n_rows = 0
+
     with open(a.out, "w") as fh:
-        fh.write("shift,d,N,case,model,"
-                 "pehe_raw,pehe_raw_sem,pehe_em,pehe_em_sem,"
-                 "l1_raw,l1_raw_sem,l1_em,l1_em_sem,n\n")
+        fh.write(_HEADER)
+
+        # ── Combine mode: pool across shift roots per (d,N,case,model) ──
+        if a.combine_shifts:
+            shifts = a.combine_shifts
+            label = a.combine_label or "+".join(shifts)
+            base = os.path.join(a.root, shifts[0])
+            rx = re.compile(r".*/d(\d+)/ctx(\d+)$")
+            for cd in sorted(glob.glob(os.path.join(base, "d*", "ctx*"))):
+                m = rx.match(cd)
+                if not m:
+                    continue
+                d, N = int(m.group(1)), int(m.group(2))
+                for dirn, kind, tag in MODELS:
+                    lab = dirn if tag is None else f"{dirn}_{tag}"
+                    for case in cases:
+                        cells = [os.path.join(a.root, sh, f"d{d}", f"ctx{N}", dirn, case)
+                                 for sh in shifts]
+                        colls = [collect(A, c, kind, tag) for c in cells]
+                        if any(c is None for c in colls):   # need all shifts present
+                            continue
+                        pooled = {mt: sum((c[mt] for c in colls), []) for mt in METRICS}
+                        fh.write(_row(label, d, N, case, lab, pooled)); n_rows += 1
+            print(f"[dsweep_report] combined {shifts} -> '{label}': {n_rows} rows -> {a.out}")
+            return
+
+        # ── Normal (grid or flat) ──
+        if a.flat:
+            rx = re.compile(r".*/ctx(\d+)$")
+            ctx_dirs = sorted(glob.glob(os.path.join(a.root, "ctx*")))
+        else:
+            rx = re.compile(r".*/shift([^/]+)/d(\d+)/ctx(\d+)$")
+            ctx_dirs = sorted(glob.glob(os.path.join(a.root, "shift*", "d*", "ctx*")))
         for cd in ctx_dirs:
             m = rx.match(cd)
             if not m:
@@ -135,25 +181,16 @@ def main():
             else:
                 shift, d, N = "shift" + m.group(1), int(m.group(2)), int(m.group(3))
             for dirn, kind, tag in MODELS:
-                label = dirn if tag is None else f"{dirn}_{tag}"
+                lab = dirn if tag is None else f"{dirn}_{tag}"
                 for case in cases:
-                    cell = os.path.join(cd, dirn, case)
-                    if not os.path.isdir(cell):
+                    coll = collect(A, os.path.join(cd, dirn, case), kind, tag)
+                    if coll is None:
                         continue
-                    r = read_cell(A, cell, kind, tag)
-                    if r is None:
-                        continue
-                    fh.write("%s,%d,%d,%s,%s,"
-                             "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n" % (
-                                 shift, d, N, case, label,
-                                 r["pehe_raw"][0], r["pehe_raw"][1],
-                                 r["pehe_em"][0], r["pehe_em"][1],
-                                 r["l1_raw"][0], r["l1_raw"][1],
-                                 r["l1_em"][0], r["l1_em"][1], r["n"]))
-                    n_rows += 1
+                    fh.write(_row(shift, d, N, case, lab, coll)); n_rows += 1
+
     print(f"[dsweep_report] wrote {n_rows} rows -> {a.out}")
     if n_rows == 0:
-        print(f"[dsweep_report] (nothing found under {a.root} — jobs running or wrong path?)")
+        print(f"[dsweep_report] (nothing under {a.root} — jobs running or wrong path?)")
 
 
 if __name__ == "__main__":
