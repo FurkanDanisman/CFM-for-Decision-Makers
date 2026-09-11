@@ -84,9 +84,9 @@ def load_cell(root, subdir, tag, dataset):
                     if "true_ate" in z.files else np.full(p.shape, np.nan)
                 out = {}
                 for i in range(p.size):
-                    l1 = (abs(ap[i] - at[i])
-                          if i < ap.size and i < at.size else np.nan)
-                    out[i] = (float(p[i]), float(l1))
+                    out[i] = (float(p[i]),
+                              float(ap[i]) if i < ap.size else np.nan,
+                              float(at[i]) if i < at.size else np.nan)
                 return out
 
     out = {}
@@ -101,8 +101,60 @@ def load_cell(root, subdir, tag, dataset):
             at = _first(z, ["true_ate"])
         if pe is None or not np.isfinite(pe):
             continue
-        l1 = abs(ap - at) if (ap is not None and at is not None) else np.nan
-        out[int(digits)] = (pe, l1)
+        out[int(digits)] = (pe, ap if ap is not None else np.nan,
+                            at if at is not None else np.nan)
+    return out
+
+
+def subset_sources(n_nodes, subset, data_root):
+    """Adapter index -> source realization, mirroring UWYKFig34Dataset's skipping.
+
+    The eval harnesses name their npz by the ADAPTER index (`for r in
+    range(ds.n_tables)`), and the adapter drops realizations whose subset is
+    empty. The nonzero and zero subsets therefore drop different realizations,
+    so their index r means a different dataset in each. Combining them requires
+    mapping both back to the source realization, which this reconstructs from
+    the benchmark data itself.
+    """
+    cell = os.path.join(data_root, "complexmech", f"{n_nodes}node",
+                        "path_TY", "hide_0.0")
+    src, counts = [], {}
+    for p in sorted(glob.glob(os.path.join(cell, "r*.npz")),
+                    key=lambda q: int(os.path.basename(q)[1:-4])):
+        i = int(os.path.basename(p)[1:-4])
+        with np.load(p) as z:
+            tau = np.asarray(z["true_cate"], dtype=np.float64)
+        n1, n0 = int((tau != 0).sum()), int((tau == 0).sum())
+        counts[i] = (n0, n1)
+        if (n1 if subset == "nonzero" else n0) > 0:
+            src.append(i)
+    return src, counts
+
+
+def combine_total(got_nz, got_z, n_nodes, data_root):
+    """Pool the disjoint zero / nonzero query sets back into all queries.
+
+    PEHE is an RMS over queries, so it pools exactly:
+        pehe_all^2 = (n0*pehe_zero^2 + n1*pehe_nonzero^2) / (n0 + n1)
+    and the ATE is a plain mean, so it pools by the same weights. Realizations
+    present in only one subset keep that subset's value.
+    """
+    src_nz, counts = subset_sources(n_nodes, "nonzero", data_root)
+    src_z, _ = subset_sources(n_nodes, "zero", data_root)
+    by_src_nz = {s: got_nz[i] for i, s in enumerate(src_nz) if i in got_nz}
+    by_src_z = {s: got_z[i] for i, s in enumerate(src_z) if i in got_z}
+
+    out = {}
+    for s in sorted(set(by_src_nz) | set(by_src_z)):
+        n0, n1 = counts.get(s, (0, 0))
+        a, b = by_src_nz.get(s), by_src_z.get(s)
+        if a is not None and b is not None and (n0 + n1) > 0:
+            pe = float(np.sqrt((n1 * a[0] ** 2 + n0 * b[0] ** 2) / (n0 + n1)))
+            ap = (n1 * a[1] + n0 * b[1]) / (n0 + n1)
+            at = (n1 * a[2] + n0 * b[2]) / (n0 + n1)
+        else:
+            pe, ap, at = (a or b)
+        out[s] = (pe, ap, at)
     return out
 
 
@@ -114,7 +166,11 @@ def null_row(n_nodes, subset, data_root):
     for p in sorted(glob.glob(os.path.join(cell, "r*.npz"))):
         with np.load(p) as z:
             tau = np.asarray(z["true_cate"], dtype=np.float64)
-        tau = tau[tau != 0] if subset == "nonzero" else tau[tau == 0]
+        if subset == "nonzero":
+            tau = tau[tau != 0]
+        elif subset == "zero":
+            tau = tau[tau == 0]
+        # subset == "total": keep every query
         if tau.size:
             pe.append(float(np.sqrt((tau ** 2).mean())))
             l1.append(abs(float(tau.mean())))
@@ -149,7 +205,9 @@ def main():
                      "UWYK_Fig3_4", "data")))
     ap.add_argument("--nodes", type=int, nargs="+", default=list(NODE_COUNTS))
     ap.add_argument("--subsets", nargs="+", default=["nonzero"],
-                    choices=["nonzero", "zero"])
+                    choices=["nonzero", "zero", "total"],
+                    help="`total` pools zero+nonzero exactly; it needs BOTH "
+                         "subsets to have been run (SUBSET=zero in the sbatch).")
     ap.add_argument("--out", default=None)
     ap.add_argument("--all-contexts", action="store_true",
                     help="--root holds N<ctx>/ subdirs (as the sbatch writes): "
@@ -188,12 +246,20 @@ def _build(args):
             rows.append({"method": "— null (predict 0) —", "n_nodes": n,
                          "subset": subset, "pehe": stats(npe), "ate": stats(nl1)})
             for label, subdir, tag in METHODS:
-                got = load_cell(args.root, subdir, tag, ds)
+                if subset == "total":
+                    gz = load_cell(args.root, subdir, tag, f"CMECH_n{n}_zero")
+                    gn = load_cell(args.root, subdir, tag, f"CMECH_n{n}_nonzero")
+                    if not gz or not gn:
+                        continue
+                    got = combine_total(gn, gz, n, args.data_root)
+                else:
+                    got = load_cell(args.root, subdir, tag, ds)
                 if not got:
                     continue
                 rows.append({"method": label, "n_nodes": n, "subset": subset,
                              "pehe": stats([v[0] for v in got.values()]),
-                             "ate": stats([v[1] for v in got.values()])})
+                             "ate": stats([abs(v[1] - v[2])
+                                           for v in got.values()])})
 
     if not any(r["method"] != "— null (predict 0) —" for r in rows):
         raise SystemExit(f"no method results under {args.root}")
