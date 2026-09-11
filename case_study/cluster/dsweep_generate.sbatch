@@ -5,7 +5,7 @@
 #SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --array=0-3
+#SBATCH --array=0-4
 
 # Regenerate the d_variation data on the cluster (CPU) — one array task per shift.
 # 96k npz total (4 shifts x 8 d x 6 cases x 5 N x 100), deterministic (seed_base=0),
@@ -32,7 +32,7 @@ CONTEXTS="${CONTEXTS:-50 100 250 500 1000}"
 N_REAL="${N_REAL:-100}"
 
 case "$SLURM_ARRAY_TASK_ID" in
-    0) SHIFT=+2 ;; 1) SHIFT=-2 ;; 2) SHIFT=+5 ;; 3) SHIFT=-5 ;;
+    0) SHIFT=+2 ;; 1) SHIFT=-2 ;; 2) SHIFT=+5 ;; 3) SHIFT=-5 ;; 4) SHIFT=0 ;;
     *) echo "bad task $SLURM_ARRAY_TASK_ID" >&2; exit 2 ;;
 esac
 
