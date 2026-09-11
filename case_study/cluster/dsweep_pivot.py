@@ -22,8 +22,7 @@ import pandas as pd
 
 _MODEL_ORDER = ["dopfn_native", "dopfn_bb", "graph2d_noanc", "uwyk_noanc",
                 "graph2d_v3a", "uwyk_v3a", "graph2d_v3b", "uwyk_v3b",
-                "cpfn1d_perarm", "cpfn1d_pooled",
-                "cpfn2d_pooled", "cpfn2d_perarm", "cpfn2d_log"]
+                "cpfn1d_perarm", "cpfn2d_pooled"]
 _CASE_ORDER = ["Observed_Confounder", "Observed_Mediator",
                "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
                "Frontdoor_Criterion", "Backdoor_Criterion"]
@@ -52,9 +51,13 @@ def main():
     ap.add_argument("--d", type=int, default=3, help="Fixed d (when --by N).")
     ap.add_argument("--case", default=None, help="One case, or omit for mean over cases.")
     ap.add_argument("--all-shifts", action="store_true")
-    ap.add_argument("--panels", choices=["none", "d", "N"], default="none",
+    ap.add_argument("--panels", choices=["none", "d", "N", "case"], default="none",
                     help="'d' -> one model x case table per d (fixed N,shift); "
-                         "'N' -> one per N (fixed d,shift). Table-3 style.")
+                         "'N' -> one per N (fixed d,shift); "
+                         "'case' -> one PEHE + one L1 table per case (rows=model, "
+                         "cols=d) at fixed N,shift, cells = mean±SEM | median[IQR].")
+    ap.add_argument("--d-values", nargs="*", type=int, default=None,
+                    help="Restrict the d columns (e.g. 5 10 20 30 40 50).")
     ap.add_argument("--readout", choices=["raw", "em"], default="raw",
                     help="Panel mode: show PEHE + L1 for this readout.")
     ap.add_argument("--stat", choices=["mean", "median"], default="mean",
@@ -65,8 +68,44 @@ def main():
                         .replace("_and_Confounder", "+Cf").replace("_Confounder", "Cf")
                         .replace("_Mediator", "Med"))
 
-    # ── Panel mode: one table per d (or per N); rows=model, cols=case, ──
-    #    cells = "mean±sem"; PEHE and L1 tables for the chosen readout. ──
+    # ── Panel mode 'case': one PEHE + one L1 table per case; rows=model, ──
+    #    cols=d; cells = "mean±sem | median[q1,q3]"; fixed N + shift. ──
+    if a.panels == "case":
+        sh_df = df[df["shift"] == a.shift]
+        if a.d_values:
+            sh_df = sh_df[sh_df["d"].isin(a.d_values)]
+        dvals = [int(x) for x in sorted(sh_df["d"].unique())]
+        cases = [c for c in _CASE_ORDER if c in set(sh_df["case"])]
+        metrics = [(f"PEHE ({a.readout})", f"pehe_{a.readout}"),
+                   (f"L1-ATE ({a.readout})", f"l1_{a.readout}")]
+
+        def _cell(r):
+            return (f"{r[m]:.3f}±{r[m+'_sem']:.3f} | "
+                    f"{r[m+'_med']:.3f}[{r[m+'_q1']:.3f},{r[m+'_q3']:.3f}]")
+
+        print(f"\n############ {a.shift}  N={a.n}  readout={a.readout}  d={dvals}  "
+              f"(cell = mean±SEM | median[Q1,Q3]; rows=model, cols=d) ############")
+        for case in cases:
+            sub = sh_df[(sh_df["case"] == case) & (sh_df["N"] == a.n)]
+            if sub.empty:
+                continue
+            models = [x for x in _MODEL_ORDER if x in set(sub["model"])] + \
+                     [x for x in sub["model"].unique() if x not in _MODEL_ORDER]
+            print(f"\n════════ case = {case} ════════")
+            for title, m in metrics:
+                data = {}
+                for dv in dvals:
+                    dd = sub[sub["d"] == dv].set_index("model")
+                    col = {mdl: _cell(dd.loc[mdl]) for mdl in models if mdl in dd.index}
+                    data[f"d{dv}"] = col
+                tbl = pd.DataFrame(data).reindex(index=models)[[f"d{dv}" for dv in dvals]]
+                print(f"\n  -- {title} --")
+                print(tbl.to_string())
+        print()
+        return
+
+    # ── Panel mode 'd'/'N': one table per d (or per N); rows=model, cols=case, ──
+    #    cells = "mean±sem" or "median"; PEHE and L1 tables for the readout. ──
     if a.panels != "none":
         panel_ax = a.panels
         fixed = ("N", a.n) if panel_ax == "d" else ("d", a.d)
