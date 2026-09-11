@@ -87,84 +87,76 @@ def build(args):
     return rows, nulls, missing
 
 
-def draw(rows, nulls, args):
+def draw_one(rows, mi, args, out_path, show_legend):
+    """One metric, one figure. No suptitle, no null line — axis labels carry it."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    panels = [("sqrt(PEHE)", 0, nulls[0]), ("ATE $L_1$", 1, nulls[1])]
-    fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.4), facecolor=SURFACE)
+    ylab = ("sqrt(PEHE)", "ATE $L_1$")[mi]
+    fig, ax = plt.subplots(figsize=(6.6, 4.2), facecolor=SURFACE)
+    ax.set_facecolor(SURFACE)
+
     x = np.arange(len(rows))
-    # 2px-equivalent gap between the paired bars, per the mark spec.
     w, gap = 0.34, 0.02
+    v1 = [r[1][mi]["mean"] for r in rows]
+    e1 = [r[1][mi]["sem"] for r in rows]
+    v2 = [r[2][mi]["mean"] for r in rows]
+    e2 = [r[2][mi]["sem"] for r in rows]
 
-    for ax, (name, mi, null) in zip(axes, panels):
-        ax.set_facecolor(SURFACE)
-        v1 = [r[1][mi]["mean"] for r in rows]
-        e1 = [r[1][mi]["sem"] for r in rows]
-        v2 = [r[2][mi]["mean"] for r in rows]
-        e2 = [r[2][mi]["sem"] for r in rows]
+    ax.bar(x - w/2 - gap/2, v1, w, yerr=e1, capsize=3, color=C_1D,
+           label="1D head", error_kw=dict(ecolor=INK_MUTED, lw=1.1))
+    ax.bar(x + w/2 + gap/2, v2, w, yerr=e2, capsize=3, color=C_2D,
+           label="2D head", error_kw=dict(ecolor=INK_MUTED, lw=1.1))
 
-        b1 = ax.bar(x - w/2 - gap/2, v1, w, yerr=e1, capsize=3,
-                    color=C_1D, label="1D head",
-                    error_kw=dict(ecolor=INK_MUTED, lw=1.1))
-        b2 = ax.bar(x + w/2 + gap/2, v2, w, yerr=e2, capsize=3,
-                    color=C_2D, label="2D head",
-                    error_kw=dict(ecolor=INK_MUTED, lw=1.1))
+    top = max(max(np.add(v1, e1)), max(np.add(v2, e2)))
+    ax.set_ylim(0, top * (1.30 if show_legend else 1.16))
+    for xs, vals in ((x - w/2 - gap/2, v1), (x + w/2 + gap/2, v2)):
+        for xi, v in zip(xs, vals):
+            ax.text(xi, v + top * 0.025, f"{v:.3f}", ha="center", va="bottom",
+                    fontsize=7.5, color=INK)
 
-        if np.isfinite(null):
-            # Labelled via the legend, not inline: an inline annotation collides
-            # with the bar value labels whenever a bar sits near the null, which
-            # is most of them at high node counts.
-            ax.axhline(null, ls=(0, (5, 3)), lw=1.3, color=INK_MUTED, zorder=1)
+    ax.set_xticks(x)
+    ax.set_xticklabels([r[0] for r in rows], fontsize=9, color=INK)
+    ax.set_ylabel(ylab, fontsize=10.5, color=INK)
+    ax.set_axisbelow(True)
+    ax.yaxis.grid(True, color=GRID, lw=0.8)
+    ax.xaxis.grid(False)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(GRID)
+    ax.tick_params(colors=INK_MUTED, labelsize=8.5, length=0)
+    if show_legend:
+        ax.legend(frameon=False, fontsize=9, loc="upper left", labelcolor=INK)
 
-        top = max(max(np.add(v1, e1)), max(np.add(v2, e2)),
-                  null if np.isfinite(null) else 0)
-        # Extra headroom on the left panel: it carries the legend, which
-        # otherwise grazes the tallest bar's value label.
-        ax.set_ylim(0, top * (1.40 if mi == 0 else 1.22))
-        for bars, vals in ((b1, v1), (b2, v2)):
-            for rect, v in zip(bars, vals):
-                ax.text(rect.get_x() + rect.get_width()/2,
-                        rect.get_height() + top * 0.025, f"{v:.3f}",
-                        ha="center", va="bottom", fontsize=7.5, color=INK)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=200, facecolor=SURFACE)
+    plt.close(fig)
+    return out_path
 
-        ax.set_xticks(x)
-        ax.set_xticklabels([r[0] for r in rows], fontsize=9, color=INK)
-        ax.set_ylabel(name, fontsize=10, color=INK)
-        ax.set_axisbelow(True)
-        ax.yaxis.grid(True, color=GRID, lw=0.8)
-        ax.xaxis.grid(False)
-        for side in ("top", "right"):
-            ax.spines[side].set_visible(False)
-        for side in ("left", "bottom"):
-            ax.spines[side].set_color(GRID)
-        ax.tick_params(colors=INK_MUTED, labelsize=8.5, length=0)
 
-    from matplotlib.lines import Line2D
-    handles = [
-        plt.Rectangle((0, 0), 1, 1, color=C_1D, label="1D head"),
-        plt.Rectangle((0, 0), 1, 1, color=C_2D, label="2D head"),
-        Line2D([0], [0], ls=(0, (5, 3)), lw=1.3, color=INK_MUTED,
-               label="null — predict $\\tau$=0 (no skill)"),
-    ]
-    axes[0].legend(handles=handles, frameon=False, fontsize=8.5,
-                   loc="upper left", labelcolor=INK)
-    sub = {"nonzero": "queries with a non-zero effect",
-           "zero": "queries with an exactly-zero effect",
-           "total": "all queries"}[args.subset]
-    fig.suptitle(f"ComplexMech — {args.nodes} nodes, context N={args.context} "
-                 f"({sub}); lower is better",
-                 fontsize=11.5, color=INK, y=0.99)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(args.out, dpi=200, facecolor=SURFACE)
-    print(f"[plot] {args.out}")
-
-    print(f"\n{'group':<16}{'1D':>18}{'2D':>18}   (metric: sqrt(PEHE))")
-    for label, a, b in rows:
-        print(f"{label:<16}{a[0]['mean']:>10.4f} ± {a[0]['sem']:<5.4f}"
-              f"{b[0]['mean']:>10.4f} ± {b[0]['sem']:<5.4f}")
-    print(f"{'null':<16}{nulls[0]:>10.4f}")
+def render_cell(args):
+    """Build one (nodes, context, subset) cell and write its two figures."""
+    rows, _nulls, missing = build(args)
+    if not rows:
+        return [], missing
+    # Legend rides on exactly one panel of the set; elsewhere it is redundant
+    # and eats headroom. Default: the N=50 / d=5 cell, per the figure plan.
+    if args.legend == "always":
+        show = True
+    elif args.legend == "never":
+        show = False
+    else:
+        show = (args.context == args.legend_context
+                and args.nodes == args.legend_nodes)
+    made = []
+    for mi, key in ((0, "pehe"), (1, "ate")):
+        out = os.path.join(
+            args.outdir,
+            f"bar_{key}_d{args.nodes}_N{args.context}_{args.subset}.png")
+        made.append(draw_one(rows, mi, args, out, show))
+    return made, missing
 
 
 def main():
@@ -178,19 +170,48 @@ def main():
     ap.add_argument("--cpfn2d", default="pooled", choices=["pooled", "log"])
     ap.add_argument("--data-root", default=os.environ.get(
         "UWYK_FIG34_DATA", os.path.join(_HERE, "data")))
-    ap.add_argument("--out", default=None)
+    ap.add_argument("--outdir", default=None)
+    ap.add_argument("--all", action="store_true",
+                    help="render every (node count, context) combination")
+    ap.add_argument("--all-nodes", type=int, nargs="+",
+                    default=[5, 10, 20, 30, 40, 50])
+    ap.add_argument("--all-contexts", type=int, nargs="+",
+                    default=[50, 100, 250, 500, 1000])
+    ap.add_argument("--legend", default="auto", choices=["auto", "always", "never"],
+                    help="auto = legend only on the --legend-context/--legend-nodes "
+                         "cell (default N=50, d=5)")
+    ap.add_argument("--legend-context", type=int, default=50)
+    ap.add_argument("--legend-nodes", type=int, default=5)
     args = ap.parse_args()
-    if args.out is None:
-        args.out = os.path.join(args.root,
-                                f"bar_1d_vs_2d_n{args.nodes}_N{args.context}"
-                                f"_{args.subset}.png")
+    if args.outdir is None:
+        args.outdir = os.path.join(args.root, "figures")
+    os.makedirs(args.outdir, exist_ok=True)
 
-    rows, nulls, missing = build(args)
-    if missing:
-        print(f"[warn] no data for: {', '.join(missing)} — omitted from the plot")
-    if not rows:
-        raise SystemExit(f"no data under {args.root}/N{args.context}")
-    draw(rows, nulls, args)
+    combos = ([(n, c) for c in args.all_contexts for n in args.all_nodes]
+              if args.all else [(args.nodes, args.context)])
+
+    made, skipped = [], []
+    for n, c in combos:
+        args.nodes, args.context = n, c
+        try:
+            files, missing = render_cell(args)
+        except Exception as exc:  # noqa: BLE001
+            skipped.append((n, c, str(exc)[:70]))
+            continue
+        if not files:
+            skipped.append((n, c, "no data"))
+            continue
+        if missing:
+            print(f"  [warn] d={n} N={c}: omitted {', '.join(missing)}")
+        made += files
+
+    for f in made:
+        print(f"[plot] {f}")
+    print(f"\n{len(made)} figures -> {args.outdir}")
+    if skipped:
+        print(f"{len(skipped)} cells skipped:")
+        for n, c, why in skipped:
+            print(f"   d={n:<3} N={c:<5} {why}")
 
 
 if __name__ == "__main__":
