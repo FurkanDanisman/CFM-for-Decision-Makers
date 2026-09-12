@@ -370,6 +370,10 @@ METHODS = [
     ("graph2d-v3a",   "graph2d",       "v3a"),
     ("cpfn1d",        "cpfn1d",        None),
     ("cpfn2d",        "cpfn2d_pooled", None),
+    # cpfn2d_log is deliberately absent: under a log target transform tau is not
+    # an affine function of the scaled difference, so the harness refuses to dump
+    # a density for it (and is right to). It still appears in the point-estimate
+    # tables.
 ]
 
 
