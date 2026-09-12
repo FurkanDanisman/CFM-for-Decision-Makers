@@ -106,27 +106,49 @@ def _fig_per_d(df, d, models, cases, logx, title):
     return fig
 
 
+def _pool_over_d(sub, col):
+    """Exact pooled (mean, SEM) over all d rows for one (case, model), using each
+    row's (mean, SEM, n). Equivalent to pooling every underlying realization:
+    grand mean is n-weighted; total variance = within + between (ANOVA identity)."""
+    m = sub[col].to_numpy(float)
+    sem = sub[col + "_sem"].to_numpy(float)
+    n = sub["n"].to_numpy(float)
+    ok = np.isfinite(m) & np.isfinite(n) & (n > 0)
+    m, sem, n = m[ok], sem[ok], n[ok]
+    if n.sum() == 0:
+        return np.nan, np.nan
+    N = n.sum()
+    grand = float((n * m).sum() / N)
+    sd = np.where(n > 1, sem * np.sqrt(n), 0.0)            # sd_d = sem_d*sqrt(n_d)
+    ss_within = float((sd ** 2 * np.maximum(n - 1, 0)).sum())
+    ss_between = float((n * (m - grand) ** 2).sum())
+    if N <= 1:
+        return grand, 0.0
+    pooled_var = (ss_within + ss_between) / (N - 1)
+    return grand, float(np.sqrt(pooled_var / N))
+
+
 def _fig_combined(df, dvals, models, cases, logx, title):
+    """One dot per model per cell, POOLED across all d (linear x by default)."""
     nC = len(cases)
-    cmap = plt.cm.viridis(np.linspace(0.05, 0.9, len(dvals)))
-    fig, axes = plt.subplots(len(_METRICS), nC, figsize=(2.55 * nC, 5.8),
+    fig, axes = plt.subplots(len(_METRICS), nC, figsize=(2.55 * nC, 5.4),
                              squeeze=False, sharey=True)
-    off = np.linspace(-0.28, 0.28, len(dvals))              # vertical jitter per d
     for ri, (mlabel, mkey) in enumerate(_METRICS):
         col = f"{mkey}_{ARGS.readout}"
         for ci, (ckey, clab) in enumerate(cases):
             ax = axes[ri][ci]
-            base = np.arange(len(models))[::-1]
-            for di, d in enumerate(dvals):
-                sub = df[(df["case"] == ckey) & (df["d"] == d)].set_index("model")
-                xs = [float(sub.at[m, col]) if m in sub.index else np.nan
-                      for m, _ in models]
-                es = [float(sub.at[m, col + "_sem"]) if m in sub.index else np.nan
-                      for m, _ in models]
-                ax.errorbar(xs, base + off[di], xerr=es, fmt="o", ms=3.5,
-                            capsize=1.5, lw=0.8, color=cmap[di], ecolor=cmap[di],
-                            mec="k", mew=0.25, label=f"d={d}" if (ri == 0 and ci == 0) else None)
-            ax.set_yticks(base)
+            ys = np.arange(len(models))[::-1]
+            xs, es = [], []
+            for mkey_, _ in models:
+                sub = df[(df["case"] == ckey) & (df["model"] == mkey_)]
+                if sub.empty:
+                    xs.append(np.nan); es.append(np.nan); continue
+                mu, se = _pool_over_d(sub, col)
+                xs.append(mu); es.append(se)
+            ax.errorbar(xs, ys, xerr=es, fmt="o", ms=5, capsize=2.5, lw=1.1,
+                        color="#1f77b4", ecolor="#888", mfc="#1f77b4",
+                        mec="k", mew=0.4)
+            ax.set_yticks(ys)
             if logx:
                 ax.set_xscale("log")
             ax.grid(axis="x", ls=":", alpha=0.5)
@@ -137,10 +159,8 @@ def _fig_combined(df, dvals, models, cases, logx, title):
                 ax.set_ylabel(f"{mlabel} ({ARGS.readout})", fontsize=10)
             if ri == len(_METRICS) - 1:
                 ax.set_xlabel(mlabel, fontsize=8)
-    fig.legend(loc="lower center", ncol=len(dvals), fontsize=8,
-               frameon=False, bbox_to_anchor=(0.5, 0.0))
-    fig.suptitle(title, fontsize=12)
-    fig.tight_layout(rect=(0, 0.05, 1, 0.96))
+    fig.suptitle(title + f"  [pooled over d={{{','.join(map(str, dvals))}}}]", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     return fig
 
 
