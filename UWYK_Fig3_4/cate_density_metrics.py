@@ -212,10 +212,22 @@ def _bin_width(z, J):
 def score_file(path, tag=None, coupling="indep"):
     """All per-query scores for one realization npz. None if it has no density."""
     with np.load(path, allow_pickle=True) as z:
-        def g(base):
-            for k in ((f"{base}_{tag}",) if tag else ()) + (base,):
+        # Density keys must match the REQUESTED tag. Falling back to the
+        # un-suffixed key when a tag is asked for produced two identical rows
+        # for uwyk1d-noanc and uwyk1d-v3a, because uwyk1d used to dump only one
+        # mode's density under un-suffixed keys. Silently scoring the wrong
+        # mode is worse than reporting nothing, so the fallback is gone for
+        # density arrays; shared metadata (edges, y_scale, truth) is never
+        # per-mode and still resolves unsuffixed.
+        def g(base, strict=False):
+            if tag:
+                k = f"{base}_{tag}"
                 if k in z.files:
                     return np.asarray(z[k], dtype=np.float64)
+                if strict:
+                    return None
+            if base in z.files:
+                return np.asarray(z[base], dtype=np.float64)
             return None
 
         y_true = g("true_cate_per_query")
@@ -224,7 +236,9 @@ def score_file(path, tag=None, coupling="indep"):
         y_true = y_true.reshape(-1)
         y_scale = float(z["y_scale"]) if "y_scale" in z.files else 1.0
 
-        joint, p0, p1 = g("p_joint_scaled"), g("p_y0_scaled"), g("p_y1_scaled")
+        joint = g("p_joint_scaled", strict=True)
+        p0 = g("p_y0_scaled", strict=True)
+        p1 = g("p_y1_scaled", strict=True)
         if joint is not None and joint.ndim == 3:
             J = joint.shape[-1]
             bw = _bin_width(z, J)

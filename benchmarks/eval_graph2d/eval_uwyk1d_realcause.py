@@ -184,6 +184,7 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
     # summarize's --uwyk-tag defaults to and what our reported point row uses).
     _density_tag = os.environ.get('DENSITY_ANC_TAG', 'noanc')
     _dens_saved = None
+    _dens_by_mode = {}
     K = int(w.bar_distribution.num_bars)  # for density unpack; safe to read here
     for mode, adj in H.build_mode_list(F, n_real):
         if _do_density:
@@ -202,12 +203,18 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
             p_y1 /= p_y1.sum(axis=-1, keepdims=True)
             # Capture the density from the CORRECT anc-tag iteration so its
             # mean lines up with ate_raw_{tag} in the same NPZ.
+            _pack = (
+                p_y0.astype(np.float32), p_y1.astype(np.float32),
+                sL_raw_0.astype(np.float32), sR_raw_0.astype(np.float32),
+                sL_raw_1.astype(np.float32), sR_raw_1.astype(np.float32),
+            )
+            # Keep EVERY mode's density, suffixed. Previously only the mode
+            # matching DENSITY_ANC_TAG was stored, under un-suffixed keys, so a
+            # multi-mode run (v3ab_only) emitted one density for all tags and
+            # any per-tag comparison silently scored noanc twice.
+            _dens_by_mode[mode] = _pack
             if mode == _density_tag:
-                _dens_saved = (
-                    p_y0.astype(np.float32), p_y1.astype(np.float32),
-                    sL_raw_0.astype(np.float32), sR_raw_0.astype(np.float32),
-                    sL_raw_1.astype(np.float32), sR_raw_1.astype(np.float32),
-                )
+                _dens_saved = _pack
         else:
             cate_scaled = cate_from_uwyk(w, X_tr, T_feed, Y_obs, X_te, adj, t0_val, t1_val)
         cate = cate_scaled * yrange / 2.0
@@ -246,6 +253,14 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
             'y_shift':     np.float32(ymin + yrange / 2.0),
             'y_scale':     np.float32(yrange / 2.0),
             'density_anc_tag': str(_density_tag),  # which mode's density this is
+        })
+        for _m, _pk in _dens_by_mode.items():
+            out.update({
+                f'p_y0_scaled_{_m}': _pk[0], f'p_y1_scaled_{_m}': _pk[1],
+                f'sL_raw_0_{_m}': _pk[2], f'sR_raw_0_{_m}': _pk[3],
+                f'sL_raw_1_{_m}': _pk[4], f'sR_raw_1_{_m}': _pk[5],
+            })
+        out.update({
             'true_cate_per_query': true_cate.astype(np.float32),
         })
     return out
