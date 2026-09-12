@@ -15,8 +15,13 @@
 # Usage:
 #   export DEPLOY_ROOT=$SCRATCH/rpfn_bench_kit
 #   bash $DEPLOY_ROOT/R-PFN/case_study/density_eval/04_submit_density.sh \
-#        $DEPLOY_ROOT/case_study_data/shift+2 \
-#        $DEPLOY_ROOT/results_density/shift+2
+#        $DEPLOY_ROOT/case_study_data/d_variation/shift+2/d10 \
+#        $DEPLOY_ROOT/results_density/dvar/shift+2/d10
+#
+# DATA_ROOT is a single (shift, d) cell of the d_variation sweep -- the same
+# roots dsweep_eval.sh evaluates, i.e.
+#   $DEPLOY_ROOT/case_study_data/d_variation/shift{+2,-2,+5,-5,0}/d{2..50}
+# Contexts are 50 100 250 500 1000 there (NOT 200).
 #
 # Env:
 #   CONTEXTS  default "200 500 1000"
@@ -38,7 +43,7 @@ for f in "$SB" "$HERE/run_density_scm.py" "$HERE/density_truth.py" \
 done
 [ -d "$DATA_ROOT" ] || { echo "FATAL: DATA_ROOT not found: $DATA_ROOT" >&2; exit 1; }
 
-CONTEXTS="${CONTEXTS:-200 500 1000}"
+CONTEXTS="${CONTEXTS:-50 100 250 500 1000}"
 MODELS="${MODELS:-cpfn1d cpfn2d graph2d uwyk uwyk_v3a uwyk_noanc dopfn_native dopfn_bb}"
 CASES="${CASES:-Observed_Confounder Backdoor_Criterion Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion}"
 
