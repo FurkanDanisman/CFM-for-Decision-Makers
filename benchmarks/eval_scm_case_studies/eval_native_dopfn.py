@@ -188,13 +188,43 @@ def evaluate(r: int, ds):
             p_y0 = p_y0 / p_y0.sum(axis=-1, keepdims=True)
             p_y1 = np.exp(logits1 - logits1.max(axis=-1, keepdims=True))
             p_y1 = p_y1 / p_y1.sum(axis=-1, keepdims=True)
-            # DoPFN emits densities on RAW Y edges — set y_shift=0, y_scale=1 (identity)
+            # The borders are NOT in raw Y units. DoPFN is TabPFN-derived and
+            # standardises the target internally, so criterion.borders live in
+            # the normalised space. Taking them as raw inflated the CATE axis by
+            # ~25x (95% tau width 21.3 where every other method gives ~0.8).
+            #
+            # Rather than guess the normalisation, recover the scale from the
+            # model's own point prediction, which IS in raw units: fit
+            #     cate_pred ~ s * cate_from_density      (least squares, no
+            #                                             intercept — a shift
+            #                                             cancels in a difference)
+            # If the mismatch is purely a scale, the fit is near-perfect, and
+            # R^2 is reported so a non-scale problem cannot pass silently.
+            # tau needs only the scale; y_shift stays 0 because it cancels.
+            _centers = 0.5 * (edges[:-1] + edges[1:])
+            _cate_dens = (p_y1 @ _centers) - (p_y0 @ _centers)      # (N_q,)
+            _cp = np.asarray(cate_pred, dtype=np.float64).reshape(-1)
+            _den = float(np.dot(_cate_dens, _cate_dens))
+            _scale = float(np.dot(_cate_dens, _cp) / _den) if _den > 0 else 1.0
+            _resid = _cp - _scale * _cate_dens
+            _ss = float(np.dot(_cp - _cp.mean(), _cp - _cp.mean()))
+            _r2 = 1.0 - float(np.dot(_resid, _resid)) / _ss if _ss > 0 else float('nan')
+            print(f'  [density] border scale recovered: {_scale:.6g}  '
+                  f'R^2={_r2:.6f}  (1.0 would mean borders were already raw)',
+                  flush=True)
+            if not (_r2 > 0.999):
+                print('  [density][WARN] cate_pred is NOT a pure rescaling of the '
+                      'density mean — the dumped density is inconsistent with the '
+                      'point estimate, so the calibration metrics built from it '
+                      'are not trustworthy. Investigate before reporting.',
+                      flush=True)
             dens = dict(
                 edges=edges.astype(np.float32),
                 p_y0_scaled=p_y0.astype(np.float32),
                 p_y1_scaled=p_y1.astype(np.float32),
                 y_shift=np.float32(0.0),
-                y_scale=np.float32(1.0),
+                y_scale=np.float32(_scale),
+                density_scale_r2=np.float32(_r2),
             )
     finally:
         os.chdir(_prev_cwd)
