@@ -30,7 +30,6 @@ import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
@@ -45,8 +44,9 @@ PAIRS = [
     ("CausalPFN-C",    "cpfn1d_perarm"),
     ("CausalPFN-C 2D", "cpfn2d_pooled"),
 ]
-C_1D = "#ff7f0e"     # orange
-C_2D = "#d62728"     # red
+C_1D = "#E4A15B"     # warm ochre (1D)
+C_2D = "#8C4A5F"     # muted plum-red (2D)
+EDGE = "black"       # bar edges + error bars, regardless of fill
 _CASES = [
     ("Observed_Confounder", "Observed\nConfounder"),
     ("Observed_Mediator", "Observed\nMediator"),
@@ -77,7 +77,8 @@ def _draw(ax, getter, logx):
         mu, se = getter(key)
         ax.barh(_YP[i], mu, xerr=(se if np.isfinite(se) else None),
                 height=0.85, color=(C_2D if i % 2 else C_1D),
-                ecolor="#444", capsize=2, error_kw=dict(lw=0.8), zorder=3)
+                edgecolor=EDGE, linewidth=0.7,
+                ecolor=EDGE, capsize=2, error_kw=dict(lw=0.9), zorder=3)
     ax.set_yticks(_YP)
     ax.set_ylim(_YP.min() - 0.8, _YP.max() + 0.8)
     if logx:
@@ -103,12 +104,6 @@ def _pool_over_d(sub, col):
     return grand, (0.0 if N <= 1 else float(np.sqrt(ss / (N - 1) / N)))
 
 
-def _legend(fig):
-    fig.legend(handles=[Patch(fc=C_1D, label="1D"), Patch(fc=C_2D, label="2D")],
-               loc="upper right", ncol=2, fontsize=9, frameon=False,
-               bbox_to_anchor=(0.995, 0.995))
-
-
 def _grid(getter_for, cases, logx, title):
     nC = len(cases)
     fig, axes = plt.subplots(len(_METRICS), nC, figsize=(2.7 * nC, 6.2),
@@ -123,9 +118,7 @@ def _grid(getter_for, cases, logx, title):
             if ci == 0:
                 ax.set_yticklabels([lab for lab, _ in PAIRS], fontsize=8)
             ax.set_xlabel(f"{mlabel} ({ARGS.readout})", fontsize=8)   # every row labelled
-    _legend(fig)
-    fig.suptitle(title, fontsize=12)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout()
     return fig
 
 
