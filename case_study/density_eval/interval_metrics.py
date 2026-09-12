@@ -37,6 +37,11 @@ _TRAPZ = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
 # here takes alpha; `nominal` in the output is 1-alpha.
 DEFAULT_LEVELS = (0.50, 0.20, 0.10, 0.05)
 
+# Standard WIS interval set (Bracher et al. 2021, as used by the COVID hubs) --
+# the same set UWYK_Fig3_4/cate_density_metrics.py uses, so WIS is comparable.
+WIS_ALPHAS = (0.02, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50,
+              0.60, 0.70, 0.80, 0.90)
+
 
 # ── CDF ──────────────────────────────────────────────────────────────────────
 def predictive_cdf(p, grid):
@@ -171,6 +176,29 @@ def crps(p, grid, y_true, cdf=None):
     return float(_TRAPZ(F_lo ** 2, g_lo) + _TRAPZ((F_hi - 1.0) ** 2, g_hi))
 
 
+def wis(p, grid, y_true, alphas=WIS_ALPHAS, cdf=None):
+    """Weighted interval score: the median absolute error plus alpha-weighted
+    interval scores, normalised by (K + 1/2). Lower is better, units of tau.
+
+    WIS is a discrete approximation to CRPS -- it converges to it as the alpha
+    set densifies -- so reporting both is a consistency check, not redundancy:
+    they should agree to a few percent on this 11-alpha set.
+    """
+    grid = np.asarray(grid, dtype=np.float64)
+    F = predictive_cdf(p, grid) if cdf is None else np.asarray(cdf, np.float64)
+    total = F[-1]
+    if not np.isfinite(total) or total <= 0:
+        raise ValueError('density integrates to a non-positive value')
+    Fn = F / total
+    y = float(y_true)
+    out = 0.5 * abs(y - float(np.interp(0.5, Fn, grid)))
+    for a in alphas:
+        lo = float(np.interp(a / 2.0, Fn, grid))
+        hi = float(np.interp(1.0 - a / 2.0, Fn, grid))
+        out += (a / 2.0) * winkler(lo, hi, y, a)
+    return float(out / (len(alphas) + 0.5))
+
+
 # ── per-query driver ─────────────────────────────────────────────────────────
 def query_metrics(p, grid, y_true, levels=DEFAULT_LEVELS, y_scale=1.0,
                   method='equal-tailed'):
@@ -184,6 +212,7 @@ def query_metrics(p, grid, y_true, levels=DEFAULT_LEVELS, y_scale=1.0,
     s = float(y_scale)
     F = predictive_cdf(p, grid)
     out = {'mass': float(F[-1]), 'crps': crps(p, grid, y_true, cdf=F) * s,
+           'wis': wis(p, grid, y_true, cdf=F) * s,
            'levels': {}}
     for a in levels:
         if method == 'equal-tailed':
@@ -227,6 +256,8 @@ def summarize(per_query, levels=DEFAULT_LEVELS, mass_tol=0.01):
         'n_queries': n,
         'crps_mean': float(np.mean([q['crps'] for q in per_query])),
         'crps_median': float(np.median([q['crps'] for q in per_query])),
+        'wis_mean': float(np.mean([q['wis'] for q in per_query])),
+        'wis_median': float(np.median([q['wis'] for q in per_query])),
         'mass_mean': float(mass.mean()),
         'mass_min': float(mass.min()),
         'mass_fail_frac': float(np.mean(np.abs(mass - 1.0) > mass_tol)),
@@ -271,4 +302,6 @@ def format_table(summary, title=''):
                  f"{100*d['censored_frac']:8.1f}%")
     L.append(f"  CRPS mean={summary['crps_mean']:.5f}  "
              f"median={summary['crps_median']:.5f}")
+    L.append(f"  WIS  mean={summary['wis_mean']:.5f}  "
+             f"median={summary['wis_median']:.5f}")
     return '\n'.join(L)
