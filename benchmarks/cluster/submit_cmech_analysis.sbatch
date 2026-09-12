@@ -15,7 +15,7 @@
 #   2. per-method PEHE / ATE tables, all contexts
 #   3. pairwise 1D-vs-2D table with medians
 #   4. density calibration for CATE and ATE (coverage / length / WIS /
-#      CRPS), each under both 1D couplings
+#      CRPS). 1D heads use the independence convolution.
 #   5. bar figures for every (node count, context)
 #
 # Steps are independent: one failing does not stop the rest.
@@ -76,13 +76,13 @@ python "$REPO/benchmarks/aggregate_cmech_1d_vs_2d.py" \
 
 if [ "${SKIP_DENSITY:-0}" != "1" ]; then
     step "4/5 density calibration — CATE and ATE"
+    # 1D heads use the independence convolution only. The --coupling flag still
+    # offers comonotonic, but it is not part of the reported results.
     for tgt in cate ate; do
-        for cpl in indep comonotonic; do
-            echo "--- target=$tgt  coupling=$cpl"
-            python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-                --root "$RESULT_ROOT" --context "$CONTEXT" --nodes $NODES \
-                --subset "$SUBSET" --coupling "$cpl" --target "$tgt"
-        done
+        echo "--- target=$tgt"
+        python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+            --root "$RESULT_ROOT" --context "$CONTEXT" --nodes $NODES \
+            --subset "$SUBSET" --target "$tgt"
     done
 fi
 
