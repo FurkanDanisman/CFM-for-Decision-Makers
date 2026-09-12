@@ -398,6 +398,10 @@ def _parse():
                          "runtime.")
     ap.add_argument("--skip", nargs="+", default=(),
                     help="method labels to exclude.")
+    ap.add_argument("--data-root", default=os.environ.get(
+        "UWYK_FIG34_DATA", os.path.join(_HERE, "data")),
+        help="benchmark data root; needed by --target ate to map each npz back "
+             "to its source realization when pooling the two subsets.")
     ap.add_argument("--target", default="cate", choices=["cate", "ate"],
                     help="cate = score each query's tau density against its true "
                          "tau. ate = Wasserstein-barycenter the per-query "
