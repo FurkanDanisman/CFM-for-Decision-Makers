@@ -368,6 +368,11 @@ METHODS = [
     ("uwyk1d-v3a",    "uwyk1d",        "v3a"),
     ("graph2d-noanc", "graph2d",       "noanc"),
     ("graph2d-v3a",   "graph2d",       "v3a"),
+    # cpfn1d's density run uses STD_MODE=pooled, NOT the per_arm its point
+    # estimates use: under per_arm each arm carries its own y_shift/y_scale and
+    # the harness refuses to dump, because one affine map cannot un-scale the
+    # difference. So this row is pooled-scaled while the cpfn1d row in the
+    # PEHE/ATE tables is per_arm. Worth a footnote if both are reported.
     ("cpfn1d",        "cpfn1d",        None),
     ("cpfn2d",        "cpfn2d_pooled", None),
     # cpfn2d_log is deliberately absent: under a log target transform tau is not

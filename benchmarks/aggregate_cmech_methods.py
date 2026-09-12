@@ -52,8 +52,11 @@ METHODS = [
     ("graph2d-v3a",    "graph2d",       "v3a"),
     ("graph2d-v3b",    "graph2d",       "v3b"),
     ("cpfn1d",         "cpfn1d",        None),
-    ("cpfn2d-pooled",  "cpfn2d_pooled", None),
-    ("cpfn2d-log",     "cpfn2d_log",    None),
+    ("cpfn2d",         "cpfn2d_pooled", None),
+    # cpfn2d_log is not reported: the log target transform is not affine in tau,
+    # so it cannot emit a CATE density, and its point estimates were within
+    # noise of pooled everywhere. The sbatch still runs it (task numbering is
+    # unchanged); it is simply left out of the tables.
 ]
 NODE_COUNTS = (5, 10, 20, 30, 40, 50)
 
