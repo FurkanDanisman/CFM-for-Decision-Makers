@@ -191,6 +191,18 @@ case "$MODEL" in
         --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode "$CPFN1D_STD"
     ;;
   cpfn2d_pooled|cpfn2d_log)
+    # cpfn2d_log cannot emit a CATE density. eval_cpfn2d_realcause.py asserts
+    # that the dumped density mean reproduces cate_raw, and under a log target
+    # transform tau = Y1 - Y0 in RAW space is not a linear function of the
+    # scaled difference — one (y_shift, y_scale) pair cannot reverse it, so the
+    # diagonal projection would be wrong. The assert is correct; skip the cell
+    # rather than fail the task on every density run. Point estimates are
+    # unaffected, so cpfn2d_log still appears in the PEHE/ATE tables.
+    if [ "$DENSITY_DUMP" = "1" ] && [ "$MODEL" = "cpfn2d_log" ]; then
+        echo "[skip] cpfn2d_log emits no density (log transform is not affine" \
+             "in tau); nothing to do for DENSITY_DUMP=1."
+        exit 0
+    fi
     # NB: the cpfn2d wrapper's own default is per_arm; both rows here are
     # explicit, so neither reproduces a default-args run.
     [ -f "$CKPT_CPFN2D" ] || { echo "FATAL: ckpt $CKPT_CPFN2D" >&2; exit 1; }
