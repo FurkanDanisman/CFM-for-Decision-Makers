@@ -1,0 +1,967 @@
+"""Shared density machinery for the Tier-C (CATE / tau) density eval.
+
+Tier C scores p(tau | x), tau = Y_do1 - Y_do0, for two models that emit very
+different objects:
+
+  * UWYK-1D   two forward passes -> two 1D BarDistribution heads
+              f0(y), f1(y);  joint assumed to factorise, so
+              f(y0, y1) = f0(y0) * f1(y1)
+  * Joint-2D  one forward pass -> BarDistribution2D head
+              f(y0, y1) natively (J^2 inner bins + 9 region weights + 4 tails)
+
+DoPFN additionally uses DoPFN1D for its native FullSupportBarDistribution
+(nonuniform interior bins, half-normal outer bins), and Joint2D for its
+trained joint head. dopfn_tau_density evaluates the same diagonal integral
+analytically for the product of the native arms, including both tails.
+
+Both are reduced to p(tau) by the SAME operator:
+
+    p(tau) = \\int f(y0, y0 + tau) dy0
+
+implemented once in `tau_density`, which takes a callable f(y0, y1). The only
+thing that differs between the two models is which callable it gets. That is
+deliberate: any quadrature error is then common to both columns and cancels in
+the comparison.
+
+FULL DENSITIES, NOT INNER-ONLY. Both models are evaluated with their tails:
+UWYK's two half-Gaussians, the joint's 8 non-inner regions. Truncating to the
+inner support and renormalising would inflate each model's interior by
+1/(1-eps) with a DIFFERENT eps per model (the joint loses ~2x the marginal
+tail mass, being a square), producing a differential NLL bias larger than the
+effect we are trying to measure. See density_eval_pipeline.md.
+
+Conventions
+-----------
+Everything lives on the harness's scaled y axis (`H._scale_y`), using
+minmax or std parameters from the *post-subsample* training context.
+For y_scaled = (y_raw - y_shift) / y_scale, a scaled tau density converts to
+raw units as p_raw(tau_raw) = p_scaled(tau_raw / y_scale) / y_scale.
+
+Reference implementations mirrored (do not let these drift):
+  * losses/BarDistribution2D.py::neg_log_prob_2d   -> `Joint2D.density`
+  * g4cfm/src/Losses/BarDistribution.py::_logpdf_from_pred -> `UWYK1D.density`
+`test_density_common.py` asserts agreement with both to 1e-5.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+import numpy as np
+
+
+# ---------------------------------------------------------------------------
+# Grids
+# ---------------------------------------------------------------------------
+# THE TAU GRID IS TIED TO THE MODELS, NOT CHOSEN FOR CONVENIENCE.
+#
+# Both heads' tau densities are piecewise-LINEAR with knots at multiples of
+# their own bin width -- that falls out of the closed-form interior term,
+#     p_int(tau) = (w/bw) * [(1-phi) S(d) + phi S(d+1)],  tau = (d+phi) bw
+# which is linear in tau inside every cell (verified to 0.0 second difference
+# in test_density_common gate 7).
+#
+# Trapezoid is EXACT on a piecewise-linear function when the nodes include its
+# knots. So the right grid is the coarsest spacing that contains BOTH knot
+# sets:
+#     UWYK bar  = 0.002    (K=1000 over [-1,1])   0.0020 / 0.0005 =   4
+#     joint bin = 0.0625   (J=32   over [-1,1])   0.0625 / 0.0005 = 125
+# -> TAU_STEP = 0.0005, and the grid must be ANCHORED AT 0 so those multiples
+#    actually land on nodes. linspace(-3, 3, 12001) does both.
+#
+# The previous grid (dtau = 0.01, bin midpoints) was 5x COARSER than UWYK's own
+# bars and was anchored on half-offsets, so it contained neither knot set. It
+# happened to be adequate for smooth trained densities -- KL moved 1.3e-14 from
+# 0.01 to 0.002 -- but it is not adequate where the truth is narrow, which is
+# exactly the ~22/100 IHDP realizations with < 5 old-grid points per sigma_tau.
+TAU_MIN, TAU_MAX = -3.0, 3.0
+TAU_STEP = 0.0005  # Also divides joint DoPFN's J=10 width (0.2).
+# Native DoPFN's adaptive border differences need not land on this grid.
+# Its density is evaluated exactly, but grid metrics use trapezoid as above.
+_N_TAU = int(round((TAU_MAX - TAU_MIN) / TAU_STEP)) + 1        # 12001
+TAU_CENTERS = np.linspace(TAU_MIN, TAU_MAX, _N_TAU)
+TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
+# Node grid, not bin midpoints -- kept under the old name so callers and the
+# l2_ihdp-style metric signatures do not change.
+TAU_EDGES = TAU_CENTERS
+
+# Y grid for Tier A. Unchanged; matches benchmarks/l2_ihdp/true_ihdp.py so the
+# marginal numbers cross-reference. Retie it to the model knots when Tier A is
+# built -- it has the same defect this TAU grid just had.
+Y_EDGES = np.linspace(-1.5, 1.5, 101)
+Y_CENTERS = 0.5 * (Y_EDGES[:-1] + Y_EDGES[1:])
+Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
+
+
+def knots_aligned(step=None, bin_widths=(0.002, 0.0625), tol=1e-9) -> bool:
+    """True when every model bin width is an integer multiple of the tau step,
+    which is what makes trapezoid exact on the piecewise-linear interiors."""
+    step = TAU_BIN if step is None else step
+    return all(abs(b / step - round(b / step)) < tol for b in bin_widths)
+
+
+_LOG_2PI = math.log(2.0 * math.pi)
+_EPS = 1e-300          # density floor, only to keep logs finite in KL
+_TRAPZ = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
+
+
+def _softplus(x):
+    # threshold=20 matches BarDistribution._safe_softplus
+    x = np.asarray(x, dtype=np.float64)
+    return np.where(x > 20.0, x, np.log1p(np.exp(np.minimum(x, 20.0))))
+
+
+def _log_softmax(x, axis=-1):
+    x = np.asarray(x, dtype=np.float64)
+    m = np.max(x, axis=axis, keepdims=True)
+    z = x - m
+    return z - np.log(np.sum(np.exp(z), axis=axis, keepdims=True))
+
+
+# ---------------------------------------------------------------------------
+# Joint-2D head: the full 9-region density
+# ---------------------------------------------------------------------------
+@dataclass
+class Joint2D:
+    """Unpacked BarDistribution2D prediction for ONE query.
+
+    Unpacking once and evaluating at many points avoids re-running the J^2
+    softmax per evaluation point, which is what makes the tau quadrature
+    affordable. `test_density_common.py::test_joint_matches_reference`
+    checks this against neg_log_prob_2d on random inputs.
+    """
+    p_mat: np.ndarray          # (J, J) inner bin probabilities, sums to 1
+    w: np.ndarray              # (9,)   region mixture weights, sums to 1
+    sL0: float
+    sR0: float
+    sL1: float
+    sR1: float
+    rho: float
+    edges: np.ndarray          # (J+1,)
+
+    @property
+    def lo(self) -> float:
+        return float(self.edges[0])
+
+    @property
+    def hi(self) -> float:
+        return float(self.edges[-1])
+
+    @property
+    def bw(self) -> float:
+        return float((self.edges[-1] - self.edges[0]) / (len(self.edges) - 1))
+
+    @property
+    def max_scale(self) -> float:
+        return float(max(self.sL0, self.sR0, self.sL1, self.sR1))
+
+    @classmethod
+    def from_pred(cls, pred: np.ndarray, J: int, edges: np.ndarray) -> "Joint2D":
+        """pred: (J^2 + 9 + 4,) raw head output for one query."""
+        pred = np.asarray(pred, dtype=np.float64).reshape(-1)
+        JJ = J * J
+        bw = float((edges[-1] - edges[0]) / J)
+
+        p_mat = np.exp(_log_softmax(pred[:JJ])).reshape(J, J)
+        w = np.exp(_log_softmax(pred[JJ:JJ + 9]))
+        tail_raw = pred[JJ + 9:JJ + 13]
+        # _safe_scale(raw, base) = base * (softplus(raw) + SOFTPLUS_FLOOR)
+        s = bw * (_softplus(tail_raw) + 1e-3)
+
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        m0 = p_mat.sum(axis=1)
+        m1 = p_mat.sum(axis=0)
+        E0 = float((centers * m0).sum())
+        E1 = float((centers * m1).sum())
+        E01 = float((p_mat * centers[:, None] * centers[None, :]).sum())
+        v0 = max(float((centers ** 2 * m0).sum()) - E0 ** 2, 1e-8)
+        v1 = max(float((centers ** 2 * m1).sum()) - E1 ** 2, 1e-8)
+        rho = (E01 - E0 * E1) / math.sqrt(v0 * v1)
+        rho = float(np.clip(rho, -1 + 1e-6, 1 - 1e-6))
+
+        return cls(p_mat=p_mat, w=w, sL0=float(s[0]), sR0=float(s[1]),
+                   sL1=float(s[2]), sR1=float(s[3]), rho=rho,
+                   edges=np.asarray(edges, dtype=np.float64))
+
+    def inner_mean(self) -> tuple[float, float]:
+        """Interior-conditional means used by the point runner's raw path."""
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        return (float(self.p_mat.sum(axis=1) @ centers),
+                float(self.p_mat.sum(axis=0) @ centers))
+
+    def mean(self, inner=None) -> tuple[float, float]:
+        """Exact E[Y0], E[Y1] of the full density, including correlated corners.
+
+        `inner` overrides the region-0 conditional mean with an externally
+        supplied (E[Y0], E[Y1]) -- the MALC arm passes its smoothed interior
+        mean here so the 8 tail regions stay byte-identical to the raw path.
+
+        Computing moments by region avoids truncating the mean to TAU_CENTERS.
+        For a standard bivariate normal with correlation r, the positive
+        quadrant has probability P = 1/4 + asin(r)/(2*pi) and unnormalised
+        first moment (1+r)/(2*sqrt(2*pi)). Reflecting each corner into that
+        quadrant gives its conditional means, including the rho correction.
+        """
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        h = math.sqrt(2.0 / math.pi)
+
+        def boundary_mean(p):
+            return float(p @ centers) / max(float(p.sum()), 1e-300)
+
+        regions = [
+            self.inner_mean() if inner is None else (float(inner[0]),
+                                                     float(inner[1])),
+            (self.lo - h * self.sL0, boundary_mean(self.p_mat[0, :])),
+            (self.hi + h * self.sR0, boundary_mean(self.p_mat[-1, :])),
+            (boundary_mean(self.p_mat[:, 0]), self.lo - h * self.sL1),
+            (boundary_mean(self.p_mat[:, -1]), self.hi + h * self.sR1),
+        ]
+        for sign0, sign1, a0, a1, s0, s1 in (
+            (-1, -1, self.lo, self.lo, self.sL0, self.sL1),
+            (-1, +1, self.lo, self.hi, self.sL0, self.sR1),
+            (+1, -1, self.hi, self.lo, self.sR0, self.sL1),
+            (+1, +1, self.hi, self.hi, self.sR0, self.sR1),
+        ):
+            r = sign0 * sign1 * self.rho
+            quadrant_mass = 0.25 + math.asin(r) / (2.0 * math.pi)
+            offset = (1.0 + r) / (2.0 * math.sqrt(2.0 * math.pi) * quadrant_mass)
+            regions.append((a0 + sign0 * s0 * offset, a1 + sign1 * s1 * offset))
+        m0, m1 = self.w @ np.asarray(regions)
+        return float(m0), float(m1)
+
+    # -- the density ------------------------------------------------------
+    def density(self, y0, y1) -> np.ndarray:
+        """f(y0, y1) on the full plane. Broadcasting over arbitrary shapes."""
+        y0 = np.asarray(y0, dtype=np.float64)
+        y1 = np.asarray(y1, dtype=np.float64)
+        y0, y1 = np.broadcast_arrays(y0, y1)
+
+        J = self.p_mat.shape[0]
+        lo, hi, bw = self.lo, self.hi, self.bw
+        interior = self.edges[1:-1]
+        j0 = np.clip(np.searchsorted(interior, y0, side='right'), 0, J - 1)
+        j1 = np.clip(np.searchsorted(interior, y1, side='right'), 0, J - 1)
+
+        in0 = (y0 >= lo) & (y0 <= hi)
+        in1 = (y1 >= lo) & (y1 <= hi)
+        L0, R0 = y0 < lo, y0 > hi
+        L1, R1 = y1 < lo, y1 > hi
+
+        w = self.w
+        out = np.zeros(y0.shape, dtype=np.float64)
+
+        # region 0: inner x inner
+        m = in0 & in1
+        if m.any():
+            out[m] = w[0] * self.p_mat[j0[m], j1[m]] / (bw * bw)
+
+        # regions 1,2: y0 outside, y1 inside.
+        # boundary conditional f(y1 | y0 = boundary) ~ p_mat[row, j1] / rowsum
+        row_lo, row_hi = self.p_mat[0, :], self.p_mat[J - 1, :]
+        s_lo, s_hi = max(row_lo.sum(), 1e-300), max(row_hi.sum(), 1e-300)
+        m = L0 & in1
+        if m.any():
+            out[m] = (w[1] * _half_gauss(y0[m], lo, self.sL0)
+                      * row_lo[j1[m]] / (s_lo * bw))
+        m = R0 & in1
+        if m.any():
+            out[m] = (w[2] * _half_gauss(y0[m], hi, self.sR0)
+                      * row_hi[j1[m]] / (s_hi * bw))
+
+        # regions 3,4: y0 inside, y1 outside
+        col_lo, col_hi = self.p_mat[:, 0], self.p_mat[:, J - 1]
+        c_lo, c_hi = max(col_lo.sum(), 1e-300), max(col_hi.sum(), 1e-300)
+        m = in0 & L1
+        if m.any():
+            out[m] = (w[3] * col_lo[j0[m]] / (c_lo * bw)
+                      * _half_gauss(y1[m], lo, self.sL1))
+        m = in0 & R1
+        if m.any():
+            out[m] = (w[4] * col_hi[j0[m]] / (c_hi * bw)
+                      * _half_gauss(y1[m], hi, self.sR1))
+
+        # regions 5-8: both outside. Bivariate Gaussian anchored at the corner,
+        # normalised by the quadrant probability (Sheppard's theorem).
+        asin = math.asin(self.rho)
+        n_same = 0.25 + asin / (2 * math.pi)
+        n_opp = max(0.25 - asin / (2 * math.pi), 1e-300)
+        for mask, idx, a0, a1, ss0, ss1, nrm in (
+            (L0 & L1, 5, lo, lo, self.sL0, self.sL1, n_same),
+            (L0 & R1, 6, lo, hi, self.sL0, self.sR1, n_opp),
+            (R0 & L1, 7, hi, lo, self.sR0, self.sL1, n_opp),
+            (R0 & R1, 8, hi, hi, self.sR0, self.sR1, n_same),
+        ):
+            if mask.any():
+                out[mask] = w[idx] * _biv_gauss(
+                    y0[mask], y1[mask], a0, a1, ss0, ss1, self.rho) / nrm
+        return out
+
+
+def _half_gauss(y, boundary, scale):
+    """Half-normal density on the half-line nearest `boundary` (integrates 1)."""
+    z = (y - boundary) / scale
+    return 2.0 * np.exp(-0.5 * z * z) / (scale * math.sqrt(2.0 * math.pi))
+
+
+def _biv_gauss(y0, y1, mu0, mu1, s0, s1, rho):
+    z0 = (y0 - mu0) / s0
+    z1 = (y1 - mu1) / s1
+    r2 = max(1.0 - rho * rho, 1e-8)
+    q = -(0.5 / r2) * (z0 * z0 - 2 * rho * z0 * z1 + z1 * z1)
+    return np.exp(q) / (s0 * s1 * math.sqrt(r2) * 2.0 * math.pi)
+
+
+# ---------------------------------------------------------------------------
+# UWYK 1D BarDistribution head
+# ---------------------------------------------------------------------------
+@dataclass
+class UWYK1D:
+    """Unpacked BarDistribution prediction for ONE query / one arm.
+
+    Mirrors BarDistribution._logpdf_from_pred: K bars of exact width plus a
+    half-Gaussian on each side. `bar_state` comes from the checkpoint via the
+    sklearn wrapper's restored bar_distribution.
+    """
+    log_pL: float
+    log_pBars: np.ndarray      # (K,)
+    log_pR: float
+    sL: float
+    sR: float
+    edges: np.ndarray          # (K+1,)
+    widths: np.ndarray         # (K,)
+
+    @property
+    def max_scale(self) -> float:
+        return float(max(self.sL, self.sR))
+
+    @classmethod
+    def from_pred(cls, pred, edges, widths, base_sL, base_sR,
+                  scale_floor=1e-3) -> "UWYK1D":
+        pred = np.asarray(pred, dtype=np.float64).reshape(-1)
+        K = len(widths)
+        lp = _log_softmax(pred[:K + 2])
+        return cls(
+            log_pL=float(lp[0]), log_pBars=lp[1:-1], log_pR=float(lp[-1]),
+            sL=float(base_sL * (_softplus(pred[K + 2]) + scale_floor)),
+            sR=float(base_sR * (_softplus(pred[K + 3]) + scale_floor)),
+            edges=np.asarray(edges, dtype=np.float64),
+            widths=np.asarray(widths, dtype=np.float64),
+        )
+
+    def density(self, y) -> np.ndarray:
+        y = np.asarray(y, dtype=np.float64)
+        K = len(self.widths)
+        out = np.zeros(y.shape, dtype=np.float64)
+
+        left = y < self.edges[0]
+        right = y >= self.edges[-1]
+        mid = ~(left | right)
+
+        if left.any():
+            out[left] = math.exp(self.log_pL) * _half_gauss(
+                y[left], self.edges[0], self.sL)
+        if right.any():
+            out[right] = math.exp(self.log_pR) * _half_gauss(
+                y[right], self.edges[-1], self.sR)
+        if mid.any():
+            k = np.clip(np.searchsorted(self.edges[1:-1], y[mid], side='right'),
+                        0, K - 1)
+            out[mid] = np.exp(self.log_pBars[k]) / self.widths[k]
+        return out
+
+    def mean(self) -> float:
+        """Exact mean of the bars and both half-normal tails."""
+        centers = 0.5 * (self.edges[:-1] + self.edges[1:])
+        h = math.sqrt(2.0 / math.pi)
+        return float(np.exp(self.log_pBars) @ centers
+                     + math.exp(self.log_pL) * (self.edges[0] - h * self.sL)
+                     + math.exp(self.log_pR) * (self.edges[-1] + h * self.sR))
+
+    def rebin(self, new_edges) -> "UWYK1D":
+        """Re-express this density on a coarser uniform grid (resolution match).
+
+        CDF-interpolates the bar probabilities onto `new_edges`, which need NOT
+        divide the native grid evenly (1000 bars vs 32 bins does not). Tail
+        weights and scales are carried over unchanged, so only the interior
+        resolution changes.
+        """
+        new_edges = np.asarray(new_edges, dtype=np.float64)
+        pbars = np.exp(self.log_pBars)
+        cdf = np.concatenate([[0.0], np.cumsum(pbars)])
+        F = np.interp(new_edges, self.edges, cdf,
+                      left=0.0, right=float(cdf[-1]))
+        p_new = np.diff(F)
+        tot = p_new.sum()
+        if tot > 0:
+            p_new *= (pbars.sum() / tot)      # preserve interior mass exactly
+        w_new = np.diff(new_edges)
+        return UWYK1D(
+            log_pL=self.log_pL,
+            log_pBars=np.log(np.maximum(p_new, 1e-300)),
+            log_pR=self.log_pR,
+            sL=self.sL, sR=self.sR,
+            edges=new_edges, widths=w_new,
+        )
+
+
+class DoPFN1D(UWYK1D):
+    """Native FullSupportBarDistribution on the harness outcome axis.
+
+    The first/last logits are half-normal masses anchored at borders[1/-2],
+    not finite bars. All other bars may have unequal widths. Recompute widths
+    from returned borders: some upstream predict_full versions rescale borders
+    to outcome units but leave criterion.bucket_widths in normalized units.
+    Reference: jr2021/Do-PFN, model/bar_distribution.py::FullSupportBarDistribution.
+    """
+
+    @classmethod
+    def from_pred(cls, pred, borders, *, y_shift=0.0, y_scale=1.0,
+                  tail_scales=None):
+        from scipy.special import ndtri
+
+        borders = np.asarray(borders, dtype=np.float64)
+        pred = np.asarray(pred, dtype=np.float64).reshape(-1)
+        if (borders.ndim != 1 or len(borders) != len(pred) + 1
+                or len(pred) < 3 or not np.isfinite(borders).all()
+                or np.any(np.diff(borders) <= 0)):
+            raise ValueError('DoPFN requires finite, strictly increasing borders '
+                             'and one logit per bin (at least three bins)')
+        if not np.isfinite(y_scale) or y_scale <= 0:
+            raise ValueError('y_scale must be finite and positive')
+        # HalfNormal(scale).cdf(width) = 0.5 in the native criterion.
+        scales = (np.diff(borders)[[0, -1]] / ndtri(0.75)
+                  if tail_scales is None else np.asarray(tail_scales, dtype=float))
+        if scales.shape != (2,) or not np.isfinite(scales).all() or np.any(scales <= 0):
+            raise ValueError('DoPFN tail scales must be two finite positive values')
+        edges = (borders[1:-1] - y_shift) / y_scale
+        lp = _log_softmax(pred)
+        return cls(float(lp[0]), lp[1:-1], float(lp[-1]),
+                   float(scales[0] / y_scale), float(scales[1] / y_scale),
+                   edges, np.diff(edges))
+
+
+def _normal_interval(lo, hi):
+    """Standard normal mass between bounds, avoiding cancellation in the right tail."""
+    from scipy.special import ndtr
+
+    lo, hi = np.broadcast_arrays(lo, hi)
+    return np.maximum(np.where(lo > 0, ndtr(-lo) - ndtr(-hi),
+                               ndtr(hi) - ndtr(lo)), 0.0)
+
+
+def dopfn_tau_density(f0: DoPFN1D, f1: DoPFN1D, tau_points):
+    """Exact independence integral for unequal bars and half-normal tails.
+
+    Rectangle overlaps are piecewise linear with knots at all arm-border
+    differences. Bar/tail terms are normal CDF differences; tail/tail terms
+    integrate the product of two Gaussians over intersecting half-lines.
+    Thus no rebinning, finite-y truncation or tail quadrature is needed.
+    The metric grid still approximates integrals in tau (native knots need
+    not align with TAU_CENTERS).
+    """
+    tau = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    p0, p1 = np.exp(f0.log_pBars), np.exp(f1.log_pBars)
+    h0, h1 = p0 / f0.widths, p1 / f1.widths
+    # Each density jump induces a slope change in the correlation. Integrate
+    # the sorted slope changes once, then interpolate the exact linear pieces.
+    jumps0 = np.diff(np.r_[0.0, h0, 0.0])
+    jumps1 = np.diff(np.r_[0.0, h1, 0.0])
+    knots, inverse = np.unique(
+        (f1.edges[None, :] - f0.edges[:, None]).ravel(), return_inverse=True)
+    changes = np.bincount(inverse, weights=(-jumps0[:, None] * jumps1).ravel())
+    slopes = np.cumsum(changes)
+    values = np.r_[0.0, np.cumsum(slopes[:-1] * np.diff(knots))]
+    values[-1] = 0.0  # exact compact-support endpoint, remove roundoff drift
+    out = np.maximum(np.interp(tau, knots, values, left=0.0, right=0.0), 0.0)
+
+    def tails(f):
+        return ((-1, f.edges[0], f.sL, math.exp(f.log_pL)),
+                (+1, f.edges[-1], f.sR, math.exp(f.log_pR)))
+
+    def bar_tail(bars, heights, tail_model, delta):
+        result = np.zeros(delta.shape)
+        for sign, anchor, scale, weight in tails(tail_model):
+            # Integrate tail density at y + delta over each finite bar of y.
+            lo = (bars.edges[:-1, None] + delta - anchor) / scale
+            hi = (bars.edges[1:, None] + delta - anchor) / scale
+            if sign < 0:
+                hi = np.minimum(hi, 0.0)
+            else:
+                lo = np.maximum(lo, 0.0)
+            result += 2 * weight * (heights @ _normal_interval(lo, hi))
+        return result
+
+    out += bar_tail(f0, h0, f1, tau)
+    out += bar_tail(f1, h1, f0, -tau)
+    for sign0, a0, s0, w0 in tails(f0):
+        for sign1, a1, s1, w1 in tails(f1):
+            # N(y; a0,s0) N(y; a1-tau,s1) = N(tau; a1-a0,S) N(y;m,s).
+            variance = s0 * s0 + s1 * s1
+            s = s0 * s1 / math.sqrt(variance)
+            m = (a0 * s1 * s1 + (a1 - tau) * s0 * s0) / variance
+            lo, hi = np.full(tau.shape, -np.inf), np.full(tau.shape, np.inf)
+            for sign, boundary in ((sign0, a0), (sign1, a1 - tau)):
+                if sign < 0:
+                    hi = np.minimum(hi, boundary)
+                else:
+                    lo = np.maximum(lo, boundary)
+            density = np.exp(-0.5 * (tau - (a1 - a0)) ** 2 / variance)
+            density /= math.sqrt(2 * math.pi * variance)
+            out += 4 * w0 * w1 * density * _normal_interval((lo - m) / s, (hi - m) / s)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# tau = y1 - y0 : the SAME operator for both models
+# ---------------------------------------------------------------------------
+# Both heads are STAIRCASES on their interior: piecewise-constant on a uniform
+# bin grid. Integrating a staircase along the diagonal with plain trapezoid is
+# O(h) wrong at every one of the ~2J discontinuities the diagonal crosses, and
+# the error scales with the head's bin count -- so it would be LARGER for the
+# J=32 joint than for the K=1000 UWYK, i.e. a differential bias between the two
+# columns. Exactly the thing this eval must not have.
+#
+# So the interior is done in closed form instead. For uniform bins of width bw,
+# writing tau = (d + phi) * bw with integer d and 0 <= phi < 1, the diagonal
+# spends fraction (1-phi) of each y0-bin at bin-offset d and phi at d+1:
+#
+#     p_int(tau) = (weight / bw) * [ (1-phi) * S(d) + phi * S(d+1) ]
+#     S(k)       = sum_i p[i, i+k]          (k-th diagonal sum of the joint)
+#
+# Exact, O(J) per tau, no quadrature error. It also integrates to `weight` by
+# construction, since sum_k S(k) = 1. Only the 8 non-interior regions -- which
+# are smooth and carry little mass -- are left to quadrature.
+
+
+def _diag_sums(p_mat):
+    """S[k] = sum_i p_mat[i, i+k] for k = -(J-1) .. (J-1). Index k+J-1."""
+    J = p_mat.shape[0]
+    return np.array([np.trace(p_mat, offset=k) for k in range(-(J - 1), J)])
+
+
+def _diag_sums_product(p0, p1):
+    """Same S(k) for a factorised joint p_mat = outer(p0, p1), without ever
+    forming the outer product: S(k) = sum_i p0[i] * p1[i+k]."""
+    p0 = np.asarray(p0, dtype=np.float64)
+    p1 = np.asarray(p1, dtype=np.float64)
+    return np.correlate(p1, p0, mode='full')
+
+
+def _interior_tau(S, tau_points, bw, weight):
+    """Linear-interpolate the diagonal sums onto the tau axis."""
+    tau = np.asarray(tau_points, dtype=np.float64)
+    J = (len(S) + 1) // 2
+    x = tau / bw
+    d = np.floor(x).astype(int)
+    phi = x - d
+    i0, i1 = d + J - 1, d + J
+    ok0 = (i0 >= 0) & (i0 < len(S))
+    ok1 = (i1 >= 0) & (i1 < len(S))
+    out = np.zeros(tau.shape, dtype=np.float64)
+    out[ok0] += (1.0 - phi[ok0]) * S[i0[ok0]]
+    out[ok1] += phi[ok1] * S[i1[ok1]]
+    return out * (weight / bw)
+
+
+def tau_density_quadrature(f2d, tau_points, lo=-1.0, hi=1.0, pad=0.75,
+                           n_y0=2048, max_points=4_000_000, align_bins=None):
+    """Reference implementation: p(tau) = \\int f(y0, y0+tau) dy0 by trapezoid.
+
+    The integrand is DISCONTINUOUS at y0 = lo and y0 = hi (the region mask
+    flips there) and is a staircase in between, so a naive linspace gives O(h)
+    error whose sign depends on where nodes happen to fall -- refining then
+    does not monotonically improve (measured: n_y0 4096 scored WORSE than 2048).
+    So the grid is built to land exactly on lo and hi, and, when `align_bins`
+    (the model's bin count across [lo, hi]) is given, on every bin edge too.
+
+    Chunked over tau: the evaluation array is (n_tau, n_y0) and `density`
+    allocates ~10 temporaries of that shape, so an unchunked call at large
+    n_y0 will OOM long before it is slow.
+    """
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    span = float(hi - lo)
+    n_inner = max(2, int(round(n_y0 * span / (span + 2.0 * pad))))
+    if align_bins:                       # snap to a whole number of bins
+        per_bin = max(1, int(round(n_inner / align_bins)))
+        n_inner = int(align_bins) * per_bin
+    step = span / n_inner
+    n_pad = int(np.ceil(pad / step))
+    # MIDPOINT, not trapezoid. lo, hi and every bin edge are CELL EDGES here,
+    # so no cell straddles a discontinuity and the jump-to-zero at the region
+    # boundary is integrated exactly. Trapezoid with a node ON the jump counts
+    # only half that cell, which showed up as a systematic mass DEFICIT
+    # (0.9987 at n_y0=4096) converging from below.
+    cell_edges = lo + step * np.arange(-n_pad, n_inner + n_pad + 1)
+    g = 0.5 * (cell_edges[:-1] + cell_edges[1:])
+
+    chunk = max(1, int(max_points // max(g.size, 1)))
+    out = np.empty(tau_points.size, dtype=np.float64)
+    for i in range(0, tau_points.size, chunk):
+        t = tau_points[i:i + chunk]
+        Y0 = np.broadcast_to(g, (t.size, g.size))
+        Y1 = Y0 + t[:, None]
+        out[i:i + chunk] = f2d(Y0, Y1).sum(axis=1) * step
+    return out
+
+
+# Back-compat alias for the generic operator.
+tau_density = tau_density_quadrature
+
+
+def independent_f2d(f0: UWYK1D, f1: UWYK1D):
+    """The independence reconstruction: f(y0,y1) = f0(y0) * f1(y1).
+
+    This is what UWYK gets, and it is an assumption WE impose -- UWYK emits no
+    joint. Any row built from this must be labelled 'UWYK (x) indep'.
+    """
+    return lambda y0, y1: f0.density(y0) * f1.density(y1)
+
+
+def _outside_only(f2d, lo, hi):
+    """f2d with the interior-x-interior region zeroed, so it can be added to
+    the exact interior term without double counting."""
+    def g(y0, y1):
+        v = f2d(y0, y1)
+        inner = (y0 >= lo) & (y0 <= hi) & (y1 >= lo) & (y1 <= hi)
+        return np.where(inner, 0.0, v)
+    return g
+
+
+# Coarse grid for the TAIL term only. The 8 non-interior regions carry little
+# mass and vary smoothly in tau, while the interior -- which carries the
+# structure -- is closed-form and free at any resolution. Evaluating the tails
+# on a coarse grid and interpolating up is what keeps a 12001-point tau grid
+# affordable: cost is set by this number, not by len(TAU_CENTERS).
+# Set to 0.0625/8, i.e. 8 nodes per JOINT bin, so the tail term's kinks (which
+# sit at the joint's bin edges) land on nodes. Measured: dropping from 0.002 to
+# this changes the KL error by <2% (8.22e-3 -> 8.37e-3 at n_y0=512, 2.97e-4 ->
+# 2.95e-4 at n_y0=2048) while cutting cost 9x. Accuracy here is governed by
+# n_y0, not by this step -- UWYK's finer 0.002 tail structure is irrelevant
+# because its tail MAGNITUDE is ~1e-3 of the density.
+TAIL_TAU_STEP = 0.0625 / 8      # 0.0078125
+
+
+def _tail_term(f2d_out, tau_points, lo, hi, pad, n_y0,
+               coarse_step=None, align_bins=None) -> np.ndarray:
+    """Non-interior regions on a coarse tau grid, linearly interpolated up."""
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    step = TAIL_TAU_STEP if coarse_step is None else coarse_step
+    span = float(tau_points.max() - tau_points.min())
+    n_coarse = int(round(span / step)) + 1 if span > 0 else 1
+    # Already at or below the coarse resolution (e.g. a single tau*): direct.
+    if tau_points.size <= n_coarse or n_coarse < 2:
+        return tau_density_quadrature(f2d_out, tau_points, lo, hi, pad, n_y0,
+                                      align_bins=align_bins)
+    coarse = np.linspace(float(tau_points.min()), float(tau_points.max()),
+                         n_coarse)
+    vals = tau_density_quadrature(f2d_out, coarse, lo, hi, pad, n_y0,
+                                  align_bins=align_bins)
+    return np.interp(tau_points, coarse, vals)
+
+
+def joint_tau_density(jt: Joint2D, tau_points, n_pad_sigma=8.0, n_y0=4096):
+    """p(tau) for the 2D head: exact interior + quadrature over regions 1-8."""
+    S = _diag_sums(jt.p_mat)
+    p = _interior_tau(S, tau_points, jt.bw, jt.w[0])
+    pad = n_pad_sigma * jt.max_scale
+    p += _tail_term(_outside_only(jt.density, jt.lo, jt.hi),
+                    tau_points, jt.lo, jt.hi, pad, n_y0,
+                    align_bins=jt.p_mat.shape[0])
+    return p
+
+
+def uwyk_tau_density(f0: UWYK1D, f1: UWYK1D, tau_points, n_pad_sigma=8.0,
+                     n_y0=4096):
+    """p(tau) for UWYK under independence: exact interior + quadrature tails.
+
+    Same decomposition as the joint, so the two columns share their numerical
+    treatment and any residual quadrature bias is common to both.
+    """
+    if not np.allclose(f0.edges, f1.edges):
+        raise ValueError('UWYK arms must share a bar grid')
+    # The bars ARE uniform by construction (BarDistribution.fit uses linspace),
+    # but checkpoints store `edges` in float32 and K=1000 gives bw=0.002, which
+    # is not a power of two -- so consecutive stored edges do not differ by
+    # exactly bw. Real spread on the shipped checkpoint: 4.7e-5 RELATIVE, which
+    # np.allclose's 1e-5 default rtol rejects. Use the mean width and a
+    # float32-sized relative tolerance; anything looser than 1e-4 is a
+    # genuinely non-uniform grid and the exact interior formula does not apply.
+    # (The J=32 2D head never trips this: bw = 0.0625 = 2^-4 is exact.)
+    bw = float(np.mean(f0.widths))
+    rel_dev = float(np.abs(f0.widths - bw).max() / bw) if bw > 0 else np.inf
+    if rel_dev > 1e-4:
+        raise ValueError(
+            f'exact interior term assumes uniform bars; max relative width '
+            f'deviation is {rel_dev:.2e} (> 1e-4). Either the grid is really '
+            f'non-uniform, or edges were stored at lower precision than fp32.')
+    p0, p1 = np.exp(f0.log_pBars), np.exp(f1.log_pBars)
+    S = _diag_sums_product(p0, p1)
+    # interior weight is the product of the two interior masses
+    p = _interior_tau(S, tau_points, bw, 1.0)
+    pad = n_pad_sigma * max(f0.max_scale, f1.max_scale)
+    p += _tail_term(
+        _outside_only(independent_f2d(f0, f1), float(f0.edges[0]),
+                      float(f0.edges[-1])),
+        tau_points, float(f0.edges[0]), float(f0.edges[-1]), pad, n_y0,
+        align_bins=len(f0.widths))
+    return p
+
+
+# ---------------------------------------------------------------------------
+# Truth
+# ---------------------------------------------------------------------------
+def truth_tau_density(mu0, mu1, sigma, tau_points):
+    """tau | x ~ N(mu1 - mu0, 2 sigma^2) under the IHDP / ACIC Gaussian DGP.
+
+    Both generators draw independent Gaussian arm noise. The Tier-C driver
+    supplies the documented raw sigma=1 after applying the model's outcome
+    scale (see density_truth.py); residual estimates are diagnostic only.
+    """
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    s = math.sqrt(2.0) * float(sigma)
+    z = (tau_points - (float(mu1) - float(mu0))) / s
+    return np.exp(-0.5 * z * z) / (s * math.sqrt(2.0 * math.pi))
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+def l2_distance(f, g, grid):
+    return float(np.sqrt(_TRAPZ((np.asarray(f) - np.asarray(g)) ** 2, grid)))
+
+
+def kl(p, q, grid):
+    """\\int p log(p/q). Call as kl(truth, est) for KL_fwd, kl(est, truth) for
+    KL_rev. Both densities floored before the log."""
+    p = np.maximum(np.asarray(p, dtype=np.float64), _EPS)
+    q = np.maximum(np.asarray(q, dtype=np.float64), _EPS)
+    return float(_TRAPZ(p * np.log(p / q), grid))
+
+
+def nll(density_at_point):
+    """-log f(tau*). No epsilon floor is applied here on purpose: with full
+    tails the density is strictly positive everywhere, so a -inf means a real
+    bug (or a truncated evaluation), and should surface rather than be hidden.
+    """
+    d = np.asarray(density_at_point, dtype=np.float64)
+    return -np.log(d)
+
+
+def mass(f, grid):
+    """\\int f over the grid. Diagnostic: how much of the density the tau grid
+    actually contains. Report it; do not silently renormalise NLL by it."""
+    return float(_TRAPZ(np.asarray(f), grid))
+
+
+def point_metrics(cate_scaled, true_cate, y_scale):
+    """Score density means against true CATE in original outcome units.
+
+    PEHE is the root mean squared error across queries, not the average
+    absolute error. L1 here explicitly means per-query CATE MAE; ate_abs_err
+    is separate and is not the point runner's normalised err_ATE.
+    """
+    pred = np.asarray(cate_scaled, dtype=np.float64).reshape(-1) * float(y_scale)
+    truth = np.asarray(true_cate, dtype=np.float64).reshape(-1)
+    if pred.shape != truth.shape or pred.size == 0:
+        raise ValueError('predicted and true CATE must have equal, nonempty shapes')
+    error = pred - truth
+    return dict(pehe=float(np.sqrt(np.mean(error ** 2))),
+                cate_l1=float(np.mean(np.abs(error))),
+                ate_abs_err=float(abs(np.mean(error))))
+
+
+# ---------------------------------------------------------------------------
+# MALC arm: the ONE substitution, inside region 0
+# ---------------------------------------------------------------------------
+# Everything below ADDS a second path. Nothing above changes, so the raw
+# numbers already in LATEST_RESULTS.md stay reproducible bit for bit.
+#
+# What MALC is doing: the head emits a HISTOGRAM -- piecewise constant,
+# discontinuous at every bin edge, exactly zero in empty bins. MALC replaces
+# it with a smooth density and no bandwidth to tune. It cannot fit a
+# continuous MLE to binned data directly, so it de-bins by simulation: EM
+# mean correction per axis -> a Beta within-bin jitter calibrated to
+# reproduce that mean -> B sampled+jittered points -> the nonparametric MLE
+# over all LOG-CONCAVE densities on those points (a conic program). Log
+# concavity is the shape constraint that does a bandwidth's job. The output
+# is piecewise log-linear on a Delaunay triangulation of the B points.
+#
+# The price is COMPACT SUPPORT: the MLE is identically zero outside the hull
+# of those B points, so p(tau*) can be 0 and NLL +inf. That is inherent to
+# the estimator, not a bug. Callers must handle it -- see malc_hull_tau_range
+# and the fallback in eval_density_tauC_malc.py.
+MALC_B_DEFAULT = 1000        # 0.8-2.7% of queries fall outside the hull at
+                             # B=100, ~0 at B=1000. B=3000 buys nothing for 4x.
+MALC_N_Y0 = 512              # y0 quadrature nodes for the interior
+MALC_TAU_STEP = 0.0078125    # coarse tau grid, interpolated up
+MALC_MEAN_N_EVAL = 257       # grid for the interior mean
+
+
+def _malc_module():
+    """Import malc_2d lazily, so the raw path never needs MALC on sys.path."""
+    import importlib
+    import os as _os
+    import sys as _sys
+    malc_dir = _os.path.abspath(_os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)), '..', '..', 'MALC'))
+    if malc_dir not in _sys.path:
+        _sys.path.insert(0, malc_dir)
+    return importlib.import_module('malc_2d')
+
+
+def fit_malc_interior(p_mat, edges, B=MALC_B_DEFAULT, seed=0):
+    """K=1 log-concave MLE of the interior histogram. None on solver failure.
+
+    TRANSPOSE -- this is the whole reason this wrapper exists. MALC_2D indexes
+    its matrix as [y_index, x_index] and dmalc_2d takes points as (x, y),
+    while ours is p_mat[y0_bin, y1_bin]. Passing it untransposed silently
+    swaps the axes: p(tau) comes back as p(-tau), the mass still integrates to
+    1, and nothing raises. Measured cost of getting this wrong, 375 queries at
+    B=100: 23.2% of joint queries land outside the hull instead of 0.8%.
+    test_density_malc.py gate 1 pins it.
+
+    K IS FORCED TO 1, deliberately, for two independent reasons:
+      * it is well specified -- the DGP's p(y0,y1|x) is a single bivariate
+        Gaussian, which is log-concave, so a mixture would fit structure the
+        truth does not have (the BIC scan picks K*=1 for the joint anyway);
+      * it skips _init_assignments_2d, whose two Python loops over EVERY bin
+        are what makes the 1000x1000 UWYK product intractable, and it skips
+        the mixture E-step, whose fixed n_eval mesh covers 0.5% of the bins at
+        that resolution and so cannot select K there in the first place.
+    """
+    p_mat = np.asarray(p_mat, dtype=np.float64)
+    total = float(p_mat.sum())
+    if not np.isfinite(total) or total <= 0.0:
+        return None
+    edges = np.asarray(edges, dtype=np.float64)
+    try:
+        return _malc_module().MALC_2D(
+            (p_mat / total).T, edges, edges,
+            K=1, B_fit=int(B), B_select=int(B), parallel=False, seed=int(seed))
+    except Exception:
+        return None
+
+
+def malc_synthetic_points(fit) -> np.ndarray:
+    """The (B, 2) jittered points the MLE was fitted to, as (y0, y1)."""
+    pts = [np.asarray(c.fhatn.x, dtype=np.float64)
+           for c in fit.fits if c is not None]
+    return np.concatenate(pts, axis=0) if pts else np.empty((0, 2))
+
+
+def malc_hull_tau_range(fit) -> tuple[float, float]:
+    """(tau_lo, tau_hi): the tau interval the fit's support actually covers.
+
+    The MLE lives on the convex hull of its synthetic points and is zero
+    outside. tau = y1 - y0 is linear, so its range over the hull is its range
+    over the points -- two floats that explain essentially every vanishing
+    interior term (checked against the actual zeros on 375 queries at B=100
+    and B=1000: no disagreement).
+
+    It is a DIAGNOSTIC, not the test. Just inside either extreme the diagonal
+    y1 = y0 + tau clips the hull in a sliver that the y0 quadrature can step
+    over entirely, so the interior comes back 0 for a tau this interval calls
+    covered -- seen at B=25, where the hulls are small enough for that to
+    bite. Callers must therefore branch on the interior value they actually
+    computed; save this alongside it, to see how far outside a miss was.
+    """
+    x = malc_synthetic_points(fit)
+    if x.size == 0:
+        return float('nan'), float('nan')
+    t = x[:, 1] - x[:, 0]
+    return float(t.min()), float(t.max())
+
+
+def malc_inner_mean(fit, lo, hi, n_eval=MALC_MEAN_N_EVAL):
+    """(E[Y0], E[Y1]) of the fitted interior, by grid quadrature. None if empty.
+
+    Feeds Joint2D.mean(inner=...) so the MALC point estimate reuses the exact
+    same 8 tail regions as the raw one.
+    """
+    dmalc = _malc_module().dmalc_2d
+    g = np.linspace(float(lo), float(hi), int(n_eval))
+    Y0, Y1 = np.meshgrid(g, g, indexing='ij')
+    d = dmalc(fit, np.column_stack([Y0.ravel(), Y1.ravel()]))
+    d = np.maximum(np.nan_to_num(d, nan=0.0), 0.0).reshape(n_eval, n_eval)
+    z = float(d.sum())
+    if z <= 0.0:
+        return None
+    return float((d.sum(axis=1) @ g) / z), float((d.sum(axis=0) @ g) / z)
+
+
+def malc_interior_tau(fit, lo, hi, tau_points, w0, n_y0=MALC_N_Y0,
+                      coarse_step=MALC_TAU_STEP, max_points=2_000_000):
+    """w0 * \\int f_malc(y0, y0 + tau) dy0 -- region 0 only.
+
+    REPLACES the closed-form _interior_tau, which does not survive MALC: the
+    fitted density is piecewise LOG-linear on a Delaunay triangulation, not
+    piecewise constant on bins, so there are no diagonal sums to take and the
+    interior joins the quadrature.
+
+    Evaluated on a coarse tau grid and linearly interpolated up, exactly as
+    _tail_term does, because every tau point now costs n_y0 density
+    evaluations and TAU_CENTERS has 12001 of them. Measured against direct
+    evaluation on all 12001 (IHDP r000 q0, B=1000):
+
+        n_y0   max|dp| vs n_y0=8192        step        max|dp| vs direct
+         256           2.52e-04          0.0625000          9.87e-03
+         512           1.09e-04          0.0312500          2.46e-03
+        1024           4.75e-05          0.0078125          2.00e-04
+        2048           2.25e-05          0.0020000          3.28e-05
+
+    512 / 0.0078125 balances the two error sources (1.1e-4 and 2.0e-4) at
+    0.89 s for the full grid; int p dtau = 1.000000 at every setting. The MALC
+    interior is CONTINUOUS, which is why 512 nodes suffice where the raw
+    path's discontinuous tail integrand needs 4096.
+
+    NOTE the coarse step is numerically TAIL_TAU_STEP but not for its reason:
+    that one is 8 nodes per joint bin because the tail term's kinks sit on bin
+    edges. MALC's kinks are Delaunay edges, wherever the B samples landed.
+    """
+    dmalc = _malc_module().dmalc_2d
+    tau_points = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    y0 = np.linspace(float(lo), float(hi), int(n_y0))
+    step = float(y0[1] - y0[0])
+
+    def evaluate(taus):
+        out = np.empty(taus.size, dtype=np.float64)
+        chunk = max(1, int(max_points // max(y0.size, 1)))
+        for i in range(0, taus.size, chunk):
+            t = taus[i:i + chunk]
+            Y0 = np.broadcast_to(y0, (t.size, y0.size))
+            Y1 = Y0 + t[:, None]
+            d = dmalc(fit, np.column_stack([Y0.ravel(), Y1.ravel()]))
+            d = np.maximum(np.nan_to_num(d, nan=0.0), 0.0)
+            out[i:i + chunk] = d.reshape(t.size, y0.size).sum(axis=1) * step
+        return out
+
+    span = float(tau_points.max() - tau_points.min())
+    n_coarse = int(round(span / coarse_step)) + 1 if span > 0 else 1
+    if tau_points.size <= n_coarse or n_coarse < 2:
+        return evaluate(tau_points) * float(w0)       # e.g. the single tau*
+    coarse = np.linspace(float(tau_points.min()), float(tau_points.max()),
+                         n_coarse)
+    return np.interp(tau_points, coarse, evaluate(coarse)) * float(w0)
+
+
+def malc_tau_density(fit, tail_f2d, tau_points, w0, lo, hi, pad,
+                     n_y0_malc=MALC_N_Y0, n_y0_tail=4096, align_bins=None):
+    """MALC interior + the SAME raw tails. The one substitution, region 0.
+
+    The 8 non-interior regions go through the identical _outside_only /
+    _tail_term path with the identical quadrature, so any raw-vs-MALC
+    difference is attributable to region 0 and nothing else.
+
+    Regions 1-4 keep the RAW p_mat row/column boundary conditionals on
+    purpose. A MALC boundary conditional is not available: the fitted density
+    is zero at y = +-1, because its hull never reaches the square's edge, so
+    the conditional evaluates to 0/0. Measured on IHDP r000 q0, integrating
+    the MALC density along each edge: 0.0 at y0=lo, 0.0 at y0=hi, 0.0 at
+    y1=lo. losses/BarDistribution2D.py::eval_density_2d does exactly this and
+    would silently zero out four of the nine regions; it has no callers and
+    has never been run.
+    """
+    p = malc_interior_tau(fit, lo, hi, tau_points, w0, n_y0=n_y0_malc)
+    p += _tail_term(_outside_only(tail_f2d, lo, hi), tau_points, lo, hi,
+                    pad, n_y0_tail, align_bins=align_bins)
+    return p
