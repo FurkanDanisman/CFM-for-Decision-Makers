@@ -3,7 +3,12 @@
 #SBATCH --output=logs_cpfn2d_j1024_random/train_%j.out
 #SBATCH --error=logs_cpfn2d_j1024_random/train_%j.err
 #SBATCH --time=24:00:00
-#SBATCH --partition=gpubase_h100_b1
+# NO --partition ON PURPOSE. On this cluster the trailing _b1.._bN is a
+# TIME BUCKET, and gpubase_h100_b1 caps at 3:00:00 -- pinning it there
+# makes any longer --time a submission error. Leaving it unset lets
+# Slurm route by --time and --gres, so `sbatch --time=24:00:00` lands in
+# whichever bucket can hold it. Pin explicitly if you ever need to:
+#   sbatch --partition=gpubase_h100_b3 --time=24:00:00 ...
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=256G
