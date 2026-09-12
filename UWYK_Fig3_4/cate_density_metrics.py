@@ -269,12 +269,13 @@ METHODS = [
 ]
 
 
-def main():
+def _parse():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
     ap.add_argument("--context", type=int, default=1000)
-    ap.add_argument("--nodes", type=int, default=5)
+    ap.add_argument("--nodes", type=int, nargs="+", default=[5],
+                    help="one or more node counts; each gets its own table")
     ap.add_argument("--subset", default="nonzero",
                     choices=["nonzero", "zero", "total"])
     ap.add_argument("--max-real", type=int, default=None,
@@ -294,8 +295,10 @@ def main():
     ap.add_argument("--skip", nargs="+", default=(),
                     help="method labels to exclude.")
     ap.add_argument("--out", default=None)
-    args = ap.parse_args()
+    return ap.parse_args()
 
+
+def build_table(args):
     # `total` = every query. These metrics are per-query means, so unlike PEHE
     # (an RMS needing weighted pooling) the two disjoint subsets simply
     # concatenate.
@@ -377,6 +380,27 @@ def main():
     with open(out.replace(".md", ".json"), "w") as f:
         json.dump(rows, f, indent=2)
     print(f"[written] {out}")
+    return md
+
+
+def main():
+    args = _parse()
+    nodes = args.nodes
+    parts = []
+    for n in nodes:
+        args.nodes = n
+        print(f"\n{'='*62}\n  d = {n}\n{'='*62}", flush=True)
+        try:
+            parts.append(build_table(args))
+        except SystemExit as exc:
+            print(f"[skip] d={n}: {exc}", flush=True)
+    if len(nodes) > 1 and parts:
+        out = os.path.join(
+            args.root,
+            f"cate_density_allnodes_N{args.context}_{args.subset}_{args.coupling}.md")
+        with open(out, "w") as f:
+            f.write("\n\n".join(parts))
+        print(f"\n[written] {out}")
 
 
 if __name__ == "__main__":
