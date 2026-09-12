@@ -504,8 +504,13 @@ def build_table(args):
 def _render(rows, args):
     hdr = ["method", "n_files", "n_query", "coverage95", "length", "crps", "wis",
            "pred_sd", "true_sd", "sd_ratio", "bias"]
-    L = [f"# CATE density calibration — d={args.nodes}, N={args.context}, "
-         f"{args.subset}, 1D coupling = {args.coupling}", "",
+    _what = ("CATE density per query, scored against that query's true tau"
+             if args.target == "cate" else
+             "ATE density per dataset (Wasserstein barycenter of its per-query "
+             "CATE densities), scored against that dataset's realized ATE")
+    L = [f"# {args.target.upper()} density calibration — d={args.nodes}, "
+         f"N={args.context}, {args.subset}, 1D coupling = {args.coupling}", "",
+         f"Scored object: {_what}.", "",
          "2D heads: diagonal projection of the joint. 1D heads: independence",
          "convolution of the two arm marginals. Raw densities, no MALC.", "",
          "coverage95 should be ~0.95; below means over-confident, above means",
@@ -531,8 +536,8 @@ def _render(rows, args):
     md = "\n".join(L) + "\n"
     print(md)
     out = args.out or os.path.join(
-        args.root, f"cate_density_d{args.nodes}_N{args.context}_{args.subset}"
-        f"_{args.coupling}.md")
+        args.root, f"{args.target}_density_d{args.nodes}_N{args.context}"
+        f"_{args.subset}_{args.coupling}.md")
     with open(out, "w") as f:
         f.write(md)
     with open(out.replace(".md", ".json"), "w") as f:
@@ -555,7 +560,8 @@ def main():
     if len(nodes) > 1 and parts:
         out = os.path.join(
             args.root,
-            f"cate_density_allnodes_N{args.context}_{args.subset}_{args.coupling}.md")
+            f"{args.target}_density_allnodes_N{args.context}"
+            f"_{args.subset}_{args.coupling}.md")
         with open(out, "w") as f:
             f.write("\n\n".join(parts))
         print(f"\n[written] {out}")
