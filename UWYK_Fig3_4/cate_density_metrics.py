@@ -209,8 +209,8 @@ def _bin_width(z, J):
     return 2.0 / J
 
 
-def score_file(path, tag=None, coupling="indep"):
-    """All per-query scores for one realization npz. None if it has no density."""
+def _load_arrays(path, tag=None, coupling="indep"):
+    """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
     with np.load(path, allow_pickle=True) as z:
         # Density keys must match the REQUESTED tag. Falling back to the
         # un-suffixed key when a tag is asked for produced two identical rows
@@ -241,24 +241,38 @@ def score_file(path, tag=None, coupling="indep"):
         p1 = g("p_y1_scaled", strict=True)
         if joint is not None and joint.ndim == 3:
             J = joint.shape[-1]
-            bw = _bin_width(z, J)
-            atoms = tau_atoms(J, bw) * y_scale
-            pmfs = (tau_pmf_joint(joint[q]) for q in range(joint.shape[0]))
-            n_q = joint.shape[0]
+            atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
+            pmfs = [tau_pmf_joint(joint[q]) for q in range(joint.shape[0])]
         elif p0 is not None and p1 is not None and p0.ndim == 2:
             J = p0.shape[-1]
-            bw = _bin_width(z, J)
-            atoms = tau_atoms(J, bw) * y_scale
+            atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
             if coupling == "comonotonic":
-                pmfs = (tau_pmf_comonotonic(p0[q], p1[q], J)
-                        for q in range(p0.shape[0]))
+                pmfs = [tau_pmf_comonotonic(p0[q], p1[q], J)
+                        for q in range(p0.shape[0])]
             else:
-                pmfs = (tau_pmf_indep(p0[q], p1[q]) for q in range(p0.shape[0]))
-            n_q = p0.shape[0]
+                pmfs = [tau_pmf_indep(p0[q], p1[q]) for q in range(p0.shape[0])]
         else:
             return None
-
     _LAST_J["_J"] = int(len(atoms))
+    return atoms, pmfs, y_true, len(pmfs)
+
+
+def _query_pmfs(path, tag=None, coupling="indep"):
+    """(atoms, pmfs (n_q, K), y_true (n_q,)) for one npz, or None."""
+    got = _load_arrays(path, tag, coupling)
+    if got is None:
+        return None
+    atoms, pmfs, y_true, _ = got
+    pm = np.asarray(pmfs, dtype=np.float64)
+    return atoms, pm, y_true[: pm.shape[0]]
+
+
+def score_file(path, tag=None, coupling="indep"):
+    """All per-query scores for one realization npz. None if it has no density."""
+    got = _load_arrays(path, tag, coupling)
+    if got is None:
+        return None
+    atoms, pmfs, y_true, _ = got
     out = []
     for q, pmf in enumerate(pmfs):
         if q >= y_true.size:
@@ -270,6 +284,82 @@ def score_file(path, tag=None, coupling="indep"):
 
 
 _LAST_J: dict = {}
+
+def _bary(atoms, pmfs):
+    """Wasserstein barycenter of per-query tau densities -> one ATE predictive.
+
+    density_calc.md section 5: the ATE density is the 1D 2-Wasserstein
+    barycenter of the per-query CATE densities. Uses the repo's reference
+    implementation so this matches the IHDP/ACIC pipeline.
+
+    IMPORTANT about what this is. The 1D barycenter averages QUANTILE
+    functions, so the barycenter of N(mu_i, s) is N(mean(mu_i), s) — the same
+    width as a single query, NOT s/sqrt(n). It is a "typical CATE" density, not
+    the sampling distribution of the ATE estimator. Scored against the realized
+    ATE it will therefore look heavily over-dispersed (near-total coverage, long
+    intervals). That is a property of the definition, not a bug.
+    """
+    import sys as _s
+    _mp = os.path.join(_REPO, "MALC", "Optimal_Transport")
+    if _mp not in _s.path:
+        _s.path.insert(0, _mp)
+    from ot_barycenter import wasserstein_barycenter_1d
+
+    atoms = np.asarray(atoms, dtype=np.float64)
+    dx = float(atoms[1] - atoms[0])
+    dens = np.asarray(pmfs, dtype=np.float64) / dx          # pmf -> density
+    bary = wasserstein_barycenter_1d(dens, atoms)
+    pmf = np.maximum(bary, 0.0) * dx
+    tot = pmf.sum()
+    return pmf / tot if tot > 0 else pmf
+
+
+def ate_rows(root, ctx, nodes, subdir, tag, coupling, subset, data_root,
+             max_real=None):
+    """One ATE predictive per source realization, with its realized ATE.
+
+    Under `total` the two subsets are two files of the SAME dataset, so their
+    queries are pooled before the barycenter and the truth is the ATE over all
+    of them. Scoring the halves separately would give the ATE of a query subset,
+    which is not the estimand.
+    """
+    import importlib
+    agg = importlib.import_module("aggregate_cmech_methods")
+    subs = ["nonzero", "zero"] if subset == "total" else [subset]
+
+    bysrc: dict = {}
+    for sub in subs:
+        src, _counts = agg.subset_sources(nodes, sub, data_root)
+        d = os.path.join(root, f"N{ctx}", subdir, f"CMECH_n{nodes}_{sub}")
+        files = sorted(glob.glob(os.path.join(d, "*.npz")))
+        if max_real:
+            files = files[:max_real]
+        for f in files:
+            digits = "".join(c for c in os.path.basename(f).rsplit("r", 1)[-1]
+                             if c.isdigit())
+            if not digits:
+                continue
+            idx = int(digits)
+            got = _query_pmfs(f, tag, coupling)
+            if got is None:
+                continue
+            atoms, pmfs, y = got
+            s_id = src[idx] if idx < len(src) else (idx, sub)
+            cur = bysrc.setdefault(s_id, dict(atoms=atoms, pmfs=[], y=[]))
+            if cur["atoms"].shape != atoms.shape or not np.allclose(cur["atoms"], atoms):
+                continue      # differing support between halves: cannot pool
+            cur["pmfs"].append(pmfs)
+            cur["y"].append(y)
+
+    out = []
+    for s_id, c in sorted(bysrc.items(), key=lambda kv: str(kv[0])):
+        pm = np.concatenate(c["pmfs"], axis=0)
+        yy = np.concatenate(c["y"])
+        if pm.shape[0] == 0:
+            continue
+        out.append((c["atoms"], _bary(c["atoms"], pm), float(yy.mean())))
+    return out
+
 
 METHODS = [
     ("dopfn_native",  "dopfn_native",  None),
@@ -308,8 +398,45 @@ def _parse():
                          "runtime.")
     ap.add_argument("--skip", nargs="+", default=(),
                     help="method labels to exclude.")
+    ap.add_argument("--target", default="cate", choices=["cate", "ate"],
+                    help="cate = score each query's tau density against its true "
+                         "tau. ate = Wasserstein-barycenter the per-query "
+                         "densities into one ATE density per dataset and score "
+                         "it against that dataset's realized ATE.")
     ap.add_argument("--out", default=None)
     return ap.parse_args()
+
+
+def _build_ate(args, todo):
+    """One ATE density per dataset (barycenter of its query CATE densities),
+    scored against that dataset's realized ATE."""
+    rows = []
+    for label, subdir, tag in todo:
+        print(f"[scoring-ate] {label} ...", end="", flush=True)
+        recs = ate_rows(args.root, args.context, args.nodes, subdir, tag,
+                        args.coupling, args.subset, args.data_root,
+                        args.max_real)
+        print(f" {len(recs)} datasets", flush=True)
+        if not recs:
+            continue
+        sc = [score_query(a, p, y) for a, p, y in recs]
+        arr = {k: np.array([x[k] for x in sc]) for k in sc[0]}
+        n = len(sc)
+        sem = lambda v: float(v.std(ddof=1) / np.sqrt(n)) if n > 1 else float("nan")
+        true_sd = float(arr["y_true"].std())
+        rows.append(dict(
+            method=label, n_files=n, n_query=n,
+            pred_sd=float(arr["pred_sd"].mean()), true_sd=true_sd,
+            sd_ratio=float(arr["pred_sd"].mean() / true_sd) if true_sd > 0 else float("nan"),
+            bias=float(arr["bias"].mean()),
+            coverage95=float(arr["cover"].mean()),
+            length=float(arr["length"].mean()), length_sem=sem(arr["length"]),
+            crps=float(arr["crps"].mean()), crps_sem=sem(arr["crps"]),
+            wis=float(arr["wis"].mean()), wis_sem=sem(arr["wis"]),
+        ))
+    if not rows:
+        raise SystemExit(f"no density dumps under {args.root}/N{args.context}")
+    return _render(rows, args)
 
 
 def build_table(args):
@@ -321,6 +448,10 @@ def build_table(args):
     todo = [m for m in METHODS
             if (args.methods is None or m[0] in args.methods)
             and m[0] not in args.skip]
+
+    if args.target == "ate":
+        return _build_ate(args, todo)
+
     for label, subdir, tag in todo:
         acc, n_files = [], 0
         print(f"[scoring] {label} ...", end="", flush=True)
@@ -363,6 +494,10 @@ def build_table(args):
             f"no density dumps under {args.root}/N{args.context}. "
             "Re-run the evals with DENSITY_DUMP=1.")
 
+    return _render(rows, args)
+
+
+def _render(rows, args):
     hdr = ["method", "n_files", "n_query", "coverage95", "length", "crps", "wis",
            "pred_sd", "true_sd", "sd_ratio", "bias"]
     L = [f"# CATE density calibration — d={args.nodes}, N={args.context}, "
