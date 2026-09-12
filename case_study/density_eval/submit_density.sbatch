@@ -16,6 +16,17 @@ mkdir -p logs_density
 source "${VENV:-$DEPLOY_ROOT/venv}/bin/activate"
 export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+# sitecustomize denylist: causalpfn/__init__.py imports causal_estimator, which
+# pulls faiss / transformers / wandb at module scope. The evals only need
+# causalpfn.benchmarks dataset loaders, so the shim stubs those top-level
+# modules. Without it every causalpfn-backed eval dies at import with
+# ModuleNotFoundError: No module named 'faiss'. Same line the working
+# dispatcher (benchmarks/cluster/submit_eval_scm_case_studies.sbatch) uses.
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+[ -f "$REPO/benchmarks/uwyk_table1/shims/sitecustomize.py" ] || {
+    echo "FATAL: shim missing at $REPO/benchmarks/uwyk_table1/shims" >&2; exit 1; }
 IFS=',' read -ra CASE_LIST <<< "${CASES:?}"
 
 echo "[density] kind=$KIND N=$CASE_STUDY_N out=$OUT cases=${#CASE_LIST[@]}"
