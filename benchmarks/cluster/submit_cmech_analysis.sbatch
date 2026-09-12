@@ -14,7 +14,8 @@
 #   1. progress audit (both subsets)
 #   2. per-method PEHE / ATE tables, all contexts
 #   3. pairwise 1D-vs-2D table with medians
-#   4. CATE density calibration (coverage / length / WIS / CRPS), both couplings
+#   4. density calibration for CATE and ATE (coverage / length / WIS /
+#      CRPS), each under both 1D couplings
 #   5. bar figures for every (node count, context)
 #
 # Steps are independent: one failing does not stop the rest.
@@ -74,12 +75,14 @@ python "$REPO/benchmarks/aggregate_cmech_1d_vs_2d.py" \
     --root "$RESULT_ROOT/N$CONTEXT"
 
 if [ "${SKIP_DENSITY:-0}" != "1" ]; then
-    step "4/5 CATE density calibration"
-    for cpl in indep comonotonic; do
-        echo "--- coupling = $cpl"
-        python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$RESULT_ROOT" --context "$CONTEXT" --nodes $NODES \
-            --subset "$SUBSET" --coupling "$cpl"
+    step "4/5 density calibration — CATE and ATE"
+    for tgt in cate ate; do
+        for cpl in indep comonotonic; do
+            echo "--- target=$tgt  coupling=$cpl"
+            python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+                --root "$RESULT_ROOT" --context "$CONTEXT" --nodes $NODES \
+                --subset "$SUBSET" --coupling "$cpl" --target "$tgt"
+        done
     done
 fi
 
