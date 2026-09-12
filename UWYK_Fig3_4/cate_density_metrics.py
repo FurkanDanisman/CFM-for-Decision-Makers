@@ -67,10 +67,30 @@ def tau_pmf_joint(joint: np.ndarray) -> np.ndarray:
     return s / tot if tot > 0 else s
 
 
+_FFT_MIN_J = 256
+
+
 def tau_pmf_indep(p0: np.ndarray, p1: np.ndarray) -> np.ndarray:
-    """1D head: assume Y0 ⟂ Y1 | X and convolve the two arm marginals."""
-    s = _diag_sums_product(np.asarray(p0, dtype=np.float64),
-                           np.asarray(p1, dtype=np.float64))
+    """1D head: assume Y0 ⟂ Y1 | X and convolve the two arm marginals.
+
+    Direct correlation is O(J^2) per query. cpfn1d runs J=1024, so at ~85k
+    queries per subset that is ~10^11 operations and the script appears to
+    hang. Above _FFT_MIN_J we do the same convolution by FFT in O(J log J);
+    below it the direct path is faster and is kept as the reference.
+    np.correlate(a, v, 'full') == np.convolve(a, v[::-1], 'full') for real
+    input, which is what the transform computes.
+    """
+    p0 = np.asarray(p0, dtype=np.float64)
+    p1 = np.asarray(p1, dtype=np.float64)
+    J = p0.shape[-1]
+    if J >= _FFT_MIN_J:
+        n = 2 * J - 1
+        nfft = 1 << (n - 1).bit_length()
+        s = np.fft.irfft(np.fft.rfft(p1, nfft) * np.fft.rfft(p0[::-1], nfft),
+                         nfft)[:n]
+        s = np.maximum(s, 0.0)          # kill FFT round-off negatives
+    else:
+        s = _diag_sums_product(p0, p1)
     tot = s.sum()
     return s / tot if tot > 0 else s
 
@@ -224,6 +244,7 @@ def score_file(path, tag=None, coupling="indep"):
         else:
             return None
 
+    _LAST_J["_J"] = int(len(atoms))
     out = []
     for q, pmf in enumerate(pmfs):
         if q >= y_true.size:
@@ -233,6 +254,8 @@ def score_file(path, tag=None, coupling="indep"):
         out.append(score_query(atoms, pmf, float(y_true[q])))
     return out or None
 
+
+_LAST_J: dict = {}
 
 METHODS = [
     ("dopfn_native",  "dopfn_native",  None),
@@ -263,6 +286,13 @@ def main():
                          "coupling (narrowest). 2D heads ignore this. On this "
                          "benchmark the arms are near-comonotonic, so reporting "
                          "only `indep` scores the assumption, not the head.")
+    ap.add_argument("--methods", nargs="+", default=None,
+                    help="subset of method labels to score (default: all). "
+                         "Useful to skip dopfn_native, whose bar distribution "
+                         "has far more bins than the others and dominates the "
+                         "runtime.")
+    ap.add_argument("--skip", nargs="+", default=(),
+                    help="method labels to exclude.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -271,8 +301,12 @@ def main():
     # concatenate.
     subsets = (["nonzero", "zero"] if args.subset == "total" else [args.subset])
     rows = []
-    for label, subdir, tag in METHODS:
+    todo = [m for m in METHODS
+            if (args.methods is None or m[0] in args.methods)
+            and m[0] not in args.skip]
+    for label, subdir, tag in todo:
         acc, n_files = [], 0
+        print(f"[scoring] {label} ...", end="", flush=True)
         for sub in subsets:
             d = os.path.join(args.root, f"N{args.context}", subdir,
                              f"CMECH_n{args.nodes}_{sub}")
@@ -284,6 +318,7 @@ def main():
                 if got:
                     acc += got
                     n_files += 1
+        print(f" {len(acc)} queries from {n_files} realizations", flush=True)
         if not acc:
             print(f"[skip] {label}: no density dumps for "
                   f"{'/'.join(subsets)} under "
@@ -291,6 +326,7 @@ def main():
             continue
         arr = {k: np.array([a[k] for a in acc]) for k in acc[0]}
         true_sd = float(arr["y_true"].std())
+        print(f"           tau support atoms: {_LAST_J.get('_J', '?')}", flush=True)
         rows.append(dict(
             method=label, n_real=n_files, n_query=len(acc),
             pred_sd=float(arr["pred_sd"].mean()), true_sd=true_sd,
