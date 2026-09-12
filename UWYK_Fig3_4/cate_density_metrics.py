@@ -335,7 +335,7 @@ def build_table(args):
                 if got:
                     acc += got
                     n_files += 1
-        print(f" {len(acc)} queries from {n_files} realizations", flush=True)
+        print(f" {len(acc)} queries from {n_files} file(s)", flush=True)
         if not acc:
             print(f"[skip] {label}: no density dumps for "
                   f"{'/'.join(subsets)} under "
@@ -345,7 +345,7 @@ def build_table(args):
         true_sd = float(arr["y_true"].std())
         print(f"           tau support atoms: {_LAST_J.get('_J', '?')}", flush=True)
         rows.append(dict(
-            method=label, n_real=n_files, n_query=len(acc),
+            method=label, n_files=n_files, n_query=len(acc),
             pred_sd=float(arr["pred_sd"].mean()), true_sd=true_sd,
             sd_ratio=float(arr["pred_sd"].mean() / true_sd) if true_sd > 0 else float("nan"),
             bias=float(arr["bias"].mean()),
@@ -363,7 +363,7 @@ def build_table(args):
             f"no density dumps under {args.root}/N{args.context}. "
             "Re-run the evals with DENSITY_DUMP=1.")
 
-    hdr = ["method", "n_real", "n_query", "coverage95", "length", "crps", "wis",
+    hdr = ["method", "n_files", "n_query", "coverage95", "length", "crps", "wis",
            "pred_sd", "true_sd", "sd_ratio", "bias"]
     L = [f"# CATE density calibration — d={args.nodes}, N={args.context}, "
          f"{args.subset}, 1D coupling = {args.coupling}", "",
@@ -373,6 +373,11 @@ def build_table(args):
          "the intervals are wider than they need to be. Read it WITH length —",
          "a wide interval buys coverage for free. CRPS and WIS are proper, so",
          "lower is better on both and they penalise that trade-off.", "",
+         "`n_files` counts npz files scored, not distinct datasets: under",
+         "`--subset total` each dataset contributes up to two (its zero and its",
+         "non-zero queries), so n_files exceeds the realization count. `n_query`",
+         "is the honest total and is exact — the subsets are disjoint and",
+         "together complete.", "",
          "`sd_ratio` = mean predictive sd / sd of the true tau. A UNITS CHECK:",
          "a density dumped on the wrong scale still scores finitely, it just",
          "looks like a bad model. Values near 1 are well-calibrated in spread;",
@@ -380,7 +385,7 @@ def build_table(args):
          "the model is that much worse. `bias` is mean(E[tau]) - tau_true.", "",
          "| " + " | ".join(hdr) + " |", "|" + "|".join("---" for _ in hdr) + "|"]
     for r in rows:
-        L.append("| {method} | {n_real} | {n_query} | {coverage95:.3f} | "
+        L.append("| {method} | {n_files} | {n_query} | {coverage95:.3f} | "
                  "{length:.4f} ± {length_sem:.4f} | {crps:.4f} ± {crps_sem:.4f} | "
                  "{wis:.4f} ± {wis_sem:.4f} | {pred_sd:.4f} | {true_sd:.4f} | "
                  "{sd_ratio:.1f} | {bias:+.4f} |".format(**r))
