@@ -19,6 +19,21 @@ import glob
 import os
 from collections import defaultdict
 
+import numpy as np
+
+# A density dump carries these; a POINT-eval npz does not. Checking the key
+# list (not the arrays) is cheap -- an npz is a zip and numpy reads the
+# namelist without decompressing.
+_DENSITY_KEYS = ("p_joint_scaled", "p_y0_scaled")
+
+
+def _is_density_npz(path):
+    try:
+        with np.load(path, allow_pickle=True) as z:
+            return any(k in z.files for k in _DENSITY_KEYS)
+    except Exception:
+        return False
+
 SHIFTS = ["shift0", "shift+2", "shift-2"]
 DS = [2, 3, 5, 10, 20, 30, 40, 50]
 CTX = [50, 100, 250, 500, 1000]
@@ -47,7 +62,15 @@ def scan(root, shifts, ds, ctx, models, cases):
                         st[k][2] += 1
                         if os.path.isfile(os.path.join(cell, "metrics.json")):
                             st[k][0] += 1
-                        elif glob.glob(os.path.join(cell, "*.npz")):
+                            continue
+                        # Only count npz that are actually DENSITY dumps: these
+                        # directories also hold point-eval npz from the earlier
+                        # dsweep run, and counting those reports 100% dumped for
+                        # models that have produced nothing.
+                        cand = sorted(glob.glob(os.path.join(cell, "*.npz")))
+                        cand = [f for f in cand
+                                if "summary" not in os.path.basename(f)]
+                        if cand and _is_density_npz(cand[0]):
                             st[k][1] += 1
     return st
 
@@ -98,8 +121,9 @@ def main():
     print(f"\n{grand[0]} scored / {grand[2]} cells"
           + (f"   ({grand[1]} dumped but not scored)" if grand[1] else ""))
     if grand[1]:
-        print("  '+N' = density npz present, metrics.json not written yet "
-              "(running, or the scorer failed)")
+        print("  '+N' = DENSITY npz present, metrics.json not written yet "
+              "(running, or the scorer failed).")
+        print("        Point-eval npz in the same directory are ignored.")
 
 
 if __name__ == "__main__":

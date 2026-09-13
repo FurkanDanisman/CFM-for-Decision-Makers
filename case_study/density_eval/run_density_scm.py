@@ -229,6 +229,13 @@ def main():
 
     out = {'dataset': a.dataset, 'n_context': a.n, 'method': a.method,
            'crps_convention': 'node-insertion (truth as exact quadrature node)',
+           # Bump when the SCORING changes so old metrics.json are identifiable
+           # without guessing from timestamps.
+           'scorer_version': 2,
+           'scorer_note': 'v2: per-arm (STD_MODE=per_arm) dumps use '
+                          'cpfn1d_tau_density_raw on each arm RAW grid. v1 '
+                          'convolved both arms on a shared grid with arm0 '
+                          'y_scale, which misplaced p(tau) for cpfn1d.',
            'n_realizations': len(ate_all), 'n_skipped': len(skipped),
            'skipped': skipped[:10],
            'cate': summarize(cate_all, levels=DEFAULT_LEVELS),
