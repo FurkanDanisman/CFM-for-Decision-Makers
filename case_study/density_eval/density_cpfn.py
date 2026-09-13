@@ -54,7 +54,10 @@ import numpy as np
 
 from density_common import (          # LOCAL copy in case_study/density_eval/
     Joint2D, UWYK1D, _diag_sums, _diag_sums_product, _interior_tau,
-)
+)  # _interior_tau is imported HERE, not inside the hot function: a function-
+   # level import costs a dict lookup per call and, on the first call, pulls in
+   # the whole 967-line module -- which is what made the first timing read 18 ms
+   # when steady state is under 1 ms.
 
 _TRAPZ = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
 _SUM_TOL = 1e-3          # float32 dumps: bin probs rarely sum to 1 exactly
@@ -227,7 +230,17 @@ def raw_edges(edges, shift, scale):
     return np.asarray(edges, dtype=np.float64) * float(scale) + float(shift)
 
 
-def cpfn1d_tau_density_raw(p0, e0, p1, e1, tau_points):
+def _rebin_exact(p, e, new_edges):
+    """Re-express histogram (p, e) on `new_edges`. EXACT for a piecewise-constant
+    density: its CDF is piecewise linear, so linear interpolation of that CDF at
+    any point is exact, and bin masses follow by differencing."""
+    cdf = np.concatenate([[0.0], np.cumsum(p)])
+    F = np.interp(new_edges, e, cdf, left=0.0, right=float(cdf[-1]))
+    return np.diff(F)
+
+
+def cpfn1d_tau_density_raw(p0, e0, p1, e1, tau_points, oversample=8,
+                           exact=False):
     r"""p(tau) in RAW units for two histograms on DIFFERENT uniform grids.
 
     Needed for STD_MODE=per_arm, where arm0 and arm1 carry their own
@@ -256,19 +269,51 @@ def cpfn1d_tau_density_raw(p0, e0, p1, e1, tau_points):
     if not (np.all(np.diff(e0) > 0) and np.all(np.diff(e1) > 0)):
         raise ValueError('edges must be strictly increasing')
 
-    cdf1 = np.concatenate([[0.0], np.cumsum(p1)])
-    cdf1 /= cdf1[-1]
     tau = np.atleast_1d(np.asarray(tau_points, dtype=np.float64))
+    p0n, p1n = p0 / p0.sum(), p1 / p1.sum()
 
+    if not exact:
+        # FAST PATH. The reference loop below is O(J) numpy calls per query;
+        # at cpfn1d's J=1024 that is 2048 np.interp calls, ~83 ms/query, i.e.
+        # ~33 h to score the cen3 cpfn1d cells. Instead resample BOTH arms onto
+        # one common fine grid -- exact, since _rebin_exact interpolates a
+        # piecewise-linear CDF -- after which both share a lattice, the offset
+        # e1[0]-e0[0] is absorbed, and p(tau) is a plain cross-correlation
+        # computable by FFT in O(n log n).
+        w = min(float(np.diff(e0).mean()), float(np.diff(e1).mean()))
+        h = w / float(max(1, oversample))
+        lo = min(float(e0[0]), float(e1[0]))
+        hi = max(float(e0[-1]), float(e1[-1]))
+        n = int(np.ceil((hi - lo) / h))
+        ge = lo + h * np.arange(n + 1)
+        q0 = _rebin_exact(p0n, e0, ge)
+        q1 = _rebin_exact(p1n, e1, ge)
+        # S[k] = sum_i q0[i] q1[i+k]  -> mass at tau = k*h (offsets cancel:
+        # both arms now sit on the same lattice).
+        m = 2 * n - 1
+        nfft = 1 << int(m - 1).bit_length()
+        S = np.fft.irfft(np.fft.rfft(q1, nfft)
+                         * np.fft.rfft(q0[::-1], nfft), nfft)[:m]
+        out = _interior_tau(np.clip(S, 0.0, None), tau, h, 1.0)
+        # The common grid covers the UNION of both arms, so its tau lattice
+        # runs wider than the true support [e1[0]-e0[-1], e1[-1]-e0[0]] and
+        # interpolation can leak a little mass just outside it. Compact support
+        # is a real property of a histogram density, so enforce it exactly.
+        s_lo, s_hi = tau_support_raw(e0, e1)
+        out[(tau < s_lo) | (tau > s_hi)] = 0.0
+        return out
+
+    # REFERENCE PATH (exact, slow) -- kept for tests.
+    cdf1 = np.concatenate([[0.0], np.cumsum(p1n)])
+    cdf1 /= cdf1[-1]
     out = np.zeros(tau.shape, dtype=np.float64)
     w0 = np.diff(e0)
-    p0n = p0 / p0.sum()
     for i in range(p0n.size):
         if p0n[i] <= 0.0:
             continue
-        hi = np.interp(e0[i + 1] + tau, e1, cdf1, left=0.0, right=1.0)
-        lo = np.interp(e0[i] + tau, e1, cdf1, left=0.0, right=1.0)
-        out += (p0n[i] / w0[i]) * (hi - lo)
+        hi_ = np.interp(e0[i + 1] + tau, e1, cdf1, left=0.0, right=1.0)
+        lo_ = np.interp(e0[i] + tau, e1, cdf1, left=0.0, right=1.0)
+        out += (p0n[i] / w0[i]) * (hi_ - lo_)
     return out
 
 
