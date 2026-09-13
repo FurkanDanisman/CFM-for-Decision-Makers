@@ -45,6 +45,8 @@ sys.path.insert(0, _HERE)
 
 from interval_metrics import (DEFAULT_LEVELS, query_metrics, summarize,   # noqa: E402
                               format_table)
+from density_cpfn import (cpfn1d_tau_density_raw, raw_edges,              # noqa: E402
+                          tau_support_raw)
 from density_truth import scm_true_cate                                    # noqa: E402
 
 _TRAPZ = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
@@ -120,11 +122,39 @@ def densify(p_atoms, tau_atoms, tau_grid):
     return out / dt
 
 
+_PER_ARM_KEYS = ('arm0_shift', 'arm0_scale', 'arm1_shift', 'arm1_scale')
+
+
 def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
                       method='equal-tailed', n_tau_bary=4001):
     barycenter = _barycenter_fn()
 
     with np.load(path, allow_pickle=True) as z:
+        keys = set(z.files)
+        # PER-ARM (STD_MODE=per_arm): the two arms carry their own
+        # (shift, scale), so their RAW bin grids differ in width AND offset and
+        # the shared-grid convolution below does not apply. Using the pooled
+        # `y_scale` here silently rescales arm1 by arm0's factor and drops the
+        # shift difference entirely, which misplaces p(tau) -- it shows up as
+        # intervals that are simultaneously too NARROW and badly under-covering
+        # (independence can never be narrower than the joint).
+        if 'p_joint_scaled' not in keys and _PER_ARM_KEYS[0] in keys:
+            edges = np.asarray(z['edges'], dtype=np.float64).reshape(-1)
+            p0 = np.asarray(z['p_y0_scaled'], dtype=np.float64)
+            p1 = np.asarray(z['p_y1_scaled'], dtype=np.float64)
+            e0 = raw_edges(edges, float(np.asarray(z['arm0_shift']).reshape(-1)[0]),
+                           float(np.asarray(z['arm0_scale']).reshape(-1)[0]))
+            e1 = raw_edges(edges, float(np.asarray(z['arm1_shift']).reshape(-1)[0]),
+                           float(np.asarray(z['arm1_scale']).reshape(-1)[0]))
+            n_q = min(p0.shape[0], true_cate.size)
+            p0, p1, true_cate = p0[:n_q], p1[:n_q], true_cate[:n_q]
+            lo, hi = tau_support_raw(e0, e1)
+            pad = 0.02 * (hi - lo)
+            grid = np.linspace(lo - pad, hi + pad, n_grid)
+            dens = np.stack([cpfn1d_tau_density_raw(p0[q], e0, p1[q], e1, grid)
+                             for q in range(n_q)])
+            return _score(dens, grid, true_cate, n_q, lo, hi, levels, method,
+                          barycenter, n_tau_bary)
         p_atoms, tau_scaled, y_scale = p_tau_atoms(z)
     tau_raw_atoms = tau_scaled * y_scale
     n_q = min(p_atoms.shape[0], true_cate.size)
@@ -134,7 +164,14 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
     pad = 0.02 * (hi - lo)
     grid = np.linspace(lo - pad, hi + pad, n_grid)
     dens = densify(p_atoms, tau_raw_atoms, grid)
-    dens /= (dens.sum(axis=1, keepdims=True) * (grid[1] - grid[0])).clip(min=1e-300)
+    return _score(dens, grid, true_cate, n_q, lo, hi, levels, method,
+                  barycenter, n_tau_bary)
+
+
+def _score(dens, grid, true_cate, n_q, lo, hi, levels, method, barycenter,
+           n_tau_bary):
+    dens = dens / (dens.sum(axis=1, keepdims=True)
+                   * (grid[1] - grid[0])).clip(min=1e-300)
 
     cate_q = [query_metrics(dens[q], grid, float(true_cate[q]),
                             levels=levels, y_scale=1.0, method=method)
