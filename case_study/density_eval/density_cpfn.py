@@ -281,9 +281,16 @@ def cpfn1d_tau_density_raw(p0, e0, p1, e1, tau_points, oversample=8,
         # e1[0]-e0[0] is absorbed, and p(tau) is a plain cross-correlation
         # computable by FFT in O(n log n).
         w = min(float(np.diff(e0).mean()), float(np.diff(e1).mean()))
-        h = w / float(max(1, oversample))
         lo = min(float(e0[0]), float(e1[0]))
         hi = max(float(e0[-1]), float(e1[-1]))
+        # h is set by the FINER arm but the grid must span the UNION, so when
+        # the two arms' scales diverge (per_arm standardisation on a case where
+        # one arm's outcome spread is tiny -- e.g. Observed_Mediator, where T is
+        # exogenous) n explodes and the FFT stalls. Cap it: there is nothing to
+        # gain from resolving far below the OUTPUT tau grid, which carries only
+        # `tau.size` points across the same span.
+        n_max = max(4096, 2 * int(tau.size))
+        h = max(w / float(max(1, oversample)), (hi - lo) / n_max)
         n = int(np.ceil((hi - lo) / h))
         ge = lo + h * np.arange(n + 1)
         q0 = _rebin_exact(p0n, e0, ge)
