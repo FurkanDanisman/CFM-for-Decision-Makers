@@ -31,9 +31,12 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS"
+[ -n "${ONLY_N:-}" ] && echo "[report] contexts restricted to: $ONLY_N"
+[ -n "${ONLY_D:-}" ] && echo "[report] d restricted to: $ONLY_D"
+: # keep set -e happy when the greps above are false
 python -u "$REPO/case_study/density_eval/dsweep_density_report.py" \
     --root "$RES" --data-root "$DATA" \
     --combine-shifts $SHIFTS --combine-label "$LABEL" \
-    --jobs "$JOBS" ${ONLY_D:+--only-d $ONLY_D} \
+    --jobs "$JOBS" ${ONLY_D:+--only-d $ONLY_D} ${ONLY_N:+--only-n $ONLY_N} \
     --out "$OUT"
 echo "[report] done -> $OUT"

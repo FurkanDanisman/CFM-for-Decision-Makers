@@ -145,6 +145,10 @@ def main():
     ap.add_argument('--max-real', type=int, default=None)
     ap.add_argument('--only-d', type=int, nargs='*', default=None,
                     help='restrict to these d values (for array jobs)')
+    ap.add_argument('--only-n', type=int, nargs='*', default=None,
+                    help='restrict to these context sizes. Cells outside the '
+                         'list are never opened, so this cuts scoring time '
+                         'proportionally (one N out of five = 5x faster).')
     ap.add_argument('--jobs', type=int, default=1,
                     help='parallel worker processes; the work is embarrassingly '
                          'parallel over (d, N, model, case) cells')
@@ -165,6 +169,8 @@ def main():
                        for s in shifts
                        for p in glob.glob(os.path.join(a.root, s, f'd{d}', 'ctx*'))
                        if os.path.basename(p)[3:].isdigit()})
+        if a.only_n:
+            ctxs = [n for n in ctxs if n in set(a.only_n)]
         for N in ctxs:
             for model in a.models:
                 cases = a.cases or sorted({
