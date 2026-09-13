@@ -64,6 +64,15 @@ sub() {  # sub <name> <env assignments...>
     echo "  submitted $name"
 }
 
+# Fail at submit time, not 5s into 960 jobs.
+case " $MODELS " in *" graph2d "*|*" uwyk "*|*" uwyk_v3a "*|*" uwyk_noanc "*)
+    for f in "$UWYK_DIR/best_model.pt" "$UWYK_DIR/best_model_config.yaml"; do
+        [ -f "$f" ] || { echo "FATAL: UWYK input missing: $f" >&2
+                         echo "  (needed by graph2d and every uwyk variant; "\
+                              "override UWYK_DIR)" >&2; exit 1; }
+    done ;;
+esac
+
 echo "[density] data=$DATA_ROOT sweep=$SWEEP contexts=[$CONTEXTS] models=[$MODELS]"
 mkdir -p "$SWEEP" logs_density
 
@@ -82,10 +91,14 @@ DENSITY_DUMP=1"
       CKPT="$CPFN2D_CKPT" OUT="$SWEEP/ctx${CTX}/cpfn2d"
 
   # --- tauC path: graph2d / uwyk variants / dopfn ---------------------------
-  want graph2d && sub "graph2d-c$CTX" $COMMON KIND=tauC MODEL_FAMILY=uwyk \
-      CKPT="$GRAPH2D_CKPT" ANC_VARIANT=full OUT="$SWEEP/ctx${CTX}/graph2d"
+  # MODEL_FAMILY=uwyk loads BOTH the joint-2D head (CKPT) and UWYK-1D
+  # (UWYK_CKPT/UWYK_CFG) in one process -- the runner reads os.environ['UWYK_CKPT']
+  # unconditionally in that mode, so graph2d needs them too even though it is
+  # "the 2D model". Define UW before first use.
   UW="UWYK_CKPT=$UWYK_DIR/best_model.pt UWYK_CFG=$UWYK_DIR/best_model_config.yaml \
 CKPT=$GRAPH2D_CKPT"
+  want graph2d && sub "graph2d-c$CTX" $COMMON KIND=tauC MODEL_FAMILY=uwyk $UW \
+      ANC_VARIANT=full OUT="$SWEEP/ctx${CTX}/graph2d"
   want uwyk       && sub "uwyk-c$CTX"       $COMMON KIND=tauC MODEL_FAMILY=uwyk $UW \
       ANC_VARIANT=full      OUT="$SWEEP/ctx${CTX}/uwyk"
   want uwyk_v3a   && sub "uwykv3a-c$CTX"    $COMMON KIND=tauC MODEL_FAMILY=uwyk $UW \

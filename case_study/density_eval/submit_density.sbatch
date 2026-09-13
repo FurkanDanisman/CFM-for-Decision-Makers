@@ -55,9 +55,13 @@ for CASE in "${CASE_LIST[@]}"; do
     tauC)
       # The copied runner puts $HERE first on sys.path, so the SCM-aware
       # density_truth.py in this folder shadows the IHDP/ACIC-only original.
-      DATASET="$CASE" OUT="$CELL" REAL_START="${REAL_START:-0}" \
-        REAL_END="${REAL_END:-}" \
-        python -u "$HERE/eval_density_tauC.py"
+      # REAL_END must be UNSET, not empty: the runner does
+      #   REAL_END = os.environ.get('REAL_END')  -> '' (not None)
+      #   int(REAL_END)                          -> ValueError
+      # so exporting it empty kills every tauC job at the last line.
+      TAUC_ENV=(DATASET="$CASE" OUT="$CELL" REAL_START="${REAL_START:-0}")
+      [ -n "${REAL_END:-}" ] && TAUC_ENV+=(REAL_END="$REAL_END")
+      env "${TAUC_ENV[@]}" python -u "$HERE/eval_density_tauC.py"
       ;;
     *) echo "FATAL: unknown KIND=$KIND" >&2; exit 2 ;;
   esac
