@@ -99,12 +99,20 @@ def check(path, n_show=3, n_grid=8001):
             print(f"  {q:3d} {c:12.5f} {a:12.5f} {a-c:10.2e} {b:12.5f} {b-c:10.2e}")
         e2 = max(abs(a - c) for _, c, a, _ in rows)
         e1_ = max(abs(b - c) for _, c, _, b in rows)
-        print(f"  max |err|:  v2 = {e2:.2e}   v1 = {e1_:.2e}")
+        # The density is splatted onto a finite grid, so the mean carries an
+        # O(h^2) discretisation error with h the grid spacing -- NOT a scoring
+        # error. A wider tau support (larger arm shift/scale) means larger h and
+        # a larger floor. A de-standardisation bug is orders of magnitude above
+        # this, so the two never get confused.
+        h = float(g2[1] - g2[0])
+        tol = max(1e-9, 10.0 * h * h)
+        print(f"  max |err|:  v2 = {e2:.2e}   v1 = {e1_:.2e}"
+              f"   (grid h={h:.5f}, tol=10h^2={tol:.2e})")
         print("  VERDICT: " + ("v2 matches the model's own CATE; v1 does not."
-                               if e2 < 1e-6 <= e1_ else
-                               "v2 matches." if e2 < 1e-6 else
+                               if e2 <= tol < e1_ else
+                               "v2 matches." if e2 <= tol else
                                "*** v2 does NOT match -- scoring is wrong ***"))
-        return e2 < 1e-6
+        return e2 <= tol
     # pooled / joint: single grid
     pa, ts, ys = p_tau_atoms(z)
     tr = ts * ys
@@ -117,9 +125,11 @@ def check(path, n_show=3, n_grid=8001):
         mu = float(_TRAPZ(dq * g, g))
         errs.append(abs(mu - cate_pt[q]))
         print(f"  {q:3d} {cate_pt[q]:12.5f} {mu:14.5f} {mu-cate_pt[q]:10.2e}")
-    print(f"  max |err| = {max(errs):.2e}   VERDICT: "
-          + ("OK" if max(errs) < 1e-4 else "*** MISMATCH ***"))
-    return max(errs) < 1e-4
+    h = float(g[1] - g[0])
+    tol = max(1e-9, 10.0 * h * h)
+    print(f"  max |err| = {max(errs):.2e}   (grid h={h:.5f}, tol={tol:.2e})"
+          f"   VERDICT: " + ("OK" if max(errs) <= tol else "*** MISMATCH ***"))
+    return max(errs) <= tol
 
 
 def main():
