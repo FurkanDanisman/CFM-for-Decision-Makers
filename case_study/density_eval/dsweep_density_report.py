@@ -36,8 +36,12 @@ from interval_metrics import DEFAULT_LEVELS                       # noqa: E402
 from run_density_scm import score_realization                     # noqa: E402
 from density_truth import scm_true_cate                           # noqa: E402
 
-# Same model list / dir names as dsweep_report.py.
-MODELS = ["dopfn_native", "dopfn_bb", "cpfn2d_pooled", "cpfn1d_perarm",
+# Directory names as 04_submit_density.sh writes them. NOTE these differ from
+# dsweep_report.py's point-eval dirs: that sweep writes cpfn2d_pooled /
+# cpfn1d_perarm (std mode baked into the name), the density sweep writes plain
+# cpfn2d / cpfn1d. Both spellings are accepted so a mixed tree still resolves.
+MODELS = ["dopfn_native", "dopfn_bb", "cpfn2d", "cpfn1d",
+          "cpfn2d_pooled", "cpfn1d_perarm",
           "graph2d", "uwyk", "uwyk_v3a", "uwyk_noanc"]
 METRICS = ["cate_cov95", "cate_len95", "cate_wis", "cate_crps",
            "ate_cov95", "ate_len95", "ate_wis", "ate_crps", "ate_bias"]
