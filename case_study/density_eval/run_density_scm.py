@@ -50,9 +50,18 @@ from density_truth import scm_true_cate                                    # noq
 _TRAPZ = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
 
 
+_RC_CACHE = {}
+
+
 def _load_rc_module():
     """Import compute_ate_density_w2_cell for its tau projections + barycenter.
-    Read-only: nothing outside case_study/ is modified."""
+    Read-only: nothing outside case_study/ is modified.
+
+    CACHED: this was being re-exec'd on every query and every realization,
+    which dominated aggregation runtime.
+    """
+    if 'mod' in _RC_CACHE:
+        return _RC_CACHE['mod']
     p = os.path.join(_REPO, 'realcause_eval', 'compute_ate_density_w2_cell.py')
     if not os.path.isfile(p):
         raise FileNotFoundError(p)
@@ -60,7 +69,14 @@ def _load_rc_module():
     m = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = m
     spec.loader.exec_module(m)
+    _RC_CACHE['mod'] = m
     return m
+
+
+def _barycenter_fn():
+    if 'bary' not in _RC_CACHE:
+        _RC_CACHE['bary'] = _load_rc_module()._import_barycenter(_REPO)
+    return _RC_CACHE['bary']
 
 
 def p_tau_atoms(z):
@@ -106,8 +122,7 @@ def densify(p_atoms, tau_atoms, tau_grid):
 
 def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
                       method='equal-tailed', n_tau_bary=4001):
-    rc = _load_rc_module()
-    barycenter = rc._import_barycenter(_REPO)
+    barycenter = _barycenter_fn()
 
     with np.load(path, allow_pickle=True) as z:
         p_atoms, tau_scaled, y_scale = p_tau_atoms(z)

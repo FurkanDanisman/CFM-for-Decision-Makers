@@ -26,6 +26,7 @@ import glob
 import json
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
@@ -102,6 +103,32 @@ def _row(shift, d, N, case, model, coll):
         (shift, d, N, case, model) + tuple(vals) + (n,))
 
 
+def _score_cell(packed):
+    """Score one (d, N, model, case) cell across the shift set. Returns
+    (csv_row_or_None, [missing cell dirs])."""
+    (d, N, model, case), (root, data_root, shifts, combining, label, max_real) = packed
+    pooled = {m: [] for m in METRICS}
+    missing, n_shifts = [], 0
+    for s in shifts:
+        cell = os.path.join(root, s, f'd{d}', f'ctx{N}', model, case)
+        droot = os.path.join(data_root, s, f'd{d}')
+        c = collect(cell, case, droot, N, max_real)
+        if c is None:
+            missing.append(cell)
+            continue
+        for m in METRICS:
+            pooled[m].extend(c[m])
+        n_shifts += 1
+    if n_shifts == 0:
+        return None, missing
+    if combining and n_shifts != len(shifts):
+        return None, missing          # same rule as dsweep_report
+    tag = label if combining else shifts[0]
+    print(f'  {tag} d{d} N{N} {model:14s} {case:34s} '
+          f'n={max(len(pooled[m]) for m in METRICS)}', flush=True)
+    return _row(tag, d, N, case, model, pooled), missing
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--root', required=True, help='results root (shift<S>/d<K>/ctx<N>/...)')
@@ -112,6 +139,11 @@ def main():
     ap.add_argument('--cases', nargs='*', default=None)
     ap.add_argument('--models', nargs='*', default=MODELS)
     ap.add_argument('--max-real', type=int, default=None)
+    ap.add_argument('--only-d', type=int, nargs='*', default=None,
+                    help='restrict to these d values (for array jobs)')
+    ap.add_argument('--jobs', type=int, default=1,
+                    help='parallel worker processes; the work is embarrassingly '
+                         'parallel over (d, N, model, case) cells')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
 
@@ -121,45 +153,43 @@ def main():
                  for s in shifts
                  for p in glob.glob(os.path.join(a.root, s, 'd*'))
                  if os.path.basename(p)[1:].isdigit()})
+    if a.only_d:
+        ds = [d for d in ds if d in set(a.only_d)]
+    work = []
+    for d in ds:
+        ctxs = sorted({int(os.path.basename(p)[3:])
+                       for s in shifts
+                       for p in glob.glob(os.path.join(a.root, s, f'd{d}', 'ctx*'))
+                       if os.path.basename(p)[3:].isdigit()})
+        for N in ctxs:
+            for model in a.models:
+                cases = a.cases or sorted({
+                    os.path.basename(p)
+                    for s in shifts
+                    for p in glob.glob(os.path.join(
+                        a.root, s, f'd{d}', f'ctx{N}', model, '*'))
+                    if os.path.isdir(p)})
+                for case in cases:
+                    work.append((d, N, model, case))
+
+    print(f'[density-report] {len(work)} cells to score, jobs={a.jobs}', flush=True)
+    args_common = (a.root, a.data_root, shifts, bool(a.combine_shifts),
+                   a.combine_label, a.max_real)
     missing, nrows = [], 0
+    if a.jobs > 1:
+        with ProcessPoolExecutor(max_workers=a.jobs) as ex:
+            results = list(ex.map(_score_cell,
+                                  [(w, args_common) for w in work], chunksize=1))
+    else:
+        results = [_score_cell((w, args_common)) for w in work]
+
     with open(a.out, 'w') as fh:
         fh.write(_HEADER)
-        for d in ds:
-            ctxs = sorted({int(os.path.basename(p)[3:])
-                           for s in shifts
-                           for p in glob.glob(os.path.join(a.root, s, f'd{d}', 'ctx*'))
-                           if os.path.basename(p)[3:].isdigit()})
-            for N in ctxs:
-                for model in a.models:
-                    cases = a.cases or sorted({
-                        os.path.basename(p)
-                        for s in shifts
-                        for p in glob.glob(os.path.join(
-                            a.root, s, f'd{d}', f'ctx{N}', model, '*'))
-                        if os.path.isdir(p)})
-                    for case in cases:
-                        pooled = {m: [] for m in METRICS}
-                        n_shifts = 0
-                        for s in shifts:
-                            cell = os.path.join(a.root, s, f'd{d}', f'ctx{N}',
-                                                model, case)
-                            droot = os.path.join(a.data_root, s, f'd{d}')
-                            c = collect(cell, case, droot, N, a.max_real)
-                            if c is None:
-                                missing.append(cell)
-                                continue
-                            for m in METRICS:
-                                pooled[m].extend(c[m])
-                            n_shifts += 1
-                        if n_shifts == 0:
-                            continue
-                        if a.combine_shifts and n_shifts != len(shifts):
-                            continue          # same rule as dsweep_report
-                        label = a.combine_label if a.combine_shifts else shifts[0]
-                        fh.write(_row(label, d, N, case, model, pooled))
-                        nrows += 1
-                        print(f'  {label} d{d} N{N} {model:14s} {case:34s} '
-                              f'n={max(len(pooled[m]) for m in METRICS)}', flush=True)
+        for row, miss in results:
+            missing.extend(miss)
+            if row:
+                fh.write(row)
+                nrows += 1
     print(f'\n[density-report] {nrows} rows -> {a.out}')
     if missing:
         print(f'[density-report] {len(missing)} cells had NO density dump '
