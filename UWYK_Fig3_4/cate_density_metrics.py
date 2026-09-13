@@ -525,8 +525,11 @@ def build_table(args):
 
 
 def _render(rows, args):
+    # CRPS and WIS are still computed and kept in the .json; the table reports
+    # the interval triple only — coverage, its width, and the score of that
+    # exact interval.
     hdr = ["method", "n_files", "n_query", "coverage95", "length", "is05",
-           "crps", "wis", "pred_sd", "true_sd", "sd_ratio", "bias"]
+           "pred_sd", "true_sd", "sd_ratio", "bias"]
     _what = ("CATE density per query, scored against that query's true tau"
              if args.target == "cate" else
              "ATE density per dataset (Wasserstein barycenter of its per-query "
@@ -538,15 +541,17 @@ def _render(rows, args):
          "convolution of the two arm marginals. Raw densities, no MALC.", "",
          "coverage95 should be ~0.95; below means over-confident, above means",
          "the intervals are wider than they need to be. Read it WITH length —",
-         "a wide interval buys coverage for free. CRPS and WIS are proper, so",
-         "lower is better on both and they penalise that trade-off.", "",
+         "a wide interval buys coverage for free.", "",
          "`is05` is the single-level interval score at alpha=0.05, on the SAME",
          "95% interval as the coverage and length columns:",
          "    IS = (u - l) + (2/a)(l - y)1{y<l} + (2/a)(y - u)1{y>u}",
          "so it EQUALS `length` whenever the truth is covered and exceeds it by",
          "40x the miss distance when it is not. It scores exactly the interval",
          "being reported, whereas WIS averages 11 interval scores plus a median",
-         "term and is really a CRPS approximation.", "",
+         "term and is really a CRPS approximation. IS_0.05 is the single number",
+         "to rank on: it is proper, and it prices the coverage/width trade-off",
+         "that coverage and length only show separately.",
+         "(CRPS and WIS are still computed and stored in the .json alongside.)", "",
          "`n_files` counts npz files scored, not distinct datasets: under",
          "`--subset total` each dataset contributes up to two (its zero and its",
          "non-zero queries), so n_files exceeds the realization count. `n_query`",
@@ -561,8 +566,7 @@ def _render(rows, args):
     for r in rows:
         L.append("| {method} | {n_files} | {n_query} | {coverage95:.3f} | "
                  "{length:.4f} ± {length_sem:.4f} | {is05:.4f} ± {is05_sem:.4f} | "
-                 "{crps:.4f} ± {crps_sem:.4f} | "
-                 "{wis:.4f} ± {wis_sem:.4f} | {pred_sd:.4f} | {true_sd:.4f} | "
+                 "{pred_sd:.4f} | {true_sd:.4f} | "
                  "{sd_ratio:.1f} | {bias:+.4f} |".format(**r))
     md = "\n".join(L) + "\n"
     print(md)
