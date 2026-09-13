@@ -193,8 +193,19 @@ def score_query(t, p, y):
     # this at dump time; the other harnesses do not.
     mu = float(np.sum(t * p))
     sd = float(np.sqrt(max(np.sum((t - mu) ** 2 * p), 0.0)))
+    # Single-level interval score at alpha=0.05, on the SAME 95% interval the
+    # coverage and length columns use:
+    #     IS_a = (u - l) + (2/a)(l - y)1{y<l} + (2/a)(y - u)1{y>u}
+    # So the three columns decompose: IS equals `length` whenever the truth is
+    # covered, and exceeds it by 40x the miss distance when it is not. Unlike
+    # WIS (which averages 11 interval scores plus a median term and is a CRPS
+    # approximation), IS_0.05 scores exactly the interval being reported.
+    a = 0.05
+    is05 = ((hi - lo) + (2.0 / a) * max(0.0, lo - y)
+            + (2.0 / a) * max(0.0, y - hi))
     return dict(cover=float(lo <= y <= hi), length=float(hi - lo),
                 crps=crps_discrete(t, p, y), wis=wis_discrete(t, p, y),
+                is05=float(is05),
                 pred_mean=mu, pred_sd=sd, bias=mu - y, y_true=y)
 
 
@@ -446,6 +457,7 @@ def _build_ate(args, todo):
             length=float(arr["length"].mean()), length_sem=sem(arr["length"]),
             crps=float(arr["crps"].mean()), crps_sem=sem(arr["crps"]),
             wis=float(arr["wis"].mean()), wis_sem=sem(arr["wis"]),
+            is05=float(arr["is05"].mean()), is05_sem=sem(arr["is05"]),
         ))
     if not rows:
         raise SystemExit(f"no density dumps under {args.root}/N{args.context}")
@@ -500,6 +512,8 @@ def build_table(args):
             crps_sem=float(arr["crps"].std(ddof=1) / np.sqrt(len(acc))),
             wis=float(arr["wis"].mean()),
             wis_sem=float(arr["wis"].std(ddof=1) / np.sqrt(len(acc))),
+            is05=float(arr["is05"].mean()),
+            is05_sem=float(arr["is05"].std(ddof=1) / np.sqrt(len(acc))),
         ))
 
     if not rows:
@@ -511,8 +525,8 @@ def build_table(args):
 
 
 def _render(rows, args):
-    hdr = ["method", "n_files", "n_query", "coverage95", "length", "crps", "wis",
-           "pred_sd", "true_sd", "sd_ratio", "bias"]
+    hdr = ["method", "n_files", "n_query", "coverage95", "length", "is05",
+           "crps", "wis", "pred_sd", "true_sd", "sd_ratio", "bias"]
     _what = ("CATE density per query, scored against that query's true tau"
              if args.target == "cate" else
              "ATE density per dataset (Wasserstein barycenter of its per-query "
@@ -526,6 +540,13 @@ def _render(rows, args):
          "the intervals are wider than they need to be. Read it WITH length —",
          "a wide interval buys coverage for free. CRPS and WIS are proper, so",
          "lower is better on both and they penalise that trade-off.", "",
+         "`is05` is the single-level interval score at alpha=0.05, on the SAME",
+         "95% interval as the coverage and length columns:",
+         "    IS = (u - l) + (2/a)(l - y)1{y<l} + (2/a)(y - u)1{y>u}",
+         "so it EQUALS `length` whenever the truth is covered and exceeds it by",
+         "40x the miss distance when it is not. It scores exactly the interval",
+         "being reported, whereas WIS averages 11 interval scores plus a median",
+         "term and is really a CRPS approximation.", "",
          "`n_files` counts npz files scored, not distinct datasets: under",
          "`--subset total` each dataset contributes up to two (its zero and its",
          "non-zero queries), so n_files exceeds the realization count. `n_query`",
@@ -539,7 +560,8 @@ def _render(rows, args):
          "| " + " | ".join(hdr) + " |", "|" + "|".join("---" for _ in hdr) + "|"]
     for r in rows:
         L.append("| {method} | {n_files} | {n_query} | {coverage95:.3f} | "
-                 "{length:.4f} ± {length_sem:.4f} | {crps:.4f} ± {crps_sem:.4f} | "
+                 "{length:.4f} ± {length_sem:.4f} | {is05:.4f} ± {is05_sem:.4f} | "
+                 "{crps:.4f} ± {crps_sem:.4f} | "
                  "{wis:.4f} ± {wis_sem:.4f} | {pred_sd:.4f} | {true_sd:.4f} | "
                  "{sd_ratio:.1f} | {bias:+.4f} |".format(**r))
     md = "\n".join(L) + "\n"
