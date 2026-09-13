@@ -201,6 +201,18 @@ mkdir -p "$STEP_CKPT_ROOT"
 
 # COMPILE=0 → append `compile=false` to hydra CLI (disables torch.compile).
 # Use when torch inductor hits a bug on this pytorch build.
+# Arbitrary extra hydra overrides, e.g. to cut positions per step:
+#   EXTRA_HYDRA="data.batch_size=2" sbatch ...
+# The head cost is LINEAR in (batch x queries-per-task): at J=1024 each
+# position costs 1,048,599 logits, and hlgauss builds a same-sized target plus
+# softmax, so budget ~3 fp32 copies. Observed: 18,159 positions -> 70.94 GiB.
+# Fitting ~47 GiB free needs roughly P <= 3,600, i.e. about a 5x cut.
+# Reduce positions, NOT J -- shrinking J defeats the run.
+EXTRA_HYDRA="${EXTRA_HYDRA:-}"
+read -r -a EXTRA_HYDRA_ARGS <<< "$EXTRA_HYDRA"
+# Helps when the failure is fragmentation rather than raw size.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
 COMPILE="${COMPILE:-0}"
 COMPILE_ARGS=()
 if [ "$COMPILE" = "0" ]; then
@@ -237,7 +249,8 @@ python -u train.py \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$STEP_CKPT_ROOT" \
     "${COMPILE_ARGS[@]}" \
-    "${RESUME_ARGS[@]}" &
+    "${RESUME_ARGS[@]}" \
+    "${EXTRA_HYDRA_ARGS[@]}" &
 CHILD=$!
 wait "$CHILD"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
