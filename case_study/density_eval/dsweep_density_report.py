@@ -33,8 +33,9 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from interval_metrics import DEFAULT_LEVELS                       # noqa: E402
-from run_density_scm import score_realization                     # noqa: E402
+from run_density_scm import score_realization, score_arrays        # noqa: E402
 from density_truth import scm_true_cate                           # noqa: E402
+from density_tauc import DIR_METHOD, load_predictions              # noqa: E402
 
 # Directory names as 04_submit_density.sh writes them. NOTE these differ from
 # dsweep_report.py's point-eval dirs: that sweep writes cpfn2d_pooled /
@@ -61,10 +62,18 @@ def _stats(v):
 
 def collect(cell, case, data_root, n_ctx, max_real=None):
     """Per-realization density metrics for one (model, case) dir."""
-    paths = sorted(p for p in glob.glob(os.path.join(cell, '*.npz'))
-                   if 'summary' not in os.path.basename(p)
-                   and 'ate_w2' not in os.path.basename(p)
-                   and 'malc_ci' not in os.path.basename(p))
+    model = os.path.basename(os.path.dirname(cell))
+    # tauC models keep their DISTRIBUTIONS in predictions/; the top-level npz
+    # holds per-method scores (nll/l2/pehe), not densities.
+    pred_dir = os.path.join(cell, 'predictions')
+    tauc = model in DIR_METHOD and os.path.isdir(pred_dir)
+    if tauc:
+        paths = sorted(glob.glob(os.path.join(pred_dir, '*.npz')))
+    else:
+        paths = sorted(p for p in glob.glob(os.path.join(cell, '*.npz'))
+                       if 'summary' not in os.path.basename(p)
+                       and 'ate_w2' not in os.path.basename(p)
+                       and 'malc_ci' not in os.path.basename(p))
     if not paths:
         return None
     os.environ['CASE_STUDY_DATA_ROOT'] = data_root
@@ -79,8 +88,13 @@ def collect(cell, case, data_root, n_ctx, max_real=None):
         if not digits:
             continue
         try:
-            truth = scm_true_cate(case, int(digits))
-            cate_q, ate_m, _ = score_realization(p, truth)
+            if tauc:
+                dens, grid, truth = load_predictions(p, DIR_METHOD[model])
+                n_q = min(dens.shape[0], truth.size)
+                cate_q, ate_m, _ = score_arrays(dens[:n_q], grid, truth[:n_q])
+            else:
+                truth = scm_true_cate(case, int(digits))
+                cate_q, ate_m, _ = score_realization(p, truth)
         except Exception:
             continue
         cq = [q['levels'][_A95] for q in cate_q]
