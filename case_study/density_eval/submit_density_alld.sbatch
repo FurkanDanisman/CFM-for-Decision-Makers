@@ -47,8 +47,9 @@ for d in $DS; do
   for CASE in "${CASE_LIST[@]}"; do
     CELL="$RES/shift$SHIFT/d$d/ctx${CTX}/$MODEL/$CASE"
     mkdir -p "$CELL"
-    # Resume: highest existing realization index + 1 (robust to how many files).
-    last=$(ls "$CELL"/${CASE}_r*.npz 2>/dev/null \
+    # Resume: highest existing realization index + 1, counting dumps whether they
+    # land at the cell top level or under predictions/ (both layouts occur).
+    last=$( { ls "$CELL"/${CASE}_r*.npz "$CELL"/predictions/${CASE}_r*.npz; } 2>/dev/null \
            | sed -E 's/.*_r0*([0-9]+)\.npz$/\1/' | sort -n | tail -1)
     start=$(( ${last:--1} + 1 ))
     if [ "$start" -ge "$REAL_END" ]; then
