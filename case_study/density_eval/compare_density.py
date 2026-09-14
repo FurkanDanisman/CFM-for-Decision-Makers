@@ -74,41 +74,36 @@ def main():
         print(f"{mod:16s}" + "".join(_fmt(m, _avg(agg[mod][m])) for m in M))
 
     if a.by_case:
+        # One block per case study, MODELS AS ROWS -- readable with 8 models,
+        # unlike side-by-side columns. Aggregated over every d present.
         cases = sorted({r["case"] for r in rows})
-        print("\n=== per case study, aggregated over d"
-              + (f" (N={a.n})" if a.n is not None else "") + " ===")
-        w = max(len(c) for c in cases)
-        print(f"{'case':{w}s} " + "".join(f"{mod:^45s}" for mod in models))
-        print(f"{'':{w}s} " + "".join(
-            f"{'cov%':>11s}{'len':>11s}{'wis':>11s}{'crps':>11s}" for _ in models))
+        ds = sorted({int(r["d"]) for r in rows})
+        print(f"\n{'='*84}")
+        print("PER CASE STUDY  (aggregated over d = "
+              + ", ".join(str(x) for x in ds) + ")")
+        print(f"{'='*84}")
+        w = max(len(m) for m in models) + 2
         for cs in cases:
             sub = [r for r in rows if r["case"] == cs]
-            line = f"{cs:{w}s} "
+            if not sub:
+                continue
+            nrow = len({int(r["d"]) for r in sub})
+            print(f"\n{cs}   ({nrow} d-values"
+                  + (f", N={a.n}" if a.n is not None else "") + ")")
+            print(f"  {'model':{w}s}" + f"{'CATE cov%':>11s}{'CATE len':>11s}"
+                  f"{'CATE WIS':>11s}" + "  |" +
+                  f"{'ATE cov%':>11s}{'ATE len':>11s}{'ATE WIS':>11s}")
+            print("  " + "-" * (w + 68))
             for mod in models:
                 mr = [r for r in sub if r["model"] == mod]
                 if not mr:
-                    line += " " * 44
                     continue
-                line += (f"{100*_avg([_f(r['cate_cov95']) for r in mr]):11.1f}"
-                         f"{_avg([_f(r['cate_len95']) for r in mr]):11.3f}"
-                         f"{_avg([_f(r['cate_wis']) for r in mr]):11.4f}"
-                         f"{_avg([_f(r['cate_crps']) for r in mr]):11.4f}")
-            print(line)
-        print("\n    (ATE columns)")
-        print(f"{'case':{w}s} " + "".join(f"{mod:^45s}" for mod in models))
-        for cs in cases:
-            sub = [r for r in rows if r["case"] == cs]
-            line = f"{cs:{w}s} "
-            for mod in models:
-                mr = [r for r in sub if r["model"] == mod]
-                if not mr:
-                    line += " " * 44
-                    continue
-                line += (f"{100*_avg([_f(r['ate_cov95']) for r in mr]):11.1f}"
-                         f"{_avg([_f(r['ate_len95']) for r in mr]):11.3f}"
-                         f"{_avg([_f(r['ate_wis']) for r in mr]):11.4f}"
-                         f"{_avg([_f(r['ate_crps']) for r in mr]):11.4f}")
-            print(line)
+                g = lambda k: _avg([_f(r[k]) for r in mr])
+                print(f"  {mod:{w}s}"
+                      f"{100*g('cate_cov95'):11.1f}{g('cate_len95'):11.3f}"
+                      f"{g('cate_wis'):11.4f}" + "  |" +
+                      f"{100*g('ate_cov95'):11.1f}{g('ate_len95'):11.3f}"
+                      f"{g('ate_wis'):11.4f}")
 
     for key, label in (("d", "d"), ("N", "N")):
         print(f"\n=== CATE by {label}:  coverage% / length / CRPS ===")
