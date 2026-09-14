@@ -38,7 +38,7 @@ from interval_metrics import DEFAULT_LEVELS                       # noqa: E402
 LEVELS = (0.05,)
 from run_density_scm import score_realization, score_arrays        # noqa: E402
 from density_truth import scm_true_cate                           # noqa: E402
-from density_tauc import DIR_METHOD, load_predictions              # noqa: E402
+from density_tauc import DIR_METHOD, load_predictions, is_tauc_prediction  # noqa: E402
 
 # Directory names as 04_submit_density.sh writes them. NOTE these differ from
 # dsweep_report.py's point-eval dirs: that sweep writes cpfn2d_pooled /
@@ -76,9 +76,16 @@ def collect(cell, case, data_root, n_ctx, max_real=None):
     # tauC models keep their DISTRIBUTIONS in predictions/; the top-level npz
     # holds per-method scores (nll/l2/pehe), not densities.
     pred_dir = os.path.join(cell, 'predictions')
-    tauc = model in DIR_METHOD and os.path.isdir(pred_dir)
+    tauc = model in DIR_METHOD
     if tauc:
-        paths = sorted(glob.glob(os.path.join(pred_dir, '*.npz')))
+        # Raw-logit dumps live in predictions/ when that subdir exists, else at
+        # the top level of the cell (graph2d/uwyk/dopfn write there). Select the
+        # tauC prediction npz (tau_grid + *_logits), never the metrics-scalar
+        # siblings -- so graph2d's joint_logits get scored via method 'joint'
+        # instead of falling through to score_realization and raising KeyError.
+        search = pred_dir if os.path.isdir(pred_dir) else cell
+        paths = sorted(p for p in glob.glob(os.path.join(search, '*.npz'))
+                       if is_tauc_prediction(p))
     else:
         paths = sorted(p for p in glob.glob(os.path.join(cell, '*.npz'))
                        if 'summary' not in os.path.basename(p)
@@ -143,7 +150,7 @@ def _row(shift, d, N, case, model, coll):
 def _score_cell(packed):
     """Score one (d, N, model, case) cell across the shift set. Returns
     (csv_row_or_None, [missing cell dirs])."""
-    (d, N, model, case), (root, data_root, shifts, combining, label, max_real) = packed
+    (d, N, model, case), (root, data_root, shifts, combining, label, max_real, min_n) = packed
     pooled = {m: [] for m in METRICS}
     missing, n_shifts = [], 0
     for s in shifts:
@@ -157,13 +164,15 @@ def _score_cell(packed):
             pooled[m].extend(c[m])
         n_shifts += 1
     if n_shifts == 0:
-        return None, missing
+        return None, missing, None
     if combining and n_shifts != len(shifts):
-        return None, missing          # same rule as dsweep_report
+        return None, missing, None    # same rule as dsweep_report
     tag = label if combining else shifts[0]
-    print(f'  {tag} d{d} N{N} {model:14s} {case:34s} '
-          f'n={max(len(pooled[m]) for m in METRICS)}', flush=True)
-    return _row(tag, d, N, case, model, pooled), missing
+    n = max(len(pooled[m]) for m in METRICS)
+    flag = '  <-- THIN' if (min_n and n < min_n) else ''
+    print(f'  {tag} d{d} N{N} {model:14s} {case:34s} n={n}{flag}', flush=True)
+    thin = (tag, d, N, model, case, n) if (min_n and n < min_n) else None
+    return _row(tag, d, N, case, model, pooled), missing, thin
 
 
 def main():
@@ -185,6 +194,9 @@ def main():
     ap.add_argument('--jobs', type=int, default=1,
                     help='parallel worker processes; the work is embarrassingly '
                          'parallel over (d, N, model, case) cells')
+    ap.add_argument('--min-n', type=int, default=0,
+                    help='Flag (and list at the end) any pooled cell with fewer '
+                         'than this many realizations. 0 = off.')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
 
@@ -217,8 +229,8 @@ def main():
 
     print(f'[density-report] {len(work)} cells to score, jobs={a.jobs}', flush=True)
     args_common = (a.root, a.data_root, shifts, bool(a.combine_shifts),
-                   a.combine_label, a.max_real)
-    missing, nrows = [], 0
+                   a.combine_label, a.max_real, a.min_n)
+    missing, thin, nrows = [], [], 0
     if a.jobs > 1:
         with ProcessPoolExecutor(max_workers=a.jobs) as ex:
             results = list(ex.map(_score_cell,
@@ -228,8 +240,10 @@ def main():
 
     with open(a.out, 'w') as fh:
         fh.write(_HEADER)
-        for row, miss in results:
+        for row, miss, th in results:
             missing.extend(miss)
+            if th:
+                thin.append(th)
             if row:
                 fh.write(row)
                 nrows += 1
@@ -239,6 +253,11 @@ def main():
               f'(point-eval only). First few:')
         for c in missing[:5]:
             print('   ', c)
+    if thin:
+        print(f'[density-report] WARNING: {len(thin)} cell(s) below --min-n='
+              f'{a.min_n} (thin — noisy stats). First few:')
+        for tag, d, N, model, case, n in thin[:10]:
+            print(f'    {tag} d{d} N{N} {model} {case}  n={n}')
 
 
 if __name__ == '__main__':
