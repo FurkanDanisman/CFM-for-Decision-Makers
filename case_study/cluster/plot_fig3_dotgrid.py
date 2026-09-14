@@ -122,6 +122,39 @@ def _grid(getter_for, cases, logx, title):
     return fig
 
 
+def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
+    """One figure for ONE metric: rows = d, columns = case study.
+
+    The per-d and combined modes put the two metrics on separate ROWS of the
+    same figure, which leaves no room for a d axis. For an appendix that has to
+    show the d-split, it is cleaner to give each metric its own figure and
+    spend the rows on d.
+    """
+    col = f"{mkey}_{ARGS.readout}"
+    nC, nD = len(cases), len(dvals)
+    fig, axes = plt.subplots(nD, nC, figsize=(2.7 * nC, 1.55 * nD + 0.9),
+                             squeeze=False, sharey=True)
+    for ri, d in enumerate(dvals):
+        for ci, (ckey, clab) in enumerate(cases):
+            ax = axes[ri][ci]
+            sub = df[(df["case"] == ckey) & (df["d"] == d)].set_index("model")
+            getter = (lambda key, _s=sub: (
+                (float(_s.at[key, col]), float(_s.at[key, col + "_sem"]))
+                if key in _s.index else (np.nan, np.nan)))
+            _draw(ax, getter, logx)
+            if ri == 0:
+                ax.set_title(clab, fontsize=9)
+            if ci == 0:
+                ax.set_yticklabels([lab for lab, _ in PAIRS], fontsize=7)
+                ax.set_ylabel(f"d = {d}", fontsize=9)
+            # label the metric axis on the bottom row only: with many d rows the
+            # per-row labels collide and add nothing.
+            if ri == nD - 1:
+                ax.set_xlabel(f"{mlabel} ({ARGS.readout})", fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
 def main():
     global ARGS
     ap = argparse.ArgumentParser()
@@ -129,7 +162,11 @@ def main():
     ap.add_argument("--shift", default="cen3")
     ap.add_argument("--n", type=int, default=1000)
     ap.add_argument("--readout", choices=["raw", "em"], default="raw")
-    ap.add_argument("--mode", choices=["per-d", "combined", "both"], default="both")
+    ap.add_argument("--mode",
+                    choices=["per-d", "combined", "both", "by-d"],
+                    default="both",
+                    help="by-d: one figure PER METRIC with d on the rows "
+                         "(appendix layout).")
     ap.add_argument("--d-values", nargs="*", type=int, default=None)
     ap.add_argument("--logx", action="store_true", help="log-scale the metric axis.")
     ap.add_argument("--out", default="fig3", help="output path prefix (no extension).")
@@ -146,7 +183,7 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(ARGS.out)) or ".", exist_ok=True)
 
     made = []
-    if ARGS.mode in ("per-d", "both"):
+    if ARGS.mode in ("per-d", "both") and ARGS.mode != "by-d":
         for d in dvals:
             def gf(ckey, col, _d=d):
                 sub = df[(df["case"] == ckey) & (df["d"] == _d)].set_index("model")
@@ -154,13 +191,20 @@ def main():
                                     if key in sub.index else (np.nan, np.nan))
             f = _grid(gf, cases, ARGS.logx, f"{ARGS.shift}  N={ARGS.n}  d={d}  ({ARGS.readout})")
             p = f"{ARGS.out}_d{d}.png"; f.savefig(p, dpi=150); plt.close(f); made.append(p)
-    if ARGS.mode in ("combined", "both"):
+    if ARGS.mode in ("combined", "both") and ARGS.mode != "by-d":
         def gf(ckey, col):
             sub = df[df["case"] == ckey]
             return lambda key: _pool_over_d(sub[sub["model"] == key], col)
         f = _grid(gf, cases, ARGS.logx,
                   f"{ARGS.shift}  N={ARGS.n}  ({ARGS.readout})  [pooled over d={{{','.join(map(str, dvals))}}}]")
         p = f"{ARGS.out}_combined.png"; f.savefig(p, dpi=150); plt.close(f); made.append(p)
+
+    if ARGS.mode == "by-d":
+        made = []
+        for mlabel, mkey in _METRICS:
+            f = _grid_by_d(df, cases, dvals, mkey, mlabel, ARGS.logx)
+            p = f"{ARGS.out}_{mkey}_by_d.png"
+            f.savefig(p, dpi=150, bbox_inches="tight"); plt.close(f); made.append(p)
 
     for p in made:
         print("wrote", p)
