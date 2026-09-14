@@ -37,10 +37,13 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS  TAUC_N_Y0=$TAUC_N_Y0"
 [ -n "${ONLY_N:-}" ] && echo "[report] contexts restricted to: $ONLY_N"
 [ -n "${ONLY_D:-}" ] && echo "[report] d restricted to: $ONLY_D"
+[ -n "${MODELS:-}" ] && echo "[report] models: $MODELS"
+[ -n "${CASES:-}" ]  && echo "[report] cases: $CASES"
 : # keep set -e happy when the greps above are false
 python -u "$REPO/case_study/density_eval/dsweep_density_report.py" \
     --root "$RES" --data-root "$DATA" \
     --combine-shifts $SHIFTS --combine-label "$LABEL" \
     --jobs "$JOBS" ${ONLY_D:+--only-d $ONLY_D} ${ONLY_N:+--only-n $ONLY_N} \
+    ${MODELS:+--models $MODELS} ${CASES:+--cases $CASES} \
     --out "$OUT"
 echo "[report] done -> $OUT"
