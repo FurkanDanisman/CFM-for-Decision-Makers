@@ -21,10 +21,10 @@
 # Required env vars:
 #   OUT_ROOT   per-dataset outputs land at OUT_ROOT/{realcause|case_studies}/<DATASET>
 #
-# Optional (defaults to the latest cpfn2d-j32-random 40k ckpt):
+# Optional (defaults to the cpfn2d-j32-random 50k ckpt):
 #   CKPT       path to the 2D CausalPFN ckpt
 #              default: /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/
-#                       step_checkpoints/run/step_0040000.pt
+#                       step_checkpoints/run/step_0050000.pt
 #   STD_MODE   per_arm | pooled | log | log_per_arm | log_winsor  (default per_arm)
 #   DOPFN_DATA_ROOT   parent of the case-study dirs  (default = deploy_root/external/dopfn/data/prior_sampling)
 #   DOPFN_ROOT        DoPFN repo root — needed to unpickle case-study .pkls
@@ -49,7 +49,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
 
 # ── required knobs ───────────────────────────────────────────────────────────
-export CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0040000.pt}"
+export CKPT="${CKPT:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0050000.pt}"
 export OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 export STD_MODE="${STD_MODE:-per_arm}"
 export COMPILE="${COMPILE:-0}"
