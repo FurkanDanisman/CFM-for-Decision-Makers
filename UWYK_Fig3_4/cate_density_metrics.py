@@ -294,6 +294,23 @@ def score_file(path, tag=None, coupling="indep"):
     return out or None
 
 
+_SUBDIR_ALIASES = {
+    # The ComplexMech array names the cpfn2d cell `cpfn2d_pooled` (it also ran a
+    # `cpfn2d_log` variant); the RealCause array has only one and names it
+    # `cpfn2d`. Accept either so one METHODS table serves both layouts.
+    "cpfn2d_pooled": ("cpfn2d_pooled", "cpfn2d"),
+}
+
+
+def _resolve_dir(root, subdir, leaf):
+    """First existing <root>/<alias>/<leaf>, else the canonical path."""
+    for alt in _SUBDIR_ALIASES.get(subdir, (subdir,)):
+        d = os.path.join(root, alt, leaf)
+        if os.path.isdir(d):
+            return d
+    return os.path.join(root, subdir, leaf)
+
+
 _LAST_J: dict = {}
 
 def _bary(atoms, pmfs):
@@ -465,7 +482,7 @@ def _build_ate(args, todo):
         print(f"[scoring-ate] {label} ...", end="", flush=True)
         if getattr(args, "dataset_name", None):
             recs = ate_rows_plain(
-                os.path.join(args.root, subdir, args.dataset_name),
+                _resolve_dir(args.root, subdir, args.dataset_name),
                 tag, args.coupling, args.max_real)
         else:
             recs = ate_rows(args.root, args.context, args.nodes, subdir, tag,
@@ -514,9 +531,9 @@ def build_table(args):
         acc, n_files = [], 0
         print(f"[scoring] {label} ...", end="", flush=True)
         for sub in subsets:
-            d = (os.path.join(args.root, subdir, plain) if plain else
-                 os.path.join(args.root, f"N{args.context}", subdir,
-                              f"CMECH_n{args.nodes}_{sub}"))
+            d = (_resolve_dir(args.root, subdir, plain) if plain else
+                 _resolve_dir(os.path.join(args.root, f"N{args.context}"),
+                              subdir, f"CMECH_n{args.nodes}_{sub}"))
             files = sorted(glob.glob(os.path.join(d, "*.npz")))
             if args.max_real:
                 files = files[: args.max_real]
@@ -528,8 +545,8 @@ def build_table(args):
         print(f" {len(acc)} queries from {n_files} file(s)", flush=True)
         if not acc:
             print(f"[skip] {label}: no density dumps for "
-                  f"{'/'.join(x for x in subsets if x) or (plain or '?')} under "
-                  f"{os.path.join(args.root, f'N{args.context}', subdir)}")
+                  f"{'/'.join(x for x in subsets if x) or (plain or '?')} "
+                  f"under {os.path.dirname(d)}")
             continue
         arr = {k: np.array([a[k] for a in acc]) for k in acc[0]}
         true_sd = float(arr["y_true"].std())
