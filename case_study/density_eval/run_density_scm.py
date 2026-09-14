@@ -126,7 +126,8 @@ _PER_ARM_KEYS = ('arm0_shift', 'arm0_scale', 'arm1_shift', 'arm1_scale')
 
 
 def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
-                      method='equal-tailed', n_tau_bary=4001, max_q=None):
+                      method='equal-tailed', n_tau_bary=4001, max_q=None,
+                      with_crps=True, with_wis=True):
     barycenter = _barycenter_fn()
 
     with np.load(path, allow_pickle=True) as z:
@@ -156,7 +157,7 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
             dens = np.stack([cpfn1d_tau_density_raw(p0[q], e0, p1[q], e1, grid)
                              for q in range(n_q)])
             return _score(dens, grid, true_cate, n_q, lo, hi, levels, method,
-                          barycenter, n_tau_bary)
+                          barycenter, n_tau_bary, with_crps, with_wis)
         p_atoms, tau_scaled, y_scale = p_tau_atoms(z)
     tau_raw_atoms = tau_scaled * y_scale
     n_q = min(p_atoms.shape[0], true_cate.size)
@@ -173,23 +174,26 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
 
 
 def score_arrays(dens, grid, true_cate, levels=DEFAULT_LEVELS,
-                 method='equal-tailed', n_tau_bary=4001):
+                 method='equal-tailed', n_tau_bary=4001,
+                 with_crps=True, with_wis=True):
     """Score an already-built (N_q, T) density block. Used by the tauC path,
     whose densities come from raw logits rather than a histogram dump."""
     return _score(np.asarray(dens, dtype=np.float64),
                   np.asarray(grid, dtype=np.float64),
                   np.asarray(true_cate, dtype=np.float64),
                   int(np.shape(dens)[0]), float(grid[0]), float(grid[-1]),
-                  levels, method, _barycenter_fn(), n_tau_bary)
+                  levels, method, _barycenter_fn(), n_tau_bary,
+                  with_crps, with_wis)
 
 
 def _score(dens, grid, true_cate, n_q, lo, hi, levels, method, barycenter,
-           n_tau_bary):
+           n_tau_bary, with_crps=True, with_wis=True):
     dens = dens / (dens.sum(axis=1, keepdims=True)
                    * (grid[1] - grid[0])).clip(min=1e-300)
 
     cate_q = [query_metrics(dens[q], grid, float(true_cate[q]),
-                            levels=levels, y_scale=1.0, method=method)
+                            levels=levels, y_scale=1.0, method=method,
+                            with_crps=with_crps, with_wis=with_wis)
               for q in range(n_q)]
 
     p_ate = np.asarray(barycenter(dens, grid, n_tau=n_tau_bary), dtype=np.float64)
@@ -198,7 +202,8 @@ def _score(dens, grid, true_cate, n_q, lo, hi, levels, method, barycenter,
         p_ate = p_ate / s
     true_ate = float(np.mean(true_cate))
     ate_m = query_metrics(p_ate, grid, true_ate, levels=levels,
-                          y_scale=1.0, method=method)
+                          y_scale=1.0, method=method,
+                          with_crps=with_crps, with_wis=with_wis)
     ate_m['ate_mean_pred'] = float(_TRAPZ(p_ate * grid, grid))
     ate_m['true_ate'] = true_ate
     ate_m['ate_bias'] = ate_m['ate_mean_pred'] - true_ate

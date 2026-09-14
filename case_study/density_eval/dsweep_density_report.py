@@ -33,6 +33,9 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from interval_metrics import DEFAULT_LEVELS                       # noqa: E402
+
+# Only alpha=0.05 is reported, so only that level is computed.
+LEVELS = (0.05,)
 from run_density_scm import score_realization, score_arrays        # noqa: E402
 from density_truth import scm_true_cate                           # noqa: E402
 from density_tauc import DIR_METHOD, load_predictions              # noqa: E402
@@ -44,8 +47,12 @@ from density_tauc import DIR_METHOD, load_predictions              # noqa: E402
 MODELS = ["dopfn_native", "dopfn_bb", "cpfn2d", "cpfn1d",
           "cpfn2d_pooled", "cpfn1d_perarm",
           "graph2d", "uwyk", "uwyk_v3a", "uwyk_noanc"]
-METRICS = ["cate_cov95", "cate_len95", "cate_wis", "cate_crps",
-           "ate_cov95", "ate_len95", "ate_wis", "ate_crps", "ate_bias"]
+# IS = interval (Winkler) score at alpha=0.05:
+#     (hi-lo) + (2/alpha) * distance of the truth outside [lo, hi]
+# Proper, so it cannot be gamed by widening or narrowing, and it is the single
+# alpha the table reports. CRPS and WIS are no longer computed at all.
+METRICS = ["cate_cov95", "cate_len95", "cate_is95",
+           "ate_cov95", "ate_len95", "ate_is95", "ate_bias"]
 _SUFFIX = ["", "_sem", "_med"]
 _HEADER = ",".join(["shift", "d", "N", "case", "model"]
                    + [m + s for m in METRICS for s in _SUFFIX] + ["n"]) + "\n"
@@ -100,22 +107,25 @@ def collect(cell, case, data_root, n_ctx, max_real=None):
                 dens, grid, truth = load_predictions(p, DIR_METHOD[model],
                                                      max_q=MAX_Q or None)
                 n_q = min(dens.shape[0], truth.size)
-                cate_q, ate_m, _ = score_arrays(dens[:n_q], grid, truth[:n_q])
+                cate_q, ate_m, _ = score_arrays(dens[:n_q], grid, truth[:n_q],
+                                                levels=LEVELS,
+                                                with_crps=False,
+                                                with_wis=False)
             else:
                 truth = scm_true_cate(case, int(digits))
-                cate_q, ate_m, _ = score_realization(p, truth, max_q=MAX_Q or None)
+                cate_q, ate_m, _ = score_realization(
+                    p, truth, max_q=MAX_Q or None, levels=LEVELS,
+                    with_crps=False, with_wis=False)
         except Exception:
             continue
         cq = [q['levels'][_A95] for q in cate_q]
         out['cate_cov95'].append(float(np.mean([c['covered'] for c in cq])))
         out['cate_len95'].append(float(np.mean([c['length'] for c in cq])))
-        out['cate_wis'].append(float(np.mean([q['wis'] for q in cate_q])))
-        out['cate_crps'].append(float(np.mean([q['crps'] for q in cate_q])))
+        out['cate_is95'].append(float(np.mean([c['winkler'] for c in cq])))
         a = ate_m['levels'][_A95]
         out['ate_cov95'].append(float(a['covered']))
         out['ate_len95'].append(float(a['length']))
-        out['ate_wis'].append(float(ate_m['wis']))
-        out['ate_crps'].append(float(ate_m['crps']))
+        out['ate_is95'].append(float(a['winkler']))
         out['ate_bias'].append(float(ate_m['ate_bias']))
         got += 1
     return out if got else None
