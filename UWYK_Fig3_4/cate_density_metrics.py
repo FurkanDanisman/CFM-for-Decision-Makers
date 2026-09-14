@@ -528,7 +528,7 @@ def build_table(args):
         print(f" {len(acc)} queries from {n_files} file(s)", flush=True)
         if not acc:
             print(f"[skip] {label}: no density dumps for "
-                  f"{'/'.join(subsets)} under "
+                  f"{'/'.join(x for x in subsets if x) or (plain or '?')} under "
                   f"{os.path.join(args.root, f'N{args.context}', subdir)}")
             continue
         arr = {k: np.array([a[k] for a in acc]) for k in acc[0]}
