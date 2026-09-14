@@ -244,6 +244,19 @@ def _load_arrays(path, tag=None, coupling="indep"):
         y_true = g("true_cate_per_query")
         if y_true is None:
             return None
+
+        # Consistency gate. eval_native_dopfn regresses cate_pred on the density
+        # mean and stores the R^2; if the dumped density does not reproduce the
+        # model's own point CATE, then it is not the predictive that produced
+        # the reported PEHE and scoring it is measuring a different object.
+        # Drop such realizations rather than averaging them in. Harnesses that
+        # hard-assert the same invariant at dump time (cpfn1d, cpfn2d) never
+        # write an inconsistent file, so they carry no field and pass through.
+        if "density_scale_r2" in z.files:
+            _r2 = float(np.asarray(z["density_scale_r2"]).reshape(-1)[0])
+            if not (_r2 >= _MIN_DENSITY_R2):
+                _REJECTED.append((os.path.basename(path), _r2))
+                return None
         y_true = y_true.reshape(-1)
         y_scale = float(z["y_scale"]) if "y_scale" in z.files else 1.0
 
@@ -310,6 +323,11 @@ def _resolve_dir(root, subdir, leaf):
             return d
     return os.path.join(root, subdir, leaf)
 
+
+# A dumped density must reproduce the model's own point estimate to be worth
+# scoring. Realizations below this R^2 are excluded and counted.
+_MIN_DENSITY_R2 = float(os.environ.get("MIN_DENSITY_R2", "0.99"))
+_REJECTED: list = []
 
 _LAST_J: dict = {}
 
@@ -542,7 +560,12 @@ def build_table(args):
                 if got:
                     acc += got
                     n_files += 1
-        print(f" {len(acc)} queries from {n_files} file(s)", flush=True)
+        print(f" {len(acc)} queries from {n_files} file(s)"
+              + (f"   [{len(_REJECTED)} realization(s) REJECTED: density "
+                 f"inconsistent with the point estimate, min R^2 "
+                 f"{min(r for _, r in _REJECTED):.3f}]" if _REJECTED else ""),
+              flush=True)
+        _REJECTED.clear()
         if not acc:
             print(f"[skip] {label}: no density dumps for "
                   f"{'/'.join(x for x in subsets if x) or (plain or '?')} "
