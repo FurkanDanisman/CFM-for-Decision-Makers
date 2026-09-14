@@ -126,7 +126,7 @@ _PER_ARM_KEYS = ('arm0_shift', 'arm0_scale', 'arm1_shift', 'arm1_scale')
 
 
 def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
-                      method='equal-tailed', n_tau_bary=4001):
+                      method='equal-tailed', n_tau_bary=4001, max_q=None):
     barycenter = _barycenter_fn()
 
     with np.load(path, allow_pickle=True) as z:
@@ -147,6 +147,8 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
             e1 = raw_edges(edges, float(np.asarray(z['arm1_shift']).reshape(-1)[0]),
                            float(np.asarray(z['arm1_scale']).reshape(-1)[0]))
             n_q = min(p0.shape[0], true_cate.size)
+            if max_q:
+                n_q = min(n_q, int(max_q))
             p0, p1, true_cate = p0[:n_q], p1[:n_q], true_cate[:n_q]
             lo, hi = tau_support_raw(e0, e1)
             pad = 0.02 * (hi - lo)
@@ -158,6 +160,8 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
         p_atoms, tau_scaled, y_scale = p_tau_atoms(z)
     tau_raw_atoms = tau_scaled * y_scale
     n_q = min(p_atoms.shape[0], true_cate.size)
+    if max_q:
+        n_q = min(n_q, int(max_q))
     p_atoms, true_cate = p_atoms[:n_q], true_cate[:n_q]
 
     lo, hi = float(tau_raw_atoms[0]), float(tau_raw_atoms[-1])

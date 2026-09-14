@@ -32,9 +32,13 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 # than the eval default of 4096 for 8e-4 of mass, which the scorer
 # renormalises away. Raise if you need the tails resolved harder.
 export TAUC_N_Y0="${TAUC_N_Y0:-1024}"
+# queries scored per realization. The per-query density rebuild IS the
+# cost for the tauC models; coverage averages over shifts x realizations
+# x queries, so cutting queries is the cheapest precision trade there is.
+export MAX_QUERIES="${MAX_QUERIES:-20}"
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS  TAUC_N_Y0=$TAUC_N_Y0"
+echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS  TAUC_N_Y0=$TAUC_N_Y0  MAX_QUERIES=$MAX_QUERIES"
 [ -n "${ONLY_N:-}" ] && echo "[report] contexts restricted to: $ONLY_N"
 [ -n "${ONLY_D:-}" ] && echo "[report] d restricted to: $ONLY_D"
 [ -n "${MODELS:-}" ] && echo "[report] models: $MODELS"

@@ -73,13 +73,18 @@ def _g(z, k, default=None):
 N_Y0_DEFAULT = int(os.environ.get('TAUC_N_Y0', '1024'))
 
 
-def load_predictions(path, method, n_y0=None):
+def load_predictions(path, method, n_y0=None, max_q=None):
     """-> (dens (N_q, T), tau_raw (T,), true_cate_raw (N_q,))  for one method."""
     n_y0 = N_Y0_DEFAULT if n_y0 is None else int(n_y0)
     with np.load(path, allow_pickle=True) as z:
         tau_scaled = np.asarray(z['tau_grid'], dtype=np.float64).reshape(-1)
         y_scale = float(np.asarray(z['y_scale']).reshape(-1)[0])
         true_cate = np.asarray(z['true_cate'], dtype=np.float64).reshape(-1)
+        if max_q is not None:
+            true_cate = true_cate[:int(max_q)]
+
+        def _cap(a):
+            return a if max_q is None else a[:int(max_q)]
 
         if method in ('joint', 'uwyk_native', 'uwyk_matched'):
             if 'joint_logits' not in z.files:
@@ -87,14 +92,14 @@ def load_predictions(path, method, n_y0=None):
             J = int(np.asarray(z['J']).reshape(-1)[0])
             edges2d = np.asarray(z['edges2d'], dtype=np.float64).reshape(-1)
             if method == 'joint':
-                logits = np.asarray(z['joint_logits'], dtype=np.float64)
+                logits = _cap(np.asarray(z['joint_logits'], dtype=np.float64))
                 dens = np.stack([
                     joint_tau_density(Joint2D.from_pred(logits[q], J, edges2d),
                                       tau_scaled, n_y0=n_y0)
                     for q in range(logits.shape[0])])
             else:
-                p0 = np.asarray(z['uwyk_pred0'], dtype=np.float64)
-                p1 = np.asarray(z['uwyk_pred1'], dtype=np.float64)
+                p0 = _cap(np.asarray(z['uwyk_pred0'], dtype=np.float64))
+                p1 = _cap(np.asarray(z['uwyk_pred1'], dtype=np.float64))
                 be = np.asarray(z['bar_edges'], dtype=np.float64).reshape(-1)
                 bw = np.asarray(z['bar_widths'], dtype=np.float64).reshape(-1)
                 sL = float(np.asarray(z['base_sL']).reshape(-1)[0])
@@ -109,7 +114,7 @@ def load_predictions(path, method, n_y0=None):
                 dens = np.stack(out)
 
         elif method == 'dopfn_joint':
-            logits = np.asarray(z['dopfn_joint_logits'], dtype=np.float64)
+            logits = _cap(np.asarray(z['dopfn_joint_logits'], dtype=np.float64))
             J = int(np.asarray(z['dopfn_J']).reshape(-1)[0])
             edges = np.asarray(z['dopfn_edges2d'], dtype=np.float64).reshape(-1)
             dens = np.stack([
@@ -121,7 +126,7 @@ def load_predictions(path, method, n_y0=None):
             y_shift = float(np.asarray(_g(z, 'y_shift', 0.0)).reshape(-1)[0])
             arms = []
             for a in (0, 1):
-                lg = np.asarray(z[f'dopfn_pred{a}'], dtype=np.float64)
+                lg = _cap(np.asarray(z[f'dopfn_pred{a}'], dtype=np.float64))
                 bo = np.asarray(z[f'dopfn_borders{a}_raw'], dtype=np.float64)
                 sc = _g(z, f'dopfn_tail_scales{a}_raw')
                 sc = None if sc is None else np.asarray(sc, dtype=np.float64)
