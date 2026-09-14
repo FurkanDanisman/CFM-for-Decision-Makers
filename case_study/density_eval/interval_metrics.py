@@ -201,7 +201,7 @@ def wis(p, grid, y_true, alphas=WIS_ALPHAS, cdf=None):
 
 # ── per-query driver ─────────────────────────────────────────────────────────
 def query_metrics(p, grid, y_true, levels=DEFAULT_LEVELS, y_scale=1.0,
-                  method='equal-tailed'):
+                  method='equal-tailed', with_crps=True, with_wis=True):
     """All four scores for ONE query density against ONE true tau.
 
     `y_true` must be in the SAME (scaled) units as `grid`; length / winkler /
@@ -211,9 +211,13 @@ def query_metrics(p, grid, y_true, levels=DEFAULT_LEVELS, y_scale=1.0,
     y_true = float(y_true)
     s = float(y_scale)
     F = predictive_cdf(p, grid)
-    out = {'mass': float(F[-1]), 'crps': crps(p, grid, y_true, cdf=F) * s,
-           'wis': wis(p, grid, y_true, cdf=F) * s,
-           'levels': {}}
+    # CRPS and WIS are optional: WIS alone costs 11 quantile pairs per query,
+    # which is real time when the density had to be rebuilt from logits.
+    out = {'mass': float(F[-1]), 'levels': {}}
+    if with_crps:
+        out['crps'] = crps(p, grid, y_true, cdf=F) * s
+    if with_wis:
+        out['wis'] = wis(p, grid, y_true, cdf=F) * s
     for a in levels:
         if method == 'equal-tailed':
             lo, hi, cens = interval_equal_tailed(p, grid, a, cdf=F)
@@ -254,10 +258,14 @@ def summarize(per_query, levels=DEFAULT_LEVELS, mass_tol=0.01):
     mass = np.array([q['mass'] for q in per_query], dtype=np.float64)
     out = {
         'n_queries': n,
-        'crps_mean': float(np.mean([q['crps'] for q in per_query])),
-        'crps_median': float(np.median([q['crps'] for q in per_query])),
-        'wis_mean': float(np.mean([q['wis'] for q in per_query])),
-        'wis_median': float(np.median([q['wis'] for q in per_query])),
+        'crps_mean': (float(np.mean([q['crps'] for q in per_query]))
+                      if 'crps' in per_query[0] else float('nan')),
+        'crps_median': (float(np.median([q['crps'] for q in per_query]))
+                        if 'crps' in per_query[0] else float('nan')),
+        'wis_mean': (float(np.mean([q['wis'] for q in per_query]))
+                     if 'wis' in per_query[0] else float('nan')),
+        'wis_median': (float(np.median([q['wis'] for q in per_query]))
+                       if 'wis' in per_query[0] else float('nan')),
         'mass_mean': float(mass.mean()),
         'mass_min': float(mass.min()),
         'mass_fail_frac': float(np.mean(np.abs(mass - 1.0) > mass_tol)),
