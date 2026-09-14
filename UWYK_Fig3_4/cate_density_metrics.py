@@ -325,6 +325,27 @@ def _bary(atoms, pmfs):
     return pmf / tot if tot > 0 else pmf
 
 
+def ate_rows_plain(d, tag, coupling, max_real=None):
+    """ATE predictive per realization for a flat dataset dir (RealCause).
+
+    No subset pooling: each npz already holds every query of its realization,
+    so the barycenter is over that file's queries and the truth is their mean.
+    """
+    files = sorted(glob.glob(os.path.join(d, "*.npz")))
+    if max_real:
+        files = files[:max_real]
+    out = []
+    for f in files:
+        got = _query_pmfs(f, tag, coupling)
+        if got is None:
+            continue
+        atoms, pmfs, y = got
+        if pmfs.shape[0] == 0:
+            continue
+        out.append((atoms, _bary(atoms, pmfs), float(y.mean())))
+    return out
+
+
 def ate_rows(root, ctx, nodes, subdir, tag, coupling, subset, data_root,
              max_real=None):
     """One ATE predictive per source realization, with its realized ATE.
@@ -418,6 +439,11 @@ def _parse():
                          "runtime.")
     ap.add_argument("--skip", nargs="+", default=(),
                     help="method labels to exclude.")
+    ap.add_argument("--dataset", nargs="+", default=None,
+                    help="score these dataset directories directly (e.g. IHDP "
+                         "ACIC CPS PSID PSID_bal) instead of the CMECH grid. "
+                         "RealCause has no zero/nonzero split, so --subset and "
+                         "--nodes are ignored in this mode.")
     ap.add_argument("--data-root", default=os.environ.get(
         "UWYK_FIG34_DATA", os.path.join(_HERE, "data")),
         help="benchmark data root; needed by --target ate to map each npz back "
@@ -437,9 +463,14 @@ def _build_ate(args, todo):
     rows = []
     for label, subdir, tag in todo:
         print(f"[scoring-ate] {label} ...", end="", flush=True)
-        recs = ate_rows(args.root, args.context, args.nodes, subdir, tag,
-                        args.coupling, args.subset, args.data_root,
-                        args.max_real)
+        if getattr(args, "dataset_name", None):
+            recs = ate_rows_plain(
+                os.path.join(args.root, subdir, args.dataset_name),
+                tag, args.coupling, args.max_real)
+        else:
+            recs = ate_rows(args.root, args.context, args.nodes, subdir, tag,
+                            args.coupling, args.subset, args.data_root,
+                            args.max_real)
         print(f" {len(recs)} datasets", flush=True)
         if not recs:
             continue
@@ -468,7 +499,9 @@ def build_table(args):
     # `total` = every query. These metrics are per-query means, so unlike PEHE
     # (an RMS needing weighted pooling) the two disjoint subsets simply
     # concatenate.
-    subsets = (["nonzero", "zero"] if args.subset == "total" else [args.subset])
+    plain = getattr(args, "dataset_name", None)
+    subsets = ([None] if plain else
+               (["nonzero", "zero"] if args.subset == "total" else [args.subset]))
     rows = []
     todo = [m for m in METHODS
             if (args.methods is None or m[0] in args.methods)
@@ -481,8 +514,9 @@ def build_table(args):
         acc, n_files = [], 0
         print(f"[scoring] {label} ...", end="", flush=True)
         for sub in subsets:
-            d = os.path.join(args.root, f"N{args.context}", subdir,
-                             f"CMECH_n{args.nodes}_{sub}")
+            d = (os.path.join(args.root, subdir, plain) if plain else
+                 os.path.join(args.root, f"N{args.context}", subdir,
+                              f"CMECH_n{args.nodes}_{sub}"))
             files = sorted(glob.glob(os.path.join(d, "*.npz")))
             if args.max_real:
                 files = files[: args.max_real]
@@ -534,8 +568,10 @@ def _render(rows, args):
              if args.target == "cate" else
              "ATE density per dataset (Wasserstein barycenter of its per-query "
              "CATE densities), scored against that dataset's realized ATE")
-    L = [f"# {args.target.upper()} density calibration — d={args.nodes}, "
-         f"N={args.context}, {args.subset}, 1D coupling = {args.coupling}", "",
+    _cell = (getattr(args, "dataset_name", None)
+             or f"d={args.nodes}, N={args.context}, {args.subset}")
+    L = [f"# {args.target.upper()} density calibration — {_cell}, "
+         f"1D coupling = {args.coupling}", "",
          f"Scored object: {_what}.", "",
          "2D heads: diagonal projection of the joint. 1D heads: independence",
          "convolution of the two arm marginals. Raw densities, no MALC.", "",
@@ -570,9 +606,11 @@ def _render(rows, args):
                  "{sd_ratio:.1f} | {bias:+.4f} |".format(**r))
     md = "\n".join(L) + "\n"
     print(md)
-    out = args.out or os.path.join(
-        args.root, f"{args.target}_density_d{args.nodes}_N{args.context}"
-        f"_{args.subset}_{args.coupling}.md")
+    _name = (f"{args.target}_density_{args.dataset_name}_{args.coupling}.md"
+             if getattr(args, "dataset_name", None) else
+             f"{args.target}_density_d{args.nodes}_N{args.context}"
+             f"_{args.subset}_{args.coupling}.md")
+    out = args.out or os.path.join(args.root, _name)
     with open(out, "w") as f:
         f.write(md)
     with open(out.replace(".md", ".json"), "w") as f:
@@ -583,6 +621,24 @@ def _render(rows, args):
 
 def main():
     args = _parse()
+    args.dataset_name = None
+    if args.dataset:
+        parts = []
+        for name in args.dataset:
+            args.dataset_name = name
+            print(f"\n{'='*62}\n  {name}\n{'='*62}", flush=True)
+            try:
+                parts.append(build_table(args))
+            except SystemExit as exc:
+                print(f"[skip] {name}: {exc}", flush=True)
+        if len(args.dataset) > 1 and parts:
+            out = os.path.join(
+                args.root, f"{args.target}_density_realcause_{args.coupling}.md")
+            with open(out, "w") as f:
+                f.write("\n\n".join(parts))
+            print(f"\n[written] {out}")
+        return
+
     nodes = args.nodes
     parts = []
     for n in nodes:
