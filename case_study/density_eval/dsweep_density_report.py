@@ -60,6 +60,9 @@ def _stats(v):
     return [float(a.mean()), sem, float(np.median(a))]
 
 
+MAX_Q = int(os.environ.get('MAX_QUERIES', '0'))     # 0 = all
+
+
 def collect(cell, case, data_root, n_ctx, max_real=None):
     """Per-realization density metrics for one (model, case) dir."""
     model = os.path.basename(os.path.dirname(cell))
@@ -89,12 +92,18 @@ def collect(cell, case, data_root, n_ctx, max_real=None):
             continue
         try:
             if tauc:
-                dens, grid, truth = load_predictions(p, DIR_METHOD[model])
+                # Cap queries BEFORE building densities -- the per-query
+                # density reconstruction is the entire cost here, and coverage
+                # is a mean over (shifts x realizations x queries), so the
+                # cheapest axis to cut is queries. 20 still leaves 1200
+                # samples per cen3 cell (SE ~0.63% on a 95% coverage).
+                dens, grid, truth = load_predictions(p, DIR_METHOD[model],
+                                                     max_q=MAX_Q or None)
                 n_q = min(dens.shape[0], truth.size)
                 cate_q, ate_m, _ = score_arrays(dens[:n_q], grid, truth[:n_q])
             else:
                 truth = scm_true_cate(case, int(digits))
-                cate_q, ate_m, _ = score_realization(p, truth)
+                cate_q, ate_m, _ = score_realization(p, truth, max_q=MAX_Q or None)
         except Exception:
             continue
         cq = [q['levels'][_A95] for q in cate_q]
