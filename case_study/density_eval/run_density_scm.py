@@ -168,6 +168,17 @@ def score_realization(path, true_cate, levels=DEFAULT_LEVELS, n_grid=8001,
                   barycenter, n_tau_bary)
 
 
+def score_arrays(dens, grid, true_cate, levels=DEFAULT_LEVELS,
+                 method='equal-tailed', n_tau_bary=4001):
+    """Score an already-built (N_q, T) density block. Used by the tauC path,
+    whose densities come from raw logits rather than a histogram dump."""
+    return _score(np.asarray(dens, dtype=np.float64),
+                  np.asarray(grid, dtype=np.float64),
+                  np.asarray(true_cate, dtype=np.float64),
+                  int(np.shape(dens)[0]), float(grid[0]), float(grid[-1]),
+                  levels, method, _barycenter_fn(), n_tau_bary)
+
+
 def _score(dens, grid, true_cate, n_q, lo, hi, levels, method, barycenter,
            n_tau_bary):
     dens = dens / (dens.sum(axis=1, keepdims=True)
