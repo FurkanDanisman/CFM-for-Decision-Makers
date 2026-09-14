@@ -28,9 +28,13 @@ export PYTHONUNBUFFERED=1
 # one BLAS thread per worker: the parallelism is across cells, and letting each
 # worker also spawn 32 BLAS threads oversubscribes the node badly.
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+# tail-quadrature resolution for the tauC densities; 1024 is 5x faster
+# than the eval default of 4096 for 8e-4 of mass, which the scorer
+# renormalises away. Raise if you need the tails resolved harder.
+export TAUC_N_Y0="${TAUC_N_Y0:-1024}"
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS"
+echo "[report] root=$RES  shifts=[$SHIFTS] label=$LABEL  jobs=$JOBS  TAUC_N_Y0=$TAUC_N_Y0"
 [ -n "${ONLY_N:-}" ] && echo "[report] contexts restricted to: $ONLY_N"
 [ -n "${ONLY_D:-}" ] && echo "[report] d restricted to: $ONLY_D"
 : # keep set -e happy when the greps above are false

@@ -65,8 +65,17 @@ def _g(z, k, default=None):
     return z[k] if k in z.files else default
 
 
-def load_predictions(path, method, n_y0=4096):
+# Tail-quadrature resolution. The tauC eval defaults to 4096, which its own
+# sbatch measures at 1.60 s/query (3 methods) vs 0.32 s at 1024 -- 5x -- for
+# joint-path mass 0.99990 vs 0.99922. The scorer RENORMALISES each density
+# before scoring, so that 8e-4 is absorbed and only the shape matters. At 4096
+# the report needs ~24 h for the cen3 grid and dies on the 3 h wall clock.
+N_Y0_DEFAULT = int(os.environ.get('TAUC_N_Y0', '1024'))
+
+
+def load_predictions(path, method, n_y0=None):
     """-> (dens (N_q, T), tau_raw (T,), true_cate_raw (N_q,))  for one method."""
+    n_y0 = N_Y0_DEFAULT if n_y0 is None else int(n_y0)
     with np.load(path, allow_pickle=True) as z:
         tau_scaled = np.asarray(z['tau_grid'], dtype=np.float64).reshape(-1)
         y_scale = float(np.asarray(z['y_scale']).reshape(-1)[0])
