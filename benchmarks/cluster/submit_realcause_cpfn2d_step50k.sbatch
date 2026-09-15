@@ -9,7 +9,7 @@
 #SBATCH --array=0-4
 
 # 5-task array — one per RealCause dataset. Evaluates the cpfn2d j32_random
-# checkpoint @ step_50000 using realcause_eval/cpfn2d.py (which wraps
+# checkpoint @ step_50000 using realcause_eval/Table1/cpfn2d.py (which wraps
 # benchmarks/eval_causalpfn2d/eval_cpfn2d_realcause.py).
 #
 # Env overrides:
@@ -60,7 +60,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn2d @ step_50000  DATASET=$DATASET  OUT=
 echo "  CKPT=$CKPT"
 echo "  STD_MODE=$STD_MODE  EVAL_MAX_CONTEXT=$EVAL_MAX_CONTEXT  EVAL_CONTEXT_SEED=$EVAL_CONTEXT_SEED"
 
-python -u "$REPO/realcause_eval/cpfn2d.py" \
+python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
     --dataset            "$DATASET" \
     --outdir             "$OUT" \
     --ckpt               "$CKPT" \

@@ -61,7 +61,7 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn2d  σ=$SIGMA  DATASET=$DATASET  OUT=$OUT"
 
-python -u "$REPO/realcause_eval/cpfn2d.py" \
+python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
     --dataset "$DATASET" --outdir "$OUT" \
     --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
     --std-mode std_target --std-target "$SIGMA"

@@ -95,7 +95,7 @@ case "$METHOD" in
         # so per_arm (cpfn2d's default) would break the density-vs-point sanity
         # — the stored point CATE would un-scale with per-arm y0sc/y1sc while
         # the aggregator can only apply one scale factor. Same fix as cpfn1d.
-        python -u "$REPO/realcause_eval/cpfn2d.py" \
+        python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
             --std-mode pooled --density-dump 1
@@ -106,7 +106,7 @@ case "$METHOD" in
         # density we dump must be the noanc-mode density. --anc-mode v3b_only
         # keeps both v3b + noanc point columns in the NPZ so debug / v3b tag
         # switching still works via --graph2d-tag.
-        python -u "$REPO/realcause_eval/graph2d.py" \
+        python -u "$REPO/realcause_eval/Table1/graph2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK_REPRO" \
@@ -116,7 +116,7 @@ case "$METHOD" in
     dopfnbb)
         [ -f "$CKPT_DOPFNBB" ] || { echo "FATAL: CKPT_DOPFNBB not found: $CKPT_DOPFNBB" >&2; exit 1; }
         # do_pfn_bb.py wrapper always sets DENSITY_DUMP=1 internally.
-        python -u "$REPO/realcause_eval/do_pfn_bb.py" \
+        python -u "$REPO/realcause_eval/Table1/do_pfn_bb.py" \
             --dataset "$DS_ON_DISK" --outdir "$OUT" \
             --ckpt "$CKPT_DOPFNBB" --repo "$REPO" \
             --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN"

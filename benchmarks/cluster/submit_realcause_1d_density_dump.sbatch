@@ -79,7 +79,7 @@ case "$METHOD" in
         # (the default) would break convolution because the two marginals live
         # on different scaled axes. pooled uses one mean/std for all Y so both
         # marginals share the same axis, making the convolution valid.
-        python -u "$REPO/realcause_eval/cpfn1d.py" \
+        python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN1D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
             --std-mode pooled --density-dump 1
@@ -87,13 +87,13 @@ case "$METHOD" in
     dopfn)
         [ -d "$DOPFN_ROOT" ] || { echo "FATAL: DOPFN_ROOT not found: $DOPFN_ROOT" >&2; exit 1; }
         DS_DP="$DATASET"; [ "$DATASET" = "PSID_bal" ] && DS_DP="PSIDbal"
-        python -u "$REPO/realcause_eval/do_pfn.py" \
+        python -u "$REPO/realcause_eval/Table1/do_pfn.py" \
             --dataset "$DS_DP" --outdir "$OUT" \
             --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN"
         ;;
     uwyk1d)
         [ -d "$UWYK_REPRO" ] || { echo "FATAL: UWYK_REPRO not found: $UWYK_REPRO" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/uwyk1d.py" \
+        python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --uwyk-repro "$UWYK_REPRO" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --anc-mode v3b_only \

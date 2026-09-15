@@ -10,7 +10,7 @@
 
 # 5-task array — one per RealCause dataset. Evaluates the plain CausalPFN
 # (1D bar-dist head) checkpoint @ step_50000 — a.k.a. causalpfn-orig-headrand
-# / cpfn1d j1024_headrand — using realcause_eval/cpfn1d.py (which wraps
+# / cpfn1d j1024_headrand — using realcause_eval/Table1/cpfn1d.py (which wraps
 # benchmarks/eval_causalpfn2d/eval_causalpfn_v0_realcause.py).
 #
 # Env overrides:
@@ -61,7 +61,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] cpfn1d @ step_50000  DATASET=$DATASET  OUT=
 echo "  CKPT=$CKPT"
 echo "  STD_MODE=$STD_MODE  EVAL_MAX_CONTEXT=$EVAL_MAX_CONTEXT  EVAL_CONTEXT_SEED=$EVAL_CONTEXT_SEED"
 
-python -u "$REPO/realcause_eval/cpfn1d.py" \
+python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
     --dataset            "$DATASET" \
     --outdir             "$OUT" \
     --ckpt               "$CKPT" \
