@@ -47,9 +47,14 @@ for d in $DS; do
   for CASE in "${CASE_LIST[@]}"; do
     CELL="$RES/shift$SHIFT/d$d/ctx${CTX}/$MODEL/$CASE"
     mkdir -p "$CELL"
-    # Resume: highest existing realization index + 1, counting dumps whether they
-    # land at the cell top level or under predictions/ (both layouts occur).
-    last=$( { ls "$CELL"/${CASE}_r*.npz "$CELL"/predictions/${CASE}_r*.npz; } 2>/dev/null \
+    # Resume: highest existing DENSITY dump index + 1. Count predictions/ ONLY.
+    # The cell top level also holds <CASE>_r###.npz from the earlier POINT
+    # sweep, and those go up to r099 in cells where no density has ever been
+    # dumped -- counting them made the cell look complete and skipped it
+    # forever (graph2d/uwyk at d5 had 120 point npz and 21 dumps, and every
+    # backfill exited in 2 s having written nothing). predictions/ is written
+    # in both SCORE_INLINE modes, so this is the artifact that tracks progress.
+    last=$( ls "$CELL"/predictions/${CASE}_r*.npz 2>/dev/null \
            | sed -E 's/.*_r0*([0-9]+)\.npz$/\1/' | sort -n | tail -1)
     start=$(( ${last:--1} + 1 ))
     if [ "$start" -ge "$REAL_END" ]; then
