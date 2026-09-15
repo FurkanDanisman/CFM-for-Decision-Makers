@@ -282,7 +282,9 @@ def _atoms_to_uniform(p, atoms, n_out=None):
     atoms = np.asarray(atoms, dtype=np.float64).reshape(-1)
     p = np.asarray(p, dtype=np.float64)
 
-    # Range from the atoms that actually CARRY MASS, not from min/max.
+    # Range from where the mass actually IS, by pooled cumulative mass, not
+    # from min/max and not by a relative per-atom threshold -- DoPFN's tail
+    # buckets hold ~1e-8, which any relative cut keeps.
     # DoPFN's two tail atoms sit at -61 and +297 while the interior spans
     # [-5.4, 6.2], and measured tail mass is exactly 0. Spanning the full
     # [-61, 297] with len(atoms) points gives a step of 3.6, so the whole
@@ -291,11 +293,19 @@ def _atoms_to_uniform(p, atoms, n_out=None):
     # the retained range is clamped into the end points below, so nothing is
     # lost when a query genuinely populates a tail.
     _P = p[None, :] if p.ndim == 1 else p
-    _w = _P.max(axis=0)
-    _keep = np.flatnonzero(_w > 1e-12 * max(float(_w.max()), 1e-300))
-    if _keep.size >= 2:
-        lo, hi = float(atoms[_keep].min()), float(atoms[_keep].max())
+    _order = np.argsort(atoms)
+    _pooled = _P.sum(axis=0)[_order]
+    _tot = float(_pooled.sum())
+    if _tot > 0:
+        _c = np.cumsum(_pooled) / _tot
+        _eps = 1e-6
+        _i = int(np.searchsorted(_c, _eps, side="left"))
+        _j = int(np.searchsorted(_c, 1.0 - _eps, side="left"))
+        _i = min(_i, len(_order) - 1); _j = min(max(_j, _i + 1), len(_order) - 1)
+        lo, hi = float(atoms[_order[_i]]), float(atoms[_order[_j]])
     else:
+        lo, hi = float(atoms.min()), float(atoms.max())
+    if hi <= lo:
         lo, hi = float(atoms.min()), float(atoms.max())
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
         return atoms, p
