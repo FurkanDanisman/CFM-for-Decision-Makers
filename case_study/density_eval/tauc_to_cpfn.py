@@ -111,8 +111,23 @@ def convert_one(path, method):
             if p0a is None:
                 return None
             b0 = np.asarray(z["dopfn_borders0_raw"], dtype=np.float64).reshape(-1)
-            edges = np.asarray(z["edges2d"], dtype=np.float64).reshape(-1) \
-                if "edges2d" in z.files else b0
+            # DoPFN1D.from_pred returns edges on the SCALED axis
+            #     edges = (borders[1:-1] - y_shift) / y_scale
+            # so the rebin target must be scaled too. Rebinning onto the RAW
+            # borders put the density on the wrong axis and the scorer's units
+            # check caught it (sd_ratio 21.6 on CATE, 64.1 on ATE).
+            #
+            # DoPFN's borders are also NON-uniform, while the cpfn schema's
+            # tau_atoms/_bin_width assume a uniform grid. Prefer the joint's
+            # grid when the dump carries it -- uniform, scaled, and the same
+            # grid dopfn_joint uses, which makes the two dopfn rows directly
+            # comparable instead of living on 100 vs 10 bins.
+            if "dopfn_edges2d" in z.files:
+                edges = np.asarray(z["dopfn_edges2d"],
+                                   dtype=np.float64).reshape(-1)
+            else:
+                _e = (b0[1:-1] - y_shift) / y_scale
+                edges = np.linspace(float(_e[0]), float(_e[-1]), len(_e))
             mk = lambda p: DoPFN1D.from_pred(p, b0, y_shift=y_shift,
                                              y_scale=y_scale)
         else:
