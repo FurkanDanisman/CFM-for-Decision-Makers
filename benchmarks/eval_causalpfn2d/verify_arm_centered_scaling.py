@@ -26,6 +26,20 @@ os.environ.pop('Y_STD_MODE_EVAL', None)
 import numpy as np
 import torch
 
+# causalpfn.__init__ pulls in faiss/transformers/wandb at import time, none of
+# which this check touches. The Table-1 shim stubs them via a meta-path finder
+# that is normally enabled by putting its directory on PYTHONPATH (the eval
+# sbatch does exactly that). This script is run by hand, so install the finder
+# here instead of relying on the caller's environment.
+_SHIMS = os.path.abspath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), '..', 'uwyk_table1', 'shims'))
+if os.path.isdir(_SHIMS):
+    sys.path.insert(0, _SHIMS)
+    try:
+        import sitecustomize  # noqa: F401  (installs the stub finder on import)
+    except ImportError:
+        pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import eval_cpfn2d_realcause as E
 from training_causalpfn2d.model_causalpfn_2d import CausalPFN2DHead
