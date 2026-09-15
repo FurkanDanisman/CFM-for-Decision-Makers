@@ -87,8 +87,16 @@ case "$MODEL" in
         --dataset "$DATASET"
     ;;
   dopfn_bb)
+    # eval_dopfn_bb_raw.py spells the balanced PSID variant 'PSIDbal' (no
+    # underscore) in its --dataset choices, unlike every other harness here.
+    # Passing PSID_bal aborts with "invalid choice" before any work happens,
+    # which is how that one cell came back empty while the other four were
+    # fine. submit_realcause_2d_density_dump.sbatch carries the same
+    # translation as DS_ON_DISK.
+    DS_ON_DISK="$DATASET"
+    [ "$DATASET" = "PSID_bal" ] && DS_ON_DISK=PSIDbal
     python -u "$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py" \
-        --dataset "$DATASET" --out "$OUT/summary.npz" \
+        --dataset "$DS_ON_DISK" --out "$OUT/summary.npz" \
         --repo "$REPO" --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN" \
         --checkpoint "$CKPT_DOPFN_BB" \
         --y-scaling "${Y_SCALING:-min_max}" --std-target "${STD_TARGET:-0.3}"
