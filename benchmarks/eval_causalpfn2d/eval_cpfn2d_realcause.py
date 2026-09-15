@@ -89,10 +89,16 @@ STD_MODE          = os.environ.get('STD_MODE', '').lower()
 # std_target (Y=(y-mean)*STD_TARGET/std — mirrors DoPFN-bb's std recipe).
 if STD_MODE:
     assert STD_MODE in ('pooled', 'per_arm', 'log', 'log_per_arm', 'log_winsor',
-                        'std_target', 'per_arm_std_target')
+                        'std_target', 'per_arm_std_target', 'arm_centered')
     Y_STD_MODE_EVAL = STD_MODE
 else:
-    assert Y_STD_MODE_EVAL in ('pooled', 'per_arm')
+    assert Y_STD_MODE_EVAL in ('pooled', 'per_arm', 'arm_centered')
+
+# True when the caller named a mode. When they did NOT, a checkpoint trained
+# with y_scaling_mode='arm_centered' selects the matching eval mode itself (see
+# main()) instead of silently defaulting to 'pooled' -- which would drop the
+# (m1 - m0) offset and leave every CATE short by it.
+_STD_MODE_EXPLICIT = bool(STD_MODE) or ('Y_STD_MODE_EVAL' in os.environ)
 
 # Only used when STD_MODE=std_target (or per_arm_std_target). Same recipe
 # dopfn-bb uses: y_scaled = (y - mean) * STD_TARGET / std → σ(y_scaled) =
@@ -248,7 +254,34 @@ def forward_pmats(model, X_ctx, T_ctx, Y_ctx_raw, X_q, J,
     else:
         Y_work = Y_ctx_r
 
-    if y_std_mode_eval in ('per_arm', 'log_per_arm', 'per_arm_std_target'):
+    if y_std_mode_eval == 'arm_centered':
+        # Mirror CausalPFN2DHead._arm_centered_y_stats exactly: each arm gets
+        # its OWN centre, both arms share ONE scale (the pooled context std).
+        # The shared scale is not a simplification -- the joint head reads tau
+        # off the antidiagonals, which needs both axes on one lattice.
+        #
+        # Un-scaling is the per_arm branch below with y0sc == y1sc, giving
+        #     cate = (e1 - e0) * scale + (m1 - m0)
+        # i.e. tau_raw = scale * tau_std + (m1 - m0), the identity the training
+        # docstring requires be carried to inference.
+        tf = T_ctx_t.reshape(-1); yf = Y_work.reshape(-1)
+        y0 = yf[tf < 0.5]; y1 = yf[tf > 0.5]
+        has0, has1 = y0.numel() > 0, y1.numel() > 0
+        m0 = float(y0.mean().item()) if has0 else 0.0
+        m1 = float(y1.mean().item()) if has1 else 0.0
+        if not has1:      # a degenerate arm falls back to the other, as training does
+            m1 = m0
+        if not has0:
+            m0 = m1
+        scale = float(Y_work.std(dim=1).clamp(min=1e-6).reshape(-1)[0].item())
+        centre = torch.where(T_ctx_t > 0.5,
+                             torch.full_like(T_ctx_t, m1),
+                             torch.full_like(T_ctx_t, m0))
+        y_std = (Y_work - centre) / scale
+        stats = {'mode': 'per_arm', 'y0s': m0, 'y0sc': scale,
+                 'y1s': m1, 'y1sc': scale, 'std_mode': 'arm_centered',
+                 'arm_offset': m1 - m0, 'log_y_min': y_min}
+    elif y_std_mode_eval in ('per_arm', 'log_per_arm', 'per_arm_std_target'):
         # per_arm             : σ_scaled = 1 per arm (divide by std)
         # per_arm_std_target  : σ_scaled = STD_TARGET per arm (divide by std/STD_TARGET)
         #                       Combines dopfn-bb's shrink factor with the per-arm
@@ -422,7 +455,8 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
             'y_shift=0, y_scale=1 while the point CATE uses per-arm '
             'y0sc/y1sc — the density-CI aggregator would then compute '
             'a CI on the wrong scale. Use --std-mode pooled (or any '
-            'other single-axis mode) for density dumps.')
+            'other single-axis mode) for density dumps. arm_centered lands '
+            'here too: its two arm centres cannot be written as one y_shift.')
         y_shift = float(stats.get('shift', 0.0))
         y_scale = float(stats.get('scale', 1.0))
         # Sanity: (e_y1_raw - e_y0_raw) * y_scale must reproduce cate_raw.
@@ -448,10 +482,36 @@ def evaluate(r, ds, model, J, F, edges_np, y_scaling_mode, apply_psid_balance):
 
 
 def main():
+    global Y_STD_MODE_EVAL
     os.makedirs(OUT, exist_ok=True)
     ds = get_dataset(DATASET)
     apply_psid_balance = (DATASET == 'PSID_bal')
     model, cfg, edges, step, y_scaling_mode = load_model(CKPT)
+
+    # A checkpoint trained with arm_centered MUST be scored with arm_centered.
+    # Its head predicts each arm relative to that arm's OWN context mean, so
+    # pooled scoring drops (m1 - m0) from every CATE -- a plausible-looking but
+    # uniformly biased result, the same failure the cpfn1d per-arm dumps hit.
+    # Auto-select when the caller named no mode; refuse a conflicting one.
+    if y_scaling_mode == 'arm_centered':
+        if not _STD_MODE_EXPLICIT:
+            Y_STD_MODE_EVAL = 'arm_centered'
+            print('[scaling] ckpt y_scaling_mode=arm_centered -> '
+                  'Y_STD_MODE_EVAL=arm_centered (auto-selected)', flush=True)
+        elif (Y_STD_MODE_EVAL != 'arm_centered'
+              and os.environ.get('ALLOW_SCALING_MISMATCH', '0') != '1'):
+            raise SystemExit(
+                f'ABORT: checkpoint trained with y_scaling_mode=arm_centered '
+                f'but STD_MODE/Y_STD_MODE_EVAL={Y_STD_MODE_EVAL}. Scoring it '
+                f'that way silently drops the (m1 - m0) arm offset from every '
+                f'CATE. Use STD_MODE=arm_centered, or set '
+                f'ALLOW_SCALING_MISMATCH=1 to override deliberately.')
+    elif Y_STD_MODE_EVAL == 'arm_centered':
+        raise SystemExit(
+            f'ABORT: STD_MODE=arm_centered but the checkpoint was trained with '
+            f'y_scaling_mode={y_scaling_mode}. That would ADD an arm offset to '
+            f'predictions which never had one removed.')
+
     J = cfg['J']; F = cfg['num_features']
     edges_np = edges.detach().cpu().numpy().astype(np.float64) if hasattr(edges, 'detach') else np.asarray(edges, dtype=np.float64)
 
@@ -459,6 +519,7 @@ def main():
     print(f'[bootstrap] {DATASET}  ckpt={CKPT}  step={step}  J={J}  F={F}  '
           f'edges=[{edges_np[0]:.2f},{edges_np[-1]:.2f}]  n={n}  '
           f'ctx_cap={EVAL_MAX_CONTEXT or "none"}  seed={EVAL_CONTEXT_SEED}  '
+          f'y_scaling_mode={y_scaling_mode}  '
           f'y_std_mode_eval={Y_STD_MODE_EVAL}', flush=True)
 
     rows = []
