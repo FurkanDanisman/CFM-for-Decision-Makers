@@ -76,13 +76,21 @@ CASES=(Observed_Confounder Backdoor_Criterion Observed_Mediator
 MODEL="${MODELS[$(( SLURM_ARRAY_TASK_ID / 8 ))]}"
 D="${DS[$(( SLURM_ARRAY_TASK_ID % 8 ))]}"
 
-# Point the case-study loader at this (shift, d) cell. SCM_N_TRAIN/SCM_N_QUERY
-# are read by benchmarks/scm_case_study_dataset.py.
-export DOPFN_DATA_ROOT="$DATA/shift$SHIFT/d$D"
-export SCM_N_TRAIN="$CTX"
+# Point the case-study loader at this (shift, d) cell.
+#
+# The d_variation tree is NPZ, laid out as <shift>/<d>/<Case>/N<ctx>/..., not
+# DoPFN's pkls at <root>/<Case>/*.pkl. benchmarks/scm_case_study_dataset.py
+# swaps in the npz backend when CASE_STUDY_DATA_ROOT is set (see its
+# "Opt-in npz backend" block), and that backend REQUIRES CASE_STUDY_N to pick
+# the N<ctx> subdirectory. Setting DOPFN_DATA_ROOT/SCM_N_TRAIN instead left
+# the pkl loader in force: it globbed *.pkl, found none, and every case
+# reported "summary (n=0)" with exit 0 and no error.
+export CASE_STUDY_DATA_ROOT="$DATA/shift$SHIFT/d$D"
+export CASE_STUDY_N="$CTX"
 export SCM_N_QUERY="$NQ"
-[ -d "$DOPFN_DATA_ROOT/Observed_Confounder" ] || {
-    echo "FATAL: no case dirs under $DOPFN_DATA_ROOT" >&2; exit 1; }
+[ -d "$CASE_STUDY_DATA_ROOT/Observed_Confounder/N$CTX" ] || {
+    echo "FATAL: no N$CTX data under $CASE_STUDY_DATA_ROOT/Observed_Confounder" >&2
+    exit 1; }
 
 export DENSITY_DUMP=1
 export SKIP_EM="${SKIP_EM:-1}"
@@ -95,7 +103,7 @@ export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%F %T')] task=$SLURM_ARRAY_TASK_ID model=$MODEL shift$SHIFT d$D"
-echo "  DOPFN_DATA_ROOT=$DOPFN_DATA_ROOT  N_TRAIN=$CTX  N_QUERY=$NQ"
+echo "  CASE_STUDY_DATA_ROOT=$CASE_STUDY_DATA_ROOT  N=$CTX  N_QUERY=$NQ"
 
 for CASE in "${CASES[@]}"; do
     OUT="$OUT_ROOT/shift$SHIFT/d$D/ctx$CTX/$MODEL/$CASE"
