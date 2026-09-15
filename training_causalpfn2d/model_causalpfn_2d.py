@@ -115,7 +115,8 @@ class CausalPFN2DHead(nn.Module):
         self.n_out = n_out
         self.nbins_2d = total_params(J)        # K**2 + 9 + 4 ; at J=25 this is 638
         # Loss + scaling knobs (set via constructor from trainer's env vars).
-        assert y_scaling_mode in ('pooled_std', 'uwyk_minmax'), y_scaling_mode
+        assert y_scaling_mode in ('pooled_std', 'uwyk_minmax',
+                                  'arm_centered'), y_scaling_mode
         assert loss_type in ('density', 'hlgauss'), loss_type
         self.y_scaling_mode = y_scaling_mode
         self.loss_type      = loss_type
@@ -129,7 +130,7 @@ class CausalPFN2DHead(nn.Module):
         # Optional (edge_lo, edge_hi) override lets a caller tighten the inner
         # region (e.g. [-3, +3] under pooled_std) so the 9-region tail head
         # actually gets activated for the ~0.8% of training samples outside.
-        if y_scaling_mode == 'pooled_std':
+        if y_scaling_mode in ('pooled_std', 'arm_centered'):
             _default_lo, _default_hi = -10.0, 10.0
         else:  # uwyk_minmax
             _default_lo, _default_hi = -1.0, 1.0
@@ -255,6 +256,40 @@ class CausalPFN2DHead(nn.Module):
         return mean, std
 
     @staticmethod
+    def _arm_centered_y_stats(y_context, t_context):
+        """Per-arm CENTRE, SHARED scale.
+
+        CausalPFN centres AND scales each arm separately, which hands its
+        network (m1 - m0) for free: that term is computed from the context, not
+        predicted, and on these DGPs it is most of the treatment effect. A
+        pooled shift sets it to exactly zero, so the joint head must produce
+        the whole effect itself -- a systematic disadvantage unrelated to the
+        1D/2D factorisation.
+
+        Per-arm SCALES are not an option here. Two scales put the arms on
+        different axes, and the joint head reads tau off the antidiagonals
+        (tau = (j-i)*bin_width), which needs ONE lattice. Two CENTRES are safe:
+        a shift only translates the grid, so diagonals still mean tau, with
+
+            tau_raw = scale * tau_std + (m1 - m0)
+
+        The (m1 - m0) offset MUST be carried to inference. Without it the
+        predicted density sits (m1 - m0) away from the truth -- about 2.0 on
+        the shifted case studies.
+        """
+        treated = (t_context > 0.5).to(y_context.dtype)
+        control = 1.0 - treated
+        n1 = treated.sum(dim=1, keepdim=True)
+        n0 = control.sum(dim=1, keepdim=True)
+        m1 = (y_context * treated).sum(dim=1, keepdim=True) / n1.clamp(min=1.0)
+        m0 = (y_context * control).sum(dim=1, keepdim=True) / n0.clamp(min=1.0)
+        # a degenerate arm falls back to the other, as CausalPFN does
+        m1 = torch.where(n1 > 0, m1, m0)
+        m0 = torch.where(n0 > 0, m0, m1)
+        scale = y_context.std(dim=1, keepdim=True).clamp(min=1e-6)
+        return m0, m1, scale
+
+    @staticmethod
     def _uwyk_y_stats(y_context: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """UWYK-style per-task min/max stats.
 
@@ -297,13 +332,28 @@ class CausalPFN2DHead(nn.Module):
         # Per-task Y-scaling. Two modes:
         #   pooled_std   → (y - pooled_mean) / pooled_std   ; edges [-10, +10]
         #   uwyk_minmax  → (y - shift) / scale to [-1, +1]  ; edges [-1, +1]
-        if self.y_scaling_mode == 'uwyk_minmax':
+        if self.y_scaling_mode == 'arm_centered':
+            # Each arm centred on its OWN context mean, one shared scale.
+            m0, m1, y_scale = self._arm_centered_y_stats(y_context, t_context)
+            y_context_std = (y_context
+                             - torch.where(t_context > 0.5, m1, m0)) / y_scale
+            E_y0_std = (E_y0_query - m0) / y_scale
+            E_y1_std = (E_y1_query - m1) / y_scale
+            # Cached so the inference path can restore tau_raw = s*tau_std +
+            # (m1 - m0). Dropping this is the single way to get a plausible
+            # but wrong density out of this mode.
+            self._last_arm_offset = (m1 - m0).detach()
+            self._last_y_scale = y_scale.detach()
+        elif self.y_scaling_mode == 'uwyk_minmax':
             y_shift, y_scale = self._uwyk_y_stats(y_context)
+            y_context_std = (y_context - y_shift) / y_scale
+            E_y0_std      = (E_y0_query - y_shift) / y_scale
+            E_y1_std      = (E_y1_query - y_shift) / y_scale
         else:
             y_shift, y_scale = self._pooled_y_stats(y_context)
-        y_context_std = (y_context - y_shift) / y_scale
-        E_y0_std      = (E_y0_query - y_shift) / y_scale
-        E_y1_std      = (E_y1_query - y_shift) / y_scale
+            y_context_std = (y_context - y_shift) / y_scale
+            E_y0_std      = (E_y0_query - y_shift) / y_scale
+            E_y1_std      = (E_y1_query - y_shift) / y_scale
 
         logits = self._forward_logits(
             X_context, t_context, y_context_std, X_query,
