@@ -220,6 +220,51 @@ def _bin_width(z, J):
     return 2.0 / J
 
 
+def _rebin_cdf(p, src_edges, dst_edges):
+    """CDF-interpolate bin masses from one edge set onto another."""
+    cdf = np.concatenate([[0.0], np.cumsum(np.asarray(p, dtype=np.float64))])
+    F = np.interp(dst_edges, src_edges, cdf, left=0.0, right=float(cdf[-1]))
+    out = np.diff(F)
+    tot = out.sum()
+    return out / tot if tot > 0 else out
+
+
+def _per_arm_common_grid(z, p0, p1, J):
+    """(atoms_raw, p0_c, p1_c) when the two arms carry DIFFERENT affine maps.
+
+    eval_cpfn1d_perarm.py dumps STD_MODE=per_arm, i.e. each arm has its own
+    (shift, scale), and stores arm0's as the compat `y_shift`/`y_scale`.
+    Reading only those and scaling tau by y_scale assumes one shared map so
+    the shift cancels in tau = Y1 - Y0. Under per-arm it does not:
+
+        tau_raw = (y1*s1 + m1) - (y0*s0 + m0)
+
+    Using s0 for both arms mis-scales arm1, and dropping (m1 - m0) displaces
+    the whole tau density -- a LOCATION error, which is why cpfn1d scored
+    sd_ratio ~2 (wide) with coverage ~0.24 (missing): a density twice as wide
+    as the truth cannot under-cover unless it is centred somewhere else.
+
+    Both arms are mapped to raw units and rebinned onto one common uniform
+    grid, after which the ordinary convolution is correct and the atoms are
+    already raw (no further y_scale).
+    """
+    m0 = float(np.asarray(z["arm0_shift"]).reshape(-1)[0])
+    s0 = float(np.asarray(z["arm0_scale"]).reshape(-1)[0])
+    m1 = float(np.asarray(z["arm1_shift"]).reshape(-1)[0])
+    s1 = float(np.asarray(z["arm1_scale"]).reshape(-1)[0])
+    if "edges" in z.files:
+        e = np.asarray(z["edges"], dtype=np.float64).reshape(-1)
+    else:
+        e = np.linspace(-1.0, 1.0, J + 1)
+    e0, e1 = e * s0 + m0, e * s1 + m1
+    lo = min(e0[0], e1[0])
+    hi = max(e0[-1], e1[-1])
+    dst = np.linspace(lo, hi, J + 1)
+    q0 = np.stack([_rebin_cdf(p0[q], e0, dst) for q in range(p0.shape[0])])
+    q1 = np.stack([_rebin_cdf(p1[q], e1, dst) for q in range(p1.shape[0])])
+    return tau_atoms(J, float(dst[1] - dst[0])), q0, q1
+
+
 def _load_arrays(path, tag=None, coupling="indep"):
     """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
     with np.load(path, allow_pickle=True) as z:
@@ -269,7 +314,19 @@ def _load_arrays(path, tag=None, coupling="indep"):
             pmfs = [tau_pmf_joint(joint[q]) for q in range(joint.shape[0])]
         elif p0 is not None and p1 is not None and p0.ndim == 2:
             J = p0.shape[-1]
-            atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
+            # Per-arm standardisation: the two arms live on DIFFERENT affine
+            # maps, so tau is not (y1 - y0) * y_scale. Put both on one raw
+            # grid first; atoms come back already in raw units.
+            _pa = all(k in z.files for k in
+                      ("arm0_shift", "arm0_scale", "arm1_shift", "arm1_scale"))
+            if _pa and not (
+                    np.isclose(float(np.asarray(z["arm0_shift"]).reshape(-1)[0]),
+                               float(np.asarray(z["arm1_shift"]).reshape(-1)[0]))
+                    and np.isclose(float(np.asarray(z["arm0_scale"]).reshape(-1)[0]),
+                                   float(np.asarray(z["arm1_scale"]).reshape(-1)[0]))):
+                atoms, p0, p1 = _per_arm_common_grid(z, p0, p1, J)
+            else:
+                atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
             if coupling == "comonotonic":
                 pmfs = [tau_pmf_comonotonic(p0[q], p1[q], J)
                         for q in range(p0.shape[0])]
