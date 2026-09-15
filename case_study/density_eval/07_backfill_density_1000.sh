@@ -34,6 +34,12 @@ DS="${DS:-2 3 5 10 20 30 40 50}"
 CTX="${CTX:-1000}"
 REAL_END="${REAL_END:-100}"
 MODELS="${MODELS:-graph2d uwyk uwyk_v3a uwyk_noanc dopfn_native dopfn_bb}"
+# Wall clock passed to sbatch, overriding the 23:59:00 in submit_density_alld.
+# A 24 h request queues behind everything; with SCORE_INLINE=0 a realization
+# takes ~0.5 s, so a single-case pilot needs minutes and a short limit gets
+# backfill-scheduled almost immediately. Raise it for the full grid
+# (8 d x 6 cases x 100 real ~ 40 min, so 02:00:00 is ample).
+WALLTIME="${WALLTIME:-23:59:00}"
 
 [ -f "$SB" ] || { echo "FATAL: missing $SB" >&2; exit 1; }
 [ -d "$DATA" ] || { echo "FATAL: data root not found: $DATA" >&2; exit 1; }
@@ -90,7 +96,7 @@ for s in $SHIFTS; do
       echo "[dry] shift$s $m  family=$MODEL_FAMILY anc=${ANC_VARIANT:-}" \
            "ds=[$DS] score_inline=${SCORE_INLINE:-1}"
     else
-      sbatch --job-name="densAll-${m}-s${s}" "$SB" >/dev/null
+      sbatch --time="$WALLTIME" --job-name="densAll-${m}-s${s}" "$SB" >/dev/null
       echo "submitted shift$s $m"
     fi
     n=$((n+1))
