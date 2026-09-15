@@ -242,8 +242,19 @@ def evaluate(r: int, ds):
             _SQRT_2_OVER_PI = 0.7978845608028654         # E[HalfNormal(1)]
             _centers[0] = edges[1] - (_bw_norm[0] / _ICDF_HALFNORMAL_HALF) * _SQRT_2_OVER_PI
             _centers[-1] = edges[-2] + (_bw_norm[-1] / _ICDF_HALFNORMAL_HALF) * _SQRT_2_OVER_PI
-            # criterion.mean() itself -- identical to predict_cate's estimator.
-            _cate_dens = (_mean1 - _mean0).astype(np.float64)        # (N_q,)
+            # Score the DUMPED arrays, not the criterion call. p_y0/p_y1 and
+            # bucket_means are what land on disk and what every downstream
+            # consumer reads; `_mean0/_mean1` would make this check compare
+            # criterion.mean() against predict_cate, which IS criterion.mean()
+            # -- true by construction and therefore blind to a broken dump.
+            # Going through p @ bucket_means validates the softmax, the stored
+            # bucket means and the arrays together.
+            _cate_dens = ((p_y1 @ _centers) - (p_y0 @ _centers)).astype(np.float64)
+            _ref_max = float(np.max(np.abs((_mean1 - _mean0) - _cate_dens)))
+            if _ref_max > 1e-3:
+                print(f'  [density][WARN] dumped p @ bucket_means differs from '
+                      f'criterion.mean() by {_ref_max:.3g} -- the saved arrays '
+                      f'do not reproduce the model\'s own estimator.', flush=True)
             _cp = np.asarray(cate_pred, dtype=np.float64).reshape(-1)
             _den = float(np.dot(_cate_dens, _cate_dens))
             _scale = float(np.dot(_cate_dens, _cp) / _den) if _den > 0 else 1.0
