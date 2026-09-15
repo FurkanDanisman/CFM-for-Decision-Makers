@@ -60,6 +60,13 @@ CKPT_GRAPH2D="${CKPT_GRAPH2D:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
 CKPT_DOPFN_BB="${CKPT_DOPFN_BB:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 
+# ANC_MODE=case_family, NOT v3ab_only. v3a/v3b from build_anc_v3* hardcode a
+# confounder layout (X->T, X->Y) for EVERY dataset; case_family builds the
+# per-case DAG via build_case_adj, so mediators (T->X->Y), the spurious X of
+# Unobserved_Confounder and the front-door structure are encoded correctly.
+# Feeding a confounder graph to the mediator cases would make "anc" carry
+# WRONG information and lose to noanc for reasons unrelated to the method.
+# It emits the same noanc / v3a / v3b tags the scorer's METHODS expects.
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled)
 DS=(2 3 5 10 20 30 40 50)
 CASES=(Observed_Confounder Backdoor_Criterion Observed_Mediator
@@ -111,18 +118,18 @@ for CASE in "${CASES[@]}"; do
       uwyk1d)
         export CKPT="$UWYK_CKPT_DIR/best_model.pt"
         export CONFIG="$UWYK_CKPT_DIR/best_model_config.yaml"
-        export ANC_MODE=v3ab_only
+        export ANC_MODE=case_family
         python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
             --dataset "$CASE" --outdir "$OUT" \
             --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-            --anc-mode v3ab_only || echo "WARN: $MODEL $CASE failed"
+            --anc-mode case_family || echo "WARN: $MODEL $CASE failed"
         ;;
       graph2d)
         python -u "$REPO/realcause_eval/Table1/graph2d.py" \
             --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
-            --anc-mode v3ab_only --density-primary-mode noanc \
+            --anc-mode case_family --density-primary-mode noanc \
           || echo "WARN: $MODEL $CASE failed"
         ;;
       cpfn1d)
