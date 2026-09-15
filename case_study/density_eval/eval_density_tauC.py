@@ -167,6 +167,8 @@ SAVE_PREDICTIONS = os.environ.get('SAVE_PREDICTIONS', '1') == '1'
 # from cate_density_metrics.py and these come from this file's nll/l2/pehe --
 # two scorers, not comparable.
 SCORE_INLINE = os.environ.get('SCORE_INLINE', '1') == '1'
+# Absolute floor for the truth/loader alignment check (raw CATE units).
+_MISALIGN_ATOL = float(os.environ.get('MISALIGN_ATOL', '1e-5'))
 # y0-quadrature resolution for the 8 TAIL regions only; the interior is
 # closed-form and free at any tau resolution. Measured on the 12001-point
 # knot-aligned tau grid with midpoint quadrature:
@@ -283,10 +285,21 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
             f'r={r}: truth has {cate_from_truth.shape} rows, dataset has '
             f'{true_cate.shape} -- test splits disagree')
     misalign = float(np.abs(cate_from_truth - true_cate).max())
-    if misalign > 1e-3 * max(np.abs(true_cate).max(), 1e-9):
+    # Tolerance needs an ABSOLUTE floor, not just a relative one. A row
+    # permutation shows up at the scale of the spread of true_cate across
+    # rows; on a case study whose true effect is ~0 (Backdoor_Criterion at
+    # shift0) that spread is ~0, the relative bound collapses to ~0, and the
+    # guard fires on float32 rounding -- 4.66e-08 on a max|true_cate| of
+    # ~4.7e-05, which killed every realization of those cells. Where the
+    # effect is constant no permutation is detectable anyway (all rows carry
+    # the same value), so the floor costs the check nothing where it has power.
+    _tol = max(1e-3 * float(np.abs(true_cate).max()), _MISALIGN_ATOL)
+    if misalign > _tol:
         raise RuntimeError(
             f'r={r}: truth mu1-mu0 does not match cd.true_cate (max abs diff '
-            f'{misalign:.3e}) -- test-row ordering is misaligned between '
+            f'{misalign:.3e} > tol {_tol:.3e}; max|true_cate|='
+            f'{float(np.abs(true_cate).max()):.3e}) -- test-row ordering is '
+            f'misaligned between '
             f'{DATASET}\'s loader and the truth/potential-outcome readers')
     if len(tau_star) != true_cate.size:
         raise RuntimeError(
