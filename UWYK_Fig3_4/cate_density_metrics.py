@@ -269,7 +269,7 @@ def _per_arm_common_grid(z, p0, p1, J):
 _REBIN_TRIM = float(os.environ.get("REBIN_TRIM", "1e-4"))
 
 
-def _rebin_nonuniform(p, edges, n_out=None, eps=_REBIN_TRIM):
+def _rebin_nonuniform(parms, edges, n_out=None, eps=_REBIN_TRIM):
     """Rebin a piecewise-uniform density from NON-UNIFORM bins onto a uniform grid.
 
     tau_atoms()/_bin_width() assume uniform bins -- true for cpfn, graph2d and
@@ -293,33 +293,43 @@ def _rebin_nonuniform(p, edges, n_out=None, eps=_REBIN_TRIM):
     Returns (centers, p_on_grid); p may be 1-D or (n_query, J).
     """
     edges = np.asarray(edges, dtype=np.float64).reshape(-1)
-    p = np.asarray(p, dtype=np.float64)
-    single = p.ndim == 1
-    P = p[None, :] if single else p
-    if edges.size != P.shape[1] + 1:
+    arms = [np.asarray(x, dtype=np.float64) for x in parms]
+    arms = [x[None, :] if x.ndim == 1 else x for x in arms]
+    if any(edges.size != x.shape[1] + 1 for x in arms):
         return None
-    n_out = int(n_out or P.shape[1])
+    n_out = int(n_out or arms[0].shape[1])
 
-    pooled = P.sum(axis=0)
-    tot = float(pooled.sum())
-    if not np.isfinite(tot) or tot <= 0:
-        return None
-    F = np.concatenate([[0.0], np.cumsum(pooled) / tot])
-    lo = float(np.interp(eps, F, edges))
-    hi = float(np.interp(1.0 - eps, F, edges))
+    # ONE grid for BOTH arms. tau_pmf_indep/comonotonic convolve by index
+    # difference, which presumes a shared origin and step; rebinning each arm
+    # to its own quantile range silently folds the offset between the two
+    # origins into tau. On IHDP those ranges were [-3.35, 11.37] and
+    # [-2.54, 14.74] -- a 0.81 origin shift plus different steps -- giving
+    # bias -68.2 against a true sd of 10.5. The symmetric case study happened
+    # to produce near-identical ranges, which is why it looked fine there.
+    los, his = [], []
+    for x in arms:
+        pooled = x.sum(axis=0)
+        tot = float(pooled.sum())
+        if not np.isfinite(tot) or tot <= 0:
+            return None
+        F = np.concatenate([[0.0], np.cumsum(pooled) / tot])
+        los.append(float(np.interp(eps, F, edges)))
+        his.append(float(np.interp(1.0 - eps, F, edges)))
+    lo, hi = min(los), max(his)
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
         lo, hi = float(edges[0]), float(edges[-1])
     new_edges = np.linspace(lo, hi, n_out + 1)
-
-    cdf = np.concatenate([np.zeros((P.shape[0], 1)), np.cumsum(P, axis=1)], axis=1)
-    out = np.empty((P.shape[0], n_out), dtype=np.float64)
-    for q in range(P.shape[0]):
-        Fq = np.interp(new_edges, edges, cdf[q])
-        out[q] = np.diff(Fq)
-    tot_q = out.sum(axis=1, keepdims=True)
-    out = np.divide(out, np.where(tot_q > 0, tot_q, 1.0))
     centers = 0.5 * (new_edges[:-1] + new_edges[1:])
-    return centers, (out[0] if single else out)
+
+    out = []
+    for x in arms:
+        cdf = np.concatenate([np.zeros((x.shape[0], 1)), np.cumsum(x, axis=1)], axis=1)
+        o = np.empty((x.shape[0], n_out), dtype=np.float64)
+        for q in range(x.shape[0]):
+            o[q] = np.diff(np.interp(new_edges, edges, cdf[q]))
+        t = o.sum(axis=1, keepdims=True)
+        out.append(np.divide(o, np.where(t > 0, t, 1.0)))
+    return centers, out
 
 
 def _load_arrays(path, tag=None, coupling="indep"):
@@ -383,11 +393,9 @@ def _load_arrays(path, tag=None, coupling="indep"):
             if _e is not None and _e.size == J + 1:
                 _w = np.diff(_e)
                 if not np.allclose(_w, _w.mean(), rtol=1e-3):
-                    _r0 = _rebin_nonuniform(p0, _e)
-                    _r1 = _rebin_nonuniform(p1, _e)
-                    if _r0 is not None and _r1 is not None:
-                        _c, p0 = _r0
-                        _c, p1 = _r1
+                    _rb = _rebin_nonuniform((p0, p1), _e)
+                    if _rb is not None:
+                        _c, (p0, p1) = _rb
                         J = p0.shape[-1]
                         atoms = tau_atoms(J, float(_c[1] - _c[0])) * y_scale
                         pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
