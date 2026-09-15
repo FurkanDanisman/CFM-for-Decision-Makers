@@ -118,13 +118,26 @@ def convert_one(path, method):
                 interior_mass_mean=np.float32(np.mean(inner)),
             )
 
-        # 1D bar-distribution heads, rebinned onto the joint grid.
+        # 1D bar-distribution heads.
+        #
+        # RESOLUTION. uwyk_native must keep the UWYK head's OWN resolution:
+        # its bar distribution has ~1004 bars, while edges2d is the joint's
+        # 32-bin grid. Rebinning onto edges2d is not a neutral reformatting --
+        # density_tauc defines `uwyk_matched` as precisely that, so doing it
+        # for uwyk_native computes uwyk_matched under the wrong label and
+        # hands the 1D head a 32x coarser density than it produced. Only
+        # uwyk_matched targets edges2d, which is what it means.
         if method in ("uwyk_native", "uwyk_matched"):
             p0a, p1a = _g(z, "uwyk_pred0"), _g(z, "uwyk_pred1")
             if p0a is None or p1a is None:
                 return None
-            edges = np.asarray(z["edges2d"], dtype=np.float64).reshape(-1)
             be = np.asarray(z["bar_edges"], dtype=np.float64).reshape(-1)
+            if method == "uwyk_matched":
+                edges = np.asarray(z["edges2d"], dtype=np.float64).reshape(-1)
+            else:
+                # Uniform grid at the native bar count; tau_pmf_indep takes
+                # the FFT path above J=256, so the finer grid is not costly.
+                edges = np.linspace(float(be[0]), float(be[-1]), len(be))
             bw = np.asarray(z["bar_widths"], dtype=np.float64).reshape(-1)
             sL = float(np.asarray(z["base_sL"]).reshape(-1)[0])
             sR = float(np.asarray(z["base_sR"]).reshape(-1)[0])
@@ -145,12 +158,12 @@ def convert_one(path, method):
             # grid when the dump carries it -- uniform, scaled, and the same
             # grid dopfn_joint uses, which makes the two dopfn rows directly
             # comparable instead of living on 100 vs 10 bins.
-            if "dopfn_edges2d" in z.files:
-                edges = np.asarray(z["dopfn_edges2d"],
-                                   dtype=np.float64).reshape(-1)
-            else:
-                _e = (b0[1:-1] - y_shift) / y_scale
-                edges = np.linspace(float(_e[0]), float(_e[-1]), len(_e))
+            # Native resolution, on the SCALED axis. dopfn_edges2d is the
+            # joint head's coarse grid (J=10); binning the native DoPFN bar
+            # distribution onto it would coarsen this row ~10x and make it a
+            # different estimator than the one being named.
+            _e = (b0[1:-1] - y_shift) / y_scale
+            edges = np.linspace(float(_e[0]), float(_e[-1]), len(_e))
             mk = lambda p: DoPFN1D.from_pred(p, b0, y_shift=y_shift,
                                              y_scale=y_scale)
         else:
