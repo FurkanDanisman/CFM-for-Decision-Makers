@@ -265,69 +265,61 @@ def _per_arm_common_grid(z, p0, p1, J):
     return tau_atoms(J, float(dst[1] - dst[0])), q0, q1
 
 
-def _atoms_to_uniform(p, atoms, n_out=None):
-    """Redistribute point masses at NON-UNIFORM `atoms` onto a uniform grid.
+# Mass trimmed from each side when choosing the rebin range.
+_REBIN_TRIM = float(os.environ.get("REBIN_TRIM", "1e-4"))
 
-    tau_atoms()/_bin_width() assume the density lives on a uniform grid, which
-    holds for every head here except DoPFN's: its criterion has non-uniform
-    borders AND two half-normal tail buckets whose means sit far outside the
-    grid (measured: 188.9 away). Feeding mean(diff(edges)) to tau_atoms then
-    invents a uniform support that is nothing like the real one -- the source
-    of dopfn_native's length ~1.8e6 and sd_ratio 13-59.
 
-    Mass at each atom is split linearly between its two neighbouring grid
-    points, which preserves total mass and the first moment exactly.
-    Returns (grid, p_on_grid).
+def _rebin_nonuniform(p, edges, n_out=None, eps=_REBIN_TRIM):
+    """Rebin a piecewise-uniform density from NON-UNIFORM bins onto a uniform grid.
+
+    tau_atoms()/_bin_width() assume uniform bins -- true for cpfn, graph2d and
+    uwyk1d, whose heads use an evenly spaced grid. DoPFN's criterion does not:
+    its borders are quantile-spaced, measured here at min width 0.0316 and max
+    158.86 over a [-36.4, 165.3] span. mean(diff(edges)) = 2.017 describes
+    neither end, so feeding it to tau_atoms invents a support unrelated to the
+    density and gave length 11.1 with sd_ratio 13.5.
+
+    Mass p_i is treated as uniformly spread over [e_i, e_i+1] -- the definition
+    of a bar distribution -- and re-accumulated onto uniform bins by CDF
+    interpolation, which preserves total mass and is exact for any target grid.
+    The range is the eps / 1-eps quantile of the pooled CDF so the enormous,
+    near-empty edge bins do not dictate the resolution. eps must exceed the
+    mass sitting in those bins or the quantile lands INSIDE one of them and
+    the grid is still dominated by it: DoPFN's edge bins hold ~3e-5, so
+    1e-6 left the grid spanning [-27, 120] at step 1.49. Trimming 1e-4 per
+    side is immaterial to a 95% interval and to the renormalised density,
+    while cutting the step by ~an order of magnitude.
+
+    Returns (centers, p_on_grid); p may be 1-D or (n_query, J).
     """
-    atoms = np.asarray(atoms, dtype=np.float64).reshape(-1)
+    edges = np.asarray(edges, dtype=np.float64).reshape(-1)
     p = np.asarray(p, dtype=np.float64)
-
-    # Range from where the mass actually IS, by pooled cumulative mass, not
-    # from min/max and not by a relative per-atom threshold -- DoPFN's tail
-    # buckets hold ~1e-8, which any relative cut keeps.
-    # DoPFN's two tail atoms sit at -61 and +297 while the interior spans
-    # [-5.4, 6.2], and measured tail mass is exactly 0. Spanning the full
-    # [-61, 297] with len(atoms) points gives a step of 3.6, so the whole
-    # real density lands on ~3 grid points -- discretisation alone then
-    # produced pred_sd 2.09 against a true 0.23 (sd_ratio 9.2). Mass outside
-    # the retained range is clamped into the end points below, so nothing is
-    # lost when a query genuinely populates a tail.
-    _P = p[None, :] if p.ndim == 1 else p
-    _order = np.argsort(atoms)
-    _pooled = _P.sum(axis=0)[_order]
-    _tot = float(_pooled.sum())
-    if _tot > 0:
-        _c = np.cumsum(_pooled) / _tot
-        _eps = 1e-6
-        _i = int(np.searchsorted(_c, _eps, side="left"))
-        _j = int(np.searchsorted(_c, 1.0 - _eps, side="left"))
-        _i = min(_i, len(_order) - 1); _j = min(max(_j, _i + 1), len(_order) - 1)
-        lo, hi = float(atoms[_order[_i]]), float(atoms[_order[_j]])
-    else:
-        lo, hi = float(atoms.min()), float(atoms.max())
-    if hi <= lo:
-        lo, hi = float(atoms.min()), float(atoms.max())
-    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
-        return atoms, p
-    n_out = int(n_out or max(len(atoms), 64))
-    grid = np.linspace(lo, hi, n_out)
-    step = (hi - lo) / (n_out - 1)
-    # Atoms outside [lo, hi] clamp onto the end points, so their mass is kept
-    # rather than dropped.
-    pos = np.clip((atoms - lo) / step, 0.0, float(n_out - 1))
-    i0 = np.clip(np.floor(pos).astype(int), 0, n_out - 1)
-    i1 = np.clip(i0 + 1, 0, n_out - 1)
-    w1 = pos - i0
-    w0 = 1.0 - w1
     single = p.ndim == 1
     P = p[None, :] if single else p
-    out = np.zeros((P.shape[0], n_out), dtype=np.float64)
-    for k in range(P.shape[1]):
-        out[:, i0[k]] += P[:, k] * w0[k]
-        out[:, i1[k]] += P[:, k] * w1[k]
-    tot = out.sum(axis=1, keepdims=True)
-    out = np.divide(out, np.where(tot > 0, tot, 1.0))
-    return grid, (out[0] if single else out)
+    if edges.size != P.shape[1] + 1:
+        return None
+    n_out = int(n_out or P.shape[1])
+
+    pooled = P.sum(axis=0)
+    tot = float(pooled.sum())
+    if not np.isfinite(tot) or tot <= 0:
+        return None
+    F = np.concatenate([[0.0], np.cumsum(pooled) / tot])
+    lo = float(np.interp(eps, F, edges))
+    hi = float(np.interp(1.0 - eps, F, edges))
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        lo, hi = float(edges[0]), float(edges[-1])
+    new_edges = np.linspace(lo, hi, n_out + 1)
+
+    cdf = np.concatenate([np.zeros((P.shape[0], 1)), np.cumsum(P, axis=1)], axis=1)
+    out = np.empty((P.shape[0], n_out), dtype=np.float64)
+    for q in range(P.shape[0]):
+        Fq = np.interp(new_edges, edges, cdf[q])
+        out[q] = np.diff(Fq)
+    tot_q = out.sum(axis=1, keepdims=True)
+    out = np.divide(out, np.where(tot_q > 0, tot_q, 1.0))
+    centers = 0.5 * (new_edges[:-1] + new_edges[1:])
+    return centers, (out[0] if single else out)
 
 
 def _load_arrays(path, tag=None, coupling="indep"):
@@ -382,22 +374,29 @@ def _load_arrays(path, tag=None, coupling="indep"):
             # Per-arm standardisation: the two arms live on DIFFERENT affine
             # maps, so tau is not (y1 - y0) * y_scale. Put both on one raw
             # grid first; atoms come back already in raw units.
-            # Non-uniform atom positions (DoPFN): resample both arms onto a
-            # uniform grid FIRST, then the usual convolution is valid.
-            if "bucket_means" in z.files:
-                _bm = np.asarray(z["bucket_means"], dtype=np.float64).reshape(-1)
-                if _bm.size == J:
-                    _g, p0 = _atoms_to_uniform(p0, _bm)
-                    _g, p1 = _atoms_to_uniform(p1, _bm)
-                    J = p0.shape[-1]
-                    atoms = tau_atoms(J, float(_g[1] - _g[0])) * y_scale
-                    pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
-                             for q in range(p0.shape[0])]
-                            if coupling == "comonotonic" else
-                            [tau_pmf_indep(p0[q], p1[q])
-                             for q in range(p0.shape[0])])
-                    _LAST_J["_J"] = int(len(atoms))
-                    return atoms, pmfs, y_true, len(pmfs)
+            # NON-UNIFORM BINS (DoPFN): rebin both arms onto a uniform grid
+            # before convolving. Detected from `edges`, not from the model
+            # name -- any head with unevenly spaced borders needs this, and
+            # heads with uniform borders fall through unchanged.
+            _e = (np.asarray(z["edges"], dtype=np.float64).reshape(-1)
+                  if "edges" in z.files else None)
+            if _e is not None and _e.size == J + 1:
+                _w = np.diff(_e)
+                if not np.allclose(_w, _w.mean(), rtol=1e-3):
+                    _r0 = _rebin_nonuniform(p0, _e)
+                    _r1 = _rebin_nonuniform(p1, _e)
+                    if _r0 is not None and _r1 is not None:
+                        _c, p0 = _r0
+                        _c, p1 = _r1
+                        J = p0.shape[-1]
+                        atoms = tau_atoms(J, float(_c[1] - _c[0])) * y_scale
+                        pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
+                                 for q in range(p0.shape[0])]
+                                if coupling == "comonotonic" else
+                                [tau_pmf_indep(p0[q], p1[q])
+                                 for q in range(p0.shape[0])])
+                        _LAST_J["_J"] = int(len(atoms))
+                        return atoms, pmfs, y_true, len(pmfs)
             _pa = all(k in z.files for k in
                       ("arm0_shift", "arm0_scale", "arm1_shift", "arm1_scale"))
             if _pa and not (
