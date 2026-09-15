@@ -69,8 +69,13 @@ for s in $SHIFTS; do
       dopfn_bb)     MODEL_FAMILY=dopfn; DOPFN_JOINT_CKPT="$DOPFNBB_CKPT" ;;
       *) echo "FATAL: unknown model $m" >&2; exit 2 ;;
     esac
+    # SCORE_INLINE is forwarded explicitly rather than relying on sbatch's
+    # --export=ALL default: SCORE_INLINE=0 turns each eval into a dump-only
+    # run (no per-query 4096-point quadrature), which is the difference
+    # between ~12 h and minutes per cell. See eval_density_tauC.py.
     export REPO HERE DEPLOY_ROOT DATA RES MODEL="$m" SHIFT="$s" CTX DS REAL_END \
            CASES SCM_N_QUERY="${SCM_N_QUERY:-100}" \
+           SCORE_INLINE="${SCORE_INLINE:-1}" \
            DOPFN_ROOT CAUSALPFN UWYK MODEL_FAMILY ANC_VARIANT
     case "$m" in
       graph2d|uwyk|uwyk_v3a|uwyk_noanc)
@@ -80,7 +85,8 @@ for s in $SHIFTS; do
     esac
 
     if [ "${DRY_RUN:-0}" = 1 ]; then
-      echo "[dry] shift$s $m  family=$MODEL_FAMILY anc=${ANC_VARIANT:-} ds=[$DS]"
+      echo "[dry] shift$s $m  family=$MODEL_FAMILY anc=${ANC_VARIANT:-}" \
+           "ds=[$DS] score_inline=${SCORE_INLINE:-1}"
     else
       sbatch --job-name="densAll-${m}-s${s}" "$SB" >/dev/null
       echo "submitted shift$s $m"
