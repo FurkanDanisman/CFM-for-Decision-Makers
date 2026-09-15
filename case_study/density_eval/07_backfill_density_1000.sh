@@ -53,7 +53,9 @@ case " $MODELS " in *" graph2d "*|*" uwyk "*|*" uwyk_v3a "*|*" uwyk_noanc "*)
     done ;;
 esac
 
-CASES="Observed_Confounder,Backdoor_Criterion,Observed_Mediator,Observed_Mediator_and_Confounder,Unobserved_Confounder,Frontdoor_Criterion"
+# Overridable so a single case study can be piloted across all models
+# before committing the full grid.
+CASES="${CASES:-Observed_Confounder,Backdoor_Criterion,Observed_Mediator,Observed_Mediator_and_Confounder,Unobserved_Confounder,Frontdoor_Criterion}"
 
 n=0
 for s in $SHIFTS; do
