@@ -58,6 +58,29 @@ CASES = ["Observed_Confounder", "Backdoor_Criterion", "Observed_Mediator",
          "Frontdoor_Criterion"]
 MODELS = list(DIR_METHOD)
 
+# One tauC run writes BOTH heads into the same npz: joint_logits from the
+# graph2d checkpoint and uwyk_pred0/1 from the UWYK checkpoint, each
+# conditioned on that run's adjacency. DIR_METHOD names only ONE method per
+# directory, so converting by it alone discards the joint head from the
+# uwyk_v3a / uwyk_noanc dumps -- which is exactly where graph2d's ancestor
+# variants live. They need no new GPU work; they are already on disk.
+#
+#   source dir  -> [(method, output dir name), ...]
+EMIT = {
+    "uwyk":         [("uwyk_native", "uwyk"),
+                     ("joint",       "graph2d")],
+    "uwyk_v3a":     [("uwyk_native", "uwyk_v3a"),
+                     ("joint",       "graph2d_v3a")],
+    "uwyk_noanc":   [("uwyk_native", "uwyk_noanc"),
+                     ("joint",       "graph2d_noanc")],
+    # graph2d/ runs the same config as uwyk/ (MODEL_FAMILY=uwyk,
+    # ANC_VARIANT=full), so its joint duplicates uwyk's. Kept so the tree is
+    # complete if uwyk/ is ever absent.
+    "graph2d":      [("joint",       "graph2d")],
+    "dopfn_native": [("dopfn_native", "dopfn_native")],
+    "dopfn_bb":     [("dopfn_joint",  "dopfn_bb")],
+}
+
 
 def _g(z, k, default=None):
     return np.asarray(z[k]) if k in z.files else default
@@ -168,26 +191,36 @@ def main():
     for s in a.shifts:
         for d in a.ds:
             for m in a.models:
-                method = DIR_METHOD.get(m)
-                if method is None:
-                    print(f"[skip] no DIR_METHOD for {m}"); continue
-                for c in a.cases:
-                    src = os.path.join(a.root, s, f"d{d}", f"ctx{a.ctx}", m, c,
-                                       "predictions")
-                    dst = os.path.join(a.out, s, f"d{d}", f"ctx{a.ctx}", m, c)
-                    files = sorted(glob.glob(os.path.join(src, f"{c}_r*.npz")))
-                    if not files:
-                        continue
-                    os.makedirs(dst, exist_ok=True)
-                    for f in files:
-                        got = convert_one(f, method)
-                        if got is None:
-                            n_skip += 1
+                emits = EMIT.get(m)
+                if emits is None:
+                    method = DIR_METHOD.get(m)
+                    if method is None:
+                        print(f"[skip] no mapping for {m}"); continue
+                    emits = [(method, m)]
+                for method, outname in emits:
+                    wrote = 0
+                    for c in a.cases:
+                        src = os.path.join(a.root, s, f"d{d}", f"ctx{a.ctx}",
+                                           m, c, "predictions")
+                        dst = os.path.join(a.out, s, f"d{d}", f"ctx{a.ctx}",
+                                           outname, c)
+                        files = sorted(glob.glob(
+                            os.path.join(src, f"{c}_r*.npz")))
+                        if not files:
                             continue
-                        masses.append(float(got["interior_mass_mean"]))
-                        np.savez(os.path.join(dst, os.path.basename(f)), **got)
-                        n_ok += 1
-                print(f"  {s} d{d} {m:14s} -> {n_ok} written", flush=True)
+                        os.makedirs(dst, exist_ok=True)
+                        for f in files:
+                            got = convert_one(f, method)
+                            if got is None:
+                                n_skip += 1
+                                continue
+                            masses.append(float(got["interior_mass_mean"]))
+                            np.savez(os.path.join(dst, os.path.basename(f)),
+                                     **got)
+                            n_ok += 1
+                            wrote += 1
+                    print(f"  {s} d{d} {m:14s} [{method:12s}] -> "
+                          f"{outname:14s} {wrote}", flush=True)
     print(f"\nconverted {n_ok}, skipped {n_skip}")
     if masses:
         mm = np.asarray(masses)
