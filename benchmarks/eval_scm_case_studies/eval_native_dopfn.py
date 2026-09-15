@@ -198,38 +198,52 @@ def evaluate(r: int, ds):
             # per-realization rescale would have corrupted the density using a
             # factor that is 7.9 on the realizations where the fit is poor.)
             #
-            # The regression is kept as a CHECK, because it surfaces a real
-            # problem: on some realizations R^2 falls to ~0.73, i.e. the dumped
-            # density mean does not reproduce the reported point CATE. Most
-            # likely predict_cate uses an estimator other than the bar-
-            # distribution mean, so the two legitimately differ — but until
-            # that is confirmed those realizations' calibration numbers are
-            # suspect. R^2 is saved per realization so they can be filtered.
-            # Bucket means, NOT bucket centres. DoPFN's criterion is a
-            # FullSupportBarDistribution: its first and last buckets are
-            # half-normal TAILS extending past the grid, so their means lie
-            # outside the bucket. Upstream's mean() overrides exactly those two
-            #     bucket_means[0]  = -side_normals[0].mean + borders[1]
-            #     bucket_means[-1] =  side_normals[1].mean + borders[-2]
-            # with HalfNormal(scale) where scale = width / HalfNormal(1).icdf(0.5),
-            # whose mean is scale * sqrt(2/pi).
+            # BUCKET MEANS EXACTLY AS DoPFN COMPUTES THEM.
             #
-            # predict_cate -> predict -> predict_full()['mean'] = criterion.mean(),
-            # i.e. the corrected means. Using plain centres for all buckets made
-            # the two agree only while tail mass was negligible and diverge
-            # badly when it was not -- slope 3.29, R^2 0.47 on such
-            # realizations, which is what the density_scale_r2 gate was
-            # excluding (~27% of dopfn_native cells). The cause was this line,
-            # not the model.
+            # predict_cate -> predict_cid -> predict -> predict_full()['mean']
+            # = criterion.mean(logits), and criterion is a
+            # FullSupportBarDistribution whose mean() is
+            #     bucket_means = borders[:-1] + bucket_widths/2
+            #     bucket_means[0]  = -HalfNormal(w[0]/icdf).mean  + borders[1]
+            #     bucket_means[-1] =  HalfNormal(w[-1]/icdf).mean + borders[-2]
+            #
+            # The subtlety: BarDistribution registers `bucket_widths` as a
+            # BUFFER at __init__, and predict_full rescales ONLY `borders`
+            #     criterion.borders = criterion.borders * data_std + data_mean
+            # leaving bucket_widths in NORMALISED units. So DoPFN's own mean
+            # adds a normalised half-width to a raw-unit border, and sets the
+            # tail scales from normalised widths. That mixed-unit arithmetic is
+            # a bug upstream, but it IS what predict_cate returns and therefore
+            # what the reported PEHE describes, so the dumped density has to be
+            # checked against the same quantity or the two describe different
+            # estimators.
+            #
+            # Using raw-unit centres for every bucket -- or even raw-unit tail
+            # scales -- disagrees with it: a persistent ~1.03 slope (the
+            # data_std factor) plus blow-ups to slope 3.2 where tail mass is
+            # large. That is what the density_scale_r2 gate was silently
+            # discarding, ~25% of dopfn_native realizations on the case studies
+            # and the same defect behind the sd_ratio 18-59 rows on ComplexMech
+            # and RealCause.
+            #
+            # `full0['criterion']` is the deepcopy predict_full mutated, so it
+            # already carries rescaled borders WITH stale normalised widths --
+            # calling its own mean() reproduces predict_cate exactly rather
+            # than re-deriving it and risking another mismatch.
+            _crit0 = full0['criterion']
+            _crit1 = full1['criterion']
+            _mean0 = _crit0.mean(torch.from_numpy(logits0)).detach().numpy()
+            _mean1 = _crit1.mean(torch.from_numpy(logits1)).detach().numpy()
+            # Bucket means on the SAME convention, stored so downstream users
+            # of p_y0/p_y1 can reproduce this mean instead of assuming centres.
+            _bw_norm = _crit0.bucket_widths.detach().cpu().numpy()
+            _centers = edges[:-1] + _bw_norm / 2.0
             _ICDF_HALFNORMAL_HALF = 0.6744897501960817   # HalfNormal(1).icdf(0.5)
             _SQRT_2_OVER_PI = 0.7978845608028654         # E[HalfNormal(1)]
-            _centers = 0.5 * (edges[:-1] + edges[1:])
-            _w = np.diff(edges)
-            _s_left = _w[0] / _ICDF_HALFNORMAL_HALF
-            _s_right = _w[-1] / _ICDF_HALFNORMAL_HALF
-            _centers[0] = edges[1] - _s_left * _SQRT_2_OVER_PI
-            _centers[-1] = edges[-2] + _s_right * _SQRT_2_OVER_PI
-            _cate_dens = (p_y1 @ _centers) - (p_y0 @ _centers)      # (N_q,)
+            _centers[0] = edges[1] - (_bw_norm[0] / _ICDF_HALFNORMAL_HALF) * _SQRT_2_OVER_PI
+            _centers[-1] = edges[-2] + (_bw_norm[-1] / _ICDF_HALFNORMAL_HALF) * _SQRT_2_OVER_PI
+            # criterion.mean() itself -- identical to predict_cate's estimator.
+            _cate_dens = (_mean1 - _mean0).astype(np.float64)        # (N_q,)
             _cp = np.asarray(cate_pred, dtype=np.float64).reshape(-1)
             _den = float(np.dot(_cate_dens, _cate_dens))
             _scale = float(np.dot(_cate_dens, _cp) / _den) if _den > 0 else 1.0
@@ -250,6 +264,11 @@ def evaluate(r: int, ds):
                 y_scale=np.float32(1.0),          # borders are raw; see above
                 density_scale_slope=np.float32(_scale),
                 density_scale_r2=np.float32(_r2),
+                # DoPFN's own bucket means (rescaled borders + STALE normalised
+                # widths, half-normal tail means at the two ends). A consumer
+                # that takes 0.5*(edges[:-1]+edges[1:]) does NOT reproduce
+                # predict_cate; use these instead.
+                bucket_means=_centers.astype(np.float32),
             )
     finally:
         os.chdir(_prev_cwd)
