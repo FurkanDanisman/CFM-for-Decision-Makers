@@ -97,6 +97,34 @@ def calculate_loss(
 # ── STEP-CKPT PATCH ── helper to write a step-tagged checkpoint. Format mirrors
 # the per-epoch save (Checkpoint callback) so downstream eval/resume paths work
 # unchanged. `actual_step` is the true post-guard optimizer.step count.
+def _prune_step_checkpoints(step_ckpt_dir: str, keep: int) -> None:
+    """Keep only the `keep` most recent step_*.pt, delete the rest.
+
+    The step stream has no retention of its own: it writes every
+    step_checkpoint_every steps and never removes anything, so a long run fills
+    the disk. This is deliberately LAST-N by step number, not top-k by loss --
+    the Checkpoint callback already keeps a best-by-loss set, and for resuming
+    a requeued job what matters is the most recent state, not the best one.
+
+    keep <= 0 disables pruning (previous behaviour).
+    """
+    if keep is None or keep <= 0:
+        return
+    import glob as _glob
+    import re as _re
+    paths = []
+    for f in _glob.glob(os.path.join(step_ckpt_dir, "step_*.pt")):
+        m = _re.search(r"step_(\d+)\.pt$", os.path.basename(f))
+        if m:
+            paths.append((int(m.group(1)), f))
+    for _, f in sorted(paths, reverse=True)[keep:]:
+        try:
+            os.remove(f)
+            print(f"[step-ckpt] pruned {os.path.basename(f)}")
+        except OSError as e:          # a concurrent reader, or already gone
+            print(f"[step-ckpt] could not prune {f}: {e}")
+
+
 def _save_step_checkpoint(
     path: str,
     model,
@@ -152,6 +180,7 @@ def train(
     # ── STEP-CKPT PATCH ── new optional kwargs (defaulted → back-compat)
     step_checkpoint_every: int = 0,
     step_checkpoint_root: str | None = None,
+    step_checkpoint_keep: int = 0,      # 0 = keep everything (previous default)
 ):
     """
     Takes a model designed for prior-fitting (`model`) and then trains CATE on a given set of datasets.
@@ -211,6 +240,9 @@ def train(
         if rank == 0:
             os.makedirs(step_ckpt_dir, exist_ok=True)
             print(f"[step-ckpt] enabled: every {step_checkpoint_every} steps → {step_ckpt_dir}")
+            print(f"[step-ckpt] retention: "
+                  + (f"last {step_checkpoint_keep}" if step_checkpoint_keep > 0
+                     else "unlimited"))
             print(f"[step-ckpt] resuming from actual_step={actual_step}")
     if _run_name is None:
         from datetime import datetime
@@ -330,6 +362,7 @@ def train(
                         checkpoint_dir_name=_dir_name,
                     )
                     print(f"[step-ckpt] saved {path}")
+                    _prune_step_checkpoints(step_ckpt_dir, step_checkpoint_keep)
 
         # update the loss reports
         total_loss /= num_model_updates
