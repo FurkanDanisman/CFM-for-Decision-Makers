@@ -75,6 +75,68 @@ def scan(root, shifts, ds, ctx, models, cases):
     return st
 
 
+def scan_by_d(root, shifts, ds, ctx, models, cases):
+    """-> {(d, case): [n_done, n_dumped, n_total]}
+
+    Same walk as scan(), pivoted: rows are d and the model axis is summed over,
+    which is what you want when asking "is this d finished" rather than "is this
+    model finished".
+    """
+    st = defaultdict(lambda: [0, 0, 0])
+    for sh in shifts:
+        for d in ds:
+            for n in ctx:
+                for m in models:
+                    for c in cases:
+                        cell = os.path.join(root, sh, f"d{d}", f"ctx{n}", m, c)
+                        k = (d, c)
+                        st[k][2] += 1
+                        if os.path.isfile(os.path.join(cell, "metrics.json")):
+                            st[k][0] += 1
+                            continue
+                        cand = sorted(glob.glob(os.path.join(cell, "*.npz")))
+                        cand = [f for f in cand
+                                if "summary" not in os.path.basename(f)]
+                        if cand and _is_density_npz(cand[0]):
+                            st[k][1] += 1
+    return st
+
+
+def _render(st, rows, cases, row_label, row_fmt=str):
+    """Shared table printer: one row per `rows` entry, one column per case."""
+    w = max([len(row_fmt(r)) for r in rows] + [len(row_label)]) + 1
+    cols = [SHORT.get(c, c)[:11] for c in cases]
+    print(f"{row_label:{w}s}" + "".join(f"{c:>13s}" for c in cols) + f"{'TOTAL':>13s}")
+    print("-" * (w + 13 * (len(cols) + 1)))
+    grand = [0, 0, 0]
+    for r in rows:
+        line = f"{row_fmt(r):{w}s}"
+        tot = [0, 0, 0]
+        for c in cases:
+            done, dump, n = st[(r, c)]
+            for i, v in enumerate((done, dump, n)):
+                tot[i] += v
+            pct = 100.0 * done / n if n else 0.0
+            mark = f"{pct:5.0f}%"
+            if dump:
+                mark += f" +{dump}"
+            line += f"{mark:>13s}"
+        pct = 100.0 * tot[0] / tot[2] if tot[2] else 0.0
+        line += f"{pct:12.0f}%"
+        print(line)
+        for i in range(3):
+            grand[i] += tot[i]
+    print("-" * (w + 13 * (len(cols) + 1)))
+    print(f"{'ALL':{w}s}" + " " * (13 * len(cases))
+          + f"{100.0 * grand[0] / grand[2] if grand[2] else 0:12.0f}%")
+    print(f"\n{grand[0]} scored / {grand[2]} cells"
+          + (f"   ({grand[1]} dumped but not scored)" if grand[1] else ""))
+    if grand[1]:
+        print("  '+N' = DENSITY npz present, metrics.json not written yet "
+              "(running, or the scorer failed).")
+        print("        Point-eval npz in the same directory are ignored.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
@@ -84,12 +146,22 @@ def main():
     ap.add_argument("--n", type=int, default=None, help="shorthand for one context")
     ap.add_argument("--models", nargs="*", default=MODELS)
     ap.add_argument("--cases", nargs="*", default=CASES)
+    ap.add_argument("--by", choices=("model", "d"), default="model",
+                    help="table rows: model (default) or d (sums over models)")
     a = ap.parse_args()
     ctx = [a.n] if a.n is not None else a.contexts
 
+    print(f"root={a.root}")
+    if a.by == "d":
+        st = scan_by_d(a.root, a.shifts, a.ds, ctx, a.models, a.cases)
+        per_cell = len(a.shifts) * len(a.models) * len(ctx)
+        print(f"grid: {len(a.shifts)} shifts x {len(a.models)} models x "
+              f"{len(ctx)} contexts = {per_cell} cells per (d, case)\n")
+        _render(st, list(a.ds), a.cases, "d", lambda d: f"d{d}")
+        return
+
     st = scan(a.root, a.shifts, a.ds, ctx, a.models, a.cases)
     per_cell = len(a.shifts) * len(a.ds) * len(ctx)
-    print(f"root={a.root}")
     print(f"grid: {len(a.shifts)} shifts x {len(a.ds)} d x {len(ctx)} contexts "
           f"= {per_cell} cells per (model, case)\n")
 
