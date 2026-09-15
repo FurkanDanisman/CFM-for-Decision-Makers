@@ -179,7 +179,19 @@ def main():
     if ARGS.d_values:
         df = df[df["d"].isin(ARGS.d_values)]
     dvals = sorted(int(x) for x in df["d"].unique())
-    cases = [(k, lab) for k, lab in _CASES if k in set(df["case"])]
+    present = set(df["case"])
+    cases = [(k, lab) for k, lab in _CASES if k in present]
+    # Anything not in the hardcoded case-study list (e.g. the "N=1000" columns
+    # the cmech adapter emits) was previously dropped SILENTLY, producing an
+    # empty figure with no error. Keep it, labelled by its own key.
+    extra = sorted(present - {k for k, _ in _CASES})
+    cases += [(k, k.replace("_", " ")) for k in extra]
+    if not cases:
+        raise SystemExit(f"no usable 'case' values in {ARGS.csv}: {sorted(present)}")
+    missing_models = sorted(set(df["model"]) - {k for _, k in PAIRS})
+    if missing_models:
+        print("[warn] models in the CSV but not in PAIRS (not plotted): "
+              + ", ".join(missing_models))
     os.makedirs(os.path.dirname(os.path.abspath(ARGS.out)) or ".", exist_ok=True)
 
     made = []
