@@ -32,7 +32,12 @@ DEPLOY_ROOT="${DEPLOY_ROOT:?DEPLOY_ROOT required}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 CPF="${CPF:-$DEPLOY_ROOT/results_case_study/dvar_cpfn}"
 CTX="${CTX:-1000}"
-MODELS="${MODELS:-cpfn1d cpfn2d dopfn_native dopfn_bb}"
+# MODELS="" uses cate_density_metrics' DEFAULT METHODS table, which carries
+# the anc TAGS (uwyk1d-noanc / uwyk1d-v3a / graph2d-noanc / graph2d-v3a).
+# Passing --method-dirs instead gives one untagged row per directory, so the
+# ancestor variants collapse into whichever mode was written un-suffixed --
+# wrong for any tree whose dirs use the canonical METHODS names.
+MODELS="${MODELS-cpfn1d cpfn2d dopfn_native dopfn_bb}"
 
 source "${VENV:-$DEPLOY_ROOT/venv}/bin/activate"
 export PYTHONUNBUFFERED=1
@@ -54,9 +59,11 @@ echo "[$(date '+%F %T')] task=$SLURM_ARRAY_TASK_ID  $S d$D  models=[$MODELS]"
 
 for T in cate ate; do
     echo "--- target=$T ---"
+    MD=()
+    [ -n "$MODELS" ] && MD=(--method-dirs $MODELS)
     python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
         --root "$ROOT" --target "$T" \
-        --method-dirs $MODELS \
+        "${MD[@]}" \
         --dataset "${CASES[@]}" \
       || echo "WARN: $S d$D target=$T exited nonzero"
 done
