@@ -174,6 +174,11 @@ trap _on_term SIGTERM
 # checkpoint every 500 steps over the 24h slot
 STEP_CKPT_EVERY="${STEP_CKPT_EVERY:-500}"
 STEP_CKPT_ROOT="${STEP_CKPT_ROOT:-$OUT_DIR/step_checkpoints}"
+# Keep only the N most recent step_*.pt; older ones are deleted as each new one
+# lands. LAST-N, not best-N: the Checkpoint callback already keeps a
+# best-by-loss set (top_k), and what a requeued job needs is the most recent
+# state. 0 = keep everything (the old behaviour, which filled the disk).
+STEP_CKPT_KEEP="${STEP_CKPT_KEEP:-3}"
 mkdir -p "$STEP_CKPT_ROOT"
 
 # COMPILE=0 → append `compile=false` to hydra CLI (disables torch.compile).
@@ -224,6 +229,7 @@ python -u train.py \
     +model.obj.y_scaling_mode="$Y_SCALING_MODE" \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$STEP_CKPT_ROOT" \
+    +trainer.step_checkpoint_keep="$STEP_CKPT_KEEP" \
     "${COMPILE_ARGS[@]}" \
     "${RESUME_ARGS[@]}" \
     "${EXTRA_HYDRA_ARGS[@]}" &
