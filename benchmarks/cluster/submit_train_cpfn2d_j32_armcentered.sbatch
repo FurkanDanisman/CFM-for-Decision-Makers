@@ -3,8 +3,14 @@
 #SBATCH --output=logs_cpfn2d_j32_armcentered/train_%j.out
 #SBATCH --error=logs_cpfn2d_j32_armcentered/train_%j.err
 #SBATCH --time=04:00:00
-#SBATCH --partition=gpubase_h100_b1
-#SBATCH --gres=gpu:h100:1
+# NO --partition ON PURPOSE. The trailing _b1.._bN is a TIME BUCKET and
+# gpubase_h100_b1 caps at 3:00:00, so pinning it makes the inherited
+# --time=04:00:00 a submission error. Unset, Slurm routes by --time and
+# --gres. Override explicitly if you need a specific bucket.
+#SBATCH --gres=gpu:1
+# generic gpu:1 so a smoke run can land on an L40S; pass
+#   --gres=gpu:h100:1
+# on the sbatch command line for the real run.
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=128G
 #SBATCH --requeue
