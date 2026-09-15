@@ -488,6 +488,13 @@ def _parse():
                          "tau. ate = Wasserstein-barycenter the per-query "
                          "densities into one ATE density per dataset and score "
                          "it against that dataset's realized ATE.")
+    ap.add_argument("--method-dirs", nargs="+", default=None,
+                    help="score these directory names directly, one row each, "
+                         "with no tag suffix. For trees whose layout does not "
+                         "match METHODS -- e.g. the case-study sweep uses "
+                         "uwyk / uwyk_v3a / uwyk_noanc / graph2d / dopfn_* "
+                         "where METHODS expects uwyk1d + tags. Overrides "
+                         "--methods and --skip.")
     ap.add_argument("--out", default=None)
     return ap.parse_args()
 
@@ -538,9 +545,14 @@ def build_table(args):
     subsets = ([None] if plain else
                (["nonzero", "zero"] if args.subset == "total" else [args.subset]))
     rows = []
-    todo = [m for m in METHODS
-            if (args.methods is None or m[0] in args.methods)
-            and m[0] not in args.skip]
+    if getattr(args, "method_dirs", None):
+        # Directory name IS the label, and converted dumps carry no per-mode
+        # key suffixes, so the tag is None.
+        todo = [(d, d, None) for d in args.method_dirs]
+    else:
+        todo = [m for m in METHODS
+                if (args.methods is None or m[0] in args.methods)
+                and m[0] not in args.skip]
 
     if args.target == "ate":
         return _build_ate(args, todo)
