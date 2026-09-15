@@ -95,13 +95,13 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] METHOD=$METHOD  DATASET=$DATASET  OUT=$OUT"
 case "$METHOD" in
     cpfn1d)
         [ -f "$CKPT_CPFN1D" ] || { echo "FATAL: CKPT_CPFN1D not found: $CKPT_CPFN1D" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/cpfn1d.py" \
+        python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN1D" --repo "$REPO" --causalpfn "$CAUSALPFN"
         ;;
     cpfn2d)
         [ -f "$CKPT_CPFN2D" ] || { echo "FATAL: CKPT_CPFN2D not found: $CKPT_CPFN2D" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/cpfn2d.py" \
+        python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN"
         ;;
@@ -110,7 +110,7 @@ case "$METHOD" in
         # do_pfn.py uses 'PSIDbal' (no underscore) as dataset choice.
         DS_DP="$DATASET"
         [ "$DATASET" = "PSID_bal" ] && DS_DP="PSIDbal"
-        python -u "$REPO/realcause_eval/do_pfn.py" \
+        python -u "$REPO/realcause_eval/Table1/do_pfn.py" \
             --dataset "$DS_DP" --outdir "$OUT" \
             --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN"
         ;;
@@ -119,7 +119,7 @@ case "$METHOD" in
         # do_pfn_bb.py uses 'PSIDbal' (no underscore) as dataset choice.
         DS_BB="$DATASET"
         [ "$DATASET" = "PSID_bal" ] && DS_BB="PSIDbal"
-        python -u "$REPO/realcause_eval/do_pfn_bb.py" \
+        python -u "$REPO/realcause_eval/Table1/do_pfn_bb.py" \
             --dataset "$DS_BB" --outdir "$OUT" \
             --ckpt "$CKPT_DOPFNBB" --repo "$REPO" \
             --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN"
@@ -135,7 +135,7 @@ case "$METHOD" in
         ;;
     graph2d)
         [ -f "$CKPT_GRAPH2D" ] || { echo "FATAL: CKPT_GRAPH2D not found: $CKPT_GRAPH2D" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/graph2d.py" \
+        python -u "$REPO/realcause_eval/Table1/graph2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK_REPRO" \
@@ -143,7 +143,7 @@ case "$METHOD" in
         ;;
     uwyk1d)
         [ -d "$UWYK_REPRO" ] || { echo "FATAL: UWYK_REPRO not found: $UWYK_REPRO" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/uwyk1d.py" \
+        python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --uwyk-repro "$UWYK_REPRO" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --anc-mode v3b_only

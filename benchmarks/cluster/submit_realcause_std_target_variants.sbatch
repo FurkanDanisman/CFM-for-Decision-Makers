@@ -70,7 +70,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] $METHOD  $DATASET  OUT=$OUT"
 case "$METHOD" in
     graph2d_std)
         [ -f "$CKPT_GRAPH2D" ] || { echo "FATAL: CKPT_GRAPH2D not found: $CKPT_GRAPH2D" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/graph2d.py" \
+        python -u "$REPO/realcause_eval/Table1/graph2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK_REPRO" \
@@ -79,7 +79,7 @@ case "$METHOD" in
         ;;
     cpfn2d_std)
         [ -f "$CKPT_CPFN2D" ] || { echo "FATAL: CKPT_CPFN2D not found: $CKPT_CPFN2D" >&2; exit 1; }
-        python -u "$REPO/realcause_eval/cpfn2d.py" \
+        python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
             --dataset "$DATASET" --outdir "$OUT" \
             --ckpt "$CKPT_CPFN2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" \
