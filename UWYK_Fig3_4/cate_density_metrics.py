@@ -265,6 +265,44 @@ def _per_arm_common_grid(z, p0, p1, J):
     return tau_atoms(J, float(dst[1] - dst[0])), q0, q1
 
 
+def _atoms_to_uniform(p, atoms, n_out=None):
+    """Redistribute point masses at NON-UNIFORM `atoms` onto a uniform grid.
+
+    tau_atoms()/_bin_width() assume the density lives on a uniform grid, which
+    holds for every head here except DoPFN's: its criterion has non-uniform
+    borders AND two half-normal tail buckets whose means sit far outside the
+    grid (measured: 188.9 away). Feeding mean(diff(edges)) to tau_atoms then
+    invents a uniform support that is nothing like the real one -- the source
+    of dopfn_native's length ~1.8e6 and sd_ratio 13-59.
+
+    Mass at each atom is split linearly between its two neighbouring grid
+    points, which preserves total mass and the first moment exactly.
+    Returns (grid, p_on_grid).
+    """
+    atoms = np.asarray(atoms, dtype=np.float64).reshape(-1)
+    p = np.asarray(p, dtype=np.float64)
+    lo, hi = float(atoms.min()), float(atoms.max())
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        return atoms, p
+    n_out = int(n_out or max(len(atoms), 64))
+    grid = np.linspace(lo, hi, n_out)
+    step = (hi - lo) / (n_out - 1)
+    pos = (atoms - lo) / step
+    i0 = np.clip(np.floor(pos).astype(int), 0, n_out - 1)
+    i1 = np.clip(i0 + 1, 0, n_out - 1)
+    w1 = pos - i0
+    w0 = 1.0 - w1
+    single = p.ndim == 1
+    P = p[None, :] if single else p
+    out = np.zeros((P.shape[0], n_out), dtype=np.float64)
+    for k in range(P.shape[1]):
+        out[:, i0[k]] += P[:, k] * w0[k]
+        out[:, i1[k]] += P[:, k] * w1[k]
+    tot = out.sum(axis=1, keepdims=True)
+    out = np.divide(out, np.where(tot > 0, tot, 1.0))
+    return grid, (out[0] if single else out)
+
+
 def _load_arrays(path, tag=None, coupling="indep"):
     """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
     with np.load(path, allow_pickle=True) as z:
@@ -317,6 +355,22 @@ def _load_arrays(path, tag=None, coupling="indep"):
             # Per-arm standardisation: the two arms live on DIFFERENT affine
             # maps, so tau is not (y1 - y0) * y_scale. Put both on one raw
             # grid first; atoms come back already in raw units.
+            # Non-uniform atom positions (DoPFN): resample both arms onto a
+            # uniform grid FIRST, then the usual convolution is valid.
+            if "bucket_means" in z.files:
+                _bm = np.asarray(z["bucket_means"], dtype=np.float64).reshape(-1)
+                if _bm.size == J:
+                    _g, p0 = _atoms_to_uniform(p0, _bm)
+                    _g, p1 = _atoms_to_uniform(p1, _bm)
+                    J = p0.shape[-1]
+                    atoms = tau_atoms(J, float(_g[1] - _g[0])) * y_scale
+                    pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
+                             for q in range(p0.shape[0])]
+                            if coupling == "comonotonic" else
+                            [tau_pmf_indep(p0[q], p1[q])
+                             for q in range(p0.shape[0])])
+                    _LAST_J["_J"] = int(len(atoms))
+                    return atoms, pmfs, y_true, len(pmfs)
             _pa = all(k in z.files for k in
                       ("arm0_shift", "arm0_scale", "arm1_shift", "arm1_scale"))
             if _pa and not (
