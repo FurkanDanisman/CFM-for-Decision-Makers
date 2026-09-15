@@ -1,0 +1,144 @@
+#!/bin/bash
+#SBATCH --job-name=csdvar-dens
+#SBATCH --output=logs_cs_dvar/dens_%A_%a.out
+#SBATCH --error=logs_cs_dvar/dens_%A_%a.err
+#SBATCH --time=01:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --array=0-47
+#
+# Case-study d-variation density dumps using EXACTLY the ComplexMech path:
+# every harness writes the cpfn schema itself, at its OWN native resolution,
+# with DENSITY_DUMP=1. No tauC, no format conversion, no shared bin grid.
+# UWYK_Fig3_4/cate_density_metrics.py then scores every model identically.
+#
+# This replaces the eval_density_tauC route for these cells. That route saved
+# raw logits + bar geometry instead of a density, which (a) forced an n_y0
+# quadrature per tau per query at scoring time and (b) needed a converter,
+# whose 1D branch coarsened UWYK 1004->32 bins and DoPFN ~100->10 against the
+# joint's grid -- i.e. compared resolutions rather than models. The harnesses
+# below dump p_y0_scaled / p_joint_scaled on each model's own edges, which is
+# what ComplexMech and RealCause have always done.
+#
+#   48 tasks = 6 models x 8 d, for ONE shift. Submit once per shift:
+#       for S in 0 +2 -2; do SHIFT=$S sbatch ... ; done
+#   task/8 -> model, task%8 -> d. Each task loops all 6 case studies.
+#
+# Required env:
+#   OUT_ROOT   dumps land at OUT_ROOT/shift<S>/d<K>/ctx<N>/<model>/<CASE>/
+# Optional:
+#   SHIFT (default 0)   DATA (default $DEPLOY_ROOT/case_study_data/d_variation)
+#   CTX (default 1000 = SCM_N_TRAIN)   NQ (default 100 = SCM_N_QUERY)
+#   CKPT_* overrides
+
+set -euo pipefail
+mkdir -p logs_cs_dvar
+
+DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
+if [ ! -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
+    for _ in 1 2 3; do
+        [ -f "$DEPLOY_ROOT/venv/bin/activate" ] && break
+        DEPLOY_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+    done
+fi
+[ -f "$DEPLOY_ROOT/venv/bin/activate" ] || { echo "FATAL: venv not found" >&2; exit 1; }
+
+REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
+export CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
+export DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
+export UWYK="${UWYK:-$DEPLOY_ROOT/external/uwyk_reproduce}"
+OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
+SHIFT="${SHIFT:-0}"
+DATA="${DATA:-$DEPLOY_ROOT/case_study_data/d_variation}"
+CTX="${CTX:-1000}"
+NQ="${NQ:-100}"
+
+CKPT_CPFN1D="${CKPT_CPFN1D:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
+CKPT_CPFN2D="${CKPT_CPFN2D:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0050000.pt}"
+CKPT_GRAPH2D="${CKPT_GRAPH2D:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
+CKPT_DOPFN_BB="${CKPT_DOPFN_BB:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
+UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
+
+MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled)
+DS=(2 3 5 10 20 30 40 50)
+CASES=(Observed_Confounder Backdoor_Criterion Observed_Mediator
+       Observed_Mediator_and_Confounder Unobserved_Confounder
+       Frontdoor_Criterion)
+
+MODEL="${MODELS[$(( SLURM_ARRAY_TASK_ID / 8 ))]}"
+D="${DS[$(( SLURM_ARRAY_TASK_ID % 8 ))]}"
+
+# Point the case-study loader at this (shift, d) cell. SCM_N_TRAIN/SCM_N_QUERY
+# are read by benchmarks/scm_case_study_dataset.py.
+export DOPFN_DATA_ROOT="$DATA/shift$SHIFT/d$D"
+export SCM_N_TRAIN="$CTX"
+export SCM_N_QUERY="$NQ"
+[ -d "$DOPFN_DATA_ROOT/Observed_Confounder" ] || {
+    echo "FATAL: no case dirs under $DOPFN_DATA_ROOT" >&2; exit 1; }
+
+export DENSITY_DUMP=1
+export SKIP_EM="${SKIP_EM:-1}"
+export COMPILE="${COMPILE:-0}"
+
+source "$DEPLOY_ROOT/venv/bin/activate"
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
+export PYTHONUNBUFFERED=1
+export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+
+echo "[$(date '+%F %T')] task=$SLURM_ARRAY_TASK_ID model=$MODEL shift$SHIFT d$D"
+echo "  DOPFN_DATA_ROOT=$DOPFN_DATA_ROOT  N_TRAIN=$CTX  N_QUERY=$NQ"
+
+for CASE in "${CASES[@]}"; do
+    OUT="$OUT_ROOT/shift$SHIFT/d$D/ctx$CTX/$MODEL/$CASE"
+    mkdir -p "$OUT"
+    export DATASET="$CASE" OUT
+    echo "=== $MODEL  $CASE ==="
+    case "$MODEL" in
+      dopfn_native)
+        python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" \
+            --dataset "$CASE" || echo "WARN: $MODEL $CASE failed"
+        ;;
+      dopfn_bb)
+        python -u "$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py" \
+            --dataset "$CASE" --out "$OUT/summary.npz" \
+            --repo "$REPO" --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN" \
+            --checkpoint "$CKPT_DOPFN_BB" \
+            --y-scaling "${Y_SCALING:-min_max}" \
+            --std-target "${STD_TARGET:-0.3}" || echo "WARN: $MODEL $CASE failed"
+        ;;
+      uwyk1d)
+        export CKPT="$UWYK_CKPT_DIR/best_model.pt"
+        export CONFIG="$UWYK_CKPT_DIR/best_model_config.yaml"
+        export ANC_MODE=v3ab_only
+        python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
+            --dataset "$CASE" --outdir "$OUT" \
+            --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+            --anc-mode v3ab_only || echo "WARN: $MODEL $CASE failed"
+        ;;
+      graph2d)
+        python -u "$REPO/realcause_eval/Table1/graph2d.py" \
+            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
+            --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
+            --anc-mode v3ab_only --density-primary-mode noanc \
+          || echo "WARN: $MODEL $CASE failed"
+        ;;
+      cpfn1d)
+        # pooled, not per_arm: the dump asserts both arms share y_shift/y_scale
+        # so the shift cancels in tau. Same constraint as the ComplexMech run.
+        python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
+            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --ckpt "$CKPT_CPFN1D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+            --std-mode pooled || echo "WARN: $MODEL $CASE failed"
+        ;;
+      cpfn2d_pooled)
+        python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
+            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+            --std-mode pooled || echo "WARN: $MODEL $CASE failed"
+        ;;
+    esac
+done
+echo "[$(date '+%F %T')] done  $MODEL shift$SHIFT d$D"
