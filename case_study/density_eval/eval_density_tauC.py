@@ -153,6 +153,20 @@ METHODS = (('uwyk_native', 'uwyk_matched', 'joint') if USE_UWYK else ()) + (
     ('dopfn_native', 'dopfn_joint') if USE_DOPFN else ())
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
 SAVE_PREDICTIONS = os.environ.get('SAVE_PREDICTIONS', '1') == '1'
+# SCORE_INLINE=0 makes this a DUMP-ONLY run: forward passes + prediction npz,
+# no per-query scoring. That loop is the entire runtime (N_Y0=4096 quadrature
+# x 5 methods, ~0.72 s/query -> ~12 h/cell, which is why these jobs die on the
+# wall clock while cpfn1d/cpfn2d finish in minutes: cpfn dumps and defers ALL
+# scoring). The dumps are resolution-independent raw logits, and
+# dsweep_density_report.py / density_tauc.load_predictions re-derive densities
+# from them offline at TAUC_N_Y0=1024 anyway -- renormalising as they go, so
+# the 4096-point precision computed here is discarded downstream.
+#
+# It also makes every method follow the SAME shape: dump the predictive
+# object, score it in one place. With inline scoring on, cpfn's numbers come
+# from cate_density_metrics.py and these come from this file's nll/l2/pehe --
+# two scorers, not comparable.
+SCORE_INLINE = os.environ.get('SCORE_INLINE', '1') == '1'
 # y0-quadrature resolution for the 8 TAIL regions only; the interior is
 # closed-form and free at any tau resolution. Measured on the 12001-point
 # knot-aligned tau grid with midpoint quadrature:
@@ -325,6 +339,10 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
             n_y0=N_Y0, tau_grid=TAU_CENTERS,
         )
 
+    if not SCORE_INLINE:
+        # Dump-only: predictions are on disk, scoring happens offline.
+        return None
+
     n_q = X_te_raw.shape[0]
     methods = (('uwyk_native', 'uwyk_matched', 'joint') if uwyk is not None else ()) + (
         ('dopfn_native', 'dopfn_joint') if dopfn is not None else ())
@@ -446,6 +464,10 @@ def main():
     t0 = time.time()
     for r in range(lo, hi):
         row = evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn)
+        if row is None:                       # SCORE_INLINE=0
+            print(f'r={r:03d}  predictions saved  ({time.time()-t0:.0f}s)',
+                  flush=True)
+            continue
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         print(f'r={r:03d}  ' + '  |  '.join(
