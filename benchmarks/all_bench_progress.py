@@ -50,17 +50,23 @@ if a.cs and os.path.isdir(a.cs):
         print(row + f"{pct(td, tt):>10s}")
 
 if a.cmech and os.path.isdir(a.cmech):
-    print(f"\n=== COMPLEXMECH  {a.cmech}  subset={a.cmech_subset}  (100 per cell) ===")
-    print(f"{'model':16s}" + "".join(f"{'N'+str(c):>9s}" for c in CTX) + f"{'TOTAL':>9s}")
+    # The two subsets are DISJOINT and together complete: realizations whose
+    # true effect is exactly 0 go to `zero`, the rest to `nonzero`. So
+    # CMECH_n5_nonzero holding 91 of 100 is not a shortfall -- the other 9 are
+    # in CMECH_n5_zero. Reporting `nonzero` against a hardcoded 100 made every
+    # cell look 91-96% complete when it was done. `total` is the number that
+    # matters, and it is what --subset total pools.
+    print(f"\n=== COMPLEXMECH  {a.cmech}   nonzero + zero = total / 100 ===")
     for m in a.cmech_models:
-        row, td, tt = f"{m:16s}", 0, 0
+        print(f"\n  {m}")
+        print(f"  {'ctx':>6s}" + "".join(f"{'n'+str(n):>16s}" for n in CMECH_N))
         for c in CTX:
-            d_ = sum(_n(f"{a.cmech}/N{c}/{m}/CMECH_n{n}_{a.cmech_subset}/*.npz")
-                     for n in CMECH_N)
-            t_ = 100 * len(CMECH_N)
-            td += d_; tt += t_
-            row += f"{pct(d_, t_):>9s}"
-        print(row + f"{pct(td, tt):>9s}")
+            row = f"  {c:6d}"
+            for n in CMECH_N:
+                nz = _n(f"{a.cmech}/N{c}/{m}/CMECH_n{n}_nonzero/*.npz")
+                z = _n(f"{a.cmech}/N{c}/{m}/CMECH_n{n}_zero/*.npz")
+                row += f"{f'{nz}+{z}={nz+z}':>16s}"
+            print(row)
 
 if a.rc and os.path.isdir(a.rc):
     print(f"\n=== REALCAUSE  {a.rc} ===")
