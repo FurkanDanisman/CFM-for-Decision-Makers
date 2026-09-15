@@ -205,7 +205,30 @@ def evaluate(r: int, ds):
             # distribution mean, so the two legitimately differ — but until
             # that is confirmed those realizations' calibration numbers are
             # suspect. R^2 is saved per realization so they can be filtered.
+            # Bucket means, NOT bucket centres. DoPFN's criterion is a
+            # FullSupportBarDistribution: its first and last buckets are
+            # half-normal TAILS extending past the grid, so their means lie
+            # outside the bucket. Upstream's mean() overrides exactly those two
+            #     bucket_means[0]  = -side_normals[0].mean + borders[1]
+            #     bucket_means[-1] =  side_normals[1].mean + borders[-2]
+            # with HalfNormal(scale) where scale = width / HalfNormal(1).icdf(0.5),
+            # whose mean is scale * sqrt(2/pi).
+            #
+            # predict_cate -> predict -> predict_full()['mean'] = criterion.mean(),
+            # i.e. the corrected means. Using plain centres for all buckets made
+            # the two agree only while tail mass was negligible and diverge
+            # badly when it was not -- slope 3.29, R^2 0.47 on such
+            # realizations, which is what the density_scale_r2 gate was
+            # excluding (~27% of dopfn_native cells). The cause was this line,
+            # not the model.
+            _ICDF_HALFNORMAL_HALF = 0.6744897501960817   # HalfNormal(1).icdf(0.5)
+            _SQRT_2_OVER_PI = 0.7978845608028654         # E[HalfNormal(1)]
             _centers = 0.5 * (edges[:-1] + edges[1:])
+            _w = np.diff(edges)
+            _s_left = _w[0] / _ICDF_HALFNORMAL_HALF
+            _s_right = _w[-1] / _ICDF_HALFNORMAL_HALF
+            _centers[0] = edges[1] - _s_left * _SQRT_2_OVER_PI
+            _centers[-1] = edges[-2] + _s_right * _SQRT_2_OVER_PI
             _cate_dens = (p_y1 @ _centers) - (p_y0 @ _centers)      # (N_q,)
             _cp = np.asarray(cate_pred, dtype=np.float64).reshape(-1)
             _den = float(np.dot(_cate_dens, _cate_dens))
