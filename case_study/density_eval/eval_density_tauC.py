@@ -116,7 +116,19 @@ DATASET = H.DATASET
 # it was a second name for the same choice and could silently disagree.
 # Tags don't depend on F/n_real, so resolve on a dummy (4, 2) now and fail
 # here instead of 20 min in, after the checkpoints and the dataset have loaded.
-ANC_TAG = os.environ.get('ANC_TAG', 'v6a') if USE_UWYK else 'none'
+# ANC_VARIANT names the adjacency for the SCM case studies and, per the
+# case_variant branch of build_mode_list, IS the tag. It used only to append
+# 'case_variant' to _FAMILIES below without ever setting ANC_TAG, so every
+# run kept the 'v6a' default no matter what the launcher asked for:
+# 07_backfill sets ANC_VARIANT=full / paper_anc / noanc for uwyk, uwyk_v3a
+# and uwyk_noanc, yet all three dumps came back anc_tag='v6a' and BITWISE
+# IDENTICAL -- adj_uwyk, adj_joint, uwyk_pred0 and joint_logits all equal --
+# so the three "ancestor variants" were one run repeated, and every
+# anc-vs-noanc comparison built on them compared a matrix with itself.
+# Explicit ANC_TAG still wins, so callers that set it directly are unchanged.
+ANC_TAG = (os.environ.get('ANC_TAG')
+           or os.environ.get('ANC_VARIANT')
+           or 'v6a') if USE_UWYK else 'none'
 _FAMILIES = ['full', 'v6a_only', 'v6b_only', 'v4a_only', 'v5a_only',
              'v5b_only', 'v3b_only', 'ty_only', 'ty_antisym', 'all_variants',
              'v3_family', 'v3_v6_extended', 'focus4', 'three_edge_all',
