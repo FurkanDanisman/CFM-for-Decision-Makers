@@ -58,13 +58,22 @@ def _cmech_names():
 
 
 _CMECH_CASES = _cmech_names()
+
+# DoPFN SCM case studies. The underlying eval scripts already accept these
+# (eval_graph2d_realcause._SCM_CASES, eval_causalpfn_v0_realcause._SCM_CASES,
+# ...), but this wrapper's argparse gated them out, so any case-study run
+# through it died with "invalid choice" before reaching the eval.
+_SCM_CASES = ('Observed_Confounder', 'Observed_Mediator',
+              'Observed_Mediator_and_Confounder', 'Unobserved_Confounder',
+              'Frontdoor_Criterion', 'Backdoor_Criterion')
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', required=True,
-                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal'] + list(_CMECH_CASES))
+                    choices=['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal']
+                            + list(_CMECH_CASES) + list(_SCM_CASES))
     p.add_argument('--outdir', required=True,
                     help='Per-realization npzs land at OUTDIR/<DATASET>_r<###>.npz.')
     p.add_argument('--ckpt', required=True,
