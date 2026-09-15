@@ -281,13 +281,30 @@ def _atoms_to_uniform(p, atoms, n_out=None):
     """
     atoms = np.asarray(atoms, dtype=np.float64).reshape(-1)
     p = np.asarray(p, dtype=np.float64)
-    lo, hi = float(atoms.min()), float(atoms.max())
+
+    # Range from the atoms that actually CARRY MASS, not from min/max.
+    # DoPFN's two tail atoms sit at -61 and +297 while the interior spans
+    # [-5.4, 6.2], and measured tail mass is exactly 0. Spanning the full
+    # [-61, 297] with len(atoms) points gives a step of 3.6, so the whole
+    # real density lands on ~3 grid points -- discretisation alone then
+    # produced pred_sd 2.09 against a true 0.23 (sd_ratio 9.2). Mass outside
+    # the retained range is clamped into the end points below, so nothing is
+    # lost when a query genuinely populates a tail.
+    _P = p[None, :] if p.ndim == 1 else p
+    _w = _P.max(axis=0)
+    _keep = np.flatnonzero(_w > 1e-12 * max(float(_w.max()), 1e-300))
+    if _keep.size >= 2:
+        lo, hi = float(atoms[_keep].min()), float(atoms[_keep].max())
+    else:
+        lo, hi = float(atoms.min()), float(atoms.max())
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
         return atoms, p
     n_out = int(n_out or max(len(atoms), 64))
     grid = np.linspace(lo, hi, n_out)
     step = (hi - lo) / (n_out - 1)
-    pos = (atoms - lo) / step
+    # Atoms outside [lo, hi] clamp onto the end points, so their mass is kept
+    # rather than dropped.
+    pos = np.clip((atoms - lo) / step, 0.0, float(n_out - 1))
     i0 = np.clip(np.floor(pos).astype(int), 0, n_out - 1)
     i1 = np.clip(i0 + 1, 0, n_out - 1)
     w1 = pos - i0
