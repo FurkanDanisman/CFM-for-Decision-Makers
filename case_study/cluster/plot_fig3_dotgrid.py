@@ -41,9 +41,16 @@ PAIRS = [
     ("UWYK No-Anc 2D", "graph2d_noanc"),
     ("UWYK Anc",       "uwyk_v3a"),
     ("UWYK Anc 2D",    "graph2d_v3a"),
+    # v3b exists in the ComplexMech runs but not in the case-study sweep, so
+    # these rows are simply absent (blank) for case-study CSVs.
+    ("UWYK Anc-b",     "uwyk_v3b"),
+    ("UWYK Anc-b 2D",  "graph2d_v3b"),
     ("CausalPFN-C",    "cpfn1d_perarm"),
     ("CausalPFN-C 2D", "cpfn2d_pooled"),
 ]
+# Drop pairs that no row supplies, so a case-study CSV keeps its 8 bars and a
+# cmech CSV gets 10, without either carrying empty slots.
+_PAIRS_ALL = list(PAIRS)
 C_1D = "#E4A15B"     # warm ochre (1D)
 C_2D = "#8C4A5F"     # muted plum-red (2D)
 EDGE = "black"       # bar edges + error bars, regardless of fill
@@ -179,6 +186,9 @@ def main():
     if ARGS.d_values:
         df = df[df["d"].isin(ARGS.d_values)]
     dvals = sorted(int(x) for x in df["d"].unique())
+    global PAIRS
+    have = set(df["model"])
+    PAIRS = [(lab, key) for lab, key in _PAIRS_ALL if key in have] or _PAIRS_ALL
     present = set(df["case"])
     cases = [(k, lab) for k, lab in _CASES if k in present]
     # Anything not in the hardcoded case-study list (e.g. the "N=1000" columns
