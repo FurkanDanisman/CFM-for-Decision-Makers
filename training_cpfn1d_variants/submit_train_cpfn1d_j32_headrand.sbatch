@@ -2,8 +2,13 @@
 #SBATCH --job-name=cpfn1d-j32-headrand
 #SBATCH --output=logs_cpfn1d_j32_headrand/train_%j.out
 #SBATCH --error=logs_cpfn1d_j32_headrand/train_%j.err
-#SBATCH --time=04:00:00
-#SBATCH --partition=gpubase_h100_b1
+#SBATCH --time=24:00:00
+# Partition deliberately NOT pinned: gpubase_h100_b1 caps at 3h, so pinning it
+# makes any --time above that fail at submission with "Requested time limit is
+# invalid" (which is exactly what the J=1024 script does -- it asks for 4h on a
+# 3h partition). Leaving it unset lets Slurm route to a partition that can take
+# the full 24h. The job also requeues on SIGTERM, so a shorter placement still
+# resumes from latest.pt.
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=128G
