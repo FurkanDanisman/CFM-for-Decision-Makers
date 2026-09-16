@@ -28,21 +28,52 @@ CASES = ['Observed_Mediator', 'Observed_Mediator_and_Confounder',
 REALCAUSE = ['IHDP', 'ACIC', 'CPS', 'PSID', 'PSID_bal']
 
 
-def load(root, kind, dataset, metric):
+def load_by_real(root, kind, dataset, metric):
+    """{realization index: value} so models can be compared PAIRWISE."""
     d = os.path.join(root, kind, dataset)
-    vals = []
-    for p in sorted(glob.glob(os.path.join(d, f'{dataset}_r*.npz'))):
+    out = {}
+    for path in sorted(glob.glob(os.path.join(d, f'{dataset}_r*.npz'))):
+        base = os.path.splitext(os.path.basename(path))[0]
+        digits = ''.join(c for c in base.split('_r')[-1] if c.isdigit())
+        if not digits:
+            continue
         try:
-            with np.load(p, allow_pickle=True) as z:
+            with np.load(path, allow_pickle=True) as z:
                 if metric in z.files:
-                    vals.append(float(np.asarray(z[metric]).reshape(-1)[0]))
+                    v = float(np.asarray(z[metric]).reshape(-1)[0])
+                    if np.isfinite(v):
+                        out[int(digits)] = v
         except Exception:
             continue
-    a = np.asarray([v for v in vals if np.isfinite(v)], dtype=float)
+    return out
+
+
+def load(root, kind, dataset, metric):
+    vals = load_by_real(root, kind, dataset, metric)
+    a = np.asarray(list(vals.values()), dtype=float)
     if a.size == 0:
         return None
     se = float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else 0.0
     return float(a.mean()), se, int(a.size)
+
+
+def paired(root_a, root_b, kind, dataset, metric):
+    """Mean +/- SE of the per-realization difference (a - b).
+
+    Both models score the SAME realizations, so the paired difference removes
+    the realization-to-realization variance that dominates the unpaired SE.
+    Two models can look statistically indistinguishable unpaired and be
+    separated cleanly once paired -- and vice versa.
+    """
+    A = load_by_real(root_a, kind, dataset, metric)
+    B = load_by_real(root_b, kind, dataset, metric)
+    shared = sorted(set(A) & set(B))
+    if len(shared) < 2:
+        return None
+    d = np.asarray([A[r] - B[r] for r in shared], dtype=float)
+    se = float(d.std(ddof=1) / np.sqrt(d.size))
+    t = float(d.mean() / se) if se > 0 else float('inf')
+    return float(d.mean()), se, int(d.size), t
 
 
 def main():
@@ -52,6 +83,10 @@ def main():
     ap.add_argument('--type', default='case_studies',
                     choices=('case_studies', 'realcause'))
     ap.add_argument('--metric', default='pehe_raw')
+    ap.add_argument('--paired', action='store_true',
+                    help='also print the per-realization paired difference of '
+                         'the first two roots (the correct test when both '
+                         'models scored the same realizations)')
     a = ap.parse_args()
 
     roots = []
@@ -92,6 +127,27 @@ def main():
         f'{wins[n]:>{cw}}' for n, _ in roots))
     print('\nLower is better. A blank (--) means no npz found for that '
           'dataset under that root (job still running or not submitted).')
+
+    if a.paired and len(roots) >= 2:
+        (na, pa), (nb, pb) = roots[0], roots[1]
+        print(f'\nPAIRED  {na} - {nb}   (same realizations; negative favours '
+              f'{na})\n')
+        print(f'{"dataset":<{w}}{"mean diff":>16}{"SE":>10}{"t":>8}{"n":>6}'
+              f'   verdict')
+        print('-' * (w + 52))
+        for ds in datasets:
+            r = paired(pa, pb, a.type, ds, a.metric)
+            if r is None:
+                print(f'{ds:<{w}}{"--":>16}')
+                continue
+            m, se, n, t = r
+            # |t| > 2 is roughly the 5% two-sided threshold at these n
+            if abs(t) < 2:
+                verdict = 'tie (|t| < 2)'
+            else:
+                verdict = f'{na} better' if m < 0 else f'{nb} better'
+            print(f'{ds:<{w}}{m:>+16.4f}{se:>10.4f}{t:>8.2f}{n:>6}   {verdict}')
+        print('-' * (w + 52))
 
 
 if __name__ == '__main__':
