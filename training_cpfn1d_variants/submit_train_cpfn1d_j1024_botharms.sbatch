@@ -104,6 +104,14 @@ _on_term() {
 }
 trap _on_term SIGTERM
 
+# Extra hydra overrides, space separated. The both-arms run doubles the query
+# rows, so the (B, 2*N_q, nbins) logits tensor in _hl_gaussian_cross_entropy_loss
+# doubles too; if that OOMs, halve the batch and double the accumulation to keep
+# the effective batch identical:
+#   EXTRA_HYDRA="data.batch_size=<half> trainer.num_agg=<double>" sbatch ...
+EXTRA_HYDRA="${EXTRA_HYDRA:-}"
+read -r -a EXTRA_HYDRA_ARGS <<< "$EXTRA_HYDRA"
+
 STEP_CKPT_EVERY="${STEP_CKPT_EVERY:-2000}"
 STEP_CKPT_ROOT="${STEP_CKPT_ROOT:-$OUT_DIR/step_checkpoints}"
 # Keep only the N most recent step_*.pt; older ones are deleted as each new one
@@ -168,6 +176,7 @@ python -u train.py \
     +trainer.step_checkpoint_keep="$STEP_CKPT_KEEP" \
     +trainer.max_actual_step="$MAX_STEP" \
     "${COMPILE_ARGS[@]}" \
+    "${EXTRA_HYDRA_ARGS[@]}" \
     "${RESUME_ARGS[@]}" &
 CHILD=$!
 wait "$CHILD"
