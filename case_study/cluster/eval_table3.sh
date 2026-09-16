@@ -65,9 +65,15 @@ want native && sub MODEL=dopfn_native CKPT=none OUT_ROOT="$C/dopfn_native"
 want bb && sub MODEL=dopfn_bb CKPT="$DOPFNBB_CKPT" BB_Y_SCALING=std BB_STD_TARGET=0.3 \
     OUT_ROOT="$C/dopfn_bb"
 
-# cpfn2d: pooled and log (log1p(Y-min) then pooled std on log-Y).
-want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=pooled OUT_ROOT="$C/cpfn2d_pooled"
-want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE=log    OUT_ROOT="$C/cpfn2d_log"
+# cpfn2d: pooled and log (log1p(Y-min) then pooled std on log-Y) by default.
+# Override for a checkpoint whose training-time scaling differs -- an
+# arm_centered ckpt MUST be scored with CPFN2D_STD_MODES="arm_centered", since
+# the eval aborts rather than silently dropping the (m1 - m0) arm offset:
+#   CPFN2D_STD_MODES="arm_centered" CPFN2D_CKPT=/path/to/armc.pt ...
+CPFN2D_STD_MODES="${CPFN2D_STD_MODES:-pooled log}"
+for _m in $CPFN2D_STD_MODES; do
+    want cpfn2d && sub MODEL=cpfn2d CKPT="$CPFN2D_CKPT" STD_MODE="$_m" OUT_ROOT="$C/cpfn2d_$_m"
+done
 
 # cpfn1d: per_arm AND pooled.
 want cpfn1d && sub MODEL=cpfn1d CKPT="$CPFN1D_CKPT" STD_MODE=per_arm OUT_ROOT="$C/cpfn1d_perarm"
