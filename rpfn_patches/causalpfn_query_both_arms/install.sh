@@ -56,6 +56,15 @@ NEW_FLIP = '''        # ── BOTH-ARMS PATCH ───────────
         #
         # Unset (the default) restores upstream's coin flip exactly.
         if _os.environ.get("CPFN_QUERY_BOTH_ARMS", "0") == "1":
+            global _BOTH_ARMS_ANNOUNCED
+            if not _BOTH_ARMS_ANNOUNCED:
+                _BOTH_ARMS_ANNOUNCED = True
+                print(
+                    f"[both-arms] ACTIVE: {E_y0_query.shape[1]} covariates -> "
+                    f"{2 * E_y0_query.shape[1]} query rows "
+                    f"(t=0 -> E_y0, t=1 -> E_y1)",
+                    flush=True,
+                )
             X_query_eff = torch.cat([X_query, X_query], dim=1)
             query_treatments = torch.cat(
                 [torch.zeros_like(E_y0_query), torch.ones_like(E_y1_query)], dim=1
@@ -105,6 +114,11 @@ if "import os as _os" not in s:
     m = re.search(r"^(?:import |from )", s, re.MULTILINE)
     assert m, "no top-level import found to anchor the os import"
     s = s[: m.start()] + "import os as _os\n" + s[m.start() :]
+
+# one-shot announce flag, so a run cannot look identical to an unpatched one
+if "_BOTH_ARMS_ANNOUNCED" not in s.split("def ")[0]:
+    m = re.search(r"^(?:import |from )", s, re.MULTILINE)
+    s = s[: m.start()] + "_BOTH_ARMS_ANNOUNCED = False\n" + s[m.start() :]
 
 open(p, "w").write(s)
 print("[install] patched cepo_losses: both-arms query expansion (opt-in)")
