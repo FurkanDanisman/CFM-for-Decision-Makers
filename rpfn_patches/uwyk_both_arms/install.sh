@@ -74,10 +74,19 @@ NEW2 = '''            # Sample new noise for interventional scenario
                 # Draw the noise ONCE, then propagate twice with the intervened
                 # node forced to t0 and to t1. Everything else is shared, so the
                 # two rows are a potential-outcome pair rather than independent
-                # interventional draws. Row count is preserved.
-                _n_half = max(1, number_test_samples // 2)
-                scm.sample_exogenous(num_samples=_n_half)
-                scm.sample_endogenous(num_samples=_n_half)
+                # interventional draws.
+                #
+                # Noise is drawn at the FULL number_test_samples, not n//2: the
+                # noise distributions (and the downstream padding to
+                # max_number_test_samples) are sized against that value, and
+                # sampling fewer produces
+                #   "expanded size of the tensor (1000) must match the existing
+                #    size (500)".
+                # We propagate twice at full size and then slice, so the row
+                # count out of this block is exactly number_test_samples and
+                # nothing downstream has to change.
+                scm.sample_exogenous(num_samples=number_test_samples)
+                scm.sample_endogenous(num_samples=number_test_samples)
 
                 def _ba_force(_val):
                     # _sample_fast reads these dicts directly, so mutating the
@@ -96,20 +105,24 @@ NEW2 = '''            # Sample new noise for interventional scenario
 
                 _ba_force(_ba_t0)
                 _ba_arm0 = {k: (v.clone() if torch.is_tensor(v) else v)
-                            for k, v in scm.propagate(num_samples=_n_half).items()}
+                            for k, v in scm.propagate(num_samples=number_test_samples).items()}
                 _ba_force(_ba_t1)
                 _ba_arm1 = {k: (v.clone() if torch.is_tensor(v) else v)
-                            for k, v in scm.propagate(num_samples=_n_half).items()}
+                            for k, v in scm.propagate(num_samples=number_test_samples).items()}
 
-                interv1_raw = {k: torch.cat([_ba_arm0[k], _ba_arm1[k]], dim=0)
+                # Row i of arm0 and row i of arm1 share a noise draw, so taking
+                # the leading rows of each keeps the pairs intact. Total is
+                # exactly number_test_samples -- unchanged from upstream.
+                _ba_h = number_test_samples // 2
+                _ba_r = number_test_samples - _ba_h
+                interv1_raw = {k: torch.cat([_ba_arm0[k][:_ba_h], _ba_arm1[k][:_ba_r]], dim=0)
                                for k in _ba_arm0}
-                number_test_samples = 2 * _n_half
                 global _BA_ANNOUNCED
                 if not _BA_ANNOUNCED:
                     _BA_ANNOUNCED = True
-                    print("[uwyk-both-arms] ACTIVE: %d shared-noise draws -> %d rows "
-                          "(t0=%.4g, t1=%.4g)" % (_n_half, 2 * _n_half, _ba_t0, _ba_t1),
-                          flush=True)
+                    print("[uwyk-both-arms] ACTIVE: %d rows = %d at t0=%.4g + %d at t1=%.4g "
+                          "(rows i and i share a noise draw)"
+                          % (number_test_samples, _ba_h, _ba_t0, _ba_r, _ba_t1), flush=True)
             else:
                 scm.sample_exogenous(num_samples=number_test_samples)
                 scm.sample_endogenous(num_samples=number_test_samples)
