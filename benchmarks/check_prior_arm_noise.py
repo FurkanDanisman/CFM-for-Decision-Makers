@@ -15,8 +15,15 @@ GPU allocation.
     export CAUSALPFN=/path/to/causalpfn
     export REPO=/path/to/R-PFN
     cd $CAUSALPFN
-    PYTHONPATH=$CAUSALPFN/src:$CAUSALPFN:$REPO \\
+    PYTHONPATH=$REPO/benchmarks/uwyk_table1/shims:$CAUSALPFN/src:$CAUSALPFN:$REPO \\
         python $REPO/benchmarks/check_prior_arm_noise.py
+
+The shims directory is NOT optional. causalpfn/__init__.py reaches
+causal_estimator.py, which imports faiss / huggingface_hub / transformers /
+wandb at module top level; the prior never calls any of them, so
+benchmarks/uwyk_table1/shims/sitecustomize.py stubs them via a last-resort
+meta-path finder (real installs still win). Every sbatch in this repo
+prepends it; omitting it here fails with ModuleNotFoundError: faiss.
 
 Hydra's config path / name and the dataset node are DISCOVERED, not hard-coded:
 the former is read off train.py's @hydra.main decorator, the latter is probed
@@ -102,6 +109,16 @@ def main() -> int:
     from hydra import compose, initialize_config_dir
 
     causalpfn = os.environ.get("CAUSALPFN") or os.getcwd()
+    try:
+        import faiss  # noqa: F401  (stubbed by the shims sitecustomize)
+    except ModuleNotFoundError:
+        raise SystemExit(
+            "FATAL: `import faiss` failed, so causalpfn's package __init__ will "
+            "not import.\n"
+            "  Prepend the shim dir to PYTHONPATH:\n"
+            "    PYTHONPATH=$REPO/benchmarks/uwyk_table1/shims:$CAUSALPFN/src:"
+            "$CAUSALPFN:$REPO"
+        )
     cfg_dir, cfg_name = _locate_hydra_config(causalpfn)
     print(f"[prior] hydra config_dir={cfg_dir}  config_name={cfg_name}")
 
