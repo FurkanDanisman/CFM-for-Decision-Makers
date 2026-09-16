@@ -1,35 +1,55 @@
 # Training
 
-Four checkpoints. All land in `Required_checkpoints/` (git LFS).
+Six models. Four we train; two are upstream releases we evaluate as published.
 
-| model | entry point | checkpoint |
-|---|---|---|
-| CausalPFN 2D | `CausalPFN2D/train.sbatch` | `cpfn2d_j32_random_step_50000.pt` |
-| CausalPFN 1D | `CausalPFN2D/train_1d.sbatch` | `cpfn1d_j1024_headrand_step_50000.pt` |
-| Graph2D | `Graph2D/train.sbatch` | `graph2d_step_50000.pt` |
-| DoPFN-bb | `DoPFN_BB/train.sbatch` | `dopfn_bb_j10_step_150000.pt` |
+| folder | model | checkpoint | ours? |
+|---|---|---|---|
+| `CausalPFN1D/` | CausalPFN, 1D bar head, random init | `cpfn1d_j1024_headrand_step_50000.pt` | yes |
+| `CausalPFN2D/` | CausalPFN, 2D joint head | `cpfn2d_j32_random_step_50000.pt` | yes |
+| `Graph2D/` | graph-conditioned 2D joint | `graph2d_step_50000.pt` | yes |
+| `DoPFN_BB/` | DoPFN backbone + 2D head | `dopfn_bb_j10_step_150000.pt` | yes |
+| `UWYK/` | Use-What-You-Know 1D | `uwyk_reproduce_best_model.pt` | no — authors' release |
+| `DoPFN_Native/` | DoPFN as published | three artifact files | no — authors' release |
 
-UWYK is **not** trained here — `uwyk_reproduce_best_model.pt` comes from the
-UWYK authors' own release.
+Every checkpoint lives in `Required_checkpoints/` (git LFS), except
+DoPFN-native's artifacts — see `DoPFN_Native/README.md`.
 
-## Not self-contained: CausalPFN training runs upstream's loop
+## The 1D/2D pairs
 
-`submit_train_cpfn2d_*` invokes `$CAUSALPFN/train.py`, i.e. CausalPFN's own
-training loop, with our patches installed over it from
+The comparison the benchmarks are built around is a 1D head against a 2D head
+on the same backbone and the same data:
+
+```
+CausalPFN1D  <->  CausalPFN2D
+UWYK         <->  Graph2D
+DoPFN_Native <->  DoPFN_BB
+```
+
+Within each pair the backbone is shared and only the output head differs, so
+a difference in interval width is attributable to the head rather than to
+capacity or training data. The mathematical consequence — that a 1D head
+cannot identify the law of $\tau$ from two marginals, and the gap is governed
+by the inter-arm correlation — is derived in `../paper_appendix/`.
+
+## CausalPFN training runs upstream's loop
+
+`CausalPFN1D` and `CausalPFN2D` both invoke `$CAUSALPFN/train.py`, CausalPFN's
+own training loop, with our patches installed over it from
 `rpfn_patches/causalpfn_step_ckpt/`:
 
-- `checkpoint.py` — per-epoch saves, carries the true optimizer-step counter
-- `trainer.py` — step checkpoints, step counter incremented only after a
+- `checkpoint.py` — per-epoch saves carrying the true optimizer-step counter
+- `trainer.py` — step checkpoints; the counter advances only after a
   successful `optimizer.step()`
 
-So reproducing these two checkpoints needs the CausalPFN checkout at
-`$CAUSALPFN`. `training_causalpfn2d/train_causalpfn_2d.py` exists in the repo
-but is NOT the path these checkpoints came from.
+So those two need the CausalPFN checkout at `$CAUSALPFN`.
+`training_causalpfn2d/train_causalpfn_2d.py` is a standalone implementation
+kept for reference, but it is **not** the path the released checkpoints came
+from.
 
 ## Checkpoint retention
 
-The training sbatch files set `callbacks.checkpoint.top_k=10000`, i.e. keep
-every epoch. At j32 (216 MB/epoch) that is affordable; at j1024 (9.2 GB every
-~23 min) it fills a 2 TB scratch in days. Set `top_k=3` unless you
-specifically need the full history. Eviction is by train loss, not recency,
-and `latest.pt` is always kept for resume.
+The training scripts set `callbacks.checkpoint.top_k=10000`, i.e. keep every
+epoch. At J=32 (~216 MB/epoch) that is affordable. At J=1024 it writes 9.2 GB
+roughly every 23 minutes and will fill a 2 TB scratch in days. Set `top_k=3`
+unless you need the full history; eviction is by training loss, not recency,
+and `latest.pt` is always retained for resume.

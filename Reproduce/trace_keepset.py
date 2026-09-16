@@ -53,6 +53,23 @@ ENTRY = [
     "benchmarks/compare_bench_schemas.py",
 ]
 
+# Training implementations are kept whether or not an entry point reaches
+# them: someone reproducing the work must be able to train every model from
+# scratch, and the CausalPFN checkpoints in particular are produced by
+# upstream's train.py rather than by our standalone scripts, so tracing from
+# the sbatch files alone would drop those.
+ALWAYS_KEEP = [
+    "training_causalpfn2d/train_causalpfn_2d.py",
+    "training_causalpfn2d/sanity_check.py",
+    "training_graph2d/train_graph_2d.py",
+    "training_graph2d/model_graph_2d.py",
+    "training_graph2d/sanity_check.py",
+    "training_dopfn_base/train.py",
+    "training_dopfn_base/dopfn_backbone_head.py",
+    "training/train_cfm.py",
+    "training/train_cfm_dopfn.py",
+]
+
 SEARCH_DIRS = ["", "benchmarks", "realcause_eval", "realcause_eval/Table1",
                "UWYK_Fig3_4", "case_study", "case_study/eval",
                "case_study/density_eval", "case_study/d_variation",
@@ -129,7 +146,16 @@ def main():
     ap.add_argument("--list-drop", action="store_true")
     a = ap.parse_args()
 
-    keep, queue, missing = set(), list(ENTRY), []
+    # Everything under Reproduce/ is an entry point by definition: the
+    # wrappers are leaves that nothing references, so tracing alone would
+    # propose deleting the very files that define the reproduction path.
+    repro = []
+    for dp, _, fns in os.walk(os.path.join(ROOT, "Reproduce")):
+        for fn in fns:
+            if fn.endswith((".py", ".sh", ".sbatch")):
+                repro.append(os.path.relpath(os.path.join(dp, fn), ROOT))
+
+    keep, queue, missing = set(), list(ENTRY) + list(ALWAYS_KEEP) + repro, []
     for e in ENTRY:
         if not os.path.isfile(os.path.join(ROOT, e)):
             missing.append(e)

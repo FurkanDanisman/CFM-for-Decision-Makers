@@ -1,3 +1,4 @@
 #!/bin/bash
-# Graph-conditioned 2D joint -> graph2d_step_50000.pt
+# Thin wrapper -- the real script is benchmarks/cluster/submit_train_graph2d.sbatch
+# Kept as an entry point so Training/ lists every model in one place.
 exec sbatch "${REPO:-$SCRATCH/rpfn_bench_kit/R-PFN}/benchmarks/cluster/submit_train_graph2d.sbatch" "$@"
