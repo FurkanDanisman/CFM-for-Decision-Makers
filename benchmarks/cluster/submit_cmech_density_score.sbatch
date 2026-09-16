@@ -19,6 +19,9 @@
 #   NODES           node counts    (default "5 10 20 30 40 50")
 #   SUBSET          nonzero|zero|total   (default total)
 #   METHODS         optional subset of method labels
+#   TARGETS         "cate ate" (default), or just one of them --
+#                   the CATE pass is the slow one and is often
+#                   already done
 #   DATA_ROOT       benchmark data; --target ate needs it to map each npz back
 #                   to its source realization when pooling the two subsets
 #   ATOM_GRID_MAX   dopfn_native tau grid cap (default 4096; 1024 is 4x
@@ -59,7 +62,7 @@ MD=()
 echo "[score] root=$ROOT ctx=$CTX nodes=[$NODES] subset=$SUBSET"
 echo "        ATOM_GRID_MAX=$ATOM_GRID_MAX  data_root=$DATA_ROOT"
 
-for T in cate ate; do
+for T in ${TARGETS:-cate ate}; do
     echo "=== target=$T ==="
     python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
         --root "$ROOT" --context "$CTX" --nodes $NODES \
