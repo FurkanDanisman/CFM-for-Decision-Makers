@@ -79,19 +79,55 @@ def ihdp_residuals(causalpfn: str):
     return e0, e1, rho, t.shape[0], t.shape[1]
 
 
-def acic_probe(causalpfn: str):
-    """ACIC 2016 ships zymu_<i>.csv = z, y, mu0, mu1 -- the FACTUAL y only.
+ACIC_URL = ("https://raw.githubusercontent.com/BiomedSciAI/causallib/master/"
+            "causallib/datasets/data/acic_challenge_2016/zymu_{}.csv")
 
-    With one arm observed per unit the two noises are never seen together, so
-    their correlation is not estimable from this data at any sample size.
-    Returns the columns found so the caller can say that rather than guess.
+
+def acic_residuals(cache_dir: str, n_files: int = 20, download: bool = True):
+    """ACIC 2016: zymu_<i>.csv carries z, y0, y1, mu0, mu1.
+
+    Both potential outcomes AND both noiseless means are stored, so residuals
+    are y_t - mu_t directly. Each zymu_<i> is a DIFFERENT simulation setting,
+    so each file is standardised on its own before pooling -- otherwise a
+    setting with larger noise would dominate the pooled correlation and the
+    estimate would describe the mix of settings rather than the arm coupling
+    within any of them.
     """
-    import glob as _g
-    for pat in ("**/zymu_*.csv", "**/acic*/*.csv"):
-        for f in _g.glob(os.path.join(causalpfn, pat), recursive=True)[:1]:
-            with open(f) as fh:
-                return f, fh.readline().strip()
-    return None, None
+    import csv as _csv
+    import urllib.request as _url
+    os.makedirs(cache_dir, exist_ok=True)
+    e0s, e1s, nrow = [], [], 0
+    for i in range(1, n_files + 1):
+        dst = os.path.join(cache_dir, f"zymu_{i}.csv")
+        if not os.path.isfile(dst) and download:
+            try:
+                _url.urlretrieve(ACIC_URL.format(i), dst)
+            except Exception:
+                continue
+        if not os.path.isfile(dst):
+            continue
+        try:
+            with open(dst, newline="") as fh:
+                rd = _csv.DictReader(fh)
+                cols = set(rd.fieldnames or [])
+                if not {"y0", "y1", "mu0", "mu1"} <= cols:
+                    return None
+                a = np.array([[float(r["y0"]) - float(r["mu0"]),
+                               float(r["y1"]) - float(r["mu1"])] for r in rd])
+        except Exception:
+            continue
+        if a.size == 0:
+            continue
+        sd = a.std(axis=0)
+        if np.any(sd <= 0):
+            continue
+        a = a / sd
+        e0s.append(a[:, 0]); e1s.append(a[:, 1]); nrow = a.shape[0]
+    if not e0s:
+        return None
+    e0, e1 = np.concatenate(e0s), np.concatenate(e1s)
+    rho = float(np.corrcoef(e0, e1)[0, 1])
+    return e0, e1, rho, nrow, len(e0s)
 
 
 def find_csv_dir(causalpfn: str) -> str:
@@ -172,6 +208,13 @@ def main():
                     help="points drawn per panel; all data is used for rho")
     ap.add_argument("--max-files", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--acic-cache", default=os.environ.get(
+        "ACIC_CACHE_DIR", os.path.join(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))), "data", "acic_cache")))
+    ap.add_argument("--acic-files", type=int, default=20,
+                    help="how many zymu_<i>.csv simulation settings to pool")
+    ap.add_argument("--no-download", action="store_true",
+                    help="use only cached ACIC files; do not fetch")
     a = ap.parse_args()
 
     import matplotlib
@@ -190,13 +233,14 @@ def main():
               f"rho={got_ihdp[2]:+.4f}")
     else:
         print("[skip] IHDP: no ihdp_npci npz with yf/ycf/mu0/mu1")
-    _f, _cols = acic_probe(a.causalpfn)
-    if _f:
-        print(f"[acic] {os.path.basename(_f)} columns: {_cols}")
-        if "y0" not in _cols and "ycf" not in _cols:
-            print("[acic] factual outcome only -- arm-noise correlation is NOT "
-                  "estimable from this data (the two arms are never observed "
-                  "for the same unit).")
+    got_acic = acic_residuals(a.acic_cache, a.acic_files, not a.no_download)
+    if got_acic is not None:
+        res["ACIC"] = got_acic
+        print(f"{'ACIC':8s} n_unit={got_acic[3]:6d} K={got_acic[4]:3d} "
+              f"rho={got_acic[2]:+.4f}   (K = simulation settings)")
+    else:
+        print("[skip] ACIC: no zymu_*.csv with y0/y1/mu0/mu1 "
+              f"under {a.acic_cache} (and download disabled or unreachable)")
     for prefix, paths in fams.items():
         got = residuals(paths, a.max_files)
         if got is None:
@@ -210,6 +254,9 @@ def main():
     # 95% contour of a spherical bivariate normal.
     R95 = float(np.sqrt(5.991464547107979))        # chi2_2(0.95)
     rng = np.random.default_rng(a.seed)
+    order = [d for d in ("IHDP", "ACIC", "CPS", "PSID", "PSID_bal") if d in res]
+    order += [d for d in res if d not in order]
+    res = {d: res[d] for d in order}
     k = len(res)
     fig, axes = plt.subplots(1, k, figsize=(2.55*k + 0.4, 3.0),
                              sharex=True, sharey=True)
