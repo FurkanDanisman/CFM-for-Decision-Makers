@@ -73,6 +73,7 @@ export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPA
 MD=(); [ -n "${METHODS:-}"  ] && MD=(--methods ${METHODS})
 MR=(); [ -n "${MAX_REAL:-}" ] && MR=(--max-real "$MAX_REAL")
 
+FAILED=0
 echo "[rc-malc] root=$ROOT  dataset=$DATASET  stages=[$STAGES]"
 echo "          B=$MALC_B  K=$MALC_K  n_tau=$N_TAU  ATOM_GRID_MAX=$ATOM_GRID_MAX"
 echo "          max_real=${MAX_REAL:-<all>}  methods=${METHODS:-<all>}"
@@ -85,7 +86,7 @@ for S in $STAGES; do
           --root "$ROOT" --dataset "$DATASET" --modes raw em \
           "${MD[@]}" "${MR[@]}" \
           --out-md "$ROOT/point_raw_em_${DATASET}.md" \
-        || echo "WARN: point stage exited nonzero"
+        || { echo "ERROR: point stage FAILED -- see the .err log" >&2; FAILED=1; }
       ;;
     raw)
       for T in ${TARGETS:-cate ate}; do
@@ -93,8 +94,8 @@ for S in $STAGES; do
         python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
             --root "$ROOT" --dataset "$DATASET" --target "$T" \
             --tau-smoother none "${MD[@]}" "${MR[@]}" \
-            --out-md "$ROOT/calib_${DATASET}_raw_${T}.md" \
-          || echo "WARN: raw/$T exited nonzero"
+            --out "$ROOT/calib_${DATASET}_raw_${T}.md" \
+          || { echo "ERROR: raw/$T FAILED -- see the .err log" >&2; FAILED=1; }
       done
       ;;
     t)
@@ -104,13 +105,13 @@ for S in $STAGES; do
             --root "$ROOT" --dataset "$DATASET" --target "$T" \
             --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
             --n-tau "$N_TAU" "${MD[@]}" "${MR[@]}" \
-            --out-md "$ROOT/calib_${DATASET}_T_B${MALC_B}_K${MALC_K}_${T}.md" \
-          || echo "WARN: T/$T exited nonzero"
+            --out "$ROOT/calib_${DATASET}_T_B${MALC_B}_K${MALC_K}_${T}.md" \
+          || { echo "ERROR: T/$T FAILED -- see the .err log" >&2; FAILED=1; }
       done
       ;;
     *) echo "WARN: unknown stage '$S'" ;;
   esac
 done
 
-echo "[$(date '+%F %T')] done. Tables under $ROOT:"
+echo "[$(date '+%F %T')] done (FAILED=$FAILED). Tables under $ROOT:"
 ls -1 "$ROOT"/point_raw_em_"$DATASET".md "$ROOT"/calib_"$DATASET"_*.md 2>/dev/null || true
