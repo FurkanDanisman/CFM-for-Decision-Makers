@@ -1,4 +1,4 @@
-"""Tier-C density eval: p(tau | x) for UWYK and/or DoPFN on IHDP / ACIC.
+"""Tier-C density eval: p(tau | x) for UWYK, DoPFN, CausalPFN on IHDP / ACIC.
 
 v1 = RAW path only (no MALC). See density_eval_pipeline.md for the full plan;
 the MALC arm reuses everything here with one substitution inside region 0.
@@ -27,12 +27,17 @@ Methods (rows):
     joint         the 2D head's own joint, diagonal-integrated
     dopfn_native  DoPFNRegressor.predict_full, convolved under independence
     dopfn_joint   DoPFN backbone with the trained 2D head, diagonal-integrated
+    causalpfn_native  CausalPFN's finite 1D histograms, convolved independently
+    causalpfn_joint   CausalPFN's full 2D head, diagonal-integrated with tails
 
---model uwyk (default), dopfn, or all selects model pairs. MODEL_FAMILY is the
+--model uwyk (default), dopfn, causalpfn, or all selects model pairs. MODEL_FAMILY is the
 equivalent environment setting used by Slurm. DoPFN needs
 DOPFN_ROOT (upstream checkout with artifacts); DOPFN_JOINT_CKPT defaults to
 Required_checkpoints/dopfn_bb_j10_step_150000.pt. DOPFN_QUERY_CHUNK defaults
 to 20. DoPFN-only runs do not load UWYK checkpoints. See README.md here.
+CausalPFN defaults to the requested cpfn1d_j1024_headrand and cpfn2d_j32_random
+step_50000 checkpoints, with pooled standardization on the selected context.
+CAUSALPFN_CKPT, CAUSALPFN_JOINT_CKPT and CAUSALPFN_QUERY_CHUNK override these.
 
 `uwyk_*` rows are 'UWYK (x) indep': UWYK emits no joint, the independence
 assumption is ours. Never label them plain 'UWYK'.
@@ -63,7 +68,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.abspath(os.path.join(_HERE, '..', '..'))
 _model_parser = argparse.ArgumentParser(
     description='Evaluate CATE densities for one model family on IHDP or ACIC.')
-_model_parser.add_argument('--model', choices=('uwyk', 'dopfn', 'all'),
+_model_parser.add_argument('--model', choices=('uwyk', 'dopfn', 'causalpfn', 'all'),
                            help='Model family (overrides MODEL_FAMILY).')
 _model_parser.add_argument('--dataset', choices=('IHDP', 'ACIC'),
                            help='Dataset (the DATASET environment variable is also accepted).')
@@ -73,10 +78,11 @@ import numpy as np
 import torch
 
 MODEL_FAMILY = (_model_args.model or os.environ.get('MODEL_FAMILY', 'uwyk')).lower()
-if MODEL_FAMILY not in ('uwyk', 'dopfn', 'all'):
-    raise ValueError('MODEL_FAMILY must be uwyk, dopfn, or all')
+if MODEL_FAMILY not in ('uwyk', 'dopfn', 'causalpfn', 'all'):
+    raise ValueError('MODEL_FAMILY must be uwyk, dopfn, causalpfn, or all')
 USE_UWYK = MODEL_FAMILY in ('uwyk', 'all')
 USE_DOPFN = MODEL_FAMILY in ('dopfn', 'all')
+USE_CAUSALPFN = MODEL_FAMILY in ('causalpfn', 'all')
 # The shared harness imports graph definitions even for a DoPFN-only run.
 # These defaults locate source code; no UWYK checkpoint is loaded in that mode.
 os.environ.setdefault('UWYK', os.path.join(_REPO, 'g4cfm'))
@@ -97,6 +103,7 @@ from models.GraphConditionedInterventionalPFN_sklearn import (      # noqa: E402
 )
 from density_common import (                                        # noqa: E402
     Joint2D, UWYK1D, joint_tau_density, uwyk_tau_density, dopfn_tau_density,
+    causalpfn_tau_density,
     truth_tau_density, l2_distance, kl, mass, point_metrics, TAU_CENTERS,
 )
 from density_truth import harness_y_affine, load_density_truth        # noqa: E402
@@ -141,10 +148,16 @@ DOPFN_ROOT = os.environ.get('DOPFN_ROOT', os.environ.get('DOPFN', ''))
 DOPFN_JOINT_CKPT = os.environ.get('DOPFN_JOINT_CKPT', os.path.join(
     _REPO, 'Required_checkpoints', 'dopfn_bb_j10_step_150000.pt'))
 DOPFN_QUERY_CHUNK = int(os.environ.get('DOPFN_QUERY_CHUNK', '20'))
+CAUSALPFN_CKPT = os.environ.get('CAUSALPFN_CKPT', os.path.join(
+    _REPO, 'Required_checkpoints', 'cpfn1d_j1024_headrand_step_50000.pt'))
+CAUSALPFN_JOINT_CKPT = os.environ.get('CAUSALPFN_JOINT_CKPT', os.path.join(
+    _REPO, 'Required_checkpoints', 'cpfn2d_j32_random_step_50000.pt'))
+CAUSALPFN_QUERY_CHUNK = int(os.environ.get('CAUSALPFN_QUERY_CHUNK', '512'))
 if USE_DOPFN and not DOPFN_ROOT:
     raise ValueError('Set DOPFN_ROOT to the DoPFN checkout containing scripts/ and artifacts/')
 METHODS = (('uwyk_native', 'uwyk_matched', 'joint') if USE_UWYK else ()) + (
-    ('dopfn_native', 'dopfn_joint') if USE_DOPFN else ())
+    ('dopfn_native', 'dopfn_joint') if USE_DOPFN else ()) + (
+    ('causalpfn_native', 'causalpfn_joint') if USE_CAUSALPFN else ())
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
 SAVE_PREDICTIONS = os.environ.get('SAVE_PREDICTIONS', '1') == '1'
 # y0-quadrature resolution for the 8 TAIL regions only; the interior is
@@ -211,7 +224,7 @@ def score(p_est, p_true, tau_star_density, tau_grid=TAU_CENTERS):
     """One method, one query. NLL is taken at the observed tau*, not read off
     the grid, so it never inherits the grid's interpolation error."""
     return dict(
-        nll=float(-np.log(tau_star_density)),
+        nll=float('inf') if tau_star_density == 0 else float(-np.log(tau_star_density)),
         l2=l2_distance(p_true, p_est, tau_grid),
         kl_fwd=kl(p_true, p_est, tau_grid),
         kl_rev=kl(p_est, p_true, tau_grid),
@@ -219,7 +232,7 @@ def score(p_est, p_true, tau_star_density, tau_grid=TAU_CENTERS):
     )
 
 
-def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
+def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
     cate = ds[r][0]
     X_tr_raw = np.asarray(cate.X_train, dtype=np.float32)
     T_tr = np.asarray(cate.t_train, dtype=np.float32).reshape(-1)
@@ -301,6 +314,10 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
             X_tr_raw, T_tr, y_tr_raw, X_te_raw,
             X_tr_std, y_scaled, X_te_std, y_shift=y_shift, y_scale=y_scale)
         prediction_fields.update(dopfn_dump)
+    if causalpfn is not None:
+        cpfn_arms, cpfn_joints, cpfn_dump = causalpfn.predict(
+            X_tr_std, T_tr, y_tr_raw, X_te_std, y_shift=y_shift, y_scale=y_scale)
+        prediction_fields.update(cpfn_dump)
 
     if SAVE_PREDICTIONS:
         prediction_dir = os.path.join(OUT, 'predictions')
@@ -321,9 +338,11 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
 
     n_q = X_te_raw.shape[0]
     methods = (('uwyk_native', 'uwyk_matched', 'joint') if uwyk is not None else ()) + (
-        ('dopfn_native', 'dopfn_joint') if dopfn is not None else ())
+        ('dopfn_native', 'dopfn_joint') if dopfn is not None else ()) + (
+        ('causalpfn_native', 'causalpfn_joint') if causalpfn is not None else ())
     rows = {m: [] for m in methods}
-    inner_methods = tuple(m + '_inner' for m in ('joint', 'dopfn_joint') if m in methods)
+    inner_methods = tuple(m + '_inner' for m in
+                          ('joint', 'dopfn_joint', 'causalpfn_joint') if m in methods)
     cate_means = {m: [] for m in (*rows, *inner_methods)}
     grid_means = {m: [] for m in rows}
     for q in range(n_q):
@@ -372,6 +391,22 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
                     joint_tau_density(djt, TAU_CENTERS, n_y0=N_Y0),
                     joint_tau_density(djt, t_star, n_y0=N_Y0)[0])),
             ))
+        if causalpfn is not None:
+            cf0, cf1 = cpfn_arms[0][q], cpfn_arms[1][q]
+            cjt = cpfn_joints[q]
+            m0, m1 = cjt.mean()
+            i0, i1 = cjt.inner_mean()
+            cate_means['causalpfn_native'].append(cf1.mean() - cf0.mean())
+            cate_means['causalpfn_joint'].append(m1 - m0)
+            cate_means['causalpfn_joint_inner'].append(i1 - i0)
+            scorers.extend((
+                ('causalpfn_native', lambda: (
+                    causalpfn_tau_density(cf0, cf1, TAU_CENTERS),
+                    causalpfn_tau_density(cf0, cf1, t_star)[0])),
+                ('causalpfn_joint', lambda: (
+                    joint_tau_density(cjt, TAU_CENTERS, n_y0=N_Y0),
+                    joint_tau_density(cjt, t_star, n_y0=N_Y0)[0])),
+            ))
         for name, fn in scorers:
             p_grid, d_star = fn()
             rows[name].append(score(p_grid, p_true, d_star))
@@ -386,6 +421,8 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None):
            'true_cate': true_cate,
            'frac_tau_outside_grid': float(np.mean(np.abs(tau_star) > 3.0))}
     for name, rr in rows.items():
+        out[f'frac_zero_density_{name}'] = float(np.mean(
+            [np.isposinf(x['nll']) for x in rr]))
         for k in rr[0]:
             out[f'{k}_{name}'] = float(np.mean([x[k] for x in rr]))
     for name, means in cate_means.items():
@@ -405,6 +442,8 @@ def main():
     graph_desc = (f'UWYK_graph={ANC_TAG}' if USE_UWYK else 'UWYK_graph=n/a')
     if USE_DOPFN:
         graph_desc += ' DoPFN_graph=none'
+    if USE_CAUSALPFN:
+        graph_desc += ' CausalPFN_graph=none'
     print(f'[tauC] dataset={DATASET} family={MODEL_FAMILY} {graph_desc} '
           f'ctx={H.EVAL_MAX_CONTEXT or "(full)"} n_y0={N_Y0}', flush=True)
 
@@ -434,12 +473,22 @@ def main():
                                    H.DEVICE, DOPFN_QUERY_CHUNK)
         print(f'[tauC] DoPFN joint J={dopfn.J} ckpt={dopfn.checkpoint}', flush=True)
 
+    causalpfn = None
+    if USE_CAUSALPFN:
+        from density_causalpfn import CausalPFNDensityModels
+        causalpfn = CausalPFNDensityModels(
+            H.CAUSALPFN, CAUSALPFN_CKPT, CAUSALPFN_JOINT_CKPT,
+            H.DEVICE, CAUSALPFN_QUERY_CHUNK)
+        print(f'[tauC] CausalPFN K={causalpfn.K} joint J={causalpfn.J} '
+              f'std_mode=pooled ckpt={causalpfn.checkpoint} '
+              f'joint_ckpt={causalpfn.joint_checkpoint}', flush=True)
+
     lo = max(0, REAL_START)
     hi = ds.n_tables if REAL_END is None else min(ds.n_tables, int(REAL_END))
     print(f'[tauC] realizations [{lo}, {hi}) of {ds.n_tables}', flush=True)
     t0 = time.time()
     for r in range(lo, hi):
-        row = evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn)
+        row = evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn, causalpfn)
         np.savez(os.path.join(OUT, f'{DATASET}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         print(f'r={r:03d}  ' + '  |  '.join(

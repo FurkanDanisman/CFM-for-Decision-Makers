@@ -300,7 +300,7 @@ class DoPFNRegressor(Base):
                                X_test=rng.normal(size=(2, 58)).astype(np.float32),
                                true_cate=np.array([1., 2.]))
         ds = [(cate, None)]
-        for family in ('uwyk', 'dopfn', 'all'):
+        for family in ('uwyk', 'dopfn', 'causalpfn', 'all'):
             for dataset, mode in (('IHDP', 'minmax'), ('ACIC', 'std')):
                 with self.subTest(family=family, dataset=dataset), tempfile.TemporaryDirectory() as out:
                     scaling = dict(np=np, Y_SCALING=mode, STD_TARGET=0.3, X_CLIP_QUANTILE='')
@@ -341,12 +341,28 @@ class DoPFNRegressor(Base):
                         return [[f, f], [f, f]], logits, dict(dopfn_joint_logits=logits)
 
                     dopfn = (SimpleNamespace(predict=predict_native_and_joint, J=J, edges=edges)
-                              if family != 'uwyk' else None)
+                              if family in ('dopfn', 'all') else None)
+
+                    def predict_causalpfn(xs, t, y, xts, **affine):
+                        idx = np.random.default_rng(7).choice(9, 4, replace=False)
+                        np.testing.assert_array_equal(y, cate.y_train[idx])
+                        np.testing.assert_array_equal(t, cate.t_train[idx])
+                        self.assertEqual(xs.shape, (4, 58))
+                        # Include an out-of-support observation to exercise
+                        # native +inf NLL through the actual scoring runner.
+                        native_edges = edges * (0.01 if dataset == 'ACIC' else 1)
+                        f = common.CausalPFN1D.from_pred([0, 1], native_edges)
+                        jt = common.Joint2D.from_pred(logits[0], J, edges)
+                        return [[f, f], [f, f]], [jt, jt], dict(
+                            causalpfn_joint_logits=logits, causalpfn_edges2d=edges)
+
+                    causalpfn = (SimpleNamespace(predict=predict_causalpfn)
+                                 if family in ('causalpfn', 'all') else None)
                     bd = SimpleNamespace(edges=torch.tensor(edges), widths=torch.tensor(np.diff(edges)),
                                          base_s_left=1, base_s_right=1)
                     uwyk = (SimpleNamespace(bar_distribution=bd, device='cpu',
                                              _preprocess_adjacency_matrix=lambda adj: adj)
-                            if family != 'dopfn' else None)
+                            if family in ('uwyk', 'all') else None)
                     namespace = dict(vars(common), np=np, torch=torch, os=os, H=harness,
                                      DATASET=dataset, ANC_TAG='v6a', ANC_FAMILY='v6a_only',
                                      MODEL_FAMILY=family,
@@ -356,17 +372,25 @@ class DoPFNRegressor(Base):
                                      harness_y_affine=harness_y_affine, load_density_truth=truth,
                                      uwyk_preds_chunked=lambda *a: np.zeros((2, 6)))
                     functions_from('eval_density_tauC.py', ('score', 'evaluate'), namespace)
-                    row = namespace['evaluate'](0, ds, object(), J, edges, uwyk, 3, dopfn)
+                    row = namespace['evaluate'](0, ds, object(), J, edges, uwyk, 3,
+                                                dopfn, causalpfn)
                     self.assertEqual(row['n_context'], 4)
                     self.assertEqual('nll_dopfn_native' in row, dopfn is not None)
                     self.assertEqual('nll_joint' in row, uwyk is not None)
+                    self.assertEqual('nll_causalpfn_native' in row, causalpfn is not None)
+                    self.assertEqual('pehe_causalpfn_joint_inner' in row, causalpfn is not None)
                     for method in row['methods']:
-                        self.assertTrue(np.isfinite(row[f'nll_{method}']))
+                        if method == 'causalpfn_native' and dataset == 'ACIC':
+                            self.assertEqual(row[f'nll_{method}'], np.inf)
+                            self.assertEqual(row[f'frac_zero_density_{method}'], 1.0)
+                        else:
+                            self.assertTrue(np.isfinite(row[f'nll_{method}']))
                         self.assertEqual(row[f'cate_pred_{method}'].shape, (2,))
                     with np.load(Path(out) / 'predictions' / f'{dataset}_r000.npz') as dump:
                         self.assertEqual('joint_logits' in dump, uwyk is not None)
                         self.assertEqual('adj_joint' in dump, uwyk is not None)
                         self.assertEqual('dopfn_joint_logits' in dump, dopfn is not None)
+                        self.assertEqual('causalpfn_joint_logits' in dump, causalpfn is not None)
                         self.assertEqual(str(dump['model_family']), family)
 
 
