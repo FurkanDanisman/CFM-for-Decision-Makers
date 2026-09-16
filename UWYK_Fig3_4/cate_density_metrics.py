@@ -267,6 +267,8 @@ def _per_arm_common_grid(z, p0, p1, J):
 
 # Mass trimmed from each side when choosing the rebin range.
 _REBIN_TRIM = float(os.environ.get("REBIN_TRIM", "1e-4"))
+# Cap on the uniform grid used for point-mass (bucket_means) rebinning.
+_ATOM_GRID_MAX = int(os.environ.get("ATOM_GRID_MAX", "4096"))
 
 
 def _rebin_atoms_shared(parms, atoms, n_out=None, eps=_REBIN_TRIM):
@@ -291,20 +293,23 @@ def _rebin_atoms_shared(parms, atoms, n_out=None, eps=_REBIN_TRIM):
         return None
     n_out = int(n_out or atoms.size)
 
-    order = np.argsort(atoms)
-    a_sorted = atoms[order]
-    los, his = [], []
-    for x in arms:
-        pooled = x.sum(axis=0)[order]
-        tot = float(pooled.sum())
-        if not np.isfinite(tot) or tot <= 0:
-            return None
-        c = np.cumsum(pooled) / tot
-        los.append(float(np.interp(eps, c, a_sorted)))
-        his.append(float(np.interp(1.0 - eps, c, a_sorted)))
-    lo, hi = min(los), max(his)
+    # FULL range, no trimming. Clamping out-of-range atoms onto the end
+    # points moves their mass and shifts the mean, so the density stops
+    # reproducing predict_cate exactly -- measured max |tau_density -
+    # predict_cate| = 2.44 with an eps=1e-4 trim, which is the whole thing
+    # this branch exists to avoid. Resolution is bought with more grid points
+    # instead: enough that the step matches the typical interior spacing, so
+    # the far tail atoms cost points rather than accuracy. tau_pmf_indep
+    # switches to FFT above J=256, so a few thousand bins is cheap.
+    lo, hi = float(atoms.min()), float(atoms.max())
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
-        lo, hi = float(atoms.min()), float(atoms.max())
+        return None
+    a_sorted = np.sort(atoms)
+    gaps = np.diff(a_sorted)
+    gaps = gaps[gaps > 0]
+    target = float(np.median(gaps)) if gaps.size else (hi - lo) / n_out
+    if target > 0:
+        n_out = int(np.clip(round((hi - lo) / target) + 1, n_out, _ATOM_GRID_MAX))
 
     grid = np.linspace(lo, hi, n_out)
     step = (hi - lo) / (n_out - 1)
