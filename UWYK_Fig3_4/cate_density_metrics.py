@@ -392,7 +392,7 @@ def _rebin_nonuniform(parms, edges, n_out=None, eps=_REBIN_TRIM):
     return centers, out
 
 
-def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
+def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned"):
     """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
     with np.load(path, allow_pickle=True) as z:
         # Density keys must match the REQUESTED tag. Falling back to the
@@ -523,6 +523,54 @@ def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
             return None
     _LAST_J["_J"] = int(len(atoms))
     return atoms, pmfs, y_true, len(pmfs)
+
+
+# ── variant-T smoothing hook ─────────────────────────────────────────────────
+# Configured once in main(); off unless --tau-smoother malc is passed, so every
+# existing invocation is bit-identical to before.
+#
+# This wraps the ONE function both the CATE and the ATE paths load through.
+# That is deliberate: the ATE interval is the Wasserstein barycenter of the
+# per-query tau densities, and smoothing here means the barycenter is taken
+# over already-smoothed densities with no second MALC pass applied to the
+# barycenter itself.
+_TAU_SMOOTHER = None      # set to a tau_smoother.SmootherConfig to enable
+
+
+def _configure_tau_smoother(cfg):
+    global _TAU_SMOOTHER
+    _TAU_SMOOTHER = cfg if (cfg is not None and cfg.enabled) else None
+
+
+def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
+    """_load_arrays_raw, with variant-T smoothing applied when configured."""
+    got = _load_arrays_raw(path, tag, coupling, joint_coupling)
+    if got is None or _TAU_SMOOTHER is None:
+        return got
+
+    from tau_smoother import smooth_tau_pmf
+
+    atoms, pmfs, y_true, n_q = got
+    pmfs = np.asarray(pmfs, dtype=np.float64)
+    if pmfs.ndim == 1:
+        pmfs = pmfs[None, :]
+
+    out_grid, out = None, []
+    for q, pmf in enumerate(pmfs):
+        g, sp = smooth_tau_pmf(atoms, pmf, _TAU_SMOOTHER, query_seed=q)
+        if out_grid is None:
+            out_grid = g
+        elif g.shape != out_grid.shape or not np.allclose(g, out_grid):
+            # Every query in a realization shares one atom support, so the
+            # smoothed grid must be identical too; a fallback-to-raw query
+            # returns the atom grid instead. Re-express it on the common grid
+            # rather than silently scoring two queries on different axes.
+            sp = np.interp(out_grid, g, sp, left=0.0, right=0.0)
+            ssum = sp.sum()
+            sp = sp / ssum if ssum > 0 else sp
+        out.append(sp)
+
+    return out_grid, np.asarray(out, dtype=np.float64), y_true, n_q
 
 
 def _query_pmfs(path, tag=None, coupling="indep", joint_coupling="learned"):
@@ -697,6 +745,19 @@ def _parse():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
+    ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none",
+                    help="variant T: fit MALC-1D to the tau density AFTER "
+                         "projection/convolution. 'none' reproduces the raw "
+                         "construction exactly.")
+    ap.add_argument("--malc-B", type=int, default=100,
+                    help="synthetic points per MALC fit (cost grows ~B^3.7; "
+                         "100 is ~0.06 s/query, 400 is ~7.5 s)")
+    ap.add_argument("--malc-K", type=int, default=1,
+                    help="mixture components. K=1 forces a unimodal "
+                         "(log-concave) tau density.")
+    ap.add_argument("--malc-seed", type=int, default=20180621)
+    ap.add_argument("--n-tau", type=int, default=4001,
+                    help="points on the smoothed tau grid")
     ap.add_argument("--context", type=int, default=1000)
     ap.add_argument("--nodes", type=int, nargs="+", default=[5],
                     help="one or more node counts; each gets its own table")
@@ -929,6 +990,19 @@ def _render(rows, args):
 
 def main():
     args = _parse()
+
+    # Variant T, off by default. Announce it: a smoothed table and a raw table
+    # are not distinguishable from their numbers alone, and mixing them up is
+    # the whole risk of adding this switch.
+    if getattr(args, "tau_smoother", "none") == "malc":
+        from tau_smoother import SmootherConfig
+        cfg = SmootherConfig(enabled=True, B=args.malc_B, K=args.malc_K,
+                             seed=args.malc_seed, n_tau=args.n_tau)
+        _configure_tau_smoother(cfg)
+        print(f"[tau-smoother] MALC-1D ACTIVE  {cfg}", flush=True)
+    else:
+        _configure_tau_smoother(None)
+
     args.dataset_name = None
     if args.dataset:
         parts = []
