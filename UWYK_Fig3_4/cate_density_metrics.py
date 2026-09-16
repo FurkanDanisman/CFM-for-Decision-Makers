@@ -269,6 +269,61 @@ def _per_arm_common_grid(z, p0, p1, J):
 _REBIN_TRIM = float(os.environ.get("REBIN_TRIM", "1e-4"))
 
 
+def _rebin_atoms_shared(parms, atoms, n_out=None, eps=_REBIN_TRIM):
+    """Rebin point masses at shared NON-UNIFORM `atoms` onto ONE uniform grid.
+
+    Used when a dump carries `bucket_means`: DoPFN's predict_cate -- and hence
+    the PEHE the original repo reports -- is p @ bucket_means, where those
+    means mix raw-unit borders with stale normalised half-widths. Scoring the
+    intervals at edge CENTRES instead gives a differently-centred estimator,
+    which is how dopfn_native came to lose on PEHE (1.167) while winning on
+    IS_0.05 on ComplexMech: the density PEHE there is 0.313, a 4x gap. Both
+    columns have to describe one estimator, and PEHE is fixed to the upstream
+    definition, so the density follows it.
+
+    Both arms share one grid -- computing a range per arm folds the offset
+    between their origins into tau (that bug cost bias -68 on IHDP).
+    """
+    atoms = np.asarray(atoms, dtype=np.float64).reshape(-1)
+    arms = [np.asarray(x, dtype=np.float64) for x in parms]
+    arms = [x[None, :] if x.ndim == 1 else x for x in arms]
+    if any(x.shape[1] != atoms.size for x in arms):
+        return None
+    n_out = int(n_out or atoms.size)
+
+    order = np.argsort(atoms)
+    a_sorted = atoms[order]
+    los, his = [], []
+    for x in arms:
+        pooled = x.sum(axis=0)[order]
+        tot = float(pooled.sum())
+        if not np.isfinite(tot) or tot <= 0:
+            return None
+        c = np.cumsum(pooled) / tot
+        los.append(float(np.interp(eps, c, a_sorted)))
+        his.append(float(np.interp(1.0 - eps, c, a_sorted)))
+    lo, hi = min(los), max(his)
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        lo, hi = float(atoms.min()), float(atoms.max())
+
+    grid = np.linspace(lo, hi, n_out)
+    step = (hi - lo) / (n_out - 1)
+    pos = np.clip((atoms - lo) / step, 0.0, float(n_out - 1))
+    i0 = np.clip(np.floor(pos).astype(int), 0, n_out - 1)
+    i1 = np.clip(i0 + 1, 0, n_out - 1)
+    w1 = pos - i0
+    w0 = 1.0 - w1
+    out = []
+    for x in arms:
+        o = np.zeros((x.shape[0], n_out), dtype=np.float64)
+        for k in range(x.shape[1]):
+            o[:, i0[k]] += x[:, k] * w0[k]
+            o[:, i1[k]] += x[:, k] * w1[k]
+        t = o.sum(axis=1, keepdims=True)
+        out.append(np.divide(o, np.where(t > 0, t, 1.0)))
+    return grid, out
+
+
 def _rebin_nonuniform(parms, edges, n_out=None, eps=_REBIN_TRIM):
     """Rebin a piecewise-uniform density from NON-UNIFORM bins onto a uniform grid.
 
@@ -388,6 +443,24 @@ def _load_arrays(path, tag=None, coupling="indep"):
             # before convolving. Detected from `edges`, not from the model
             # name -- any head with unevenly spaced borders needs this, and
             # heads with uniform borders fall through unchanged.
+            # bucket_means present -> score at the SAME points the model's
+            # own point estimate uses, so PEHE and the intervals describe one
+            # estimator (PEHE is fixed to the upstream definition).
+            if "bucket_means" in z.files:
+                _bm = np.asarray(z["bucket_means"], dtype=np.float64).reshape(-1)
+                if _bm.size == J:
+                    _rb = _rebin_atoms_shared((p0, p1), _bm)
+                    if _rb is not None:
+                        _g, (p0, p1) = _rb
+                        J = p0.shape[-1]
+                        atoms = tau_atoms(J, float(_g[1] - _g[0])) * y_scale
+                        pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
+                                 for q in range(p0.shape[0])]
+                                if coupling == "comonotonic" else
+                                [tau_pmf_indep(p0[q], p1[q])
+                                 for q in range(p0.shape[0])])
+                        _LAST_J["_J"] = int(len(atoms))
+                        return atoms, pmfs, y_true, len(pmfs)
             _e = (np.asarray(z["edges"], dtype=np.float64).reshape(-1)
                   if "edges" in z.files else None)
             if _e is not None and _e.size == J + 1:
