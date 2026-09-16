@@ -73,6 +73,11 @@ def _locate_dataset(cfg):
     from omegaconf import OmegaConf
 
     candidates = [
+        # CausalPFN's own key, as of conf/train.yaml:
+        #   train_meta_dataset._target_ = causalpfn.training.priors.BackdoorDGPMetaDataset
+        # Its generator is named X_y0_E_y0_y1_E_y1_generator, i.e. the prior
+        # emits both potential outcomes and both conditional means.
+        "train_meta_dataset", "meta_dataset", "val_meta_dataset",
         "data.dataset", "data.train_dataset", "data", "dataset",
         "train_dataset", "prior", "data.prior", "datamodule.dataset",
     ]
