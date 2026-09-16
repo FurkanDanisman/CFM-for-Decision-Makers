@@ -46,8 +46,52 @@ SURFACE = "#fcfcfb"
 INK = "#1a1a19"
 MUTED = "#6b6b68"
 
-PRETTY = {"lalonde_cps_sample": "CPS", "lalonde_psid_sample": "PSID",
-          "ihdp_sample": "IHDP", "acic_sample": "ACIC"}
+PRETTY = {"lalonde_cps_sample": "CPS", "lalonde_psid_sample": "PSID"}
+
+
+def ihdp_residuals(causalpfn: str):
+    """IHDP (Hill 2011): (672 units x 100 realizations), BOTH arms observed.
+
+    The npz stores the factual yf and the counterfactual ycf, so the pair
+    (y0, y1) is recoverable per unit via the treatment indicator, and mu0/mu1
+    give the noiseless means directly -- no within-unit centring needed.
+    """
+    import glob as _g
+    cands = _g.glob(os.path.join(causalpfn, "**", "ihdp_npci_1-100.train.npz"),
+                    recursive=True)
+    if not cands:
+        return None
+    z = np.load(cands[0])
+    need = {"yf", "ycf", "mu0", "mu1", "t"}
+    if not need <= set(z.files):
+        return None
+    t = np.asarray(z["t"], float)
+    yf, ycf = np.asarray(z["yf"], float), np.asarray(z["ycf"], float)
+    mu0, mu1 = np.asarray(z["mu0"], float), np.asarray(z["mu1"], float)
+    y0 = np.where(t > 0.5, ycf, yf)
+    y1 = np.where(t > 0.5, yf, ycf)
+    e0, e1 = (y0 - mu0).ravel(), (y1 - mu1).ravel()
+    s0, s1 = e0.std(), e1.std()
+    if s0 <= 0 or s1 <= 0:
+        return None
+    e0, e1 = e0 / s0, e1 / s1
+    rho = float(np.corrcoef(e0, e1)[0, 1])
+    return e0, e1, rho, t.shape[0], t.shape[1]
+
+
+def acic_probe(causalpfn: str):
+    """ACIC 2016 ships zymu_<i>.csv = z, y, mu0, mu1 -- the FACTUAL y only.
+
+    With one arm observed per unit the two noises are never seen together, so
+    their correlation is not estimable from this data at any sample size.
+    Returns the columns found so the caller can say that rather than guess.
+    """
+    import glob as _g
+    for pat in ("**/zymu_*.csv", "**/acic*/*.csv"):
+        for f in _g.glob(os.path.join(causalpfn, pat), recursive=True)[:1]:
+            with open(f) as fh:
+                return f, fh.readline().strip()
+    return None, None
 
 
 def find_csv_dir(causalpfn: str) -> str:
@@ -139,6 +183,20 @@ def main():
         raise SystemExit("no *_sample<k>.csv families found")
 
     res = {}
+    got_ihdp = ihdp_residuals(a.causalpfn)
+    if got_ihdp is not None:
+        res["IHDP"] = got_ihdp
+        print(f"{'IHDP':8s} n_unit={got_ihdp[3]:6d} K={got_ihdp[4]:3d} "
+              f"rho={got_ihdp[2]:+.4f}")
+    else:
+        print("[skip] IHDP: no ihdp_npci npz with yf/ycf/mu0/mu1")
+    _f, _cols = acic_probe(a.causalpfn)
+    if _f:
+        print(f"[acic] {os.path.basename(_f)} columns: {_cols}")
+        if "y0" not in _cols and "ycf" not in _cols:
+            print("[acic] factual outcome only -- arm-noise correlation is NOT "
+                  "estimable from this data (the two arms are never observed "
+                  "for the same unit).")
     for prefix, paths in fams.items():
         got = residuals(paths, a.max_files)
         if got is None:
