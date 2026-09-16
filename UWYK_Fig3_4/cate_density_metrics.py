@@ -392,7 +392,7 @@ def _rebin_nonuniform(parms, edges, n_out=None, eps=_REBIN_TRIM):
     return centers, out
 
 
-def _load_arrays(path, tag=None, coupling="indep"):
+def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
     """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
     with np.load(path, allow_pickle=True) as z:
         # Density keys must match the REQUESTED tag. Falling back to the
@@ -438,7 +438,28 @@ def _load_arrays(path, tag=None, coupling="indep"):
         if joint is not None and joint.ndim == 3:
             J = joint.shape[-1]
             atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
-            pmfs = [tau_pmf_joint(joint[q]) for q in range(joint.shape[0])]
+            if joint_coupling == "learned":
+                pmfs = [tau_pmf_joint(joint[q]) for q in range(joint.shape[0])]
+            else:
+                # ABLATION: discard the head's learned dependence and rebuild
+                # tau from its own marginals under an imposed coupling. The
+                # marginals are exact -- summing the joint over one axis is
+                # what a 1D head would have predicted for that arm -- so the
+                # only thing removed is the dependence structure, and the gap
+                # to `learned` is precisely what the joint representation buys
+                # on this dataset. cf. Var(tau) = s0^2 + s1^2 - 2 rho s0 s1:
+                # independence assumes rho = 0 and is therefore the widest of
+                # the three, comonotonic assumes rho = 1 and is the narrowest.
+                _m0 = joint.sum(axis=2)          # (n_q, J)  marginal of Y0
+                _m1 = joint.sum(axis=1)          # (n_q, J)  marginal of Y1
+                _m0 = _m0 / np.maximum(_m0.sum(axis=1, keepdims=True), 1e-300)
+                _m1 = _m1 / np.maximum(_m1.sum(axis=1, keepdims=True), 1e-300)
+                if joint_coupling == "comonotonic":
+                    pmfs = [tau_pmf_comonotonic(_m0[q], _m1[q], J)
+                            for q in range(joint.shape[0])]
+                else:
+                    pmfs = [tau_pmf_indep(_m0[q], _m1[q])
+                            for q in range(joint.shape[0])]
         elif p0 is not None and p1 is not None and p0.ndim == 2:
             J = p0.shape[-1]
             # Per-arm standardisation: the two arms live on DIFFERENT affine
@@ -504,9 +525,9 @@ def _load_arrays(path, tag=None, coupling="indep"):
     return atoms, pmfs, y_true, len(pmfs)
 
 
-def _query_pmfs(path, tag=None, coupling="indep"):
+def _query_pmfs(path, tag=None, coupling="indep", joint_coupling="learned"):
     """(atoms, pmfs (n_q, K), y_true (n_q,)) for one npz, or None."""
-    got = _load_arrays(path, tag, coupling)
+    got = _load_arrays(path, tag, coupling, joint_coupling)
     if got is None:
         return None
     atoms, pmfs, y_true, _ = got
@@ -514,9 +535,9 @@ def _query_pmfs(path, tag=None, coupling="indep"):
     return atoms, pm, y_true[: pm.shape[0]]
 
 
-def score_file(path, tag=None, coupling="indep"):
+def score_file(path, tag=None, coupling="indep", joint_coupling="learned"):
     """All per-query scores for one realization npz. None if it has no density."""
-    got = _load_arrays(path, tag, coupling)
+    got = _load_arrays(path, tag, coupling, joint_coupling)
     if got is None:
         return None
     atoms, pmfs, y_true, _ = got
@@ -583,7 +604,7 @@ def _bary(atoms, pmfs):
     return pmf / tot if tot > 0 else pmf
 
 
-def ate_rows_plain(d, tag, coupling, max_real=None):
+def ate_rows_plain(d, tag, coupling, max_real=None, joint_coupling="learned"):
     """ATE predictive per realization for a flat dataset dir (RealCause).
 
     No subset pooling: each npz already holds every query of its realization,
@@ -594,7 +615,7 @@ def ate_rows_plain(d, tag, coupling, max_real=None):
         files = files[:max_real]
     out = []
     for f in files:
-        got = _query_pmfs(f, tag, coupling)
+        got = _query_pmfs(f, tag, coupling, joint_coupling)
         if got is None:
             continue
         atoms, pmfs, y = got
@@ -605,7 +626,7 @@ def ate_rows_plain(d, tag, coupling, max_real=None):
 
 
 def ate_rows(root, ctx, nodes, subdir, tag, coupling, subset, data_root,
-             max_real=None):
+             max_real=None, joint_coupling="learned"):
     """One ATE predictive per source realization, with its realized ATE.
 
     Under `total` the two subsets are two files of the SAME dataset, so their
@@ -630,7 +651,7 @@ def ate_rows(root, ctx, nodes, subdir, tag, coupling, subset, data_root,
             if not digits:
                 continue
             idx = int(digits)
-            got = _query_pmfs(f, tag, coupling)
+            got = _query_pmfs(f, tag, coupling, joint_coupling)
             if got is None:
                 continue
             atoms, pmfs, y = got
@@ -718,6 +739,18 @@ def _parse():
                          "uwyk / uwyk_v3a / uwyk_noanc / graph2d / dopfn_* "
                          "where METHODS expects uwyk1d + tags. Overrides "
                          "--methods and --skip.")
+    ap.add_argument("--joint-coupling", default="learned",
+                    choices=["learned", "indep", "comonotonic"],
+                    help="how 2D heads turn their joint into p(tau). "
+                         "learned = anti-diagonal projection, using the "
+                         "dependence the head represents (default). "
+                         "indep / comonotonic = ABLATION: take the joint's own "
+                         "marginals and re-couple them, discarding the learned "
+                         "dependence. The gap between `learned` and `indep` is "
+                         "what the joint buys over a 1D head fed the same "
+                         "marginals. 1D heads are unaffected -- they have no "
+                         "joint to discard -- so their rows are identical "
+                         "across settings and serve as a control.")
     ap.add_argument("--out", default=None)
     return ap.parse_args()
 
@@ -731,11 +764,11 @@ def _build_ate(args, todo):
         if getattr(args, "dataset_name", None):
             recs = ate_rows_plain(
                 _resolve_dir(args.root, subdir, args.dataset_name),
-                tag, args.coupling, args.max_real)
+                tag, args.coupling, args.max_real, args.joint_coupling)
         else:
             recs = ate_rows(args.root, args.context, args.nodes, subdir, tag,
                             args.coupling, args.subset, args.data_root,
-                            args.max_real)
+                            args.max_real, args.joint_coupling)
         print(f" {len(recs)} datasets", flush=True)
         if not recs:
             continue
@@ -791,7 +824,7 @@ def build_table(args):
             if args.max_real:
                 files = files[: args.max_real]
             for f in files:
-                got = score_file(f, tag, args.coupling)
+                got = score_file(f, tag, args.coupling, args.joint_coupling)
                 if got:
                     acc += got
                     n_files += 1
