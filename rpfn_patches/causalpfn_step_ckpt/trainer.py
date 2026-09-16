@@ -181,6 +181,7 @@ def train(
     step_checkpoint_every: int = 0,
     step_checkpoint_root: str | None = None,
     step_checkpoint_keep: int = 0,      # 0 = keep everything (previous default)
+    max_actual_step: int = 0,           # 0 = no limit; else stop at this step
 ):
     """
     Takes a model designed for prior-fitting (`model`) and then trains CATE on a given set of datasets.
@@ -244,6 +245,8 @@ def train(
                   + (f"last {step_checkpoint_keep}" if step_checkpoint_keep > 0
                      else "unlimited"))
             print(f"[step-ckpt] resuming from actual_step={actual_step}")
+    if max_actual_step and max_actual_step > 0 and rank == 0:
+        print(f"[step-limit] training will stop at actual_step={max_actual_step}")
     if _run_name is None:
         from datetime import datetime
         _run_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -267,7 +270,10 @@ def train(
 
     print(f"Effective batch size is: {num_agg * batch_size * world_size}")
 
+    _hit_step_limit = False
     for epoch in range(max_epochs):
+        if _hit_step_limit:
+            break
         if epoch < start_epoch:
             pbar_train.update(num_model_updates * num_agg * world_size)
             continue
@@ -363,6 +369,37 @@ def train(
                     )
                     print(f"[step-ckpt] saved {path}")
                     _prune_step_checkpoints(step_ckpt_dir, step_checkpoint_keep)
+
+                # ── STEP-LIMIT PATCH ── stop exactly at max_actual_step.
+                # max_epochs sets a ceiling in EPOCHS (max_epochs *
+                # num_model_updates steps), which cannot express "stop at step
+                # 50000" unless 50000 happens to divide evenly. This does, and
+                # it also guarantees the final checkpoint exists: if the limit
+                # is not a multiple of step_checkpoint_every the block above
+                # never fires on it, so save here before breaking out.
+                if max_actual_step and actual_step >= max_actual_step:
+                    if (step_checkpoint_every and step_checkpoint_every > 0
+                            and (actual_step % step_checkpoint_every) != 0
+                            and rank == 0):
+                        path = os.path.join(step_ckpt_dir, f"step_{actual_step:07d}.pt")
+                        _save_step_checkpoint(
+                            path=path,
+                            model=(model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model),
+                            optimizer=optimizer,
+                            lr_scheduler=lr_scheduler,
+                            actual_step=actual_step,
+                            epoch=epoch,
+                            train_loss=total_loss / max(1, (batch_counter // num_agg) + 1),
+                            run_name=_run_name,
+                            checkpoint_dir_name=_dir_name,
+                        )
+                        print(f"[step-ckpt] saved {path}  (final, at step limit)")
+                        _prune_step_checkpoints(step_ckpt_dir, step_checkpoint_keep)
+                    if rank == 0:
+                        print(f"[step-limit] reached actual_step={actual_step} "
+                              f">= {max_actual_step}; stopping training.")
+                    _hit_step_limit = True
+                    break
 
         # update the loss reports
         total_loss /= num_model_updates

@@ -35,8 +35,8 @@
 # (confirmed on job 5464647, 2026-09-15). compile affects speed, not results.
 # Set COMPILE=1 once the torch install is repaired.
 #
-# TARGET: step 50000. max_epochs leaves the ceiling at 262 144 steps, so the
-# job does NOT stop itself at 50k -- see STEP_CKPT_KEEP note below.
+# TARGET: step 50000, enforced by +trainer.max_actual_step=$MAX_STEP. The job
+# stops itself there, so the last three step checkpoints are 46k / 48k / 50k.
 #
 # A1 STEP-BASED TRAJECTORY MATCH:
 # - max_epochs=2048, num_model_updates=128 → 262 144 optimizer steps (originals).
@@ -113,11 +113,13 @@ STEP_CKPT_ROOT="${STEP_CKPT_ROOT:-$OUT_DIR/step_checkpoints}"
 # lands. LAST-N, not best-N: the Checkpoint callback already keeps a
 # best-by-loss set (top_k), and what a requeued job needs is the most recent
 # state. 0 = keep everything (the old behaviour, which filled the disk).
-# NOTE on the 50k target: at EVERY=2000 / KEEP=3 only the last three step
-# checkpoints survive, so step_0050000.pt is deleted once training passes
-# step 56000. Either stop the job at 50k, or raise KEEP, if that checkpoint
-# has to be kept.
 STEP_CKPT_KEEP="${STEP_CKPT_KEEP:-3}"
+# Hard stop at step 50000 (trainer patch: +trainer.max_actual_step). max_epochs
+# only bounds EPOCHS -- 50000 / num_model_updates=128 is not an integer, so the
+# epoch ceiling cannot express this target. The trainer breaks out the moment
+# actual_step reaches the limit, and guarantees a checkpoint at exactly that
+# step. Final retained set is 46000 / 48000 / 50000.
+MAX_STEP="${MAX_STEP:-50000}"
 mkdir -p "$STEP_CKPT_ROOT"
 
 # COMPILE=0 → append `compile=false` to hydra CLI (disables torch.compile).
@@ -160,6 +162,7 @@ python -u train.py \
     +trainer.step_checkpoint_every="$STEP_CKPT_EVERY" \
     +trainer.step_checkpoint_root="$STEP_CKPT_ROOT" \
     +trainer.step_checkpoint_keep="$STEP_CKPT_KEEP" \
+    +trainer.max_actual_step="$MAX_STEP" \
     "${COMPILE_ARGS[@]}" \
     "${RESUME_ARGS[@]}" &
 CHILD=$!
