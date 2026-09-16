@@ -4,6 +4,7 @@
 #
 #   OUT_ROOT=$SCRATCH/rc_dens_uni bash summarize.sh
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 source "$DEPLOY_ROOT/venv/bin/activate"

@@ -5,6 +5,7 @@
 # means, so an unweighted mean over cells would give a sparse d=2 cell the
 # same say as a dense d=50 one.
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 CPF="${CPF:-${OUT_ROOT:?set CPF or OUT_ROOT}}"

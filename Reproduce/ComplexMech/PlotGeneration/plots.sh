@@ -3,6 +3,7 @@
 # Palette #D97706 (1D) / #B91C1C (2D) is validated by the dataviz six-checks:
 # CVD deltaE 16.2 deutan, 18.8 normal, both well past the 8 threshold.
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"

@@ -14,11 +14,41 @@ Reproduce/
   CaseStudy/       6 DoPFN SCM case studies x 8 covariate counts x 3 shifts
 ```
 
+## Self-contained
+
+A clone of this branch needs nothing but a GPU cluster and a Python
+environment. The three third-party dependencies are vendored under
+`vendor/` and resolved by `Reproduce/env.sh`, which every entry point
+sources:
+
+| resolves to | upstream |
+|---|---|
+| `vendor/causalpfn` | CausalPFN — training loop, dataset loaders, RealCause data |
+| `vendor/dopfn` | DoPFN — artifacts and the classes the case-study pkls unpickle against |
+| `vendor/uwyk` | Use-What-You-Know — model, PAM builders, Fig-3/4 SCM samplers |
+
+Provenance (upstream URL, commit, licence) is in `vendor/VENDORED.md`. Those
+trees are snapshots: do not edit them. Our modifications live in
+`rpfn_patches/` and are applied at run time.
+
+Setting `CAUSALPFN` / `DOPFN_ROOT` / `UWYK` explicitly still overrides the
+vendored copy, for testing against an upstream working tree.
+
+## Data is regenerated, not shipped
+
+The generated benchmarks are a deterministic function of code that is in this
+repo, so they are not committed — `git-lfs` for several GB is not free and a
+regenerated tree is byte-identical anyway.
+`UWYK_Fig3_4/generate_pehe_benchmark.py --self-test` asserts exactly that.
+Run `<Benchmark>/DataGeneration/` first; RealCause has no such step, its data
+comes with `vendor/causalpfn`.
+
 ## The one thing not self-contained
 
 `Required_checkpoints/` holds every trained checkpoint (git LFS) **except
-DoPFN-native**, which has no checkpoint of ours — it loads DoPFN's own
-released artifacts. See `Training/DoPFN_BB/README.md` for how to place them.
+DoPFN-native**, which has no checkpoint of ours — it loads three artifact
+files from the DoPFN release. `vendor/dopfn/artifacts/` carries them, so a
+clone is still complete; see `Training/DoPFN_Native/README.md`.
 
 ## Order of operations
 

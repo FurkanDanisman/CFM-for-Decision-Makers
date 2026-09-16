@@ -11,6 +11,7 @@
 # recording n_covariates, cases, context sizes, n_realizations, seed_base and
 # cate_shift -- that manifest is what makes the tree reproducible.
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 mkdir -p logs_reproduce
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"

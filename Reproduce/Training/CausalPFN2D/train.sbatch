@@ -1,4 +1,5 @@
 #!/bin/bash
 # Thin wrapper -- the real script is benchmarks/cluster/submit_train_cpfn2d_j32_random.sbatch
 # Kept as an entry point so Training/ lists every model in one place.
-exec sbatch "${REPO:-$SCRATCH/rpfn_bench_kit/R-PFN}/benchmarks/cluster/submit_train_cpfn2d_j32_random.sbatch" "$@"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
+exec sbatch --export=ALL "${REPO:-$SCRATCH/rpfn_bench_kit/R-PFN}/benchmarks/cluster/submit_train_cpfn2d_j32_random.sbatch" "$@"

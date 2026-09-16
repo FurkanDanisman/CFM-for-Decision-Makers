@@ -2,6 +2,7 @@
 # PEHE (mean +- std and mean +- SEM) and L1-ATE per (model, d, N).
 #   OUT_ROOT=$SCRATCH/cmech_1d2d bash summarize.sh
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"

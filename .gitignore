@@ -36,3 +36,5 @@ dist/
 # Local outputs not tracked
 share/example_*.png
 share/*.png
+vendor/**/__pycache__/
+vendor/**/*.pyc

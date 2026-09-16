@@ -8,6 +8,7 @@
 # OMP_NUM_THREADS=1 is set before torch is imported: torch and XGBoost each
 # ship an OpenMP runtime and segfault on ComplexMech otherwise.
 set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/env.sh"
 DEPLOY_ROOT="${DEPLOY_ROOT:-$SCRATCH/rpfn_bench_kit}"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk_reproduce/src}"
