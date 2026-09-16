@@ -13,6 +13,9 @@ DoPFN additionally uses DoPFN1D for its native FullSupportBarDistribution
 (nonuniform interior bins, half-normal outer bins), and Joint2D for its
 trained joint head. dopfn_tau_density evaluates the same diagonal integral
 analytically for the product of the native arms, including both tails.
+CausalPFN uses CausalPFN1D for its finite histogram and Joint2D for its
+joint head, including all nine regions. Its native independence convolution
+is exact; zero density outside its finite support is retained.
 
 Both are reduced to p(tau) by the SAME operator:
 
@@ -45,7 +48,7 @@ Reference implementations mirrored (do not let these drift):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -76,8 +79,9 @@ import numpy as np
 # exactly the ~22/100 IHDP realizations with < 5 old-grid points per sigma_tau.
 TAU_MIN, TAU_MAX = -3.0, 3.0
 TAU_STEP = 0.0005  # Also divides joint DoPFN's J=10 width (0.2).
-# Native DoPFN's adaptive border differences need not land on this grid.
-# Its density is evaluated exactly, but grid metrics use trapezoid as above.
+# Native DoPFN's adaptive border differences and CausalPFN's affinely mapped
+# bins need not land on this grid. Their native densities are evaluated
+# exactly, but grid metrics use trapezoid as above.
 _N_TAU = int(round((TAU_MAX - TAU_MIN) / TAU_STEP)) + 1        # 12001
 TAU_CENTERS = np.linspace(TAU_MIN, TAU_MAX, _N_TAU)
 TAU_BIN = float(TAU_CENTERS[1] - TAU_CENTERS[0])
@@ -188,6 +192,18 @@ class Joint2D:
         centers = 0.5 * (self.edges[:-1] + self.edges[1:])
         return (float(self.p_mat.sum(axis=1) @ centers),
                 float(self.p_mat.sum(axis=0) @ centers))
+
+    def affine(self, factor: float, offset: float = 0.0) -> "Joint2D":
+        """Change both outcome axes to y_new = factor*y_old + offset.
+
+        Keep rho fixed: recomputing it on a new axis can hit from_pred's
+        variance floor and accidentally change the correlated corner tails.
+        """
+        if not np.isfinite(factor) or factor <= 0 or not np.isfinite(offset):
+            raise ValueError('Joint2D affine transform requires positive finite factor')
+        return replace(self, edges=self.edges*factor+offset,
+                       sL0=self.sL0*factor, sR0=self.sR0*factor,
+                       sL1=self.sL1*factor, sR1=self.sR1*factor)
 
     def mean(self, inner=None) -> tuple[float, float]:
         """Exact E[Y0], E[Y1] of the full density, including correlated corners.
@@ -708,6 +724,47 @@ def uwyk_tau_density(f0: UWYK1D, f1: UWYK1D, tau_points, n_pad_sigma=8.0,
 
 
 # ---------------------------------------------------------------------------
+# CausalPFN's finite native histogram
+# ---------------------------------------------------------------------------
+@dataclass
+class CausalPFN1D:
+    """One CausalPFN arm: uniform finite bins, with no invented tail mass.
+
+    Edges may already be affinely mapped to the common scoring axis.
+    """
+    p: np.ndarray
+    edges: np.ndarray
+
+    @classmethod
+    def from_pred(cls, logits, edges):
+        logits = np.asarray(logits, dtype=np.float64).reshape(-1)
+        edges = np.asarray(edges, dtype=np.float64).reshape(-1)
+        widths = np.diff(edges)
+        if (not logits.size or edges.size != logits.size + 1
+                or not np.all(np.isfinite(edges))
+                or np.any(widths <= 0)
+                or not np.allclose(widths, widths.mean(), rtol=1e-4, atol=0)):
+            raise ValueError('CausalPFN requires one logit per uniform, finite bin')
+        if not np.all(np.isfinite(logits)):
+            raise ValueError('CausalPFN logits must be finite')
+        return cls(np.exp(_log_softmax(logits)), edges)
+
+    @property
+    def bw(self):
+        return float((self.edges[-1] - self.edges[0]) / self.p.size)
+
+    def mean(self):
+        return float(self.p @ (0.5 * (self.edges[:-1] + self.edges[1:])))
+
+
+def causalpfn_tau_density(f0: CausalPFN1D, f1: CausalPFN1D, tau_points):
+    """Exact independence convolution of two finite CausalPFN histograms."""
+    if f0.edges.shape != f1.edges.shape or not np.allclose(f0.edges, f1.edges):
+        raise ValueError('CausalPFN arms must share an outcome grid')
+    return _interior_tau(_diag_sums_product(f0.p, f1.p), tau_points, f0.bw, 1.0)
+
+
+# ---------------------------------------------------------------------------
 # Truth
 # ---------------------------------------------------------------------------
 def truth_tau_density(mu0, mu1, sigma, tau_points):
@@ -739,9 +796,8 @@ def kl(p, q, grid):
 
 
 def nll(density_at_point):
-    """-log f(tau*). No epsilon floor is applied here on purpose: with full
-    tails the density is strictly positive everywhere, so a -inf means a real
-    bug (or a truncated evaluation), and should surface rather than be hidden.
+    """-log f(tau*), with no epsilon floor. Full-tail heads should be positive;
+    CausalPFN's finite native support can give zero density and hence +inf NLL.
     """
     d = np.asarray(density_at_point, dtype=np.float64)
     return -np.log(d)

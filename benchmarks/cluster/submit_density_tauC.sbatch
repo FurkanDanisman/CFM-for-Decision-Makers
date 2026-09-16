@@ -67,13 +67,16 @@ REPO="${REPO:-/home/lukez/projects/aip-rgrosse/lukez/CFM-for-Decision-Makers}"
 export UWYK="${UWYK:-$REPO/g4cfm}"
 export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
 
-# Select uwyk (legacy default), dopfn, or all. The DoPFN checkout must include
+# Select uwyk (legacy default), dopfn, causalpfn, or all. The DoPFN checkout must include
 # its pretrained artifacts even when loading our joint checkpoint.
 # Example: MODEL_FAMILY=dopfn DOPFN_ROOT=/path/to/Do-PFN sbatch ...
 export MODEL_FAMILY="${MODEL_FAMILY:-uwyk}"
 export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN:-}}"
 export DOPFN_JOINT_CKPT="${DOPFN_JOINT_CKPT:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
 export DOPFN_QUERY_CHUNK="${DOPFN_QUERY_CHUNK:-20}"
+export CAUSALPFN_CKPT="${CAUSALPFN_CKPT:-$REPO/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt}"
+export CAUSALPFN_JOINT_CKPT="${CAUSALPFN_JOINT_CKPT:-$REPO/Required_checkpoints/cpfn2d_j32_random_step_50000.pt}"
+export CAUSALPFN_QUERY_CHUNK="${CAUSALPFN_QUERY_CHUNK:-512}"
 
 # ── checkpoints ────────────────────────────────────────────────────────────
 # Joint-2D: our graph2d head. step_50000 matches the "Ours V6A - 5206104" row
@@ -115,9 +118,13 @@ export OUT_ROOT="${OUT_ROOT:-$REPO/results_density_tauC/$SLURM_ARRAY_JOB_ID}"
 inputs=()
 case "$MODEL_FAMILY" in
     uwyk|all) inputs+=("$CKPT" "$UWYK_CKPT" "$UWYK_CFG") ;;
-    dopfn) ;;
-    *) echo "FATAL: MODEL_FAMILY must be uwyk, dopfn, or all" >&2; exit 1 ;;
+    dopfn|causalpfn) ;;
+    *) echo "FATAL: MODEL_FAMILY must be uwyk, dopfn, causalpfn, or all" >&2; exit 1 ;;
 esac
+if [[ "$MODEL_FAMILY" == causalpfn || "$MODEL_FAMILY" == all ]]; then
+    inputs+=("$CAUSALPFN_CKPT" "$CAUSALPFN_JOINT_CKPT"
+             "$CAUSALPFN/src/causalpfn/models/model.py")
+fi
 if [[ "$MODEL_FAMILY" == dopfn || "$MODEL_FAMILY" == all ]]; then
     [ -n "$DOPFN_ROOT" ] || { echo "FATAL: set DOPFN_ROOT" >&2; exit 1; }
     inputs+=("$DOPFN_JOINT_CKPT" "$DOPFN_ROOT/artifacts/dopfn_model.pkl"
@@ -167,8 +174,10 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 
 if [[ "$MODEL_FAMILY" == dopfn ]]; then
     GRAPH_DESC="UWYK_graph=n/a DoPFN_graph=none"
+elif [[ "$MODEL_FAMILY" == causalpfn ]]; then
+    GRAPH_DESC="UWYK_graph=n/a CausalPFN_graph=none"
 elif [[ "$MODEL_FAMILY" == all ]]; then
-    GRAPH_DESC="UWYK_graph=$ANC_TAG DoPFN_graph=none"
+    GRAPH_DESC="UWYK_graph=$ANC_TAG DoPFN_graph=none CausalPFN_graph=none"
 else
     GRAPH_DESC="UWYK_graph=$ANC_TAG"
 fi
@@ -182,6 +191,7 @@ if [ "$T" -eq 0 ]; then
     python -u "$REPO/benchmarks/eval_graph2d/test_density_common.py" \
         || { echo "FATAL: density gates failed; not running the eval." >&2; exit 3; }
     python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_dopfn.py'
+    python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_causalpfn.py'
     python -m unittest discover -s "$REPO/benchmarks/methods" -p 'test_dopfn_compat.py'
     echo "--- gates passed ---"
 fi

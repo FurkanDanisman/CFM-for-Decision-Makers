@@ -2,7 +2,8 @@
 
 `eval_density_tauC.py` scores the conditional distribution of
 `tau = Y(1) - Y(0)` and reports point errors for its mean (CATE).
-Choose the model with `--model uwyk`, `--model dopfn`, or `--model all`.
+Choose the model with `--model uwyk`, `--model dopfn`, `--model causalpfn`,
+or `--model all` (all three pairs).
 `MODEL_FAMILY` provides the same selection for the Slurm launcher and remains
 available for existing commands; the command-line flag takes precedence.
 
@@ -10,6 +11,65 @@ available for existing commands; the command-line flag takes precedence.
 | --- | --- | --- |
 | UWYK / g4cfm | `uwyk_native`, `uwyk_matched`, `joint` | Existing `UWYK_CKPT`, `UWYK_CFG`, `CKPT` |
 | DoPFN | `dopfn_native`, `dopfn_joint` | `DOPFN_ROOT` and optional `DOPFN_JOINT_CKPT` |
+| CausalPFN | `causalpfn_native`, `causalpfn_joint` | `CAUSALPFN` checkout; optional `CAUSALPFN_CKPT`, `CAUSALPFN_JOINT_CKPT` |
+
+## CausalPFN
+
+The default checkpoints are
+`Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt` and
+`Required_checkpoints/cpfn2d_j32_random_step_50000.pt`. Run one realization:
+
+```bash
+CAUSALPFN=/path/to/CausalPFN \
+REAL_START=0 REAL_END=1 EVAL_MAX_CONTEXT=1000 \
+OUT=./results_density_tauC/causalpfn/IHDP \
+python -u benchmarks/eval_graph2d/eval_density_tauC.py \
+  --model causalpfn --dataset IHDP
+```
+
+Use `--dataset ACIC`, the corresponding `OUT=.../ACIC`, and the existing
+`ACIC_CACHE_DIR` for ACIC. CausalPFN-only runs need no UWYK or DoPFN
+checkpoints. The shared harness still requires the `g4cfm` source tree.
+`CAUSALPFN_QUERY_CHUNK=512` controls batching for both CausalPFN heads.
+
+```bash
+MODEL_FAMILY=causalpfn sbatch benchmarks/cluster/submit_density_tauC.sbatch
+python benchmarks/eval_graph2d/summarize_density_tauC.py \
+  results_density_tauC/causalpfn --model causalpfn
+```
+
+Both models use the shared context selection and standardized covariates,
+padded to their checkpoint feature counts (99 for these checkpoints). They
+receive no graph. Both use **pooled outcome standardization** computed from
+that context (`torch.std`, correction=1), matching the joint checkpoint's
+training. This differs from the per-arm default of the older point-evaluation
+scripts. `STD_MODE` does not change this density adapter. The model outcome
+axes are mapped to the shared `Y_SCALING` scoring axis after inference;
+`Y_SCALING` and `STD_TARGET` do not change the CausalPFN input transform.
+
+The 1D model uses all 1024 finite bins on its native `[-10, 10]` axis. Its
+independence convolution is analytic and preserves exact zero density outside
+its support. Such observations produce **NLL = +inf**, retained in summaries;
+`frac_zero_density_causalpfn_native` reports their frequency. Grid KL follows
+the existing scorer's density floor and is not full-support KL for this
+finite-support model. The joint model uses `Joint2D` with all 32² bins,
+nine region weights and four tail scales. Its tails are not discarded or
+renormalized. `causalpfn_joint_inner` reports the additional interior-mean
+point metrics. This is a comparison of the supplied models at their native
+resolutions; no resolution-matched CausalPFN row is added.
+
+Prediction dumps include both 1D logits, full joint logits, native and
+transformed edges, context outcome transform, checkpoint paths and feature
+counts. Reconstruct native arms with `CausalPFN1D.from_pred` using
+`causalpfn_edges1d`. Reconstruct the joint with `Joint2D.from_pred` using
+`causalpfn_edges2d_native`, then call `.affine(causalpfn_y_scale / y_scale,
+(causalpfn_y_shift - y_shift) / y_scale)` to preserve the native correlation
+and transform its tail scales. The transformed bin
+knots generally do not align with the fixed tau grid: point NLL is evaluated
+directly, while grid metrics retain integration error. Check mass and
+finite-grid mean diagnostics as with DoPFN.
+
+## DoPFN and shared scoring
 
 `DOPFN_ROOT` is the upstream [Do-PFN checkout](https://github.com/jr2021/Do-PFN)
 containing `scripts/`, `model/`, and the pretrained files
@@ -97,7 +157,7 @@ It derives widths from returned outcome borders because upstream versions
 can leave `criterion.bucket_widths` stale after rescaling borders. Thus the
 reported mean is the mean of the reconstructed full density; it can differ
 from upstream `predict_cate()` when that stale-width behavior is present.
-Both joint models use `Joint2D` and the existing diagonal integration with
+All joint models use `Joint2D` and the existing diagonal integration with
 tails. Native DoPFN is not rebinned to J=10: its comparison includes resolution
 and preprocessing differences, as well as the learned joint dependence.
 
@@ -115,5 +175,6 @@ Validation:
 ```bash
 python benchmarks/eval_graph2d/test_density_common.py
 python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_dopfn.py'
+python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_causalpfn.py'
 python -m unittest discover -s benchmarks/methods -p 'test_dopfn_compat.py'
 ```

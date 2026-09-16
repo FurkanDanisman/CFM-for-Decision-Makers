@@ -18,6 +18,9 @@ MODEL_FAMILY="${MODEL_FAMILY:-all}"
 
 UWYK="${UWYK:-$DEPLOY_ROOT/external/uwyk}"
 DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
+CAUSALPFN="${CAUSALPFN:-$DEPLOY_ROOT/external/causalpfn}"
+CAUSALPFN_CKPT="${CAUSALPFN_CKPT:-$REPO/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt}"
+CAUSALPFN_JOINT_CKPT="${CAUSALPFN_JOINT_CKPT:-$REPO/Required_checkpoints/cpfn2d_j32_random_step_50000.pt}"
 VENV="${VENV:-$DEPLOY_ROOT/venv}"
 CKPT="${CKPT:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
 DOPFN_JOINT_CKPT="${DOPFN_JOINT_CKPT:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
@@ -59,6 +62,12 @@ if [ "$MODEL_FAMILY" = dopfn ] || [ "$MODEL_FAMILY" = all ]; then
     chk dopfn-model.pkl  "$DOPFN_ROOT/artifacts/dopfn_model.pkl"
     chk dopfn-config.pkl "$DOPFN_ROOT/artifacts/dopfn_config.pkl"
     chk dopfn-backbone   "$DOPFN_ROOT/artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt"
+fi
+if [ "$MODEL_FAMILY" = causalpfn ] || [ "$MODEL_FAMILY" = all ]; then
+    echo "--- causalpfn ---"
+    chk causalpfn-source "$CAUSALPFN/src/causalpfn/models/model.py"
+    chk causalpfn-ckpt "$CAUSALPFN_CKPT"
+    chk causalpfn-joint-ckpt "$CAUSALPFN_JOINT_CKPT"
 fi
 
 echo

@@ -9,7 +9,7 @@ treat queries from one realization as independent and understate the SE.
 
 Output is markdown (one model-family table plus its contrasts per dataset), so
 it can be pasted straight into LATEST_RESULTS.md; mixed shards are separated
-into UWYK and DoPFN sections. Use --model to select one family. The columns are
+into UWYK, DoPFN and CausalPFN sections. Use --model to select one family. The columns are
 padded so they stay readable as plain terminal text too. The best cell is bolded --
 lowest value for the error metrics and the contrasts, closest to 1.0 for `mass`
 -- and a column whose entries all tie at display precision gets no bold, since
@@ -28,21 +28,25 @@ from pathlib import Path
 
 import numpy as np
 
-METHODS = ('uwyk_native', 'uwyk_matched', 'joint', 'dopfn_native', 'dopfn_joint')
+METHODS = ('uwyk_native', 'uwyk_matched', 'joint', 'dopfn_native', 'dopfn_joint',
+           'causalpfn_native', 'causalpfn_joint')
 MODEL_METHODS = {
     'uwyk': ('uwyk_native', 'uwyk_matched', 'joint'),
     'dopfn': ('dopfn_native', 'dopfn_joint'),
+    'causalpfn': ('causalpfn_native', 'causalpfn_joint'),
 }
-MODEL_LABEL = {'uwyk': 'UWYK / g4cfm', 'dopfn': 'DoPFN'}
+MODEL_LABEL = {'uwyk': 'UWYK / g4cfm', 'dopfn': 'DoPFN', 'causalpfn': 'CausalPFN'}
 LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
          'uwyk_matched': 'UWYK (x)indep matched bins',
          'joint': 'UWYK Joint-2D',
          'dopfn_native': 'DoPFN (x)indep native',
-         'dopfn_joint': 'DoPFN Joint-2D'}
+         'dopfn_joint': 'DoPFN Joint-2D',
+         'causalpfn_native': 'CausalPFN (x)indep native',
+         'causalpfn_joint': 'CausalPFN Joint-2D'}
 # All four are errors or diagnostics; lower is better except `mass`, which
 # should sit at 1.0 and is a grid-coverage check, not a score.
 METRICS = ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass')
-POINT_METHODS = (*METHODS, 'joint_inner', 'dopfn_joint_inner')
+POINT_METHODS = (*METHODS, 'joint_inner', 'dopfn_joint_inner', 'causalpfn_joint_inner')
 POINT_METRICS = ('pehe', 'cate_l1', 'ate_abs_err')
 MISSING = '--'
 
@@ -57,6 +61,13 @@ def load(results_dir: Path, dataset: str):
 
 def mean_se(values):
     v = np.asarray([float(x) for x in values], dtype=np.float64)
+    # A finite-support model can legitimately assign zero density to tau*.
+    # Never turn an infinite mean NLL into a finite mean by dropping that run.
+    if np.isinf(v).any():
+        if np.isposinf(v).any() and np.isneginf(v).any():
+            return float('nan'), float('nan'), int(v.size)
+        return (float('inf') if np.isposinf(v).any() else -float('inf'),
+                float('nan'), int(v.size))
     v = v[np.isfinite(v)]
     if v.size == 0:
         return float('nan'), float('nan'), 0
@@ -135,10 +146,13 @@ def point_table(rows, density_methods=None):
             point_methods.append('joint_inner')
         if 'dopfn_joint' in density_methods:
             point_methods.append('dopfn_joint_inner')
+        if 'causalpfn_joint' in density_methods:
+            point_methods.append('causalpfn_joint_inner')
     if not any(f'pehe_{m}' in r for r in rows for m in point_methods):
         return None
     labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)',
-              'dopfn_joint_inner': 'DoPFN Joint-2D interior mean (raw)'}
+              'dopfn_joint_inner': 'DoPFN Joint-2D interior mean (raw)',
+              'causalpfn_joint_inner': 'CausalPFN Joint-2D interior mean (raw)'}
     methods = [m for m in point_methods if any(f'pehe_{m}' in r for r in rows)]
     body = [[labels[m]] for m in methods]
     for metric in POINT_METRICS:
@@ -193,6 +207,13 @@ def render_family(dataset, rows, model):
             row_cells.append(cell)
     print(md_table(['method', *METRICS], body,
                    ['l'] + ['r'] * len(METRICS)))
+    if model == 'causalpfn':
+        key = 'frac_zero_density_causalpfn_native'
+        if all(key in r for r in rows):
+            fraction = np.mean([float(r[key]) for r in rows])
+            print(f'\nNative finite support: zero density at tau* in {fraction:.2%} '
+                  'of queries (mean over realizations); NLL retains +inf. '
+                  'Grid KL uses the shared numerical density floor.')
 
     points = point_table(rows, methods)
     if points is not None:
@@ -228,6 +249,8 @@ def render_family(dataset, rows, model):
                  ('bridge', 'resolution handicap', 'uwyk_native', 'uwyk_matched')],
         'dopfn': [('**HEADLINE**', 'model gap as run',
                    'dopfn_native', 'dopfn_joint')],
+        'causalpfn': [('**HEADLINE**', 'model gap as run',
+                       'causalpfn_native', 'causalpfn_joint')],
     }
     contrasts = [c for c in candidates[model] if c[2] in methods and c[3] in methods]
     if contrasts:
