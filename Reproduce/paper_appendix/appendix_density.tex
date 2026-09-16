@@ -1,0 +1,352 @@
+% =====================================================================
+% Appendix: constructing and scoring the CATE / ATE predictive density
+% Self-contained; \input into the ICLR main file, or compile standalone
+% via main_standalone.tex in this folder.
+% =====================================================================
+\section{Constructing the treatment-effect predictive distribution}
+\label{app:density}
+
+Every method we compare emits a \emph{discrete} predictive distribution over
+outcomes rather than a point estimate, so the interval diagnostics in
+Section~\ref{sec:calibration} are computed from the models' own predictive
+objects with no post-hoc smoothing, resampling, or density estimation. This
+appendix states the construction exactly, because the methods differ in what
+they emit --- one marginal per arm versus a joint over both --- and those two
+cases require different reductions to a distribution over
+$\tau = Y^{(1)} - Y^{(0)}$.
+
+\subsection{Notation}
+\label{app:notation}
+
+Fix a query covariate vector $x$. Write $Y^{(t)}$ for the potential outcome
+under $\mathrm{do}(T=t)$, $t \in \{0,1\}$, and $\tau = Y^{(1)} - Y^{(0)}$ for
+the individual treatment effect. All methods discretise the outcome axis with
+a \emph{bar distribution}: a set of $K$ bins defined by edges
+\begin{equation}
+  e_0 < e_1 < \cdots < e_K ,
+  \qquad
+  w_k = e_k - e_{k-1},
+  \qquad k = 1,\dots,K ,
+\end{equation}
+together with a probability vector $p^{(t)} = (p^{(t)}_1,\dots,p^{(t)}_K)$,
+$p^{(t)}_k \ge 0$, $\sum_k p^{(t)}_k = 1$, obtained as a softmax of the
+model's logits. Each bin is summarised by a \emph{representative point}
+$m_k$; the choice of $m_k$ is model-specific and is the subject of
+Section~\ref{app:models}. For a uniform grid with $w_k \equiv \Delta$ the
+natural choice is the midpoint $m_k = \tfrac12(e_{k-1} + e_k)$, so that
+\begin{equation}
+  m_k = m_1 + (k-1)\Delta .
+  \label{eq:lattice}
+\end{equation}
+Equation~\eqref{eq:lattice} --- that the representative points lie on a
+lattice of spacing $\Delta$ --- is what makes the reductions below exact; we
+return to its failure in Section~\ref{app:nonuniform}.
+
+We write $\mathcal{M} = \{m_1,\dots,m_K\}$ for the support and
+$\hat F^{(t)}$ for the implied CDF.
+
+\subsection{Two-dimensional heads: anti-diagonal projection}
+\label{app:joint}
+
+A 2D head emits a joint law over the pair of potential outcomes: a matrix
+$P = (P_{ij})_{i,j=1}^{K}$ with $P_{ij} \ge 0$, $\sum_{ij} P_{ij} = 1$, where
+\begin{equation}
+  P_{ij} \;=\; \Pr\!\left[\, Y^{(0)} \in B_i ,\; Y^{(1)} \in B_j \,\right],
+  \qquad B_k = [e_{k-1}, e_k) .
+\end{equation}
+Assigning each bin its representative point gives $\tau = m_j - m_i$, which
+by \eqref{eq:lattice} equals $(j-i)\Delta$. The induced law of $\tau$ is
+therefore supported on the $2K-1$ lattice points $\{d\Delta\}_{d=-(K-1)}^{K-1}$
+with
+\begin{equation}
+  \boxed{\;
+  \Pr[\tau = d\Delta] \;=\; \sum_{\substack{i,j \\ j - i = d}} P_{ij}
+  \;}
+  \label{eq:diag}
+\end{equation}
+i.e.\ the sum of the $d$-th anti-diagonal of $P$. No independence assumption
+is made: \eqref{eq:diag} uses whatever dependence between the arms the model
+represents, which is precisely what a 2D head is for.
+
+\subsection{One-dimensional heads: coupling the two arms}
+\label{app:marginals}
+
+A 1D head emits only the two marginals $p^{(0)}, p^{(1)}$. These do not
+determine the law of $\tau$: any coupling $\pi$ with the given marginals is
+consistent with them, and different couplings give different answers. A
+choice must therefore be made explicit.
+
+\paragraph{Independence coupling.}
+Taking $\pi_{ij} = p^{(0)}_i p^{(1)}_j$ and substituting into
+\eqref{eq:diag},
+\begin{equation}
+  \boxed{\;
+  \Pr[\tau = d\Delta]
+  \;=\; \sum_{\substack{i,j \\ j-i=d}} p^{(0)}_i\, p^{(1)}_j
+  \;=\; \bigl(p^{(1)} * \widetilde{p^{(0)}}\bigr)_d ,
+  \qquad \widetilde{p^{(0)}}_k = p^{(0)}_{K+1-k} ,
+  \;}
+  \label{eq:conv}
+\end{equation}
+a discrete convolution of $p^{(1)}$ with the reflection of $p^{(0)}$. We
+evaluate \eqref{eq:conv} directly for small $K$ and by FFT above a threshold
+$K_{\mathrm{fft}}$, at which point the cost is $O(K \log K)$ rather than
+$O(K^2)$.
+
+\paragraph{Comonotonic coupling.}
+The opposite extreme couples the arms through their quantile functions,
+\begin{equation}
+  \tau(u) \;=\; \bigl(\hat F^{(1)}\bigr)^{-1}(u) - \bigl(\hat F^{(0)}\bigr)^{-1}(u),
+  \qquad u \sim \mathrm{Unif}(0,1),
+\end{equation}
+which is the coupling maximising the correlation between the arms and hence
+minimising $\operatorname{Var}(\tau)$.
+
+\paragraph{Why the choice matters.}
+Let $\rho$ denote the correlation between $Y^{(0)}$ and $Y^{(1)}$ under the
+data-generating process. Then
+\begin{equation}
+  \operatorname{Var}(\tau)
+  = \sigma_0^2 + \sigma_1^2 - 2\rho\,\sigma_0\sigma_1 ,
+  \label{eq:vartau}
+\end{equation}
+so the independence coupling ($\rho = 0$) overstates the spread of $\tau$
+whenever $\rho > 0$, by a factor of
+$\bigl[(\sigma_0^2+\sigma_1^2)/(\sigma_0^2+\sigma_1^2-2\rho\sigma_0\sigma_1)\bigr]^{1/2}$
+in standard deviation. On generators that draw both potential outcomes from
+shared exogenous noise, $\rho$ is close to $1$ and this factor is large. We
+report the independence coupling as the default because it is the assumption
+a 1D head implicitly licenses; the comparison to a 2D head on the same data
+is then a measurement of what the joint representation buys, and
+\eqref{eq:vartau} is the reason a 2D head can be sharper without being
+over-confident.
+
+\subsection{Outcome standardisation}
+\label{app:standardisation}
+
+Models predict on a standardised axis. Let arm $t$ use the affine map
+\begin{equation}
+  \widetilde{y} = \frac{y - \mu_t}{\sigma_t},
+  \qquad\text{equivalently}\qquad
+  y = \sigma_t \widetilde{y} + \mu_t .
+\end{equation}
+Then
+\begin{equation}
+  \tau
+  = \bigl(\sigma_1 \widetilde{Y}^{(1)} + \mu_1\bigr)
+  - \bigl(\sigma_0 \widetilde{Y}^{(0)} + \mu_0\bigr) .
+  \label{eq:perarm}
+\end{equation}
+Two regimes follow.
+
+\paragraph{Pooled ($\mu_0=\mu_1=\mu$, $\sigma_0=\sigma_1=\sigma$).}
+Equation~\eqref{eq:perarm} collapses to
+$\tau = \sigma\,(\widetilde{Y}^{(1)} - \widetilde{Y}^{(0)})$: the location
+parameter cancels and a single scalar $\sigma$ maps the standardised effect
+to raw units. Both reductions above then apply verbatim on the standardised
+axis, with atoms multiplied by $\sigma$.
+
+\paragraph{Per-arm ($\mu_0 \neq \mu_1$ or $\sigma_0 \neq \sigma_1$).}
+The location parameters do \emph{not} cancel, and no single scalar recovers
+$\tau$ from $\widetilde{Y}^{(1)} - \widetilde{Y}^{(0)}$. Applying the pooled
+formula regardless omits $\mu_1 - \mu_0$ and mis-scales one arm --- a pure
+translation of the $\tau$ density, which leaves its width intact while moving
+its centre, and therefore degrades coverage without affecting the spread
+diagnostics. When a method is evaluated under per-arm standardisation we map
+both arms to raw units first (Section~\ref{app:nonuniform}) and only then
+couple them.
+
+\subsection{Non-uniform bins}
+\label{app:nonuniform}
+
+Both reductions rely on \eqref{eq:lattice}. When the edges are not equally
+spaced --- as for quantile-spaced borders --- the differences $m_j - m_i$ do
+not lie on a lattice and neither \eqref{eq:diag} nor \eqref{eq:conv} applies.
+
+We therefore re-express such a predictive on a uniform grid before coupling.
+Treating the mass of each bin as uniformly distributed over that bin (the
+definition of a bar distribution) gives the piecewise-linear CDF
+\begin{equation}
+  \hat F^{(t)}(e_k) = \sum_{k' \le k} p^{(t)}_{k'} ,
+\end{equation}
+and for a target grid $e'_0 < \cdots < e'_{K'}$ the re-expressed masses are
+\begin{equation}
+  \boxed{\;
+  q^{(t)}_{k} \;=\; \hat F^{(t)}(e'_{k}) - \hat F^{(t)}(e'_{k-1}) ,
+  \qquad k = 1,\dots,K' .
+  \;}
+  \label{eq:rebin}
+\end{equation}
+This preserves total mass exactly and the mean to the resolution of the
+target grid. Two properties of the target grid matter.
+
+\begin{enumerate}
+\item \textbf{Both arms must share it.} If each arm were given its own grid
+      $\{e'^{(0)}\}$, $\{e'^{(1)}\}$ with different origins, the index
+      difference $j-i$ used by \eqref{eq:diag}--\eqref{eq:conv} would no
+      longer correspond to $m_j - m_i$; the offset between the two origins
+      would be absorbed silently into $\tau$ as a translation. We take
+      $e'_0 = \min_t \min_k e^{(t)}_k$ and
+      $e'_{K'} = \max_t \max_k e^{(t)}_k$.
+\item \textbf{It must cover the full support.} Truncating the grid and
+      clamping out-of-range mass onto the endpoints moves that mass, biasing
+      $\mathbb{E}[\tau]$. Resolution is instead obtained by increasing $K'$,
+      chosen so the grid spacing is comparable to the median inter-bin gap of
+      the source and capped at $K'_{\max}$ for tractability. $K'_{\max}$ is
+      held fixed across all benchmarks, so a given method is always scored at
+      one resolution.
+\end{enumerate}
+
+\subsection{Model-specific predictive objects}
+\label{app:models}
+
+\begin{table}[h]
+\centering
+\caption{What each method emits and how $\tau$ is obtained. $K$ denotes the
+method's own bin count; no method is re-discretised to another method's grid.}
+\label{tab:heads}
+\small
+\begin{tabular}{llll}
+\toprule
+Method & Emits & Grid & $\tau$ via \\
+\midrule
+CausalPFN-1D & two marginals & uniform & \eqref{eq:conv} \\
+CausalPFN-2D & joint $P$ & uniform & \eqref{eq:diag} \\
+Graph2D & joint $P$ & uniform & \eqref{eq:diag} \\
+UWYK-1D & two marginals & uniform & \eqref{eq:conv} \\
+DoPFN-bb & joint $P$ & uniform & \eqref{eq:diag} \\
+DoPFN (native) & two marginals & non-uniform & \eqref{eq:rebin} then \eqref{eq:conv} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Uniform-grid heads.}
+CausalPFN, Graph2D and UWYK place their bins on an evenly spaced grid, so
+$m_k$ is the bin midpoint and \eqref{eq:lattice} holds directly. UWYK's head
+additionally carries two half-normal tail components beyond the outermost
+edges; we treat them as ordinary boundary bins, which is the same
+approximation the method's own resolution-matched variant makes.
+
+\paragraph{Full-support bar distributions.}
+DoPFN's native head uses a full-support bar distribution: the interior bins
+are finite, while the first and last carry half-normal tails extending beyond
+the grid. Writing $\mathrm{HN}(s)$ for a half-normal with scale $s$, the tail
+scales are set so that a fixed probability $\eta$ falls within the outermost
+bin width,
+\begin{equation}
+  s_{\mathrm{L}} = \frac{w_1}{F^{-1}_{\mathrm{HN}(1)}(\eta)},
+  \qquad
+  s_{\mathrm{R}} = \frac{w_K}{F^{-1}_{\mathrm{HN}(1)}(\eta)},
+\end{equation}
+and since $\mathbb{E}[\mathrm{HN}(s)] = s\sqrt{2/\pi}$ the representative
+points of the two boundary bins are
+\begin{equation}
+  m_1 = e_1 - s_{\mathrm{L}}\sqrt{2/\pi},
+  \qquad
+  m_K = e_{K-1} + s_{\mathrm{R}}\sqrt{2/\pi},
+  \label{eq:tailmeans}
+\end{equation}
+which lie \emph{outside} their bins. Using midpoints for these two entries
+mis-states $\mathbb{E}[Y^{(t)}]$ whenever the tails carry non-negligible mass.
+
+\paragraph{Consistency between the point estimate and the density.}
+A calibration table is interpretable only if the reported point estimate and
+the reported intervals describe the same predictive object. We therefore
+define each method's $\tau$ density using the \emph{same} bin representatives
+that its own point estimate uses. Concretely, if a released implementation
+reports
+\begin{equation}
+  \hat\tau(x) \;=\; \sum_k p^{(1)}_k m^{\star}_k - \sum_k p^{(0)}_k m^{\star}_k
+\end{equation}
+for some representatives $m^{\star}$, then $m^{\star}$ --- not the midpoints
+--- is what enters \eqref{eq:conv}. This matters when $m^{\star}$ differs from
+the midpoint: a representative computed on a different scale from the edges,
+say $m^{\star}_k = e_{k-1} + w_k/(2\alpha)$ for a normalisation constant
+$\alpha \neq 1$, shifts each bin by $\tfrac{w_k}{2}(\alpha^{-1}-1)$. For a
+uniform grid this is a constant that cancels in $\tau$; for a non-uniform
+grid it does not, and the residual is
+\begin{equation}
+  \hat\tau_{\star} - \hat\tau_{\mathrm{mid}}
+  = \frac{\alpha^{-1}-1}{2} \sum_k \bigl(p^{(1)}_k - p^{(0)}_k\bigr) w_k ,
+  \label{eq:repdiff}
+\end{equation}
+which scales with the spread of the bin widths and with how far $\alpha$ is
+from unity. We adopt each method's own $m^{\star}$ so that PEHE and the
+interval scores are never computed from different estimators, and note
+\eqref{eq:repdiff} as the magnitude of the difference this choice makes.
+
+\subsection{From CATE to ATE}
+\label{app:ate}
+
+For a dataset with queries $x_1,\dots,x_n$ and per-query effect densities
+$\nu_1,\dots,\nu_n$ on a common support, the predictive for the average
+treatment effect is their $2$-Wasserstein barycenter,
+\begin{equation}
+  \bar\nu \;=\; \argmin_{\nu} \; \frac{1}{n}\sum_{q=1}^{n} W_2^2(\nu, \nu_q) .
+\end{equation}
+In one dimension this has the closed form
+\begin{equation}
+  \boxed{\;
+  \bar F^{-1}(u) \;=\; \frac{1}{n}\sum_{q=1}^{n} F_q^{-1}(u),
+  \qquad u \in (0,1),
+  \;}
+\end{equation}
+the pointwise average of the quantile functions. The barycenter is scored
+against the dataset's realised ATE, $\bar\tau = \tfrac{1}{n}\sum_q \tau^\star_q$.
+Averaging quantile functions rather than densities preserves the shape of the
+per-query predictive; averaging densities pointwise would instead produce a
+mixture, whose spread reflects heterogeneity across queries rather than
+uncertainty about the average.
+
+\section{Interval diagnostics}
+\label{app:metrics}
+
+Let $\nu$ be a predictive for $\tau$ with CDF $F$, and let $\tau^\star$ be the
+realised effect. For a nominal level $1-\alpha$ define
+\begin{equation}
+  \ell = F^{-1}(\alpha/2), \qquad u = F^{-1}(1-\alpha/2).
+\end{equation}
+
+\paragraph{Coverage and length.}
+$\mathrm{Cov} = \mathbb{1}\{\ell \le \tau^\star \le u\}$ and
+$\mathrm{Len} = u - \ell$, averaged over queries. Neither is interpretable
+alone: a sufficiently wide interval attains nominal coverage at any accuracy.
+
+\paragraph{Interval score.}
+The two are priced jointly by the interval (Winkler) score
+\begin{equation}
+  \boxed{\;
+  \mathrm{IS}_{\alpha}(\ell,u;\tau^\star)
+  = (u - \ell)
+  + \frac{2}{\alpha}(\ell - \tau^\star)\,\mathbb{1}\{\tau^\star < \ell\}
+  + \frac{2}{\alpha}(\tau^\star - u)\,\mathbb{1}\{\tau^\star > u\} ,
+  \;}
+\end{equation}
+which is proper, equals $\mathrm{Len}$ whenever the interval covers, and
+otherwise adds $2/\alpha$ times the miss distance. We report
+$\mathrm{IS}_{\alpha}$ at the same $\alpha$ as the coverage and length
+columns, so all three describe one interval.
+
+\paragraph{Relation to CRPS.}
+Averaging $\mathrm{IS}_{\alpha}$ over a grid of levels
+$\alpha_1 > \cdots > \alpha_J$ together with a median term gives the weighted
+interval score, which approximates
+\begin{equation}
+  \mathrm{CRPS}(F, \tau^\star)
+  = \int_{-\infty}^{\infty}\bigl(F(z) - \mathbb{1}\{z \ge \tau^\star\}\bigr)^2 \, dz .
+\end{equation}
+For a discrete $F$ with atoms $m_1 < \cdots < m_K$ and masses $p_k$ this
+integral is evaluated in closed form as a sum over the intervals between
+consecutive atoms. We report $\mathrm{IS}_{\alpha}$ rather than CRPS or WIS
+as the headline number because it scores the interval actually being
+reported; CRPS and WIS are retained in the released artefacts.
+
+\paragraph{Spread diagnostic.}
+We additionally report
+$\mathrm{sd\text{-}ratio} = \operatorname{sd}(\nu) / \operatorname{sd}(\tau^\star)$,
+the ratio of mean predictive standard deviation to the standard deviation of
+the true effects. This is a units check rather than a quality measure: a
+predictive expressed on the wrong scale still receives a finite score, and
+$\mathrm{sd\text{-}ratio}$ far from unity identifies that failure mode, which
+the other three columns cannot distinguish from genuine over- or
+under-dispersion.

@@ -1,0 +1,14 @@
+% Compile the appendix on its own:  pdflatex main_standalone
+% To use it in the paper instead, \input{appendix_density} from the ICLR main
+% file -- appendix_density.tex defines no preamble and starts at \section.
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,microtype}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue]{hyperref}
+\DeclareMathOperator*{\argmin}{arg\,min}
+% Placeholders for the labels the appendix cross-references in the main text.
+\newcommand{\sectionref}[1]{Section~\ref{#1}}
+\begin{document}
+\appendix
+\input{appendix_density}
+\end{document}
