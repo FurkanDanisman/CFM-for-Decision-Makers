@@ -50,7 +50,7 @@ fi
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 CS_ROOT="${CS_ROOT:-$SCRATCH/cs_dvar_dens}"
 CTX="${CTX:-1000}"
-MALC_B="${MALC_B:-1000}"
+MALC_B="${MALC_B:-100}"
 MALC_K="${MALC_K:-1}"
 N_TAU="${N_TAU:-4001}"
 NW="${NW:-${SLURM_CPUS_PER_TASK:-32}}"
