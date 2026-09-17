@@ -34,7 +34,11 @@
 #
 # Env:
 #   RC_ROOT      RealCause dumps      (default $SCRATCH/rc_dens_uni)
-#   CMECH_ROOT   ComplexMech dumps    (default $SCRATCH/cmech_1d2d)
+#   CMECH_ROOT   ComplexMech dumps    (default $SCRATCH/cmech_dens)
+#                NOT cmech_1d2d -- that root holds dopfn_native ONLY, so
+#                scoring against it silently produces single-method tables
+#                rather than failing. Check ls <root>/N<ctx>/ shows a
+#                directory per method before trusting a ComplexMech table.
 #   CS_ROOT      case-study dumps     (default $SCRATCH/cs_dvar)
 #   MALC_B       (default 100)
 #   MALC_K       (default 1)
@@ -62,7 +66,7 @@ fi
 
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 RC_ROOT="${RC_ROOT:-$SCRATCH/rc_dens_uni}"
-CMECH_ROOT="${CMECH_ROOT:-$SCRATCH/cmech_1d2d}"
+CMECH_ROOT="${CMECH_ROOT:-$SCRATCH/cmech_dens}"
 CS_ROOT="${CS_ROOT:-$SCRATCH/cs_dvar}"
 MALC_B="${MALC_B:-100}"
 MALC_K="${MALC_K:-1}"
