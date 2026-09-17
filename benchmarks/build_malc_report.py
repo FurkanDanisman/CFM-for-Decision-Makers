@@ -151,8 +151,8 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=Fals
         # A method can miss far less often, with tighter intervals, and still
         # lose on IS because the misses it does make are much further out.
         lines += ["",
-                  "| method | cov raw | len raw | IS raw | miss\|miss raw "
-                  "| cov T | len T | IS T | miss\|miss T |",
+                  "| method | cov raw | len raw | IS raw | miss_dist raw "
+                  "| cov T | len T | IS T | miss_dist T |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     else:
         lines += ["",
