@@ -51,6 +51,24 @@ to run per query; B >= 400 is not. Raising B meaningfully requires replacing
 the generic QP with the Dumbgen-Rufibach active-set algorithm, which exploits
 the fact that the 1D solution has few active knots.
 
+DO NOT TRUST THE BIC K-SELECTION -- PASS K EXPLICITLY. Measured on binned
+targets at B=100, the BIC falls monotonically in K on data that is genuinely
+unimodal, so MALC_1D(K=None) returns K* = max_K regardless:
+
+    unimodal N(0,1)   L2  K=1 0.046  K=2 0.118  K=3 0.154   <- K=1 is right
+                      BIC K=1 255    K=2 118    K=3  87     <- BIC says K=3
+    bimodal +-1.2     L2  K=1 0.239  K=2 0.064  K=3 0.118   <- K=2 is right
+                      BIC K=1 138    K=2 140    K=3 109     <- BIC says K=3
+
+The complexity term (2K-1)*log(n_eff) is negligible against -2*loglik*n_eff.
+This is INHERITED from malc_2d.MALC_2D_bic, not introduced here: on a unimodal
+2D target that BIC also prefers K=2 (4567) to the correct K=1 (5344). It has
+gone unnoticed because every caller in this repo pins K=1.
+
+Choose K by the metric you actually care about -- IS_0.05 or CRPS on held-out
+realizations -- not by this BIC. The mixture fit itself is sound: K=2 recovers
+a bimodal target at 3.7x better L2 than K=1.
+
 VALIDATED against N(0,1) binned at J=32, B=100, 30 seeds: fitted mean averages
 +0.013 with spread 0.0945 against the theoretical Monte-Carlo SE of 0.1000
 (t = 0.76, no detectable bias); fitted sd averages 0.990, the ~1% shrinkage
