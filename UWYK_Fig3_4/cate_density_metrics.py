@@ -548,7 +548,7 @@ def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
     if got is None or _TAU_SMOOTHER is None:
         return got
 
-    from tau_smoother import smooth_tau_pmf
+    from tau_smoother import smooth_many
 
     atoms, pmfs, y_true, n_q = got
     pmfs = np.asarray(pmfs, dtype=np.float64)
@@ -556,8 +556,7 @@ def _load_arrays(path, tag=None, coupling="indep", joint_coupling="learned"):
         pmfs = pmfs[None, :]
 
     out_grid, out = None, []
-    for q, pmf in enumerate(pmfs):
-        g, sp = smooth_tau_pmf(atoms, pmf, _TAU_SMOOTHER, query_seed=q)
+    for g, sp in smooth_many(atoms, pmfs, _TAU_SMOOTHER):
         if out_grid is None:
             out_grid = g
         elif g.shape != out_grid.shape or not np.allclose(g, out_grid):
@@ -758,6 +757,9 @@ def _parse():
     ap.add_argument("--malc-seed", type=int, default=20180621)
     ap.add_argument("--n-tau", type=int, default=4001,
                     help="points on the smoothed tau grid")
+    ap.add_argument("--malc-workers", type=int, default=1,
+                    help="processes for the per-query MALC fits. At B=1000 a "
+                         "fit is ~1.2 s, so this is what makes large B usable.")
     ap.add_argument("--context", type=int, default=1000)
     ap.add_argument("--nodes", type=int, nargs="+", default=[5],
                     help="one or more node counts; each gets its own table")
@@ -997,7 +999,8 @@ def main():
     if getattr(args, "tau_smoother", "none") == "malc":
         from tau_smoother import SmootherConfig
         cfg = SmootherConfig(enabled=True, B=args.malc_B, K=args.malc_K,
-                             seed=args.malc_seed, n_tau=args.n_tau)
+                             seed=args.malc_seed, n_tau=args.n_tau,
+                             n_workers=args.malc_workers)
         _configure_tau_smoother(cfg)
         print(f"[tau-smoother] MALC-1D ACTIVE  {cfg}", flush=True)
     else:
