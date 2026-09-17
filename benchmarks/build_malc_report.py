@@ -134,36 +134,44 @@ def pool_point(dicts):
     return {m: tuple(v / a[0] for v in a[1:]) for m, a in acc.items() if a[0]}
 
 
-def cwr(d):
-    """Coverage-to-Width Ratio:  coverage * true_sd / length.  Higher is better.
+def winkler_flat(d, alpha=0.05):
+    """Winkler (1972) interval score, FIXED penalty per miss. Lower is better.
 
-    ONE number that moves the way an interval should be judged as a set:
-    strictly increasing in coverage, strictly decreasing in width. Nothing
-    about how far a miss landed enters, which is the whole point -- IS_0.05
-    prices miss DISTANCE at 40x and therefore ranks a method that trades many
-    near-misses for few far ones as worse, even when it covers more with
-    tighter intervals.
+        W_a = width + (2/a) * s * 1{miss}
+        averaged over queries:
+        W_a = width + (2/a) * s * (1 - coverage)
 
-    Width is divided by true_sd, the spread of the true tau, so the ratio is
-    dimensionless and comparable across datasets and across d. Within one table
-    every method shares the same true_sd, so that factor does not affect the
-    ordering there -- it only makes tables comparable to each other.
+    This is the ORIGINAL Winkler score: a miss costs a constant. The
+    distance-weighted form (Gneiting & Raftery), which is the is05 column, came
+    later and replaces that constant with the miss distance. Both use the same
+    2/alpha coefficient, so the exchange rate between width and miss is
+    identical -- they differ only in whether HOW FAR a miss landed is priced.
 
-    NOT a proper scoring rule, and cannot be: properness requires the loss to
-    grow with distance from the truth, which is exactly the term being dropped.
-    It is a reporting statistic for the set-predictor view, and it does not
-    enforce the nominal 0.95 -- a method could in principle score well by being
-    very narrow and under-covering, so read it beside the coverage column.
+    That single difference is the whole disagreement here. MALC smoothing trades
+    many near-misses for few far ones, which the distance-weighted score ranks
+    as worse and the fixed-penalty score ranks as better.
+
+    alpha enters exactly as it must: 2/alpha = 40 at the 95% level, so the
+    nominal level is baked in rather than chosen. `s` sets what one miss costs,
+    in outcome units; true_sd makes it "a miss costs as much as landing one
+    true sigma outside the interval", and keeps the score comparable across
+    datasets and d.
+
+    Not a proper scoring rule -- properness forces the distance term. It is a
+    deliberate choice of loss: that a miss is a miss. It is not gameable by
+    under-covering the way a coverage/width ratio is, because the (2/a)*s per
+    unit of miss rate is steep: at alpha=0.05 and s=0.6, narrowing has to buy
+    24.6 units of width per unit of miss rate to pay off.
     """
     c, L = d.get("coverage95"), d.get("length")
     sd = d.get("true_sd")
-    if c is None or not L or L <= 0:
+    if c is None or L is None:
         return None
-    return c * (sd if sd else 1.0) / L
+    return L + (2.0 / alpha) * (sd if sd else 1.0) * (1.0 - c)
 
 
 def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
-          calib_only=False, rank_by="is"):
+          calib_only=False, rank_by="is", alpha=0.05):
     f = lambda v: "—" if v is None else f"{v:.4f}"
     lines = [f"### {title}"]
     if note:
@@ -181,8 +189,8 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
         # A method can miss far less often, with tighter intervals, and still
         # lose on IS because the misses it does make are much further out.
         lines += ["",
-                  "| method | cov raw | len raw | **CWR raw** | IS raw "
-                  "| cov T | len T | **CWR T** | IS T |",
+                  "| method | cov raw | len raw | **W_a raw** | IS raw "
+                  "| cov T | len T | **W_a T** | IS T |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     else:
         lines += ["",
@@ -198,9 +206,9 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
     # the header rather than left to whoever reads the table.
     def _key(m):
         d = sm.get(m) or raw.get(m) or {}
-        if rank_by == "cwr":
-            v = cwr(d)
-            return -(v if v is not None else -9e9)
+        if rank_by == "winkler":
+            v = winkler_flat(d, alpha)
+            return v if v is not None else 9e9
         if rank_by == "coverage":
             c, L = d.get("coverage95"), d.get("length")
             return (abs((c if c is not None else 0.0) - 0.95),
@@ -219,8 +227,8 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
             return f"{max(I - L, 0.0) / (40.0 * (1.0 - c)):.4f}"
 
         if calib_only:
-            wr, ws = cwr(r), cwr(s)
-            better = (wr is not None and ws is not None and ws > wr)
+            wr, ws = winkler_flat(r, alpha), winkler_flat(s, alpha)
+            better = (wr is not None and ws is not None and ws < wr)
             fmt = lambda v: "—" if v is None else f"{v:.3f}"
             lines.append(
                 f"| {m} | "
@@ -255,10 +263,15 @@ def main():
     ap.add_argument("--calib-only", action="store_true",
                     help="drop the PEHE / ATE-error columns; coverage, length "
                          "and IS_0.05 only")
-    ap.add_argument("--rank-by", choices=["cwr", "coverage", "is"], default="cwr",
-                    help="cwr: coverage*true_sd/length, higher better. "
+    ap.add_argument("--rank-by", choices=["winkler", "coverage", "is"],
+                    default="winkler",
+                    help="winkler: Winkler(1972) fixed-penalty interval score, "
+                         "width + (2/alpha)*true_sd*(1-cov), lower better. "
                          "coverage: |cov-0.95| then length. "
-                         "is: mean IS_0.05 (prices miss distance at 40x).")
+                         "is: distance-weighted interval score.")
+    ap.add_argument("--alpha", type=float, default=0.05,
+                    help="interval level of the reported intervals; sets the "
+                         "2/alpha coefficient (40 at the 95%% level)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     T = a.target
@@ -267,16 +280,21 @@ def main():
            "Each row carries every variation: point estimate under raw-mean vs",
            "EM-mean (no MALC), then calibration from the raw tau density and",
            "after MALC-1D smoothing of it (variant T).", "",
-           "**CWR = coverage x true_sd / length.** Higher is better, strictly",
-           "increasing in coverage and strictly decreasing in width, so a method",
-           "that covers more with tighter intervals always scores higher. Bold",
-           "in the CWR T column means variant T beat raw. Dividing by true_sd",
-           "makes it dimensionless and comparable across datasets and d.",
+           "**W_a = width + (2/alpha)*true_sd*(1 - coverage)** -- the Winkler",
+           "(1972) interval score with a FIXED penalty per miss. Lower is",
+           "better; bold marks where variant T beat raw. It rewards higher",
+           "coverage and shorter intervals and ignores how far a miss landed.",
            "",
-           "CWR is not a proper scoring rule and cannot be -- properness forces",
-           "the loss to grow with distance from the truth, which is the term",
-           "being deliberately dropped. It also does not enforce the 0.95",
-           "nominal, so read it beside the coverage column.",
+           "IS_0.05 is the later distance-weighted form (Gneiting & Raftery):",
+           "same 2/alpha coefficient, but a miss costs its DISTANCE rather than",
+           "a constant. The two disagree exactly when a method trades many",
+           "near-misses for few far ones -- which is what MALC smoothing does.",
+           "Neither is wrong; they price different losses, and W_a is the one",
+           "matching 'a miss is a miss'.",
+           "",
+           "W_a is not proper (properness forces the distance term) but is not",
+           "gameable by under-covering: at alpha=0.05 the penalty is 40*true_sd",
+           "per unit of miss rate.",
            "",
            "IS_0.05 is reported but does NOT order the rows. It belongs to the",
            "quantile-forecasting convention and prices a miss at 40x its",
@@ -292,7 +310,7 @@ def main():
                          load_point(f"{a.rc_root}/point_raw_em_{ds}.md"),
                          load_calib(f"{a.rc_root}/calib_{ds}_raw_{T}.md"),
                          load_calib(f"{a.rc_root}/calib_{ds}_T_{a.tag}_{T}.md"),
-                         calib_only=a.calib_only, rank_by=a.rank_by)
+                         calib_only=a.calib_only, rank_by=a.rank_by, alpha=a.alpha)
 
     if a.cmech_root:
         out += ["## ComplexMech", "", "One table per node count d.", ""]
@@ -301,7 +319,7 @@ def main():
                          load_point(f"{a.cmech_root}/point_raw_em_CMECH_d{d}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_raw_{T}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_T_{a.tag}_{T}.md"),
-                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by)
+                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by, alpha=a.alpha)
 
     if a.cs_root:
         cells = sorted(glob.glob(f"{a.cs_root}/shift*/d*/ctx{a.ctx}"))
@@ -316,7 +334,7 @@ def main():
                          pool_point([load_point(f"{x}/point_raw_em_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_raw_{T}_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_T_{a.tag}_{T}_{c}.md") for x in cells]),
-                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by,
+                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by, alpha=a.alpha,
                          note=f"pooled over {len(cells)} cells")
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
