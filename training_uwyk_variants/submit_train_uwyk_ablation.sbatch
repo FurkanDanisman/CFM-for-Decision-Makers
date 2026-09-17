@@ -38,6 +38,16 @@
 #   BOTH_ARMS    1 = enable the both-arms patch  (unset = upstream behaviour)
 #   TAG          suffix for config/experiment names
 #   VENV         venv to activate                (default $UWYK_ROOT/venv)
+#   NUM_WORKERS  dataloader workers (default: leave their 50)
+#                Each spawned worker initialises its own CUDA context at
+#                ~518 MiB, so 50 of them claim ~23 GB on top of the ~53 GB the
+#                model needs and an 80 GB H100 OOMs in the first forward:
+#                  "Tried to allocate 412.00 MiB ... 295.19 MiB is free
+#                   ... Process NNN has 518.00 MiB memory in use" x45
+#                This only became reachable once the pickle shim let workers
+#                spawn at all -- before that everything ran in one process.
+#                16 keeps loading parallel while leaving the GPU ~8 GB of
+#                worker contexts.
 set -euo pipefail
 mkdir -p logs_uwyk_ablation
 
@@ -53,13 +63,14 @@ source "$VENV/bin/activate"
 OUT_CFG="$UWYK_ROOT/configs_ablation/config_${TAG}.yaml"
 mkdir -p "$(dirname "$OUT_CFG")"
 
-NUM_BARS="${NUM_BARS:-}" BINARIZE="${BINARIZE:-}" \
+NUM_BARS="${NUM_BARS:-}" BINARIZE="${BINARIZE:-}" NUM_WORKERS="${NUM_WORKERS:-}" \
 python3 - "$SRC_CFG" "$OUT_CFG" <<'PYEOF'
 import os, re, sys, yaml
 
 src, dst = sys.argv[1], sys.argv[2]
 num_bars = os.environ.get('NUM_BARS') or None
 binarize = os.environ.get('BINARIZE') or None
+workers  = os.environ.get('NUM_WORKERS') or None
 
 lines = open(src).read().splitlines(keepends=True)
 expected = set()
@@ -92,6 +103,20 @@ if binarize:
     lines = (txt[:ins] + block + txt[ins:]).splitlines(keepends=True)
     expected.add('dataset_config.binarize_treatment_prob.value')
 
+# --- num_workers: present upstream (50); rewrite the value line after the key.
+if workers:
+    out, hits, armed = [], 0, False
+    for ln in lines:
+        if armed and re.match(r'^\s*value:', ln):
+            out.append(re.sub(r'(^\s*value:\s*)\S+', rf'\g<1>{workers}', ln)); hits += 1; armed = False
+            continue
+        if re.match(r'^\s*num_workers:', ln):
+            armed = True
+        out.append(ln)
+    assert hits == 1, f'num_workers: expected 1 value line, rewrote {hits}'
+    lines = out
+    expected.add('training_config.num_workers.value')
+
 open(dst, 'w').writelines(lines)
 
 # --- semantic verification: parsed-YAML leaf diff must equal `expected` ------
@@ -120,7 +145,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-32}"
 export UWYK_BOTH_ARMS="${BOTH_ARMS:-0}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] UWYK ablation TAG=$TAG"
-echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS"
+echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}"
 echo "  CONFIG=$OUT_CFG"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
