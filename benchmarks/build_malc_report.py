@@ -67,7 +67,8 @@ def load_calib(path_md):
         try:
             out[c[0]] = dict(method=c[0], n_query=int(c[2]), coverage95=float(c[3]),
                              length=g(c[4]), is05=g(c[5]), pred_sd=float(c[6]),
-                             sd_ratio=float(c[8]), bias=float(c[9]))
+                             true_sd=float(c[7]), sd_ratio=float(c[8]),
+                             bias=float(c[9]))
         except Exception:
             continue
     return out
@@ -133,6 +134,34 @@ def pool_point(dicts):
     return {m: tuple(v / a[0] for v in a[1:]) for m, a in acc.items() if a[0]}
 
 
+def cwr(d):
+    """Coverage-to-Width Ratio:  coverage * true_sd / length.  Higher is better.
+
+    ONE number that moves the way an interval should be judged as a set:
+    strictly increasing in coverage, strictly decreasing in width. Nothing
+    about how far a miss landed enters, which is the whole point -- IS_0.05
+    prices miss DISTANCE at 40x and therefore ranks a method that trades many
+    near-misses for few far ones as worse, even when it covers more with
+    tighter intervals.
+
+    Width is divided by true_sd, the spread of the true tau, so the ratio is
+    dimensionless and comparable across datasets and across d. Within one table
+    every method shares the same true_sd, so that factor does not affect the
+    ordering there -- it only makes tables comparable to each other.
+
+    NOT a proper scoring rule, and cannot be: properness requires the loss to
+    grow with distance from the truth, which is exactly the term being dropped.
+    It is a reporting statistic for the set-predictor view, and it does not
+    enforce the nominal 0.95 -- a method could in principle score well by being
+    very narrow and under-covering, so read it beside the coverage column.
+    """
+    c, L = d.get("coverage95"), d.get("length")
+    sd = d.get("true_sd")
+    if c is None or not L or L <= 0:
+        return None
+    return c * (sd if sd else 1.0) / L
+
+
 def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
           calib_only=False, rank_by="is"):
     f = lambda v: "—" if v is None else f"{v:.4f}"
@@ -152,8 +181,8 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
         # A method can miss far less often, with tighter intervals, and still
         # lose on IS because the misses it does make are much further out.
         lines += ["",
-                  "| method | cov raw | len raw | IS raw | miss_dist raw "
-                  "| cov T | len T | IS T | miss_dist T |",
+                  "| method | cov raw | len raw | **CWR raw** | IS raw "
+                  "| cov T | len T | **CWR T** | IS T |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     else:
         lines += ["",
@@ -169,6 +198,9 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
     # the header rather than left to whoever reads the table.
     def _key(m):
         d = sm.get(m) or raw.get(m) or {}
+        if rank_by == "cwr":
+            v = cwr(d)
+            return -(v if v is not None else -9e9)
         if rank_by == "coverage":
             c, L = d.get("coverage95"), d.get("length")
             return (abs((c if c is not None else 0.0) - 0.95),
@@ -187,12 +219,16 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
             return f"{max(I - L, 0.0) / (40.0 * (1.0 - c)):.4f}"
 
         if calib_only:
+            wr, ws = cwr(r), cwr(s)
+            better = (wr is not None and ws is not None and ws > wr)
+            fmt = lambda v: "—" if v is None else f"{v:.3f}"
             lines.append(
                 f"| {m} | "
                 f"{f(r.get('coverage95'))} | {f(r.get('length'))} | "
-                f"{f(r.get('is05'))} | {mm(r)} | "
+                f"{fmt(wr)} | {f(r.get('is05'))} | "
                 f"{f(s.get('coverage95'))} | {f(s.get('length'))} | "
-                f"{f(s.get('is05'))} | {mm(s)} |")
+                f"{'**' + fmt(ws) + '**' if better else fmt(ws)} | "
+                f"{f(s.get('is05'))} |")
             continue
         lines.append(
             f"| {m} | " +
@@ -219,10 +255,10 @@ def main():
     ap.add_argument("--calib-only", action="store_true",
                     help="drop the PEHE / ATE-error columns; coverage, length "
                          "and IS_0.05 only")
-    ap.add_argument("--rank-by", choices=["coverage", "is"], default="coverage",
-                    help="coverage: |cov - 0.95| then length (set-predictor / "
-                         "conformal convention, no distance term). "
-                         "is: mean IS_0.05 (quantile-forecasting convention).")
+    ap.add_argument("--rank-by", choices=["cwr", "coverage", "is"], default="cwr",
+                    help="cwr: coverage*true_sd/length, higher better. "
+                         "coverage: |cov-0.95| then length. "
+                         "is: mean IS_0.05 (prices miss distance at 40x).")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     T = a.target
@@ -231,10 +267,16 @@ def main():
            "Each row carries every variation: point estimate under raw-mean vs",
            "EM-mean (no MALC), then calibration from the raw tau density and",
            "after MALC-1D smoothing of it (variant T).", "",
-           "Rows are ranked by COVERAGE: closest to the 0.95 nominal first,",
-           "shortest interval as the tie-break. This is the set-predictor",
-           "convention -- an interval is judged on whether it contained the",
-           "truth and how tight it was, with no term for how far a miss landed.",
+           "**CWR = coverage x true_sd / length.** Higher is better, strictly",
+           "increasing in coverage and strictly decreasing in width, so a method",
+           "that covers more with tighter intervals always scores higher. Bold",
+           "in the CWR T column means variant T beat raw. Dividing by true_sd",
+           "makes it dimensionless and comparable across datasets and d.",
+           "",
+           "CWR is not a proper scoring rule and cannot be -- properness forces",
+           "the loss to grow with distance from the truth, which is the term",
+           "being deliberately dropped. It also does not enforce the 0.95",
+           "nominal, so read it beside the coverage column.",
            "",
            "IS_0.05 is reported but does NOT order the rows. It belongs to the",
            "quantile-forecasting convention and prices a miss at 40x its",
