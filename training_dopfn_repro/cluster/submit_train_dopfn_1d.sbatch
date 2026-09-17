@@ -75,8 +75,14 @@ done
 
 source "$VENV/bin/activate"
 export PYTHONUNBUFFERED=1
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
-export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+# ONE thread per process: train.py runs --workers 6 DataLoader processes and
+# the Do-PFN prior runs numpy/XGBoost inside them, so a per-core setting here
+# asks for workers x cores threads and they thrash. Symptom is a large gap
+# between reported compute time per step and wall-clock per step.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] dopfn-repro variant=$VARIANT steps=$STEPS"
 echo "  REPO=$REPO"
