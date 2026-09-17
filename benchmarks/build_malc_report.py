@@ -139,8 +139,21 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=Fals
     if note:
         lines.append(f"*{note}*")
     if calib_only:
-        lines += ["", "| method | cov raw | len raw | IS raw | cov T | len T | IS T |",
-                  "|---|---:|---:|---:|---:|---:|---:|"]
+        # IS = length + 40 * E[miss] exactly (alpha = 0.05 -> 2/alpha = 40), so
+        # the penalty and the typical miss magnitude are ALGEBRA on the three
+        # reported columns -- no rescoring needed:
+        #
+        #   pen        = IS - len              = 40 * E[miss] over all queries
+        #   miss|miss  = pen / (40 * (1-cov))  = mean miss distance among misses
+        #
+        # This is what makes "coverage up, length down, IS up" legible instead
+        # of paradoxical: coverage counts HOW OFTEN you miss, IS prices HOW FAR.
+        # A method can miss far less often, with tighter intervals, and still
+        # lose on IS because the misses it does make are much further out.
+        lines += ["",
+                  "| method | cov raw | len raw | IS raw | miss\|miss raw "
+                  "| cov T | len T | IS T | miss\|miss T |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     else:
         lines += ["",
                   f"| method | PEHE raw | PEHE em | {ate_label} raw | {ate_label} em "
@@ -151,11 +164,25 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=Fals
     for m in methods:
         p = point.get(m)
         r, s = raw.get(m, {}), sm.get(m, {})
+        def mm(d):
+            """Mean miss distance among the misses, from cov/len/IS."""
+            c, L, I = d.get("coverage95"), d.get("length"), d.get("is05")
+            if c is None or L is None or I is None or c >= 0.99995:
+                return "—"
+            return f"{max(I - L, 0.0) / (40.0 * (1.0 - c)):.4f}"
+
+        if calib_only:
+            lines.append(
+                f"| {m} | "
+                f"{f(r.get('coverage95'))} | {f(r.get('length'))} | "
+                f"{f(r.get('is05'))} | {mm(r)} | "
+                f"{f(s.get('coverage95'))} | {f(s.get('length'))} | "
+                f"{f(s.get('is05'))} | {mm(s)} |")
+            continue
         lines.append(
             f"| {m} | " +
-            ("" if calib_only else
-             (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
-              else "— | — | — | — | ")) +
+            (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
+             else "— | — | — | — | ") +
             f"{f(r.get('coverage95'))} | {f(r.get('length'))} | {f(r.get('is05'))} | "
             f"{f(s.get('coverage95'))} | {f(s.get('length'))} | {f(s.get('is05'))} |")
     covs = [r.get("coverage95") for r in raw.values() if r.get("coverage95") is not None]
@@ -185,9 +212,14 @@ def main():
            "Each row carries every variation: point estimate under raw-mean vs",
            "EM-mean (no MALC), then calibration from the raw tau density and",
            "after MALC-1D smoothing of it (variant T).", "",
-           "Rank on **IS_0.05**: it equals length whenever the truth is covered and",
-           "exceeds it by 40x the miss distance when it is not, so it is the only",
-           "column pricing coverage and width together.", ""]
+           "IS_0.05 equals length whenever the truth is covered and exceeds it by",
+           "40x the miss distance when it is not. `miss|miss` is the mean miss",
+           "DISTANCE among the queries that missed, derived as",
+           "(IS - len) / (40 * (1 - cov)).", "",
+           "Read the two together. Coverage counts how OFTEN a method misses;",
+           "IS prices how FAR. A method that raises coverage and shortens its",
+           "intervals can still lose on IS, and `miss|miss` is where that shows:",
+           "fewer misses, each one much further out.", ""]
 
     if a.rc_root:
         out += ["## RealCause", ""]
