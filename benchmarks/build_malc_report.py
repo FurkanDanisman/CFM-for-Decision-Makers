@@ -1,0 +1,220 @@
+"""One report: 5 RealCause tables, 6 ComplexMech tables, 6 case-study tables.
+
+Each table is one row per method with every variation side by side:
+
+    PEHE raw | PEHE em | ATEerr raw | ATEerr em | cov/len/IS raw | cov/len/IS T
+
+so the raw-vs-EM and raw-vs-MALC comparisons are read across a row rather than
+by flipping between files.
+
+  RealCause    one table per dataset (IHDP, ACIC, CPS, PSID, PSID_bal)
+  ComplexMech  one table per node count d
+  Case studies one table per CASE, pooled over all 3 shifts x 8 d values
+
+POOLING (case studies only). Every metric in these tables is a per-query mean,
+so pooling across cells is the n_query-weighted mean -- exact, identical to
+scoring all cells in one pass. The pooled SEM combines as
+sqrt(sum w_i^2 sem_i^2) / sum w_i.
+
+Coverage is scale-free and pools cleanly. length and IS_0.05 carry the
+outcome's units, which differ across d, so pooling them summarises
+differently-scaled quantities; that is what pooling over d means, and the
+caveat is printed above the tables rather than left implicit.
+
+Reads the .json beside each table when present -- it carries the SEMs and
+CRPS/WIS that the markdown omits -- and falls back to parsing the markdown.
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import re
+
+_RC = ["IHDP", "ACIC", "CPS", "PSID", "PSID_bal"]
+_CASES = ["Observed_Confounder", "Observed_Mediator",
+          "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
+          "Frontdoor_Criterion", "Backdoor_Criterion"]
+_NUM = r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?"
+
+
+def load_calib(path_md):
+    """{method: row-dict} from the .json beside path_md, else from the md."""
+    j = path_md[:-3] + ".json"
+    if os.path.isfile(j):
+        try:
+            rows = json.load(open(j))
+            if isinstance(rows, list):
+                return {r["method"]: r for r in rows if "method" in r}
+        except Exception:
+            pass
+    if not os.path.isfile(path_md):
+        return {}
+    out = {}
+    for ln in open(path_md):
+        if not ln.startswith("| ") or "---" in ln:
+            continue
+        c = [x.strip() for x in ln.strip().strip("|").split("|")]
+        if len(c) < 10 or c[0] == "method":
+            continue
+        g = lambda s: float(re.match(rf"({_NUM})", s).group(1))
+        try:
+            out[c[0]] = dict(method=c[0], n_query=int(c[2]), coverage95=float(c[3]),
+                             length=g(c[4]), is05=g(c[5]), pred_sd=float(c[6]),
+                             sd_ratio=float(c[8]), bias=float(c[9]))
+        except Exception:
+            continue
+    return out
+
+
+def load_point(path_md):
+    """{method: (pehe_raw, ate_raw, pehe_em, ate_em)} from a point table."""
+    if not os.path.isfile(path_md):
+        return {}
+    out = {}
+    for ln in open(path_md):
+        if not ln.startswith("| ") or "---" in ln:
+            continue
+        c = [x.strip() for x in ln.strip().strip("|").split("|")]
+        if len(c) < 6 or c[0] == "method":
+            continue
+        g = lambda s: (float(re.match(rf"({_NUM})", s).group(1))
+                       if re.match(rf"({_NUM})", s) else float("nan"))
+        try:
+            out[c[0]] = (g(c[2]), g(c[3]), g(c[4]), g(c[5]))
+        except Exception:
+            continue
+    return out
+
+
+def pool(dicts):
+    """n_query-weighted mean per method over a list of {method: row}."""
+    acc = {}
+    for d in dicts:
+        for m, r in d.items():
+            a = acc.setdefault(m, {"n": 0, "cells": 0})
+            w = r.get("n_query", 0) or 0
+            if not w:
+                continue
+            a["n"] += w; a["cells"] += 1
+            for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias",
+                      "crps", "wis"):
+                if k in r and r[k] is not None:
+                    a[k] = a.get(k, 0.0) + w * float(r[k])
+            for k in ("length_sem", "is05_sem"):
+                if k in r and r[k] is not None:
+                    a[k] = a.get(k, 0.0) + (w * float(r[k])) ** 2
+    for m, a in acc.items():
+        if not a["n"]:
+            continue
+        for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias",
+                  "crps", "wis"):
+            if k in a:
+                a[k] /= a["n"]
+        for k in ("length_sem", "is05_sem"):
+            if k in a:
+                a[k] = a[k] ** 0.5 / a["n"]
+    return acc
+
+
+def pool_point(dicts):
+    """Unweighted mean of point metrics over cells (each already a mean)."""
+    acc = {}
+    for d in dicts:
+        for m, t in d.items():
+            a = acc.setdefault(m, [0, 0.0, 0.0, 0.0, 0.0])
+            a[0] += 1
+            for i in range(4):
+                a[i + 1] += t[i]
+    return {m: tuple(v / a[0] for v in a[1:]) for m, a in acc.items() if a[0]}
+
+
+def table(title, point, raw, sm, ate_label="eps_ATE", note=None):
+    f = lambda v: "—" if v is None else f"{v:.4f}"
+    lines = [f"### {title}"]
+    if note:
+        lines.append(f"*{note}*")
+    lines += ["",
+              f"| method | PEHE raw | PEHE em | {ate_label} raw | {ate_label} em "
+              f"| cov raw | len raw | IS raw | cov T | len T | IS T |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    methods = sorted(set(raw) | set(sm) | set(point),
+                     key=lambda m: sm.get(m, raw.get(m, {})).get("is05", 9e9))
+    for m in methods:
+        p = point.get(m)
+        r, s = raw.get(m, {}), sm.get(m, {})
+        lines.append(
+            f"| {m} | " +
+            (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
+             else "— | — | — | — | ") +
+            f"{f(r.get('coverage95'))} | {f(r.get('length'))} | {f(r.get('is05'))} | "
+            f"{f(s.get('coverage95'))} | {f(s.get('length'))} | {f(s.get('is05'))} |")
+    covs = [r.get("coverage95") for r in raw.values() if r.get("coverage95") is not None]
+    if covs and all(c >= 0.9995 for c in covs):
+        lines.append("")
+        lines.append("> **coverage saturated in the raw column** — every method covered "
+                     "every query, so IS equals length there and the ranking is by width.")
+    lines.append("")
+    return lines
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--rc-root"); ap.add_argument("--cmech-root"); ap.add_argument("--cs-root")
+    ap.add_argument("--ctx", default="1000"); ap.add_argument("--tag", default="B100_K1")
+    ap.add_argument("--target", default="cate", choices=["cate", "ate"])
+    ap.add_argument("--nodes", nargs="+", default=["5", "10", "20", "30", "40", "50"])
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args()
+    T = a.target
+
+    out = [f"# MALC study — {T.upper()} ({a.tag})", "",
+           "Each row carries every variation: point estimate under raw-mean vs",
+           "EM-mean (no MALC), then calibration from the raw tau density and",
+           "after MALC-1D smoothing of it (variant T).", "",
+           "Rank on **IS_0.05**: it equals length whenever the truth is covered and",
+           "exceeds it by 40x the miss distance when it is not, so it is the only",
+           "column pricing coverage and width together.", ""]
+
+    if a.rc_root:
+        out += ["## RealCause", ""]
+        for ds in _RC:
+            out += table(ds,
+                         load_point(f"{a.rc_root}/point_raw_em_{ds}.md"),
+                         load_calib(f"{a.rc_root}/calib_{ds}_raw_{T}.md"),
+                         load_calib(f"{a.rc_root}/calib_{ds}_T_{a.tag}_{T}.md"))
+
+    if a.cmech_root:
+        out += ["## ComplexMech", "", "One table per node count d.", ""]
+        for d in a.nodes:
+            out += table(f"d = {d}",
+                         load_point(f"{a.cmech_root}/point_raw_em_CMECH_d{d}.md"),
+                         load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_raw_{T}.md"),
+                         load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_T_{a.tag}_{T}.md"),
+                         ate_label="L1_ATE")
+
+    if a.cs_root:
+        cells = sorted(glob.glob(f"{a.cs_root}/shift*/d*/ctx{a.ctx}"))
+        out += ["## Case studies", "",
+                f"One table per case, pooled over {len(cells)} (shift x d) cells by "
+                "n_query weighting.", "",
+                "> coverage and sd_ratio are scale-free and pool cleanly. length and "
+                "IS carry the outcome's units, which differ across d — pooling those "
+                "summarises differently-scaled quantities.", ""]
+        for c in _CASES:
+            out += table(c,
+                         pool_point([load_point(f"{x}/point_raw_em_{c}.md") for x in cells]),
+                         pool([load_calib(f"{x}/calib_raw_{T}_{c}.md") for x in cells]),
+                         pool([load_calib(f"{x}/calib_T_{a.tag}_{T}_{c}.md") for x in cells]),
+                         ate_label="L1_ATE",
+                         note=f"pooled over {len(cells)} cells")
+
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    open(a.out, "w").write("\n".join(out) + "\n")
+    print(f"wrote {a.out}")
+
+
+if __name__ == "__main__":
+    main()
