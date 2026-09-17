@@ -107,18 +107,30 @@ NEW_Q = """        x_and_t_query = torch.cat(
 assert OLD_Q in s, "query-assembly block not found — upstream changed?"
 s = s.replace(OLD_Q, NEW_Q, 1)
 
-# `os` under an alias, so we never collide with an existing name in this module.
-# Insert before the FIRST top-level import, not at line 0 -- inserting ahead of
-# a module docstring would demote it from __doc__ to a bare expression.
-if "import os as _os" not in s:
-    m = re.search(r"^(?:import |from )", s, re.MULTILINE)
-    assert m, "no top-level import found to anchor the os import"
-    s = s[: m.start()] + "import os as _os\n" + s[m.start() :]
+# `os` under an alias, so we never collide with an existing name in this module,
+# plus the one-shot announce flag so a patched run cannot look identical to an
+# unpatched one.
+#
+# Anchor: after any __future__ imports (which must be the file's FIRST
+# statement -- ast.parse does not enforce that, only compile() does), and
+# otherwise before the first top-level import, never at line 0, since inserting
+# ahead of a module docstring demotes it from __doc__ to a bare expression.
+def _anchor(text):
+    fut = list(re.finditer(r"^from __future__ import .*$", text, re.MULTILINE))
+    if fut:
+        return text.index("\n", fut[-1].end()) + 1
+    m = re.search(r"^(?:import |from )", text, re.MULTILINE)
+    assert m, "no top-level import found to anchor the injected lines"
+    return m.start()
 
-# one-shot announce flag, so a run cannot look identical to an unpatched one
+inject = ""
+if "import os as _os" not in s:
+    inject += "import os as _os\n"
 if "_BOTH_ARMS_ANNOUNCED" not in s.split("def ")[0]:
-    m = re.search(r"^(?:import |from )", s, re.MULTILINE)
-    s = s[: m.start()] + "_BOTH_ARMS_ANNOUNCED = False\n" + s[m.start() :]
+    inject += "_BOTH_ARMS_ANNOUNCED = False\n"
+if inject:
+    at = _anchor(s)
+    s = s[:at] + inject + s[at:]
 
 open(p, "w").write(s)
 print("[install] patched cepo_losses: both-arms query expansion (opt-in)")
