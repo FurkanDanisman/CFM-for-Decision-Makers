@@ -5,7 +5,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=96G
-#SBATCH --array=0-6
+#SBATCH --array=0-5
 #
 # CPU ONLY. Full-scale MALC variant-T calibration across all three benchmarks,
 # plus the raw baseline and the raw/EM point estimates. K=1, B configurable
@@ -13,7 +13,9 @@
 #
 #   task 0-4 : RealCause  IHDP / ACIC / CPS / PSID / PSID_bal
 #   task 5   : ComplexMech
-#   task 6   : Case studies (the combined shift 0 / +2 / -2 tree)
+#   task 6   : REMOVED -- the case-study dumps form a (shift x d) grid of
+#              separate scorer roots, so they get their own 24-task array:
+#              benchmarks/cluster/submit_malc_case_studies.sbatch
 #
 # Each task runs, for its benchmark:
 #   POINT   PEHE + eps_ATE (RealCause) or L1_ATE (the other two), under raw-mean
@@ -81,7 +83,11 @@ case "${SLURM_ARRAY_TASK_ID:-0}" in
   3) BENCH=realcause; DATASET=PSID     ;;
   4) BENCH=realcause; DATASET=PSID_bal ;;
   5) BENCH=cmech;     DATASET=CMECH    ;;
-  6) BENCH=casestudy; DATASET=CS       ;;
+  6) echo "Case studies are NOT one root: the dumps form a (shift x d) grid," >&2
+     echo "each cell its own scorer root at" >&2
+     echo "  <CS_ROOT>/shift{0,+2,-2}/d{2..50}/ctx<CTX>/<method>/<CASE>/" >&2
+     echo "Use benchmarks/cluster/submit_malc_case_studies.sbatch (24 tasks)." >&2
+     exit 2 ;;
   *) echo "invalid SLURM_ARRAY_TASK_ID" >&2; exit 2 ;;
 esac
 
@@ -89,9 +95,6 @@ case "$BENCH" in
   realcause) ROOT="$RC_ROOT";    SEL=(--dataset "$DATASET") ;;
   cmech)     ROOT="$CMECH_ROOT"; SEL=(--context "$CTX" --nodes $NODES --subset "$SUBSET"
                                       --data-root "$REPO/UWYK_Fig3_4/data") ;;
-  casestudy) ROOT="$CS_ROOT";    SEL=(--dataset ${CS_CASES:-Observed_Confounder Observed_Mediator
-                                      Observed_Mediator_and_Confounder Unobserved_Confounder
-                                      Frontdoor_Criterion Backdoor_Criterion}) ;;
 esac
 [ -d "$ROOT" ] || { echo "FATAL: dump root not found: $ROOT" >&2; exit 1; }
 
