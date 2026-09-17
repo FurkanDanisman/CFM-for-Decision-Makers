@@ -223,7 +223,11 @@ def _objective(y: np.ndarray, x: np.ndarray, w: np.ndarray):
     #
     # Returning +inf with a finite gradient pointing back downhill makes the
     # line search reject the step cleanly instead.
-    if not np.all(s < 700.0) or not np.all(np.abs(t) < 700.0):
+    # The product, not the factors: I_i ~ d * exp(s) * sinh(|t|)/|t|, which
+    # grows like exp(s + |t|). Bounding s and |t| separately still overflows
+    # when both are moderately large -- that is what leaked through the first
+    # version of this guard and left 4 warnings in the cluster log.
+    if not np.all(s + np.abs(t) < 700.0):
         return np.inf, np.sign(y) * 1e6
     g = _sinh_over_t(t)
     es = np.exp(s)
