@@ -21,8 +21,13 @@ outcome's units, which differ across d, so pooling them summarises
 differently-scaled quantities; that is what pooling over d means, and the
 caveat is printed above the tables rather than left implicit.
 
-Reads the .json beside each table when present -- it carries the SEMs and
-CRPS/WIS that the markdown omits -- and falls back to parsing the markdown.
+IS_0.05 is the only scoring rule reported. CRPS and WIS exist in the stored
+json and are deliberately not carried through: IS scores exactly the 95%
+interval being reported, whereas WIS averages 11 interval levels plus a median
+term and is really a CRPS approximation, so it answers a different question.
+
+Reads the .json beside each table when present (it carries the SEMs the
+markdown drops) and falls back to parsing the markdown.
 """
 from __future__ import annotations
 
@@ -98,8 +103,7 @@ def pool(dicts):
             if not w:
                 continue
             a["n"] += w; a["cells"] += 1
-            for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias",
-                      "crps", "wis"):
+            for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias"):
                 if k in r and r[k] is not None:
                     a[k] = a.get(k, 0.0) + w * float(r[k])
             for k in ("length_sem", "is05_sem"):
@@ -108,8 +112,7 @@ def pool(dicts):
     for m, a in acc.items():
         if not a["n"]:
             continue
-        for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias",
-                  "crps", "wis"):
+        for k in ("coverage95", "length", "is05", "pred_sd", "sd_ratio", "bias"):
             if k in a:
                 a[k] /= a["n"]
         for k in ("length_sem", "is05_sem"):
