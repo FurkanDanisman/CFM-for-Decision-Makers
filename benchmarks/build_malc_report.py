@@ -133,15 +133,19 @@ def pool_point(dicts):
     return {m: tuple(v / a[0] for v in a[1:]) for m, a in acc.items() if a[0]}
 
 
-def table(title, point, raw, sm, ate_label="eps_ATE", note=None):
+def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=False):
     f = lambda v: "—" if v is None else f"{v:.4f}"
     lines = [f"### {title}"]
     if note:
         lines.append(f"*{note}*")
-    lines += ["",
-              f"| method | PEHE raw | PEHE em | {ate_label} raw | {ate_label} em "
-              f"| cov raw | len raw | IS raw | cov T | len T | IS T |",
-              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    if calib_only:
+        lines += ["", "| method | cov raw | len raw | IS raw | cov T | len T | IS T |",
+                  "|---|---:|---:|---:|---:|---:|---:|"]
+    else:
+        lines += ["",
+                  f"| method | PEHE raw | PEHE em | {ate_label} raw | {ate_label} em "
+                  f"| cov raw | len raw | IS raw | cov T | len T | IS T |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     methods = sorted(set(raw) | set(sm) | set(point),
                      key=lambda m: sm.get(m, raw.get(m, {})).get("is05", 9e9))
     for m in methods:
@@ -149,8 +153,9 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None):
         r, s = raw.get(m, {}), sm.get(m, {})
         lines.append(
             f"| {m} | " +
-            (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
-             else "— | — | — | — | ") +
+            ("" if calib_only else
+             (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
+              else "— | — | — | — | ")) +
             f"{f(r.get('coverage95'))} | {f(r.get('length'))} | {f(r.get('is05'))} | "
             f"{f(s.get('coverage95'))} | {f(s.get('length'))} | {f(s.get('is05'))} |")
     covs = [r.get("coverage95") for r in raw.values() if r.get("coverage95") is not None]
@@ -169,6 +174,9 @@ def main():
     ap.add_argument("--ctx", default="1000"); ap.add_argument("--tag", default="B100_K1")
     ap.add_argument("--target", default="cate", choices=["cate", "ate"])
     ap.add_argument("--nodes", nargs="+", default=["5", "10", "20", "30", "40", "50"])
+    ap.add_argument("--calib-only", action="store_true",
+                    help="drop the PEHE / ATE-error columns; coverage, length "
+                         "and IS_0.05 only")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     T = a.target
@@ -187,7 +195,8 @@ def main():
             out += table(ds,
                          load_point(f"{a.rc_root}/point_raw_em_{ds}.md"),
                          load_calib(f"{a.rc_root}/calib_{ds}_raw_{T}.md"),
-                         load_calib(f"{a.rc_root}/calib_{ds}_T_{a.tag}_{T}.md"))
+                         load_calib(f"{a.rc_root}/calib_{ds}_T_{a.tag}_{T}.md"),
+                         calib_only=a.calib_only)
 
     if a.cmech_root:
         out += ["## ComplexMech", "", "One table per node count d.", ""]
@@ -196,7 +205,7 @@ def main():
                          load_point(f"{a.cmech_root}/point_raw_em_CMECH_d{d}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_raw_{T}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_T_{a.tag}_{T}.md"),
-                         ate_label="L1_ATE")
+                         ate_label="L1_ATE", calib_only=a.calib_only)
 
     if a.cs_root:
         cells = sorted(glob.glob(f"{a.cs_root}/shift*/d*/ctx{a.ctx}"))
@@ -211,7 +220,7 @@ def main():
                          pool_point([load_point(f"{x}/point_raw_em_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_raw_{T}_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_T_{a.tag}_{T}_{c}.md") for x in cells]),
-                         ate_label="L1_ATE",
+                         ate_label="L1_ATE", calib_only=a.calib_only,
                          note=f"pooled over {len(cells)} cells")
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
