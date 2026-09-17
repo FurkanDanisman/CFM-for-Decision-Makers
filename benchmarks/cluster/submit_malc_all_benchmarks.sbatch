@@ -36,7 +36,7 @@
 #   RC_ROOT      RealCause dumps      (default $SCRATCH/rc_dens_uni)
 #   CMECH_ROOT   ComplexMech dumps    (default $SCRATCH/cmech_1d2d)
 #   CS_ROOT      case-study dumps     (default $SCRATCH/cs_dvar)
-#   MALC_B       (default 1000)
+#   MALC_B       (default 100)
 #   MALC_K       (default 1)
 #   N_TAU        (default 4001)
 #   NW           MALC workers         (default = cpus-per-task)
@@ -64,7 +64,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 RC_ROOT="${RC_ROOT:-$SCRATCH/rc_dens_uni}"
 CMECH_ROOT="${CMECH_ROOT:-$SCRATCH/cmech_1d2d}"
 CS_ROOT="${CS_ROOT:-$SCRATCH/cs_dvar}"
-MALC_B="${MALC_B:-1000}"
+MALC_B="${MALC_B:-100}"
 MALC_K="${MALC_K:-1}"
 N_TAU="${N_TAU:-4001}"
 NW="${NW:-${SLURM_CPUS_PER_TASK:-32}}"
