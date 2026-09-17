@@ -140,7 +140,19 @@ PYEOF
 
 export PYTHONUNBUFFERED=1
 export WANDB_MODE="${WANDB_MODE:-offline}"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-32}"
+
+# ── THREAD OVERSUBSCRIPTION ──────────────────────────────────────────────────
+# ONE thread per process, not one per core. Each DataLoader worker inherits
+# these, and the SCM prior runs numpy / XGBoost / sklearn inside the workers --
+# so OMP_NUM_THREADS=32 with 24 workers asks for 768 threads on 32 cores. The
+# symptom is a step whose reported compute time is ~1.8 s while wall-clock per
+# step is ~30 s: the GPU waits while the workers fight each other for cores.
+# Oversubscription gets WORSE as workers are added, which disguises itself as
+# "data generation is slow".
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 # Read by the both-arms patch (rpfn_patches/uwyk_both_arms). Unset => upstream.
 export UWYK_BOTH_ARMS="${BOTH_ARMS:-0}"
 
