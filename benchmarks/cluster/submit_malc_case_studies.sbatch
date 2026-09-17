@@ -99,23 +99,35 @@ for S in $STAGES; do
       done
       ;;
     raw)
+      # ONE CASE PER INVOCATION. Passing all six at once silently discards
+      # --out: cate_density_metrics only honours it when a single --dataset is
+      # given, and otherwise writes the six tables to a hardcoded
+      # <target>_density_realcause_<coupling>.md while build_table overwrites
+      # --out on every dataset, leaving only the LAST case there. Worse, the
+      # per-case files it also writes carry no raw/T marker, so the T stage
+      # overwrote the raw ones. One case per call makes every output file name
+      # both the case and the variant.
       for T in ${TARGETS:-cate ate}; do
-        echo "=== RAW  $SUF  target=$T ==="
-        python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$ROOT" --dataset $CASES --target "$T" --tau-smoother none \
-            "${MD[@]}" "${MR[@]}" --out "$ROOT/calib_raw_${T}.md" \
-          || { echo "ERROR: raw/$T FAILED" >&2; FAILED=1; }
+        for C in $CASES; do
+          echo "=== RAW  $SUF  target=$T  case=$C ==="
+          python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+              --root "$ROOT" --dataset "$C" --target "$T" --tau-smoother none \
+              "${MD[@]}" "${MR[@]}" --out "$ROOT/calib_raw_${T}_${C}.md" \
+            || { echo "ERROR: raw/$T/$C FAILED" >&2; FAILED=1; }
+        done
       done
       ;;
     t)
       for T in ${TARGETS:-cate ate}; do
-        echo "=== T  $SUF  target=$T  B=$MALC_B ==="
-        python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$ROOT" --dataset $CASES --target "$T" \
-            --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
-            --n-tau "$N_TAU" --malc-workers "$NW" "${MD[@]}" "${MR[@]}" \
-            --out "$ROOT/calib_T_${TAG}_${T}.md" \
-          || { echo "ERROR: T/$T FAILED" >&2; FAILED=1; }
+        for C in $CASES; do
+          echo "=== T  $SUF  target=$T  case=$C  B=$MALC_B ==="
+          python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+              --root "$ROOT" --dataset "$C" --target "$T" \
+              --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
+              --n-tau "$N_TAU" --malc-workers "$NW" "${MD[@]}" "${MR[@]}" \
+              --out "$ROOT/calib_T_${TAG}_${T}_${C}.md" \
+            || { echo "ERROR: T/$T/$C FAILED" >&2; FAILED=1; }
+        done
       done
       ;;
     *) echo "WARN: unknown stage '$S'" ;;
