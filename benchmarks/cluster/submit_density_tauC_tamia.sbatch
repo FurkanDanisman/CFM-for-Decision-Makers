@@ -8,26 +8,29 @@
 #SBATCH --gpus-per-node=h100:4
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --array=0-11
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --array=0-3
 
 # TamIA requires a whole H100 node (4 GPUs) per array task.
-# The evaluator uses one GPU; the other three remain reserved but unused.
+# This version launches up to four independent realization workers per array
+# task, one pinned to each H100, so the whole node is actually used.
 #
 # Tier-C density eval: p(tau | x) for UWYK-1D vs Joint-2D on IHDP + ACIC.
 # v1 = RAW path only (no MALC). Spec: density_eval_pipeline.md.
 #
-# PARALLELISM: the array splits over REALIZATIONS, not over models.
-#   0-9   IHDP realizations in blocks of 10   (100 total)
-#   10-11 ACIC realizations in blocks of 5    (10 total)
-# Both models run in ONE process per task, on purpose. Splitting UWYK from the
-# joint would be safe -- every preprocessing step is deterministic given
-# (dataset, r, EVAL_MAX_CONTEXT, EVAL_CONTEXT_SEED) -- but it buys only 2x and
-# it trades a *guarantee* that both models saw byte-identical context, X
-# standardisation, y scaling and adjacency for an *assumption* that two
-# processes recompute them identically. Realizations are independent by
-# construction, so splitting there is both wider (12x) and strictly safer.
+# PARALLELISM: split only over REALIZATIONS, never over models.
+#   array 0: IHDP r=[0,33)
+#   array 1: IHDP r=[33,66)
+#   array 2: IHDP r=[66,100)
+#   array 3: ACIC r=[0,10)
+#
+# Each array task then divides its realization range as evenly as possible
+# across the 4 local H100s.  Each worker still evaluates all requested models
+# for its realizations in one process, preserving the byte-identical
+# preprocessing/model-comparison guarantee.  Realizations are independent and
+# deterministic given (dataset, r, EVAL_MAX_CONTEXT, EVAL_CONTEXT_SEED), so
+# this changes scheduling only, not the intended inputs or realization set.
 #
 # Cost. The tau grid is now 12001 points (dtau=0.0005, knot-aligned: it
 # divides both models' bin widths, 0.002 for UWYK's K=1000 bars and 0.0625 for
@@ -45,10 +48,10 @@
 # grid, N_Y0=2048) at 0.22 s/query on a compute node vs 0.31 s/query measured
 # the same way here, i.e. the compute node runs ~1.4x faster, so expect
 # ~1.1 s/query at N_Y0=4096:
-#   IHDP task = 10 real x 75 q  ~= 14 min  + model load/forwards
-#   ACIC task =  5 real x 480 q ~= 44 min  + model load/forwards
-# That is ~5x the old cost per query, not "about the same"; --time=03:00:00
-# still leaves >3x headroom on the ACIC tasks.
+# With four workers per node, the largest per-GPU slices are:
+#   IHDP: at most 9 realizations/GPU
+#   ACIC: at most 3 realizations/GPU
+# so --time=03:00:00 remains conservative while using all four H100s.
 #
 # N_Y0=4096 is set by the JOINT path, not UWYK: UWYK's tail quadrature is at
 # 0.99998 by N_Y0=1024, while the joint only reaches 1e-4 mass error at 4096.
@@ -170,10 +173,16 @@ _RE_IN="${REAL_END:-}"
 _DS_IN="${DATASET:-}"
 
 T=$SLURM_ARRAY_TASK_ID
-if   [ "$T" -lt 10 ]; then
-    DATASET=IHDP;  REAL_START=$(( T * 10 ));        REAL_END=$(( T * 10 + 10 ))
-elif [ "$T" -lt 12 ]; then
-    DATASET=ACIC;  REAL_START=$(( (T - 10) * 5 ));  REAL_END=$(( (T - 10) * 5 + 5 ))
+if [ "$T" -lt 3 ]; then
+    # Integer partition of the same 100 IHDP realizations over three nodes:
+    # [0,33), [33,66), [66,100).
+    DATASET=IHDP
+    REAL_START=$(( 100 * T / 3 ))
+    REAL_END=$(( 100 * (T + 1) / 3 ))
+elif [ "$T" -eq 3 ]; then
+    DATASET=ACIC
+    REAL_START=0
+    REAL_END=10
 else
     echo "invalid task id: $T" >&2; exit 2
 fi
@@ -181,19 +190,16 @@ DATASET="${_DS_IN:-$DATASET}"
 REAL_START="${_RS_IN:-$REAL_START}"
 REAL_END="${_RE_IN:-$REAL_END}"
 export DATASET REAL_START REAL_END
-export OUT="$OUT_ROOT/$DATASET"
 
 source "$VENV_ACTIVATE"
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
-export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
-export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
 export PYTHONUNBUFFERED=1
 # shims/ = sitecustomize denylist that keeps causalpfn's __init__ from dragging
 # in deps we do not have; same one the graph2d and uwyk1d evals use.
 export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
+FINAL_OUT="$OUT_ROOT/$DATASET"
 echo "[$(date '+%F %T')] tauC density  dataset=$DATASET  r=[$REAL_START,$REAL_END)" \
-     " family=$MODEL_FAMILY  anc=$ANC_TAG  N_Y0=$N_Y0  OUT=$OUT"
+     " family=$MODEL_FAMILY  anc=$ANC_TAG  N_Y0=$N_Y0  OUT=$FINAL_OUT"
 
 # The model-free validation gates are cheap (~2 min) and every number below is
 # meaningless if they fail. Run them once, on the first task only.
@@ -204,5 +210,130 @@ if [ "$T" -eq 0 ]; then
     echo "--- gates passed ---"
 fi
 
-python -u "$REPO/benchmarks/eval_graph2d/eval_density_tauC.py"
-echo "[$(date '+%F %T')] done"
+# ── split this array task across the node's 4 H100s ─────────────────────────
+TOTAL=$(( REAL_END - REAL_START ))
+if [ "$TOTAL" -le 0 ]; then
+    echo "FATAL: empty realization range [$REAL_START,$REAL_END)" >&2
+    exit 4
+fi
+
+NWORKERS=4
+if [ "$TOTAL" -lt "$NWORKERS" ]; then
+    NWORKERS="$TOTAL"
+fi
+
+# Match the original per-process CPU budget: 4 CPU threads per evaluator.
+THREADS_PER_WORKER=4
+
+# Workers write to isolated directories first.  After all workers succeed,
+# their trees are merged into the original final output path.  If two workers
+# unexpectedly produce the same relative filename with different contents, the
+# merge fails instead of silently overwriting data.
+WORKER_ROOT="$OUT_ROOT/.workers/task_${T}"
+rm -rf "$WORKER_ROOT"
+mkdir -p "$WORKER_ROOT" "$FINAL_OUT"
+
+declare -a PIDS=()
+declare -a WOUTS=()
+declare -a WSTARTS=()
+declare -a WENDS=()
+declare -a WGPUS=()
+
+BASE=$(( TOTAL / NWORKERS ))
+REM=$(( TOTAL % NWORKERS ))
+CUR="$REAL_START"
+
+for ((w=0; w<NWORKERS; w++)); do
+    LEN="$BASE"
+    if [ "$w" -lt "$REM" ]; then
+        LEN=$(( LEN + 1 ))
+    fi
+
+    WS="$CUR"
+    WE=$(( CUR + LEN ))
+    CUR="$WE"
+
+    GPU="$w"
+    WOUT="$WORKER_ROOT/gpu${GPU}/$DATASET"
+    mkdir -p "$WOUT"
+
+    WLOG="logs_density_tauC/eval_${SLURM_ARRAY_JOB_ID}_${T}_gpu${GPU}.out"
+    WERR="logs_density_tauC/eval_${SLURM_ARRAY_JOB_ID}_${T}_gpu${GPU}.err"
+
+    echo "[$(date '+%F %T')] launch gpu=$GPU  dataset=$DATASET  r=[$WS,$WE)  OUT=$WOUT"
+
+    (
+        export CUDA_VISIBLE_DEVICES="$GPU"
+        export REAL_START="$WS"
+        export REAL_END="$WE"
+        export OUT="$WOUT"
+
+        export OMP_NUM_THREADS="$THREADS_PER_WORKER"
+        export MKL_NUM_THREADS="$THREADS_PER_WORKER"
+        export OPENBLAS_NUM_THREADS="$THREADS_PER_WORKER"
+
+        python -u "$REPO/benchmarks/eval_graph2d/eval_density_tauC.py"
+    ) >"$WLOG" 2>"$WERR" &
+
+    PIDS+=("$!")
+    WOUTS+=("$WOUT")
+    WSTARTS+=("$WS")
+    WENDS+=("$WE")
+    WGPUS+=("$GPU")
+done
+
+FAIL=0
+for i in "${!PIDS[@]}"; do
+    if wait "${PIDS[$i]}"; then
+        echo "[$(date '+%F %T')] finished gpu=${WGPUS[$i]}  r=[${WSTARTS[$i]},${WENDS[$i]})"
+    else
+        STATUS=$?
+        echo "ERROR: worker gpu=${WGPUS[$i]} r=[${WSTARTS[$i]},${WENDS[$i]}) exited $STATUS" >&2
+        echo "       logs: logs_density_tauC/eval_${SLURM_ARRAY_JOB_ID}_${T}_gpu${WGPUS[$i]}.{out,err}" >&2
+        FAIL=1
+    fi
+done
+
+if [ "$FAIL" -ne 0 ]; then
+    echo "FATAL: at least one GPU worker failed; leaving $WORKER_ROOT for debugging." >&2
+    exit 5
+fi
+
+# Merge each worker tree back into the exact output location used by the old
+# script. Multiple IHDP array tasks may finish together, so serialize only this
+# short merge phase. GPU evaluation remains fully parallel.
+MERGE_LOCK="$OUT_ROOT/.merge.lock"
+exec 9>"$MERGE_LOCK"
+flock 9
+
+# Unique per-realization files are copied normally. Duplicate files are
+# accepted only if byte-identical; differing duplicates are treated as a bug.
+for WOUT in "${WOUTS[@]}"; do
+    while IFS= read -r -d '' SRC; do
+        REL="${SRC#"$WOUT"/}"
+        DST="$FINAL_OUT/$REL"
+
+        if [ -d "$SRC" ]; then
+            mkdir -p "$DST"
+        elif [ -f "$SRC" ]; then
+            mkdir -p "$(dirname "$DST")"
+            if [ -e "$DST" ]; then
+                if ! cmp -s "$SRC" "$DST"; then
+                    echo "FATAL: conflicting worker outputs for $DST" >&2
+                    echo "       source: $SRC" >&2
+                    exit 6
+                fi
+            else
+                cp -p "$SRC" "$DST"
+            fi
+        else
+            echo "FATAL: unsupported output type while merging: $SRC" >&2
+            exit 7
+        fi
+    done < <(find "$WOUT" -mindepth 1 -print0)
+done
+
+rm -rf "$WORKER_ROOT"
+flock -u 9
+
+echo "[$(date '+%F %T')] done  dataset=$DATASET  r=[$REAL_START,$REAL_END)  OUT=$FINAL_OUT"
