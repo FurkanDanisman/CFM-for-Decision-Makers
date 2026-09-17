@@ -48,10 +48,10 @@ __all__ = ["edges_from_atoms", "smooth_tau_pmf", "SmootherConfig"]
 class SmootherConfig:
     """Knobs for variant T. Defaults match the agreed smoke-test settings."""
 
-    __slots__ = ("enabled", "B", "K", "seed", "n_tau", "pad")
+    __slots__ = ("enabled", "B", "K", "seed", "n_tau", "pad", "n_workers")
 
     def __init__(self, enabled=False, B=100, K=1, seed=20180621, n_tau=4001,
-                 pad=0.0):
+                 pad=0.0, n_workers=1):
         self.enabled = bool(enabled)
         self.B = int(B)
         self.K = int(K)
@@ -62,10 +62,15 @@ class SmootherConfig:
         # inside the atom range, so padding buys nothing by default. Kept as a
         # knob for the case where a downstream grid must be matched exactly.
         self.pad = float(pad)
+        # Queries within a realization are independent fits, so this is
+        # embarrassingly parallel. At B=1000 a fit is ~1.2 s, so a realization
+        # of 75 queries is 90 s serial -- the pool is what makes B=1000 usable.
+        self.n_workers = int(n_workers)
 
     def __repr__(self):
         return (f"SmootherConfig(enabled={self.enabled}, B={self.B}, K={self.K}, "
-                f"seed={self.seed}, n_tau={self.n_tau})")
+                f"seed={self.seed}, n_tau={self.n_tau}, "
+                f"n_workers={self.n_workers})")
 
 
 def edges_from_atoms(atoms: np.ndarray) -> np.ndarray:
@@ -130,3 +135,35 @@ def smooth_tau_pmf(atoms, pmf, cfg: SmootherConfig, query_seed: int | None = Non
     if s <= 0:
         return atoms, pmf / tot
     return grid, dens / s
+
+
+# ── parallel map over the queries of one realization ─────────────────────────
+# A module-level pool, created once and reused: MALC's numpy/scipy imports cost
+# more than the fits for small B, so a per-realization pool would spend most of
+# its time starting up.
+_POOL = None
+_POOL_N = 0
+
+
+def _worker(job):
+    atoms, pmf, B, K, seed, n_tau, pad, q = job
+    cfg = SmootherConfig(enabled=True, B=B, K=K, seed=seed, n_tau=n_tau, pad=pad)
+    return smooth_tau_pmf(atoms, pmf, cfg, query_seed=q)
+
+
+def smooth_many(atoms, pmfs, cfg: SmootherConfig):
+    """[(grid, pmf)] for every row of `pmfs`, in parallel when cfg.n_workers > 1."""
+    jobs = [(atoms, pmfs[q], cfg.B, cfg.K, cfg.seed, cfg.n_tau, cfg.pad, q)
+            for q in range(len(pmfs))]
+    if cfg.n_workers <= 1 or len(jobs) < 2:
+        return [_worker(j) for j in jobs]
+
+    global _POOL, _POOL_N
+    from multiprocessing import get_context
+    if _POOL is None or _POOL_N != cfg.n_workers:
+        if _POOL is not None:
+            _POOL.terminate()
+        _POOL = get_context("fork").Pool(processes=cfg.n_workers)
+        _POOL_N = cfg.n_workers
+    chunk = max(1, len(jobs) // (cfg.n_workers * 4))
+    return _POOL.map(_worker, jobs, chunksize=chunk)

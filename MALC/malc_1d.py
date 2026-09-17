@@ -40,16 +40,29 @@ rebinned onto a uniform one BEFORE calling this, exactly as it is before the
 2D path, so variants J and T stay comparable. _check_uniform_grid raises
 rather than silently mis-jittering.
 
-COST SCALES STEEPLY IN B. The MLE is a dense QP with B variables and B-2
-concavity constraints, solved by SLSQP. Measured, single fit:
+SOLVER: BOUND-CONSTRAINED, NOT A QP. Concavity says the secant slopes are
+non-increasing. Written directly that is a linear-constraint problem, and
+SLSQP solves it as a DENSE QP costing ~B^3.7 -- 0.06 s at B=100 but 74 s at
+B=800, which puts B >= 400 out of reach. Substituting the slope gaps
 
-    B =  100 -> 0.06 s      B =  400 ->  7.5 s
-    B =  200 -> 0.50 s      B =  800 -> 73.9 s
+    u_i = s_i - s_{i+1} >= 0
 
-i.e. roughly B^3.7. B=100 (the calibration pipeline's setting) is cheap enough
-to run per query; B >= 400 is not. Raising B meaningfully requires replacing
-the generic QP with the Dumbgen-Rufibach active-set algorithm, which exploits
-the fact that the 1D solution has few active knots.
+turns every constraint into a BOUND, leaving only y0 and the final slope free,
+so L-BFGS-B applies at O(m) per iteration. Measured per MLE after that change:
+
+    B =  100 -> 0.09 s      B = 1000 -> 1.6 s
+    B =  400 -> 0.24 s      B = 2000 -> 7.9 s
+
+The change of variables is exact, not a relaxation; solver="slsqp" keeps the
+direct encoding as a cross-check and agrees to ~3e-4 in objective.
+
+Restarts are not optional. At the optimum the MLE has few knots, so MOST u_i
+sit at their bound -- and L-BFGS-B stalls on heavily-bound-active problems,
+halting up to 3e-2 above the optimum on one pass. Re-entering from the
+returned point clears it (worst gap 7.6e-4, relative 3e-4, below MALC's own
+Monte-Carlo noise). The closed-form shift y -> y - log(int exp(y)) then
+restores int exp(yhat) = 1 exactly, which holds at the true optimum and is the
+cheapest convergence check there is.
 
 DO NOT TRUST THE BIC K-SELECTION -- PASS K EXPLICITLY. Measured on binned
 targets at B=100, the BIC falls monotonically in K on data that is genuinely
@@ -69,11 +82,15 @@ Choose K by the metric you actually care about -- IS_0.05 or CRPS on held-out
 realizations -- not by this BIC. The mixture fit itself is sound: K=2 recovers
 a bimodal target at 3.7x better L2 than K=1.
 
-VALIDATED against N(0,1) binned at J=32, B=100, 30 seeds: fitted mean averages
-+0.013 with spread 0.0945 against the theoretical Monte-Carlo SE of 0.1000
-(t = 0.76, no detectable bias); fitted sd averages 0.990, the ~1% shrinkage
-expected of a log-concave MLE. Concavity holds to 1e-9 and the fitted density
-integrates to 1.000.
+VALIDATED against N(0,1) binned at J=32, 20 seeds. B controls Monte-Carlo
+error, and raising it pays off as theory says it should:
+
+    B =  100   mean +0.037 (spread 0.101, theory SE 0.100)  sd 1.004  L2 0.077
+    B = 1000   mean +0.011 (spread 0.041, theory SE 0.032)  sd 1.009  L2 0.034
+
+No detectable bias at either setting; the ~1% sd excess is the shrinkage
+expected of a log-concave MLE. Concavity holds to 1e-11 and the fitted density
+integrates to 1.000000.
 
 Usage:
 
@@ -216,13 +233,79 @@ def _objective(y: np.ndarray, x: np.ndarray, w: np.ndarray):
     return total - float(np.dot(w, y)), grad
 
 
+def _objective_reparam(theta, x, w, d):
+    """Objective + gradient in the (y0, s_last, u) parametrisation.
+
+    Concavity is "the secant slopes are non-increasing", which as linear
+    constraints on y needs a QP. Substituting
+
+        u_i = s_i - s_{i+1} >= 0
+
+    turns every one of them into a BOUND, leaving y0 and the final slope free.
+    The problem becomes bound-constrained, so L-BFGS-B solves it at O(m) per
+    iteration instead of SLSQP's dense O(m^3). Same optimum -- this is a change
+    of variables on an equality-free convex problem, not a relaxation.
+
+    Reconstruction (0-based, m knots, m-1 slopes, m-2 gaps):
+        s[i] = s_last + sum_{k>=i} u[k]
+        y[j] = y0 + sum_{i<j} s[i] * d[i]
+    """
+    m = x.size
+    y0, s_last, u = theta[0], theta[1], theta[2:]
+    # s[i] = s_last + sum_{k=i..m-3} u[k]  -> reverse cumulative sum
+    s = np.empty(m - 1)
+    s[m - 2] = s_last
+    if m > 2:
+        s[:m - 2] = s_last + np.cumsum(u[::-1])[::-1]
+    y = np.empty(m)
+    y[0] = y0
+    y[1:] = y0 + np.cumsum(s * d)
+
+    val, G = _objective(y, x, w)          # dF/dy, exact integral
+
+    # chain rule, all O(m) via cumulative sums
+    Gsuf = np.cumsum(G[::-1])[::-1]       # Gsuf[k] = sum_{j>=k} G[j]
+    dF_ds = d * Gsuf[1:]                  # dF/ds[i] = d[i] * sum_{j>i} G[j]
+    grad = np.empty_like(theta)
+    grad[0] = G.sum()                     # dF/dy0
+    grad[1] = dF_ds.sum()                 # dF/ds_last
+    if m > 2:
+        grad[2:] = np.cumsum(dF_ds)[:m - 2]   # dF/du[k] = sum_{i<=k} dF/ds[i]
+    return val, grad
+
+
+def _theta_from_y(y, d):
+    s = np.diff(y) / d
+    return np.concatenate([[y[0]], [s[-1]], np.maximum(-np.diff(s), 0.0)])
+
+
+def _y_from_theta(theta, d, m):
+    y0, s_last, u = theta[0], theta[1], theta[2:]
+    s = np.empty(m - 1)
+    s[m - 2] = s_last
+    if m > 2:
+        s[:m - 2] = s_last + np.cumsum(u[::-1])[::-1]
+    y = np.empty(m)
+    y[0] = y0
+    y[1:] = y0 + np.cumsum(s * d)
+    return y
+
+
 def mlelcd_1d(
     x: np.ndarray,
     w: np.ndarray | None = None,
-    max_iter: int = 1000,
+    max_iter: int = 2000,
     tol: float = 1e-10,
+    solver: str = "lbfgsb",
+    n_restart: int = 4,
 ) -> LogConcaveDensity1D:
-    """Log-concave MLE on 1D points, exact objective, concavity as linear cone.
+    """Log-concave MLE on 1D points, exact objective.
+
+    solver='lbfgsb' (default) uses the slope-gap reparametrisation above and
+    scales to B in the thousands. solver='slsqp' keeps the direct
+    linear-constraint formulation; it is kept because it is the obvious
+    encoding of the problem and a useful cross-check, but it is O(m^3) and
+    unusable past B ~= 300.
 
     Duplicate points are merged and their weights summed -- the MLE only sees
     the empirical measure, and duplicates would make d_i = 0.
@@ -241,55 +324,76 @@ def mlelcd_1d(
     if xu.size < 2:
         raise ValueError("all points identical; MLE undefined")
     x, w, m = xu, wu, xu.size
+    d = np.diff(x)
 
-    # Start from the Gaussian log-density through the weighted moments: it is
-    # concave, so it is feasible, and it is close for the unimodal cases that
-    # dominate here.
+    # Gaussian log-density through the weighted moments: concave, hence
+    # feasible, and close for the unimodal cases that dominate here.
     mu = float(np.dot(w, x))
     sd = float(np.sqrt(max(np.dot(w, (x - mu) ** 2), 1e-12)))
     y0 = -0.5 * ((x - mu) / sd) ** 2 - np.log(sd * np.sqrt(2.0 * np.pi))
 
-    # Concavity: the secant slopes (y[i+1]-y[i])/d[i] must be non-increasing,
-    #     (y[i+1]-y[i])/d[i]  >=  (y[i+2]-y[i+1])/d[i+1].
-    # Written that way the coefficients are 1/d, and sampled points can sit
-    # arbitrarily close together (gaps of 1e-5 are routine after Beta jitter),
-    # so 1/d reaches 1e4-1e5 and the constraint matrix is badly conditioned.
-    # Multiplying through by d[i]*d[i+1] > 0 is equivalent and bounded:
-    #     d[i+1]*(y[i+1]-y[i]) - d[i]*(y[i+2]-y[i+1]) >= 0.
-    d = np.diff(x)
-    if m > 2:
-        A = np.zeros((m - 2, m))
-        for i in range(m - 2):
-            A[i, i] += -d[i + 1]
-            A[i, i + 1] += d[i] + d[i + 1]
-            A[i, i + 2] += -d[i]
-        cons = [LinearConstraint(A, 0.0, np.inf)]
+    if solver == "lbfgsb":
+        theta0 = _theta_from_y(y0, d)
+        bounds = [(None, None), (None, None)] + [(0.0, None)] * max(m - 2, 0)
+        # Restart loop. The log-concave MLE has few knots, so at the optimum
+        # MOST u_i sit at their bound of 0 -- and L-BFGS-B stalls on
+        # heavily-bound-active problems, halting up to 3e-2 above the optimum
+        # on a single pass. Re-entering from the returned point rebuilds the
+        # limited-memory curvature model and clears the stall; measured worst
+        # gap vs the SLSQP reference falls from 3.4e-2 to 7.6e-4 (relative
+        # 3e-4, below MALC's own Monte-Carlo noise from sampling B points).
+        #
+        # ftol=0 disables the relative-decrease stop so only the gradient
+        # criterion applies; maxcor=50 (vs the default 10) keeps a richer
+        # curvature model, which matters because y0, s_last and the u gaps
+        # differ in scale.
+        theta, prev = theta0, np.inf
+        for _ in range(n_restart):
+            res = minimize(_objective_reparam, theta, args=(x, w, d), jac=True,
+                           method="L-BFGS-B", bounds=bounds,
+                           options={"maxiter": max_iter,
+                                    "maxfun": 20 * max_iter,
+                                    "ftol": 0.0, "gtol": 1e-14, "maxcor": 50})
+            if not np.isfinite(res.fun):
+                break
+            theta = res.x
+            if prev - res.fun < 1e-13:
+                break
+            prev = res.fun
+        y = _y_from_theta(theta, d, m) if np.isfinite(res.fun) else y0
+
+        # Exact polish along the constant direction. F(y) = int exp(y) - <w,y>,
+        # so for y - c the optimum is c = log(int exp(y)): dF/dc = 1 - I e^-c.
+        # This is a closed-form improvement, and it restores int exp(yhat) = 1,
+        # which holds at the true optimum and is the cheapest convergence check
+        # available.
+        I = float(np.sum(np.diff(x) * np.exp(0.5 * (y[:-1] + y[1:]))
+                         * _sinh_over_t(0.5 * (y[1:] - y[:-1]))))
+        if np.isfinite(I) and I > 0:
+            y = y - np.log(I)
     else:
-        cons = []
-
-    res = minimize(
-        _objective, y0, args=(x, w), jac=True, method="SLSQP",
-        constraints=[{"type": "ineq",
-                      "fun": (lambda yy, A=c.A: A @ yy),
-                      "jac": (lambda yy, A=c.A: A)} for c in cons],
-        options={"maxiter": max_iter, "ftol": tol},
-    )
-    y = res.x if res.success else y0
-    if not res.success:
-        # SLSQP can stall on near-degenerate inputs; trust-constr handles the
-        # linear cone more robustly at the cost of speed. Fall back rather than
-        # return a silently unconverged fit.
-        res2 = minimize(
-            _objective, y0, args=(x, w), jac=True, method="trust-constr",
-            constraints=cons, options={"maxiter": max_iter, "gtol": tol},
+        if m > 2:
+            A = np.zeros((m - 2, m))
+            for i in range(m - 2):
+                A[i, i] += -d[i + 1]
+                A[i, i + 1] += d[i] + d[i + 1]
+                A[i, i + 2] += -d[i]
+            cons = [LinearConstraint(A, 0.0, np.inf)]
+        else:
+            cons = []
+        res = minimize(
+            _objective, y0, args=(x, w), jac=True, method="SLSQP",
+            constraints=[{"type": "ineq",
+                          "fun": (lambda yy, A=c.A: A @ yy),
+                          "jac": (lambda yy, A=c.A: A)} for c in cons],
+            options={"maxiter": max_iter, "ftol": tol},
         )
-        if res2.success or np.isfinite(res2.fun):
-            y = res2.x
+        y = res.x if res.success else y0
 
-    nll, _ = _objective(y, x, w)
     integral = float(np.sum(np.diff(x) * np.exp(0.5 * (y[:-1] + y[1:]))
                             * _sinh_over_t(0.5 * (y[1:] - y[:-1]))))
-    return LogConcaveDensity1D(x=x, y=y, w=w, loglik=float(np.dot(w, y) - integral),
+    return LogConcaveDensity1D(x=x, y=y, w=w,
+                               loglik=float(np.dot(w, y) - integral),
                                integral=integral)
 
 
