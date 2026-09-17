@@ -93,7 +93,7 @@ esac
 
 case "$BENCH" in
   realcause) ROOT="$RC_ROOT";    SEL=(--dataset "$DATASET") ;;
-  cmech)     ROOT="$CMECH_ROOT"; SEL=(--context "$CTX" --nodes $NODES --subset "$SUBSET"
+  cmech)     ROOT="$CMECH_ROOT"; SEL=(--context "$CTX" --subset "$SUBSET"
                                       --data-root "$REPO/UWYK_Fig3_4/data") ;;
 esac
 [ -d "$ROOT" ] || { echo "FATAL: dump root not found: $ROOT" >&2; exit 1; }
@@ -121,7 +121,24 @@ for S in $STAGES; do
       # the case studies. ComplexMech cells are keyed by context/nodes/subset
       # instead, and its point estimates come from its own aggregator.
       if [ "$BENCH" = "cmech" ]; then
-        echo "=== POINT skipped for ComplexMech (different cell layout) ==="
+        # ComplexMech cells are <root>/N<ctx>/<method>/CMECH_n<d>_<subset>/.
+        # `total` is nonzero + zero, and those split the QUERIES of the same
+        # realizations -- so both are passed together and point_raw_em
+        # concatenates them per realization before scoring. Averaging two PEHEs
+        # would be wrong: sqrt(mean(e^2)) over the union is not the mean of the
+        # two.
+        for D in $NODES; do
+          case "$SUBSET" in
+            total) DS=("CMECH_n${D}_nonzero" "CMECH_n${D}_zero") ;;
+            *)     DS=("CMECH_n${D}_${SUBSET}") ;;
+          esac
+          echo "=== POINT  d=$D  (${DS[*]}) ==="
+          python -u "$REPO/realcause_eval/point_raw_em.py" \
+              --root "$ROOT/N$CTX" --dataset "${DS[@]}" --modes raw em \
+              "${MD[@]}" "${MR[@]}" \
+              --out-md "$ROOT/point_raw_em_CMECH_d${D}.md" \
+            || { echo "ERROR: point/d$D FAILED" >&2; FAILED=1; }
+        done
       else
         for DS in $( [ "$BENCH" = "realcause" ] && echo "$DATASET" || echo "${SEL[@]:1}" ); do
           echo "=== POINT $DS ==="
@@ -132,25 +149,38 @@ for S in $STAGES; do
         done
       fi
       ;;
-    raw)
-      for T in ${TARGETS:-cate ate}; do
-        echo "=== RAW  target=$T ==="
-        python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$ROOT" "${SEL[@]}" --target "$T" --tau-smoother none \
-            "${MD[@]}" "${MR[@]}" \
-            --out "$ROOT/calib_${DATASET}_raw_${T}.md" \
-          || { echo "ERROR: raw/$T FAILED" >&2; FAILED=1; }
-      done
-      ;;
-    t)
-      for T in ${TARGETS:-cate ate}; do
-        echo "=== T  target=$T  B=$MALC_B K=$MALC_K workers=$NW ==="
-        python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$ROOT" "${SEL[@]}" --target "$T" \
-            --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
-            --n-tau "$N_TAU" --malc-workers "$NW" "${MD[@]}" "${MR[@]}" \
-            --out "$ROOT/calib_${DATASET}_T_${TAG}_${T}.md" \
-          || { echo "ERROR: T/$T FAILED" >&2; FAILED=1; }
+    raw|t)
+      # ONE d PER INVOCATION for ComplexMech. cate_density_metrics honours
+      # --out only for a single --nodes value; with several it overwrites --out
+      # per node count and dumps the set to a hardcoded
+      # <target>_density_allnodes_*.md. Worse, the per-d files it writes carry
+      # no raw/T marker, so a later T pass overwrites the raw ones in place.
+      # RealCause passes one --dataset and is unaffected; the loop is a no-op
+      # there.
+      if [ "$BENCH" = "cmech" ]; then ITER="$NODES"; else ITER="_"; fi
+      for IT in $ITER; do
+        if [ "$BENCH" = "cmech" ]; then
+          SUBSEL=("${SEL[@]}" --nodes "$IT"); LBL="CMECH_d${IT}"
+        else
+          SUBSEL=("${SEL[@]}");               LBL="$DATASET"
+        fi
+        for T in ${TARGETS:-cate ate}; do
+          if [ "$S" = "raw" ]; then
+            echo "=== RAW  $LBL  target=$T ==="
+            python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+                --root "$ROOT" "${SUBSEL[@]}" --target "$T" --tau-smoother none \
+                "${MD[@]}" "${MR[@]}" --out "$ROOT/calib_${LBL}_raw_${T}.md" \
+              || { echo "ERROR: raw/$LBL/$T FAILED" >&2; FAILED=1; }
+          else
+            echo "=== T  $LBL  target=$T  B=$MALC_B K=$MALC_K workers=$NW ==="
+            python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
+                --root "$ROOT" "${SUBSEL[@]}" --target "$T" \
+                --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
+                --n-tau "$N_TAU" --malc-workers "$NW" "${MD[@]}" "${MR[@]}" \
+                --out "$ROOT/calib_${LBL}_T_${TAG}_${T}.md" \
+              || { echo "ERROR: T/$LBL/$T FAILED" >&2; FAILED=1; }
+          fi
+        done
       done
       ;;
     *) echo "WARN: unknown stage '$S'" ;;
