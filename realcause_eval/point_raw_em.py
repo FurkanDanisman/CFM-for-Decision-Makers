@@ -143,24 +143,52 @@ def cate_for_file(path, tag, mode):
         return tau[:n], y_true[:n]
 
 
-def run_cell(cell_dir, tag, mode, max_real=None):
+def _files_in(cell_dir):
     files = [f for f in sorted(glob.glob(os.path.join(cell_dir, "*.npz")))
              if os.path.basename(f) != "summary.npz"]
     if not files:
         files = [f for f in sorted(glob.glob(os.path.join(cell_dir, "*", "*.npz")))
                  if os.path.basename(f) != "summary.npz"]
+    return files
+
+
+def run_cell(cell_dirs, tag, mode, max_real=None):
+    """PEHE / eps_ATE over one or more cell dirs treated as ONE query set.
+
+    Several dirs is how ComplexMech's `total` is formed: its `nonzero` and
+    `zero` cells split the QUERIES of the same realizations, not the
+    realizations themselves. PEHE is a root-mean-square, so the two cannot be
+    averaged after the fact -- sqrt(mean(e^2)) over the union is not the mean
+    of the two sqrt(mean(e^2)). The queries are concatenated per realization
+    first, then scored, which is exact.
+
+    eps_ATE likewise: |mean(tau) - mean(truth)| over the union, since the ATE
+    is a mean over all queries of the realization.
+    """
+    if isinstance(cell_dirs, str):
+        cell_dirs = [cell_dirs]
+    per_dir = [_files_in(d) for d in cell_dirs]
+    per_dir = [fs for fs in per_dir if fs]
+    if not per_dir:
+        return None
+    n_real = min(len(fs) for fs in per_dir)
     if max_real:
-        files = files[:max_real]
+        n_real = min(n_real, max_real)
 
     pehe, eps_ate, n_ok = [], [], 0
-    for f in files:
-        try:
-            got = cate_for_file(f, tag, mode)
-        except Exception:
-            got = None
-        if got is None:
+    for r in range(n_real):
+        taus, truths = [], []
+        for fs in per_dir:
+            try:
+                got = cate_for_file(fs[r], tag, mode)
+            except Exception:
+                got = None
+            if got is None:
+                continue
+            taus.append(got[0]); truths.append(got[1])
+        if not taus:
             continue
-        tau, truth = got
+        tau = np.concatenate(taus); truth = np.concatenate(truths)
         if tau.size == 0 or not np.isfinite(tau).all():
             continue
         pehe.append(float(np.sqrt(np.mean((tau - truth) ** 2))))
@@ -177,7 +205,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True, help="density-dump root (per-method dirs under it)")
-    ap.add_argument("--dataset", required=True)
+    ap.add_argument("--dataset", required=True, nargs="+",
+                    help="one or more cell names. Several are treated as ONE "
+                         "query set (ComplexMech's `total` = nonzero + zero), "
+                         "concatenated per realization before scoring.")
     ap.add_argument("--methods", nargs="+", default=None,
                     help="subset of the cate_density_metrics METHODS names")
     ap.add_argument("--modes", nargs="+", default=["raw", "em"], choices=["raw", "em"])
@@ -186,7 +217,7 @@ def main():
     args = ap.parse_args()
 
     todo = [m for m in METHODS if args.methods is None or m[0] in args.methods]
-    lines = [f"### Point estimates — {args.dataset} (no MALC)", "",
+    lines = [f"### Point estimates — {' + '.join(args.dataset)} (no MALC)", "",
              "PEHE and eps_ATE recomputed from the density dumps under two mean",
              "functionals. `raw` is the plug-in mean of the discretised law; `em`",
              "is the deconvolution mean (`_em_mean_1d`). Mean +- SE over realizations.",
@@ -198,8 +229,9 @@ def main():
     for name, subdir, tag in todo:
         cells = {}
         for mode in args.modes:
-            d = _resolve_dir(args.root, subdir, args.dataset)
-            cells[mode] = run_cell(d, tag, mode, args.max_real) if d else None
+            ds = [_resolve_dir(args.root, subdir, n) for n in args.dataset]
+            ds = [d for d in ds if d]
+            cells[mode] = run_cell(ds, tag, mode, args.max_real) if ds else None
         if not any(cells.values()):
             print(f"[skip] {name}: no scorable dumps", flush=True)
             continue
