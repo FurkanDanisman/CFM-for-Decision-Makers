@@ -133,7 +133,8 @@ def pool_point(dicts):
     return {m: tuple(v / a[0] for v in a[1:]) for m, a in acc.items() if a[0]}
 
 
-def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=False):
+def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
+          calib_only=False, rank_by="is"):
     f = lambda v: "—" if v is None else f"{v:.4f}"
     lines = [f"### {title}"]
     if note:
@@ -159,8 +160,22 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None, calib_only=Fals
                   f"| method | PEHE raw | PEHE em | {ate_label} raw | {ate_label} em "
                   f"| cov raw | len raw | IS raw | cov T | len T | IS T |",
                   "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
-    methods = sorted(set(raw) | set(sm) | set(point),
-                     key=lambda m: sm.get(m, raw.get(m, {})).get("is05", 9e9))
+    # Ranking key. `coverage` implements the set-predictor (conformal)
+    # convention: closest to nominal coverage first, shortest interval as the
+    # tie-break, and no distance-to-truth term -- a miss is a miss. `is` uses
+    # the quantile-forecasting convention, where a miss costs 40x its distance.
+    # The two disagree exactly when a method trades many near-misses for few
+    # far ones, which is what MALC smoothing does, so the choice is stated in
+    # the header rather than left to whoever reads the table.
+    def _key(m):
+        d = sm.get(m) or raw.get(m) or {}
+        if rank_by == "coverage":
+            c, L = d.get("coverage95"), d.get("length")
+            return (abs((c if c is not None else 0.0) - 0.95),
+                    L if L is not None else 9e9)
+        return d.get("is05", 9e9)
+
+    methods = sorted(set(raw) | set(sm) | set(point), key=_key)
     for m in methods:
         p = point.get(m)
         r, s = raw.get(m, {}), sm.get(m, {})
@@ -204,6 +219,10 @@ def main():
     ap.add_argument("--calib-only", action="store_true",
                     help="drop the PEHE / ATE-error columns; coverage, length "
                          "and IS_0.05 only")
+    ap.add_argument("--rank-by", choices=["coverage", "is"], default="coverage",
+                    help="coverage: |cov - 0.95| then length (set-predictor / "
+                         "conformal convention, no distance term). "
+                         "is: mean IS_0.05 (quantile-forecasting convention).")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     T = a.target
@@ -212,14 +231,17 @@ def main():
            "Each row carries every variation: point estimate under raw-mean vs",
            "EM-mean (no MALC), then calibration from the raw tau density and",
            "after MALC-1D smoothing of it (variant T).", "",
-           "IS_0.05 equals length whenever the truth is covered and exceeds it by",
-           "40x the miss distance when it is not. `miss|miss` is the mean miss",
-           "DISTANCE among the queries that missed, derived as",
-           "(IS - len) / (40 * (1 - cov)).", "",
-           "Read the two together. Coverage counts how OFTEN a method misses;",
-           "IS prices how FAR. A method that raises coverage and shortens its",
-           "intervals can still lose on IS, and `miss|miss` is where that shows:",
-           "fewer misses, each one much further out.", ""]
+           "Rows are ranked by COVERAGE: closest to the 0.95 nominal first,",
+           "shortest interval as the tie-break. This is the set-predictor",
+           "convention -- an interval is judged on whether it contained the",
+           "truth and how tight it was, with no term for how far a miss landed.",
+           "",
+           "IS_0.05 is reported but does NOT order the rows. It belongs to the",
+           "quantile-forecasting convention and prices a miss at 40x its",
+           "distance, so it disagrees whenever a method trades many near-misses",
+           "for few far ones. `miss_dist` is the mean miss distance among the",
+           "queries that missed, (IS - len) / (40 * (1 - cov)), which is where",
+           "that disagreement is visible.", ""]
 
     if a.rc_root:
         out += ["## RealCause", ""]
@@ -228,7 +250,7 @@ def main():
                          load_point(f"{a.rc_root}/point_raw_em_{ds}.md"),
                          load_calib(f"{a.rc_root}/calib_{ds}_raw_{T}.md"),
                          load_calib(f"{a.rc_root}/calib_{ds}_T_{a.tag}_{T}.md"),
-                         calib_only=a.calib_only)
+                         calib_only=a.calib_only, rank_by=a.rank_by)
 
     if a.cmech_root:
         out += ["## ComplexMech", "", "One table per node count d.", ""]
@@ -237,7 +259,7 @@ def main():
                          load_point(f"{a.cmech_root}/point_raw_em_CMECH_d{d}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_raw_{T}.md"),
                          load_calib(f"{a.cmech_root}/calib_CMECH_d{d}_T_{a.tag}_{T}.md"),
-                         ate_label="L1_ATE", calib_only=a.calib_only)
+                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by)
 
     if a.cs_root:
         cells = sorted(glob.glob(f"{a.cs_root}/shift*/d*/ctx{a.ctx}"))
@@ -252,7 +274,7 @@ def main():
                          pool_point([load_point(f"{x}/point_raw_em_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_raw_{T}_{c}.md") for x in cells]),
                          pool([load_calib(f"{x}/calib_T_{a.tag}_{T}_{c}.md") for x in cells]),
-                         ate_label="L1_ATE", calib_only=a.calib_only,
+                         ate_label="L1_ATE", calib_only=a.calib_only, rank_by=a.rank_by,
                          note=f"pooled over {len(cells)} cells")
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
