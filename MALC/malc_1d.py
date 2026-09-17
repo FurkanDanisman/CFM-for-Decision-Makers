@@ -214,6 +214,17 @@ def _objective(y: np.ndarray, x: np.ndarray, w: np.ndarray):
     s = 0.5 * (y[:-1] + y[1:])
     t = 0.5 * (y[1:] - y[:-1])
 
+    # Overflow guard. L-BFGS-B's line search probes far outside the region of
+    # interest, and exp(s) overflows once s > ~709. The overflow itself is
+    # harmless -- the objective is genuinely enormous there and the search
+    # should back off -- but inf propagates into the gradient as inf*0 = nan,
+    # and a nan gradient makes L-BFGS-B halt silently at whatever point it is
+    # standing on. That is a wrong answer that reports success.
+    #
+    # Returning +inf with a finite gradient pointing back downhill makes the
+    # line search reject the step cleanly instead.
+    if not np.all(s < 700.0) or not np.all(np.abs(t) < 700.0):
+        return np.inf, np.sign(y) * 1e6
     g = _sinh_over_t(t)
     es = np.exp(s)
     I = d * es * g
@@ -361,6 +372,8 @@ def mlelcd_1d(
                 break
             prev = res.fun
         y = _y_from_theta(theta, d, m) if np.isfinite(res.fun) else y0
+        if not np.isfinite(y).all():
+            y = y0
 
         # Exact polish along the constant direction. F(y) = int exp(y) - <w,y>,
         # so for y - c the optimum is c = log(int exp(y)): dF/dc = 1 - I e^-c.
