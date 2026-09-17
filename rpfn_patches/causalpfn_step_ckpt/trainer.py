@@ -12,6 +12,9 @@ from causalpfn.models import InContextModel
 
 from .priors.meta_dataset import MetaDataset
 
+# one-shot announce flag for the shared-arm-noise / noisy-target patch
+_ARM_NOISE_ANNOUNCED = False
+
 
 def distributed_mean(value: float, device: str, using_dist: bool, world_size: int) -> float:
     if not using_dist:
@@ -61,6 +64,74 @@ def calculate_loss(
     E_y0, E_y1 = batch["E_y0"].to(device, non_blocking=True), batch["E_y1"].to(
         device, non_blocking=True
     )  # shape: (batch_size, num_rows)
+
+    # ── SHARED-ARM-NOISE / NOISY-TARGET PATCH ────────────────────────────────
+    # Two independent, opt-in knobs. Both default OFF, so an unset run is
+    # byte-identical to the stock trainer and every existing checkpoint,
+    # config, and eval path is unaffected.
+    #
+    #   CPFN_SHARED_ARM_NOISE=1   set eta_1 := eta_0 (arm noise perfectly
+    #                             coupled, rho = 1) instead of the prior's two
+    #                             independent draws.
+    #   CPFN_TRAIN_ON_Y01=1       supervise the head on the NOISY potential
+    #                             outcomes y0, y1 instead of the conditional
+    #                             means E_y0, E_y1.
+    #
+    # WHY eta is reconstructed rather than re-drawn. The prior builds
+    #     y0 = E_y0 + eta_0 ,  y1 = E_y1 + eta_1
+    # and hands back all four arrays, so eta_0 = y0 - E_y0 exactly. Rebuilding
+    # y1 as E_y1 + (y0 - E_y0) imposes eta_1 = eta_0 without touching the prior
+    # at all -- no assumption about how eta is distributed, drawn, or scaled,
+    # and no second patch to keep in sync with upstream.
+    #
+    # WHY `y` is rebuilt too. The factual column is y = t*y1 + (1-t)*y0. Under
+    # the coupled DGP a treated unit's factual outcome is E_y1 + eta_0, so we
+    # recompute it from the new y1. This is only cosmetic for the loss --
+    # context is X[:, :split_pos] and queries are X[:, split_pos:], disjoint
+    # slices, so a query unit's factual y never enters the context, and
+    # marginally eta_0 and eta_1 are identically distributed -- but keeping the
+    # batch internally consistent means the coupling is right no matter how the
+    # split is configured.
+    #
+    # NOTE on CPFN_SHARED_ARM_NOISE=1 ALONE (without CPFN_TRAIN_ON_Y01): the
+    # targets stay E_y0/E_y1, which are computed BEFORE noise is added and so
+    # cannot depend on eta at all, and `y`'s marginal law is unchanged. That
+    # configuration is therefore distributionally identical to a stock run --
+    # it differs only in RNG-stream consumption. It is exposed because that
+    # identity is the point (the arm coupling is not identifiable from
+    # observational context), not because it is a distinct training run.
+    _shared_arm_noise = os.environ.get("CPFN_SHARED_ARM_NOISE", "0") == "1"
+    _train_on_y01 = os.environ.get("CPFN_TRAIN_ON_Y01", "0") == "1"
+    if _shared_arm_noise or _train_on_y01:
+        _missing = [k for k in ("y0", "y1") if k not in batch]
+        if _missing:
+            raise KeyError(
+                f"CPFN_SHARED_ARM_NOISE/CPFN_TRAIN_ON_Y01 need the potential "
+                f"outcomes in the batch, but {_missing} are absent. Prior keys: "
+                f"{sorted(batch.keys())}"
+            )
+        y0 = batch["y0"].to(device, non_blocking=True)
+        y1 = batch["y1"].to(device, non_blocking=True)
+        if y0.shape != E_y0.shape or y1.shape != E_y1.shape:
+            raise ValueError(
+                f"potential-outcome shape mismatch: y0 {tuple(y0.shape)} / "
+                f"y1 {tuple(y1.shape)} vs E_y0 {tuple(E_y0.shape)} / "
+                f"E_y1 {tuple(E_y1.shape)}"
+            )
+        if _shared_arm_noise:
+            y1 = E_y1 + (y0 - E_y0)                 # eta_1 := eta_0
+            y = torch.where(t > 0.5, y1, y0)        # keep the factual column consistent
+        if _train_on_y01:
+            E_y0, E_y1 = y0, y1
+        global _ARM_NOISE_ANNOUNCED
+        if not _ARM_NOISE_ANNOUNCED:
+            _ARM_NOISE_ANNOUNCED = True
+            print(
+                f"[arm-noise] ACTIVE  shared_arm_noise={_shared_arm_noise}  "
+                f"train_on_y01={_train_on_y01}  "
+                f"targets={'y0/y1 (noisy)' if _train_on_y01 else 'E_y0/E_y1 (means)'}",
+                flush=True,
+            )
     # compute the cepo loss
     cepo_losses = model(
         X_context=X[:, :split_pos],
