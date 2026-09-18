@@ -75,20 +75,30 @@ def load_calib(path_md):
 
 
 def load_point(path_md):
-    """{method: (pehe_raw, ate_raw, pehe_em, ate_em)} from a point table."""
+    """{method: (pehe_raw, ate_raw, pehe_em, ate_em)} from a point table.
+
+    point_raw_em emits two columns per mode, so `--modes raw em` gives six
+    columns and `--modes raw` gives four. Requiring six silently dropped every
+    raw-only table and showed the point columns as blank -- handle both, with
+    NaN for a mode that was not run.
+    """
     if not os.path.isfile(path_md):
         return {}
     out = {}
+    nan = float("nan")
     for ln in open(path_md):
         if not ln.startswith("| ") or "---" in ln:
             continue
         c = [x.strip() for x in ln.strip().strip("|").split("|")]
-        if len(c) < 6 or c[0] == "method":
+        if len(c) < 4 or c[0] == "method":
             continue
         g = lambda s: (float(re.match(rf"({_NUM})", s).group(1))
-                       if re.match(rf"({_NUM})", s) else float("nan"))
+                       if re.match(rf"({_NUM})", s) else nan)
         try:
-            out[c[0]] = (g(c[2]), g(c[3]), g(c[4]), g(c[5]))
+            if len(c) >= 6:
+                out[c[0]] = (g(c[2]), g(c[3]), g(c[4]), g(c[5]))
+            else:
+                out[c[0]] = (g(c[2]), g(c[3]), nan, nan)
         except Exception:
             continue
     return out
@@ -197,8 +207,9 @@ def table(title, point, raw, sm, ate_label="eps_ATE", note=None,
             continue
         lines.append(
             f"| {m} | " +
-            (f"{p[0]:.4f} | {p[2]:.4f} | {p[1]:.4f} | {p[3]:.4f} | " if p
-             else "— | — | — | — | ") +
+            ((lambda q: " | ".join(q) + " | ")(
+                [("—" if v != v else f"{v:.4f}") for v in (p[0], p[2], p[1], p[3])])
+             if p else "— | — | — | — | ") +
             f"{f(r.get('coverage95'))} | {f(r.get('length'))} | {f(r.get('is05'))} | "
             f"{f(s.get('coverage95'))} | {f(s.get('length'))} | {f(s.get('is05'))} |")
     covs = [r.get("coverage95") for r in raw.values() if r.get("coverage95") is not None]
