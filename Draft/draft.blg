@@ -1,0 +1,60 @@
+This is BibTeX, Version 0.99d (TeX Live 2025)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: draft.aux
+Case mismatch error between cite keys UWYK and uwyk
+---line 50 of file draft.aux
+ : \citation{UWYK
+ :               }
+I'm skipping whatever remains of this command
+The style file: plainnat.bst
+Illegal, another \bibstyle command---line 127 of file draft.aux
+ : \bibstyle
+ :          {iclr2026_conference}
+I'm skipping whatever remains of this command
+Database file #1: references.bib
+Repeated entry---line 160 of file references.bib
+ : @misc{UWYK
+ :           ,
+I'm skipping whatever remains of this entry
+You've used 14 entries,
+            2773 wiz_defined-function locations,
+            689 strings with 8544 characters,
+and the built_in function-call counts, 7580 in all, are:
+= -- 660
+> -- 571
+< -- 5
++ -- 191
+- -- 177
+* -- 660
+:= -- 1219
+add.period$ -- 68
+call.type$ -- 14
+change.case$ -- 99
+chr.to.int$ -- 14
+cite$ -- 28
+duplicate$ -- 306
+empty$ -- 515
+format.name$ -- 195
+if$ -- 1561
+int.to.chr$ -- 1
+int.to.str$ -- 1
+missing$ -- 17
+newline$ -- 102
+num.names$ -- 56
+pop$ -- 191
+preamble$ -- 1
+purify$ -- 87
+quote$ -- 0
+skip$ -- 251
+stack$ -- 0
+substring$ -- 137
+swap$ -- 33
+text.length$ -- 2
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 134
+warning$ -- 0
+while$ -- 49
+width$ -- 0
+write$ -- 235
+(There were 3 error messages)

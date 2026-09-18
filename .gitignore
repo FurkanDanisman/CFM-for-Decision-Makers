@@ -36,3 +36,9 @@ dist/
 # Local outputs not tracked
 share/example_*.png
 share/*.png
+
+# Case-study datasets (9,005 npz, ~125 MB; regenerated on the cluster via
+# case_study/generation.py). The per-root manifest.json IS tracked, so the
+# provenance of each regeneration survives even though the arrays do not.
+case_study/data/**/*.npz
+case_study/data_shift*/**/*.npz

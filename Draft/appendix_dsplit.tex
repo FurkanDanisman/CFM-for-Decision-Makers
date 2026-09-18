@@ -1,0 +1,54 @@
+% ---------------------------------------------------------------------------
+% Appendix: per-d disaggregation of the case-study results.
+% \input{appendix_dsplit} after \appendix in draft.tex.
+% Requires graphicx and the existing \graphicspath (add {../case_study/} or
+% copy the two PNGs into Draft/Figures/).
+% ---------------------------------------------------------------------------
+\section{Case studies: per-covariate-count results}
+\label{app:dsplit}
+
+Figure~\ref{fig:cen3-combined} in the main text pools over the covariate count
+$d$. Figures~\ref{fig:dsplit-pehe} and~\ref{fig:dsplit-l1} give the
+disaggregation: one row per $d \in \{2,3,5,10,20,30,40,50\}$, one column per
+case study, for PEHE and $L_1$-ATE respectively. Every cell pools realizations
+across the three centred shifts ($\beta \in \{0,+2,-2\}$) at $N = 1000$; bars
+are means over those realizations and whiskers are $\pm 1$ SEM.
+
+Two features of the generator should be read alongside these panels.
+
+\textbf{The estimand shrinks as $d$ grows.} Outcome weights use Kaiming fan-in
+initialisation, so the weight on $T$ attenuates as $Y$ gains parents. The
+standard deviation of the true CATE falls by roughly a factor of $3.7$ across
+the range, e.g.\ $0.35 \to 0.10$ for \emph{Observed Confounder} between $d=2$
+and $d=50$. Absolute error therefore tends to fall with $d$ for reasons
+unrelated to estimator quality, and a method whose PEHE is flat in $d$ is in
+fact getting relatively worse.
+
+\textbf{Hidden nodes scale with $d$.} The number of hidden variables is
+$h = \max(1, \lfloor d/10 \rfloor)$, so \emph{Unobserved Confounder} retains
+about one hidden confounder per ten observed ones rather than a vanishing
+fraction, and the two mediated criteria retain $h$ hidden mediators. The
+difficulty of those cases is therefore held roughly constant in $d$ by
+construction.
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\textwidth]{fig3_cen3_pehe_by_d.png}
+  \caption{\textbf{PEHE by covariate count.} Rows: $d$. Columns: case study.
+  Within each panel, methods are shown as 1D/2D pairs (light: 1D readout;
+  dark: 2D joint readout). Lower is better. \emph{Each panel has its own
+  horizontal scale}, so bar lengths are comparable within a panel but not
+  across columns. Realizations pooled over $\beta \in \{0,+2,-2\}$ at
+  $N=1000$; whiskers are $\pm 1$ SEM.}
+  \label{fig:dsplit-pehe}
+\end{figure}
+
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\textwidth]{fig3_cen3_l1_by_d.png}
+  \caption{\textbf{$L_1$-ATE by covariate count.} Layout as in
+  Figure~\ref{fig:dsplit-pehe}, reporting
+  $\lvert \widehat{\mathrm{ATE}} - \mathrm{ATE} \rvert$ in place of PEHE.
+  Per-panel horizontal scales again.}
+  \label{fig:dsplit-l1}
+\end{figure}
