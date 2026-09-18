@@ -70,15 +70,22 @@ def rc(root, model, is_point):
 
 
 def cmech(root, model, ref):
+    """Expected counts come from `ref`, so the target is right even when the
+    new root does not exist yet -- otherwise an absent root silently drops
+    ComplexMech out of the TOTAL denominator and the overall percentage reads
+    higher than it is."""
     tot = don = 0
-    if not root or not os.path.isdir(root):
-        print(f"  (root absent: {root})"); return 0, 0
+    have = bool(root) and os.path.isdir(root)
+    if not have:
+        print(f"  (root absent: {root} -- targets from {ref})")
     for nd in _NODES:
         for ss in _SUBSETS:
             cell = f"N1000/{model}/CMECH_n{nd}_{ss}"
             exp = n_npz(f"{ref}/{cell}/*.npz") if ref else 0
-            d, t = line(f"d={nd} {ss}", n_npz(f"{root}/{cell}/*.npz"), exp)
-            don += d; tot += t
+            got = n_npz(f"{root}/{cell}/*.npz") if have else 0
+            if have or exp:
+                d, t = line(f"d={nd} {ss}", got, exp)
+                don += d; tot += t
     return don, tot
 
 
