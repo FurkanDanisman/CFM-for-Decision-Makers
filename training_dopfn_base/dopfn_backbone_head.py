@@ -30,6 +30,7 @@ training/train_cfm_dopfn.py:
 
     forward(X_context, T_context, Y_context, X_query) -> {'predictions': ...}
 """
+import os as _os
 from __future__ import annotations
 
 import os
@@ -184,10 +185,23 @@ class DoPFNBackboneWith2DHead(nn.Module):
 
         # Prepend T as column 0 of X (DoPFN's convention).
         X_ctx_aug = torch.cat([T_context, X_context], dim=-1)                # (B, N, d+1)
-        # Query rows: use T=0 placeholder (any constant would do; the
-        # joint 2D head reads embeddings, not this per-query T).
-        T_query_placeholder = torch.zeros(
-            B, M, 1, dtype=T_context.dtype, device=T_context.device)
+        # Query rows: the per-query T carries no information once the head
+        # predicts both arms, but it must MATCH WHAT THE MODEL SAW IN TRAINING
+        # -- NanHandlingEncoderStep turns the scalar into (value, nan-mask), so
+        # NaN marks the column unknown while 0.0 marks it known-and-zero. Those
+        # are different inputs to the encoder.
+        #
+        #   'zero' : this model's own training convention (default, unchanged)
+        #   'nan'  : training_dopfn_repro's BatchConfig.query_treatment default,
+        #            so checkpoints from that pipeline must be evaluated with
+        #            DOPFN_QUERY_T=nan or they are fed inputs never seen in
+        #            training.
+        _qt = _os.environ.get("DOPFN_QUERY_T", "zero").lower()
+        if _qt not in ("zero", "nan"):
+            raise ValueError(f"DOPFN_QUERY_T must be 'zero' or 'nan', got {_qt!r}")
+        _fill = float("nan") if _qt == "nan" else 0.0
+        T_query_placeholder = torch.full(
+            (B, M, 1), _fill, dtype=T_context.dtype, device=T_context.device)
         X_qry_aug = torch.cat([T_query_placeholder, X_query], dim=-1)        # (B, M, d+1)
 
         # Sequence-first: DoPFN expects [seq, batch, ...].
