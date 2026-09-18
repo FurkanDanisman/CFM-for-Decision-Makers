@@ -38,6 +38,17 @@
 #   BOTH_ARMS    1 = enable the both-arms patch  (unset = upstream behaviour)
 #   TAG          suffix for config/experiment names
 #   VENV         venv to activate                (default $UWYK_ROOT/venv)
+#   BATCH_SIZE   micro-batch     (default: leave their 8)
+#   ACCUM        grad accumulation (default: leave their 4)
+#                EFFECTIVE BATCH IS batch_size x accumulate_grad_batches = 32.
+#                Peak activation memory is driven by the MICRO-batch, so
+#                BATCH_SIZE=4 ACCUM=8 halves peak memory while training on an
+#                identical effective batch -- the run stays comparable.
+#                Motivation: backward() hangs with the GPU at 100% and ~65 GB
+#                resident while the dataloader workers sit idle in queue.get.
+#                Task size is random (n_test_samples_per_dataset ~ U{1,500},
+#                train up to 1000), so a large task at high occupancy drives the
+#                allocator into repeated free/realloc.
 #   NUM_WORKERS  dataloader workers (default: leave their 50)
 #                Each spawned worker initialises its own CUDA context at
 #                ~518 MiB, so 50 of them claim ~23 GB on top of the ~53 GB the
@@ -64,6 +75,7 @@ OUT_CFG="$UWYK_ROOT/configs_ablation/config_${TAG}.yaml"
 mkdir -p "$(dirname "$OUT_CFG")"
 
 NUM_BARS="${NUM_BARS:-}" BINARIZE="${BINARIZE:-}" NUM_WORKERS="${NUM_WORKERS:-}" \
+BATCH_SIZE="${BATCH_SIZE:-}" ACCUM="${ACCUM:-}" \
 python3 - "$SRC_CFG" "$OUT_CFG" <<'PYEOF'
 import os, re, sys, yaml
 
@@ -71,6 +83,8 @@ src, dst = sys.argv[1], sys.argv[2]
 num_bars = os.environ.get('NUM_BARS') or None
 binarize = os.environ.get('BINARIZE') or None
 workers  = os.environ.get('NUM_WORKERS') or None
+bsz      = os.environ.get('BATCH_SIZE') or None
+accum    = os.environ.get('ACCUM') or None
 
 lines = open(src).read().splitlines(keepends=True)
 expected = set()
@@ -117,6 +131,24 @@ if workers:
     lines = out
     expected.add('training_config.num_workers.value')
 
+# --- batch_size / accumulate_grad_batches: rewrite the value line after each key
+for _key, _val, _path in (('batch_size', bsz, 'training_config.batch_size.value'),
+                          ('accumulate_grad_batches', accum,
+                           'training_config.accumulate_grad_batches.value')):
+    if not _val:
+        continue
+    out, hits, armed = [], 0, False
+    for ln in lines:
+        if armed and re.match(r'^\s*value:', ln):
+            out.append(re.sub(r'(^\s*value:\s*)\S+', rf'\g<1>{_val}', ln)); hits += 1; armed = False
+            continue
+        if re.match(rf'^\s*{_key}:', ln):
+            armed = True
+        out.append(ln)
+    assert hits == 1, f'{_key}: expected 1 value line, rewrote {hits}'
+    lines = out
+    expected.add(_path)
+
 open(dst, 'w').writelines(lines)
 
 # --- semantic verification: parsed-YAML leaf diff must equal `expected` ------
@@ -161,7 +193,7 @@ export UWYK_BOTH_ARMS="${BOTH_ARMS:-0}"
 export UWYK_LOG_EVERY="${UWYK_LOG_EVERY:-50}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] UWYK ablation TAG=$TAG"
-echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}  LOG_EVERY=$UWYK_LOG_EVERY"
+echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}  LOG_EVERY=$UWYK_LOG_EVERY  BATCH=${BATCH_SIZE:-<8>}x${ACCUM:-<4>}"
 echo "  CONFIG=$OUT_CFG"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
