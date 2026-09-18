@@ -92,7 +92,12 @@ export SCM_N_QUERY="$NQ"
     echo "FATAL: no N$CTX data under $CASE_STUDY_DATA_ROOT/Observed_Confounder" >&2
     exit 1; }
 
-export DENSITY_DUMP=1
+# DENSITY_DUMP=1 (the default) writes per-query densities, which the scorer
+# needs and which is the expensive, large part of a run. DENSITY_DUMP=0 gives
+# point estimates only -- PEHE / ATE error -- in a fraction of the time, for
+# when only the point table is wanted. Default stays 1 so every existing
+# invocation is unchanged.
+export DENSITY_DUMP="${DENSITY_DUMP:-1}"
 export SKIP_EM="${SKIP_EM:-1}"
 export COMPILE="${COMPILE:-0}"
 
@@ -134,7 +139,7 @@ for CASE in "${CASES[@]}"; do
         ;;
       graph2d)
         python -u "$REPO/realcause_eval/Table1/graph2d.py" \
-            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --dataset "$CASE" --outdir "$OUT" --density-dump "$DENSITY_DUMP" \
             --ckpt "$CKPT_GRAPH2D" --repo "$REPO" \
             --causalpfn "$CAUSALPFN" --uwyk "$UWYK" \
             --anc-mode case_family --density-primary-mode noanc \
@@ -144,13 +149,13 @@ for CASE in "${CASES[@]}"; do
         # pooled, not per_arm: the dump asserts both arms share y_shift/y_scale
         # so the shift cancels in tau. Same constraint as the ComplexMech run.
         python -u "$REPO/realcause_eval/Table1/cpfn1d.py" \
-            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --dataset "$CASE" --outdir "$OUT" --density-dump "$DENSITY_DUMP" \
             --ckpt "$CKPT_CPFN1D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
             --std-mode pooled || echo "WARN: $MODEL $CASE failed"
         ;;
       cpfn2d_pooled)
         python -u "$REPO/realcause_eval/Table1/cpfn2d.py" \
-            --dataset "$CASE" --outdir "$OUT" --density-dump 1 \
+            --dataset "$CASE" --outdir "$OUT" --density-dump "$DENSITY_DUMP" \
             --ckpt "$CKPT_CPFN2D" --repo "$REPO" --causalpfn "$CAUSALPFN" \
             --std-mode pooled || echo "WARN: $MODEL $CASE failed"
         ;;
