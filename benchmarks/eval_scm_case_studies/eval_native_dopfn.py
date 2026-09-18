@@ -35,18 +35,38 @@ if CAUSALPFN:
     sys.path.insert(0, CAUSALPFN)
     sys.path.insert(0, CAUSALPFN + '/src')
 
-# DoPFN's base.py calls sklearn.utils.check_array with keyword
-# `ensure_all_finite=` which was removed in sklearn ≥1.6 (replaced by
-# `ensure_all_finite=` → `ensure_2d=`/`force_all_finite=`). Monkey-patch
-# check_array to accept and drop the removed kwarg.
+# sklearn renamed check_array's finite-check kwarg: force_all_finite became
+# ensure_all_finite in 1.6, and the old name was removed in 1.8. Do-PFN's
+# base.py and various callers use BOTH spellings depending on vintage, so
+# translate toward whichever the INSTALLED sklearn accepts rather than assuming
+# a direction -- a one-way shim breaks on the other half of the version range:
+#     old sklearn + ensure_all_finite -> TypeError
+#     new sklearn + force_all_finite  -> TypeError   (what Fir hit)
+import inspect as _inspect  # noqa: E402
 import sklearn.utils as _sku  # noqa: E402
 _orig_ca = _sku.check_array
+try:
+    _ca_params = _inspect.signature(_orig_ca).parameters
+    if any(p.kind is _inspect.Parameter.VAR_KEYWORD for p in _ca_params.values()):
+        raise ValueError                      # **kwargs tells us nothing
+    _CA_WANT = ('ensure_all_finite' if 'ensure_all_finite' in _ca_params
+                else 'force_all_finite')
+except Exception:                             # fall back on the version
+    import sklearn as _sk  # noqa: E402
+    _maj, _min = (int(x) for x in _sk.__version__.split('.')[:2])
+    _CA_WANT = 'ensure_all_finite' if (_maj, _min) >= (1, 6) else 'force_all_finite'
+_CA_OTHER = ('force_all_finite' if _CA_WANT == 'ensure_all_finite'
+             else 'ensure_all_finite')
+
+
 def _patched_check_array(*a, **kw):
-    if 'ensure_all_finite' in kw:
-        # Map to the current equivalent `force_all_finite`
-        kw.setdefault('force_all_finite', kw.pop('ensure_all_finite'))
+    if _CA_OTHER in kw:
+        kw.setdefault(_CA_WANT, kw.pop(_CA_OTHER))
     return _orig_ca(*a, **kw)
+
+
 _sku.check_array = _patched_check_array
+print(f"[sklearn-shim] check_array finite kwarg -> {_CA_WANT!r}", flush=True)
 # Also patch in the sklearn.utils.validation namespace (where check_array lives)
 import sklearn.utils.validation as _skuv  # noqa: E402
 _skuv.check_array = _patched_check_array
