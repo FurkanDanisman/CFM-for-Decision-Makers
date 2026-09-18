@@ -155,9 +155,13 @@ export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
 export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-1}"
 # Read by the both-arms patch (rpfn_patches/uwyk_both_arms). Unset => upstream.
 export UWYK_BOTH_ARMS="${BOTH_ARMS:-0}"
+# Read by rpfn_patches/uwyk_log_every. Upstream logs steps 1..10 then nothing
+# until step 5000, and save_every is 5000 too, so a healthy run is
+# indistinguishable from a hung one for ~2.5 h. 50 makes progress visible.
+export UWYK_LOG_EVERY="${UWYK_LOG_EVERY:-50}"
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] UWYK ablation TAG=$TAG"
-echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}"
+echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}  LOG_EVERY=$UWYK_LOG_EVERY"
 echo "  CONFIG=$OUT_CFG"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
