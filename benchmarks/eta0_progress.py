@@ -60,11 +60,12 @@ def line(label, done, total):
 
 def rc(root, model, is_point):
     tot = don = 0
-    if not root or not os.path.isdir(root):
-        print(f"  (root absent: {root})"); return 0, sum(_RC.values())
+    have = bool(root) and os.path.isdir(root)
+    if not have:
+        print(f"  (root absent: {root})")
     for ds, n in _RC.items():
         sub = f"{root}/realcause/{ds}" if is_point else f"{root}/{model}/{ds}"
-        d, t = line(ds, n_npz(f"{sub}/*.npz"), n)
+        d, t = line(ds, n_npz(f"{sub}/*.npz") if have else 0, n)
         don += d; tot += t
     return don, tot
 
@@ -90,13 +91,16 @@ def cmech(root, model, ref):
 
 
 def cs(root, model, ctx=1000, per_case=100):
+    """Per-shift rows are printed even when the root is absent, so an
+    unstarted benchmark shows as explicit 0% rows rather than one note. The
+    denominator was always correct; only the display differed from cmech()."""
     tot = don = 0
-    if not root or not os.path.isdir(root):
+    have = bool(root) and os.path.isdir(root)
+    if not have:
         print(f"  (root absent: {root})")
-        return 0, len(_SHIFTS) * len(_DS) * len(_CASES) * per_case
     for sh in _SHIFTS:
-        got = sum(n_npz(f"{root}/shift{sh}/d{d}/ctx{ctx}/{model}/{c}/*.npz")
-                  for d in _DS for c in _CASES)
+        got = (sum(n_npz(f"{root}/shift{sh}/d{d}/ctx{ctx}/{model}/{c}/*.npz")
+                   for d in _DS for c in _CASES) if have else 0)
         d_, t_ = line(f"shift {sh}  ({len(_DS)} d x {len(_CASES)} cases)",
                       got, len(_DS) * len(_CASES) * per_case)
         don += d_; tot += t_
