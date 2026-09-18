@@ -146,6 +146,74 @@ finally:
     os.chdir(_prev_cwd)
 
 
+# ── DOPFN_CKPT: run this pipeline with OUR weights ──────────────────────────
+# DoPFNRegressor loads the released artifacts. Pointing DOPFN_CKPT at a
+# training_dopfn_repro dopfn_1d checkpoint swaps our trained weights into the
+# same regressor, so all of Do-PFN's own preprocessing -- y normalisation, T in
+# column 0, the predict_cate do(1)-do(0) difference -- is applied exactly as the
+# repro was trained to expect, instead of being re-implemented and risking a
+# silent convention mismatch.
+#
+# The repro mutates the PerFeatureTransformer in place (decoder_dict['standard']
+# swapped, model.criterion replaced), so its state dict has the SAME key layout
+# as the regressor's own model, including criterion.borders -- which is where
+# the 1-D bar borders live, since install_criterion returns None for dopfn_1d
+# and the checkpoint's 'edges' field is empty.
+_DOPFN_CKPT = os.environ.get('DOPFN_CKPT', '')
+_REPRO_SD = None
+if _DOPFN_CKPT:
+    _blob = torch.load(_DOPFN_CKPT, map_location='cpu', weights_only=False)
+    _REPRO_SD = _blob.get('model', _blob.get('model_state_dict'))
+    if _REPRO_SD is None:
+        raise SystemExit(f'DOPFN_CKPT {_DOPFN_CKPT} has no model/model_state_dict')
+    _prov = _blob.get('provenance') or {}
+    _variant = _prov.get('variant') if isinstance(_prov, dict) else None
+    if _variant not in (None, 'dopfn_1d'):
+        raise SystemExit(f'DOPFN_CKPT variant is {_variant!r}; this path is for dopfn_1d')
+    print(f'[dopfn_native] DOPFN_CKPT={_DOPFN_CKPT} step={_blob.get("step")} '
+          f'variant={_variant} ({len(_REPRO_SD)} tensors)', flush=True)
+
+
+def _inject_weights(reg):
+    """Load our state dict into whichever nn.Module the regressor holds.
+
+    The attribute name differs across upstream versions, so find it by matching
+    state-dict keys rather than hard-coding one, and load strict=True so a
+    partial or mismatched load is an error and not a silently half-trained model.
+    """
+    if _REPRO_SD is None:
+        return
+    import torch.nn as _nn
+    want = set(_REPRO_SD)
+    best = None
+    for _name in dir(reg):
+        if _name.startswith('__'):
+            continue
+        try:
+            obj = getattr(reg, _name)
+        except Exception:
+            continue
+        if isinstance(obj, _nn.Module):
+            have = set(obj.state_dict())
+            if not have:
+                continue
+            overlap = len(want & have) / max(len(want), 1)
+            if best is None or overlap > best[0]:
+                best = (overlap, _name, obj)
+    if best is None:
+        raise SystemExit('[dopfn_native] no nn.Module found on the regressor to load into')
+    overlap, name, target = best
+    if overlap < 0.99:
+        raise SystemExit(
+            f'[dopfn_native] best match {name!r} shares only {overlap:.1%} of keys '
+            f'with the checkpoint — refusing to load a mismatched model')
+    target.load_state_dict(_REPRO_SD, strict=True)
+    if not getattr(_inject_weights, '_announced', False):
+        _inject_weights._announced = True
+        print(f'[dopfn_native] loaded DOPFN_CKPT weights into regressor.{name} '
+              f'(strict, {overlap:.1%} key match)', flush=True)
+
+
 def evaluate(r: int, ds):
     cate_ds = _cate_ds_from(ds, r, DATASET)
     X_train_full = np.hstack([cate_ds.t_train.reshape(-1, 1), cate_ds.X_train])
@@ -170,6 +238,7 @@ def evaluate(r: int, ds):
     os.chdir(DOPFN_ROOT)
     try:
         model.fit(X_train_full, y_train)
+        _inject_weights(model)   # after fit: the module may be built there
         X_test_t = torch.from_numpy(X_test_full.astype(np.float32))
         cate_pred = model.predict_cate(X_test_t)
         # For density dump: get raw bin probs via predict_full on both arms.
