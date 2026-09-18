@@ -30,7 +30,6 @@ training/train_cfm_dopfn.py:
 
     forward(X_context, T_context, Y_context, X_query) -> {'predictions': ...}
 """
-import os as _os
 from __future__ import annotations
 
 import os
@@ -196,7 +195,7 @@ class DoPFNBackboneWith2DHead(nn.Module):
         #            so checkpoints from that pipeline must be evaluated with
         #            DOPFN_QUERY_T=nan or they are fed inputs never seen in
         #            training.
-        _qt = _os.environ.get("DOPFN_QUERY_T", "zero").lower()
+        _qt = os.environ.get("DOPFN_QUERY_T", "zero").lower()
         if _qt not in ("zero", "nan"):
             raise ValueError(f"DOPFN_QUERY_T must be 'zero' or 'nan', got {_qt!r}")
         _fill = float("nan") if _qt == "nan" else 0.0
