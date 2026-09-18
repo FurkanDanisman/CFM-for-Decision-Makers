@@ -227,11 +227,35 @@ def _inject_weights(reg):
         raise SystemExit(
             f'[dopfn_native] best match {name!r} shares only {overlap:.1%} of keys '
             f'with the checkpoint — refusing to load a mismatched model')
-    target.load_state_dict(_REPRO_SD, strict=True)
+    # The regressor builds its PerFeatureTransformer WITH attention biases; the
+    # pickle the repro trained from has none, so ~48 in_proj_bias/out_proj.bias
+    # keys are absent from our checkpoint. A bias-free layer is exactly a layer
+    # whose bias is zero, so load non-strict and zero those tensors -- this is
+    # an equivalence, not an approximation.
+    #
+    # Guarded hard: every missing key must be a bias, and nothing we carry may
+    # be unexpected. Anything else means the architectures genuinely differ and
+    # a partial load would quietly evaluate a half-released, half-ours model.
+    missing, unexpected = target.load_state_dict(_REPRO_SD, strict=False)
+    if unexpected:
+        raise SystemExit(
+            f'[dopfn_native] checkpoint has {len(unexpected)} keys the model does '
+            f'not accept, e.g. {sorted(unexpected)[:3]} — architectures differ')
+    non_bias = [k for k in missing if not k.endswith('bias')]
+    if non_bias:
+        raise SystemExit(
+            f'[dopfn_native] {len(non_bias)} missing key(s) are NOT biases, e.g. '
+            f'{sorted(non_bias)[:3]} — refusing to load a partially trained model')
+    if missing:
+        _tgt_sd = target.state_dict()
+        with torch.no_grad():
+            for k in missing:
+                _tgt_sd[k].zero_()
     if not getattr(_inject_weights, '_announced', False):
         _inject_weights._announced = True
         print(f'[dopfn_native] loaded DOPFN_CKPT weights into regressor.{name} '
-              f'(strict, {overlap:.1%} key match)', flush=True)
+              f'({overlap:.1%} key match; zeroed {len(missing)} absent bias '
+              f'tensors, 0 unexpected)', flush=True)
 
 
 def evaluate(r: int, ds):
