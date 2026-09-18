@@ -1,0 +1,129 @@
+{
+  "cases": [
+    "Observed_Confounder",
+    "Backdoor_Criterion",
+    "Observed_Mediator",
+    "Observed_Mediator_and_Confounder",
+    "Unobserved_Confounder",
+    "Frontdoor_Criterion"
+  ],
+  "context_sizes": [
+    200,
+    500,
+    1000
+  ],
+  "n_realizations": 100,
+  "seed_base": 0,
+  "cate_shift": -2.0,
+  "source": "reimplementation of github.com/jr2021/Do-PFN case studies",
+  "cells": [
+    {
+      "case": "Observed_Confounder",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Confounder",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Confounder",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Backdoor_Criterion",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Backdoor_Criterion",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Backdoor_Criterion",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator_and_Confounder",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator_and_Confounder",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Observed_Mediator_and_Confounder",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Unobserved_Confounder",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Unobserved_Confounder",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Unobserved_Confounder",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Frontdoor_Criterion",
+      "N": 200,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Frontdoor_Criterion",
+      "N": 500,
+      "n_written": 100,
+      "n_resampled": 0
+    },
+    {
+      "case": "Frontdoor_Criterion",
+      "N": 1000,
+      "n_written": 100,
+      "n_resampled": 0
+    }
+  ]
+}

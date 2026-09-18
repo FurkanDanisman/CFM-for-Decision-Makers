@@ -1,0 +1,102 @@
+\begin{thebibliography}{14}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Balazadeh et~al.(2025)Balazadeh, Kamkari, Thomas, Li, Ma, Cresswell, and Krishnan]{causalpfn}
+Vahid Balazadeh, Hamidreza Kamkari, Valentin Thomas, Benson Li, Junwei Ma, Jesse~C. Cresswell, and Rahul~G. Krishnan.
+\newblock {CausalPFN}: Amortized causal effect estimation via in-context learning.
+\newblock \emph{arXiv preprint}, 2025.
+\newblock URL \url{https://arxiv.org/abs/2506.07918}.
+\newblock Code: \url{https://github.com/vdblm/CausalPFN}.
+
+\bibitem[Chernozhukov et~al.(2018)Chernozhukov, Chetverikov, Demirer, Duflo, Hansen, Newey, and Robins]{chernozhukov2018}
+Victor Chernozhukov, Denis Chetverikov, Mert Demirer, Esther Duflo, Christian Hansen, Whitney Newey, and James Robins.
+\newblock Double/debiased machine learning for treatment and structural parameters.
+\newblock \emph{The Econometrics Journal}, 21\penalty0 (1):\penalty0 C1--C68, 2018.
+\newblock \doi{10.1111/ectj.12097}.
+\newblock URL \url{https://academic.oup.com/ectj/article/21/1/C1/5056401}.
+\newblock arXiv preprint at \url{https://arxiv.org/abs/1608.00060}.
+
+\bibitem[Danisman et~al.(2026)Danisman, Jankowski, and de~Souza]{danisman2026malc}
+Furkan Danisman, Hanna Jankowski, and Camila P.~E. de~Souza.
+\newblock Bandwidth-free nonparametric density estimation for grouped data.
+\newblock \emph{arXiv preprint}, 2026.
+\newblock URL \url{https://arxiv.org/abs/2607.13182}.
+
+\bibitem[Hern{\'a}n and Robins(2020)]{hernan2020}
+Miguel~A. Hern{\'a}n and James~M. Robins.
+\newblock \emph{Causal Inference: What If}.
+\newblock Chapman \& Hall/CRC, Boca Raton, 2020.
+\newblock URL \url{https://www.hsph.harvard.edu/miguel-hernan/causal-inference-book/}.
+
+\bibitem[Hollmann et~al.(2022)Hollmann, M{\"u}ller, Eggensperger, and Hutter]{hollmann2022tabpfn}
+Noah Hollmann, Samuel M{\"u}ller, Katharina Eggensperger, and Frank Hutter.
+\newblock {TabPFN}: A transformer that solves small tabular classification problems in a second.
+\newblock \emph{arXiv preprint}, 2022.
+\newblock URL \url{https://arxiv.org/abs/2207.01848}.
+\newblock Also presented at ICLR 2023.
+
+\bibitem[Ma et~al.(2026)Ma, Frauen, Javurek, and Feuerriegel]{ma2026causalfm}
+Yuchen Ma, Dennis Frauen, Emil Javurek, and Stefan Feuerriegel.
+\newblock Foundation models for causal inference via prior-data fitted networks.
+\newblock In \emph{The Fourteenth International Conference on Learning Representations (ICLR)}, 2026.
+\newblock URL \url{https://openreview.net/forum?id=d2L1ndOKjq}.
+
+\bibitem[M{\"u}ller et~al.(2022)M{\"u}ller, Hollmann, Pineda~Arango, Grabocka, and Hutter]{muller2022pfn}
+Samuel M{\"u}ller, Noah Hollmann, Sebastian Pineda~Arango, Josif Grabocka, and Frank Hutter.
+\newblock Transformers can do {B}ayesian inference.
+\newblock In \emph{International Conference on Learning Representations (ICLR)}, 2022.
+\newblock URL \url{https://openreview.net/forum?id=KSugKcbNf9}.
+\newblock arXiv preprint at \url{https://arxiv.org/abs/2112.10510}.
+
+\bibitem[Neal et~al.(2020)Neal, Huang, and Raghupathi]{neal2020realcause}
+Brady Neal, Chin-Wei Huang, and Sunand Raghupathi.
+\newblock {RealCause}: Realistic causal inference benchmarking.
+\newblock \emph{arXiv preprint}, 2020.
+\newblock URL \url{https://arxiv.org/abs/2011.15007}.
+
+\bibitem[Pearl(2009)]{pearl2009}
+Judea Pearl.
+\newblock \emph{Causality: Models, Reasoning and Inference}.
+\newblock Cambridge University Press, Cambridge, 2 edition, 2009.
+\newblock ISBN 978-0521895606.
+\newblock URL \url{https://www.cambridge.org/9780521895606}.
+
+\bibitem[Peters et~al.(2017)Peters, Janzing, and Sch{\"o}lkopf]{peters}
+Jonas Peters, Dominik Janzing, and Bernhard Sch{\"o}lkopf.
+\newblock \emph{Elements of Causal Inference: Foundations and Learning Algorithms}.
+\newblock Adaptive Computation and Machine Learning Series. The MIT Press, Cambridge, MA, USA, 2017.
+\newblock ISBN 978-0262037310.
+\newblock URL \url{https://mitpress.mit.edu/9780262037310/elements-of-causal-inference/}.
+
+\bibitem[Reuter et~al.(2026)Reuter, Dhir, Diaconu, Robertson, Ossen, Hutter, Weller, van~der Wilk, and Sch{\"o}lkopf]{uwyk}
+Arik Reuter, Anish Dhir, Cristiana Diaconu, Jake Robertson, Ole Ossen, Frank Hutter, Adrian Weller, Mark van~der Wilk, and Bernhard Sch{\"o}lkopf.
+\newblock Use what you know: Causal foundation models with partial graphs, 2026.
+\newblock URL \url{https://arxiv.org/abs/2602.14972}.
+
+\bibitem[Robertson et~al.(2025)Robertson, Reuter, Guo, Hollmann, Hutter, and Sch{\"o}lkopf]{dopfn}
+Jake Robertson, Arik Reuter, Siyuan Guo, Noah Hollmann, Frank Hutter, and Bernhard Sch{\"o}lkopf.
+\newblock {Do-PFN}: In-context learning for causal effect estimation.
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, volume~38, pages 174811--174848. Curran Associates, Inc., 2025.
+\newblock \doi{10.52202/085713-5814}.
+\newblock URL \url{https://proceedings.neurips.cc/paper_files/paper/2025/hash/ff997469ac66cf893c4183efeb22212a-Abstract-Conference.html}.
+
+\bibitem[Spirtes et~al.(2000)Spirtes, Glymour, and Scheines]{spirtes2000}
+Peter Spirtes, Clark Glymour, and Richard Scheines.
+\newblock \emph{Causation, Prediction, and Search}.
+\newblock MIT Press, Cambridge, MA, USA, 2 edition, 2000.
+\newblock ISBN 978-0262194402.
+\newblock URL \url{https://mitpress.mit.edu/9780262194402/causation-prediction-and-search/}.
+
+\bibitem[Wager and Athey(2018)]{wager2018}
+Stefan Wager and Susan Athey.
+\newblock Estimation and inference of heterogeneous treatment effects using random forests.
+\newblock \emph{Journal of the American Statistical Association}, 113\penalty0 (523):\penalty0 1228--1242, 2018.
+\newblock \doi{10.1080/01621459.2017.1319839}.
+\newblock URL \url{https://www.tandfonline.com/doi/full/10.1080/01621459.2017.1319839}.
+\newblock arXiv preprint at \url{https://arxiv.org/abs/1510.04342}.
+
+\end{thebibliography}
