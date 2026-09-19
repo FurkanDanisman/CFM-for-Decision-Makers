@@ -47,23 +47,33 @@ _KEYS = ("cover", "length", "is05", "crps")
 
 
 def cells(a):
-    """[(label, tag, [files])] for the requested selector."""
+    """[(label, tag, [files])] for the requested selector.
+
+    --root takes several roots so the case studies can be pooled over their
+    (shift x d) cells: each cell is a separate scorer root, and a per-case
+    number wants every cell's realizations in one sample. Realizations from
+    different cells are different SCMs, which is fine here -- coverage is being
+    averaged over realizations either way, and that is exactly the population
+    the case-study tables describe.
+    """
     out = []
+    roots = a.root if isinstance(a.root, list) else [a.root]
     for label, subdir, tag in METHODS:
         if a.methods and label not in a.methods:
             continue
         files = []
-        if a.dataset:
-            d = _resolve_dir(a.root, subdir, a.dataset)
-            if d:
-                files = sorted(glob.glob(os.path.join(d, "*.npz")))
-        else:
-            subs = (["nonzero", "zero"] if a.subset == "total" else [a.subset])
-            for s in subs:
-                d = _resolve_dir(os.path.join(a.root, f"N{a.context}"), subdir,
-                                 f"CMECH_n{a.nodes}_{s}")
+        for root in roots:
+            if a.dataset:
+                d = _resolve_dir(root, subdir, a.dataset)
                 if d:
                     files += sorted(glob.glob(os.path.join(d, "*.npz")))
+            else:
+                subs = (["nonzero", "zero"] if a.subset == "total" else [a.subset])
+                for sub in subs:
+                    d = _resolve_dir(os.path.join(root, f"N{a.context}"), subdir,
+                                     f"CMECH_n{a.nodes}_{sub}")
+                    if d:
+                        files += sorted(glob.glob(os.path.join(d, "*.npz")))
         files = [f for f in files if os.path.basename(f) != "summary.npz"]
         if a.max_real:
             files = files[: a.max_real]
@@ -74,7 +84,9 @@ def cells(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", required=True)
+    ap.add_argument("--root", required=True, nargs="+",
+                    help="one or more scorer roots; several are pooled (use a "
+                         "glob for the case studies' shift x d cells)")
     ap.add_argument("--dataset", default=None,
                     help="RealCause dataset or case-study case name")
     ap.add_argument("--context", type=int, default=1000)
@@ -108,7 +120,9 @@ def main():
         _configure_tau_smoother(None)
 
     sel = a.dataset or f"CMECH_n{a.nodes}_{a.subset} (N={a.context})"
-    print(f"root={a.root}\nselector={sel}\n"
+    print(f"roots={len(a.root)}"
+          + (f"  ({a.root[0]} ...)" if len(a.root) > 1 else f"  {a.root[0]}")
+          + f"\nselector={sel}\n"
           f"variant={'T (MALC B=%d K=%d)' % (a.malc_B, a.malc_K) if a.tau_smoother == 'malc' else 'raw'}\n")
     print(f"{'method':17s} {'n_real':>6s} | "
           f"{'coverage':>8s} {'sd':>7s} {'se':>7s} | "
