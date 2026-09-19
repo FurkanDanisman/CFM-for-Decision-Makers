@@ -733,6 +733,16 @@ METHODS = [
     # PEHE/ATE tables is per_arm. Worth a footnote if both are reported.
     ("cpfn1d",        "cpfn1d",        None),
     ("cpfn2d",        "cpfn2d_pooled", None),
+    # training_dopfn_repro variants. The two dopfn_1d heads run through
+    # eval_native_dopfn.py with DOPFN_CKPT (that path validates
+    # provenance.variant == 'dopfn_1d'); joint_2d runs through the dopfn_bb
+    # harness after to_dopfn_bb_ckpt.py, which relabels the state-dict keys --
+    # same backbone, same head shape, only the module nesting differs. Rows
+    # appear only where a matching dump subdir exists, so listing them here is
+    # inert until those dumps are made.
+    ("dopfn_repro_1d_J10",   "dopfn_repro_1d_J10",   None),
+    ("dopfn_repro_1d_J100",  "dopfn_repro_1d_J100",  None),
+    ("dopfn_repro_joint2d",  "dopfn_repro_joint2d",  None),
     # cpfn2d_log is deliberately absent: under a log target transform tau is not
     # an affine function of the scaled difference, so the harness refuses to dump
     # a density for it (and is right to). It still appears in the point-estimate
