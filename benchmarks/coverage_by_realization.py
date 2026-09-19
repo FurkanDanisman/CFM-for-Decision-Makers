@@ -1,0 +1,120 @@
+"""Coverage aggregated the right way: one number per realization, then mean +- std.
+
+THE PROBLEM WITH THE POOLED MEAN. cate_density_metrics flattens every
+realization's per-query scores into one list and takes the mean, so a
+case-study cell is one average over 100 x 100 = 10,000 Bernoullis and its
+reported SE is std/sqrt(10000). That treats queries as independent draws. They
+are not: all queries in a realization share one context and one SCM, so they
+are clustered. The point estimate is fine; the error bar is roughly 10x too
+small, which makes small differences between models look significant when they
+are not.
+
+WHAT THIS DOES INSTEAD. For each realization, compute coverage (and length, IS,
+CRPS) over its own queries -- one number per realization -- then report the
+mean and the standard deviation ACROSS realizations. The spread is then the
+real realization-to-realization variability, and the SE is std/sqrt(n_real).
+
+It also prints the spread itself, which the pooled mean destroys: a method at
+0.95 mean coverage made of realizations at 0.7 and 1.0 is not the same as one
+where every realization sits at 0.95, and only this view distinguishes them.
+
+Reads the same dumps through the same loader, so nothing is recomputed.
+
+Usage:
+    # RealCause / case studies (selector is --dataset)
+    python benchmarks/coverage_by_realization.py --root $SCRATCH/rc_dens_uni \\
+        --dataset IHDP
+    # ComplexMech
+    python benchmarks/coverage_by_realization.py --root $SCRATCH/cmech_dens \\
+        --context 1000 --nodes 5 --subset total
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import os
+import sys
+
+import numpy as np
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
+
+from cate_density_metrics import METHODS, score_file, _resolve_dir   # noqa: E402
+
+_KEYS = ("cover", "length", "is05", "crps")
+
+
+def cells(a):
+    """[(label, tag, [files])] for the requested selector."""
+    out = []
+    for label, subdir, tag in METHODS:
+        if a.methods and label not in a.methods:
+            continue
+        files = []
+        if a.dataset:
+            d = _resolve_dir(a.root, subdir, a.dataset)
+            if d:
+                files = sorted(glob.glob(os.path.join(d, "*.npz")))
+        else:
+            subs = (["nonzero", "zero"] if a.subset == "total" else [a.subset])
+            for s in subs:
+                d = _resolve_dir(os.path.join(a.root, f"N{a.context}"), subdir,
+                                 f"CMECH_n{a.nodes}_{s}")
+                if d:
+                    files += sorted(glob.glob(os.path.join(d, "*.npz")))
+        files = [f for f in files if os.path.basename(f) != "summary.npz"]
+        if a.max_real:
+            files = files[: a.max_real]
+        out.append((label, tag, files))
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", required=True)
+    ap.add_argument("--dataset", default=None,
+                    help="RealCause dataset or case-study case name")
+    ap.add_argument("--context", type=int, default=1000)
+    ap.add_argument("--nodes", type=int, default=5)
+    ap.add_argument("--subset", default="total",
+                    choices=["nonzero", "zero", "total"])
+    ap.add_argument("--methods", nargs="+", default=None)
+    ap.add_argument("--max-real", type=int, default=None)
+    ap.add_argument("--tag", default=None,
+                    help="density key suffix; defaults to each METHODS entry's own")
+    a = ap.parse_args()
+
+    sel = a.dataset or f"CMECH_n{a.nodes}_{a.subset} (N={a.context})"
+    print(f"root={a.root}\nselector={sel}\n")
+    print(f"{'method':17s} {'n_real':>6s} | "
+          f"{'coverage':>8s} {'sd':>7s} {'se':>7s} | "
+          f"{'length':>10s} {'sd':>9s} | {'IS_0.05':>10s} | {'CRPS':>9s}")
+    print("-" * 104)
+
+    for label, tag, files in cells(a):
+        per = {k: [] for k in _KEYS}
+        for f in files:
+            got = score_file(f, a.tag if a.tag is not None else tag)
+            if not got:
+                continue
+            for k in _KEYS:
+                v = [g[k] for g in got if g.get(k) is not None]
+                if v:
+                    per[k].append(float(np.mean(v)))
+        n = len(per["cover"])
+        if not n:
+            print(f"{label:17s} {'—':>6s} | (no dumps)")
+            continue
+        m = {k: np.asarray(per[k]) for k in _KEYS}
+        sd = lambda v: float(v.std(ddof=1)) if v.size > 1 else float("nan")
+        print(f"{label:17s} {n:6d} | "
+              f"{m['cover'].mean():8.4f} {sd(m['cover']):7.4f} "
+              f"{sd(m['cover'])/np.sqrt(n):7.4f} | "
+              f"{m['length'].mean():10.4f} {sd(m['length']):9.4f} | "
+              f"{m['is05'].mean():10.4f} | {m['crps'].mean():9.4f}")
+
+
+if __name__ == "__main__":
+    main()
