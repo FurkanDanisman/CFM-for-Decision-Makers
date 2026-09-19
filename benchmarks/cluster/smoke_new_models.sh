@@ -35,10 +35,17 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 SMOKE="${SMOKE:-$SCRATCH/smoke_new}"
 
 # Where the six .pt files landed. Tried in order; first hit wins.
+# Require .pt files, not merely an existing directory: an EMPTY
+# $SCRATCH/final_checkpoints shadowed the real Required_checkpoints and every
+# model came back MISSING while the weights sat one directory away.
 FINAL=""
-for c in "${FINAL_CKPTS:-}" "$REPO/final_checkpoints" "$DEPLOY_ROOT/final_checkpoints" \
-         "$SCRATCH/final_checkpoints" "$HOME/final_checkpoints"; do
-    [ -n "$c" ] && [ -d "$c" ] && { FINAL="$c"; break; }
+for c in "${FINAL_CKPTS:-}" "$REPO/Required_checkpoints" "$REPO/final_checkpoints" \
+         "$DEPLOY_ROOT/final_checkpoints" "$SCRATCH/final_checkpoints" \
+         "$HOME/final_checkpoints"; do
+    [ -n "$c" ] || continue
+    [ -d "$c" ] || continue
+    if [ "$(find "$c" -maxdepth 1 -name '*.pt' | head -1)" ]; then FINAL="$c"; break; fi
+    echo "note: $c exists but holds no .pt files -- skipping"
 done
 [ -n "$FINAL" ] || { echo "FATAL: final_checkpoints not found. Set FINAL_CKPTS=<dir>" >&2; exit 1; }
 echo "FINAL_CKPTS = $FINAL"
@@ -59,17 +66,18 @@ echo
 # -- an ambiguous pattern is an error, not a coin flip, because picking the
 # wrong .pt here is precisely the failure mode that costs days.
 #
-# cpfn_v0 is deliberately unresolved: the two unaccounted-for files in
-# Required_checkpoints (step_50000_final.pt, cpfn2d_j32_random_step_50000.pt)
-# are both on the do-not-run list, so guessing would be the filename-trust that
-# has burned this project before. Set CKPT_CPFN_V0 to include it.
+# cpfn_v0's file is named unambiguously (cpfn_v0_original.pt) so there is nothing
+# left to guess -- but on this filesystem it is 58 bytes, i.e. a git-lfs pointer
+# checked out as text, because killarney has no git-lfs. The size gate in
+# resolve() catches that and reports it as a POINTER rather than letting torch
+# fail on a text file. Copy the real weights across, or set CKPT_CPFN_V0.
 ROWS=(
   "dopfn_repro_1d_J10|dopfn_native|0|DOPFN_CKPT|*repro*1d*J10_*.pt"
   "dopfn_repro_1d_J100|dopfn_native|0|DOPFN_CKPT|*repro*1d*J100*.pt"
   "dopfn_repro_joint2d|dopfn_bb|1|CKPT_DOPFN_BB|@REPO@/Required_checkpoints/dopfn_repro_joint2d_bb.pt"
   "cpfn1d_j32|cpfn1d|4|CKPT_CPFN1D|*cpfn1d*j32*.pt"
   "cpfn1d_botharms|cpfn1d|4|CKPT_CPFN1D|*botharms*.pt"
-  "cpfn_v0|cpfn1d|4|CKPT_CPFN1D|@ENV@CKPT_CPFN_V0"
+  "cpfn_v0|cpfn1d|4|CKPT_CPFN1D|${CKPT_CPFN_V0:+@ENV@CKPT_CPFN_V0}${CKPT_CPFN_V0:-*cpfn_v0*.pt}"
 )
 
 # Resolve one glob against $FINAL. Echoes the path, or an empty string plus a
@@ -88,7 +96,19 @@ resolve() {
     shopt -s nullglob nocaseglob
     for f in "$FINAL"/$pat; do hits+=("$f"); done
     shopt -u nullglob nocaseglob
-    if [ "${#hits[@]}" -eq 1 ]; then echo "${hits[0]}"; return 0; fi
+    if [ "${#hits[@]}" -eq 1 ]; then
+        local f="${hits[0]}"
+        local sz; sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        # A real checkpoint here is >=29 MB. Anything tiny is a git-lfs pointer
+        # checked out as text (killarney has no git-lfs), which would load as a
+        # parse error rather than a model.
+        if [ "$sz" -lt 1000000 ]; then
+            echo "  $name: $f is only ${sz} bytes -- a git-lfs POINTER, not weights:" >&2
+            head -c 200 "$f" | sed 's/^/        /' >&2; echo >&2
+            return 3
+        fi
+        echo "$f"; return 0
+    fi
     if [ "${#hits[@]}" -eq 0 ]; then
         echo "  $name: no file in $FINAL matches '$pat'" >&2; return 1
     fi
@@ -99,7 +119,7 @@ resolve() {
 
 # ── Stage 1: what are these files, really? ───────────────────────────────────
 source "$DEPLOY_ROOT/venv/bin/activate"
-PATHS=(); MISSING=0; declare -A CK=()
+PATHS=(); MISSING=0; POINTER=0; declare -A CK=()
 echo "--- resolving checkpoints in $FINAL"
 ls -1 "$FINAL" | sed 's/^/      /'
 echo
@@ -108,6 +128,10 @@ for r in "${ROWS[@]}"; do
     ck="$(resolve "$pat" "$name")"; rc=$?
     if [ "$rc" = 2 ]; then
         printf '%-22s UNRESOLVED  (set CKPT_CPFN_V0=<path>)\n' "$name"; continue
+    fi
+    if [ "$rc" = 3 ]; then
+        printf '%-22s LFS POINTER (needs the real file copied over)\n' "$name"
+        POINTER=1; continue
     fi
     if [ "$rc" != 0 ] || [ -z "$ck" ]; then
         printf '%-22s MISSING\n' "$name"; MISSING=1; continue
@@ -122,10 +146,21 @@ REF="$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt"
 [ -f "$REF" ] && PATHS+=("$REF")
 [ "${#PATHS[@]}" -gt 0 ] && python -u "$REPO/benchmarks/inspect_ckpt.py" "${PATHS[@]}"
 echo
+# Several of these files share a byte size exactly (same architecture, same
+# step), so size is not evidence of identity either way. Hash them: two models
+# that are supposed to differ and hash the same would mean a copy went wrong.
+echo "--- sha256 (same-size files must still differ)"
+if [ "${#PATHS[@]}" -gt 0 ]; then
+    sha256sum "${PATHS[@]}" 2>/dev/null | sed 's/^/      /'
+    dup=$(sha256sum "${PATHS[@]}" 2>/dev/null | awk '{print $1}' | sort | uniq -d | wc -l | tr -d ' ')
+    [ "$dup" != 0 ] && echo "  WARNING: $dup hash(es) appear more than once -- two 'different' models are the same file" >&2
+fi
+echo
 if [ "$MISSING" = 1 ]; then
     echo "FATAL: some checkpoints are missing -- fix the paths before submitting." >&2
     exit 1
 fi
+[ "$POINTER" = 1 ] && echo "NOTE: skipping the lfs-pointer model(s) above; the rest proceed."
 [ "$SUBMIT" = 1 ] || { echo "Inspection only. Re-run with --submit to queue the dump cells."; exit 0; }
 
 # ── Stage 2: one dump cell per model, per benchmark ──────────────────────────
