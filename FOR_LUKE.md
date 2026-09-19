@@ -1393,8 +1393,12 @@ ls -t $DEPLOY_ROOT/checkpoints_dopfn_repro/*/ 2>/dev/null | head -6
 
 
 cpfn1d_j32_step50000.pt
-dopfn_repro_1d_step150000.pt
+dopfn_repro_1d_J100_step150000.pt
+dopfn_repro_1d_J10_step150000.pt
 dopfn_repro_joint2d_step150000.pt
+cpfn2d_j32_eta0_y01_step50000.pt
+
+
 
 (venv) [furkanbd@login2 R-PFN]$ # on Fir — stage them under one name each
 mkdir -p $DEPLOY_ROOT/final_checkpoints
@@ -1407,6 +1411,8 @@ total 306M
 -rw-r----- 1 furkanbd furkanbd 208M Sep 17 16:08 cpfn1d_j32_step50000.pt
 -rw-r----- 1 furkanbd furkanbd  85M Sep 17 19:17 dopfn_repro_1d_step150000.pt
 -rw-r----- 1 furkanbd furkanbd  85M Sep 17 19:17 dopfn_repro_joint2d_step150000.pt
+(venv) [furkanbd@login2 R-PFN]$ cp /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_eta0_y01_A1_h100/step_checkpoints/run/step_0050000.pt $DEPLOY_ROOT/final_checkpoints/cpfn2d_j32_eta0_y01_step50000.pt
+$DEPLOY_ROOT/final_checkpoints/cpfn2d_j32_eta0_y01_step50000.pt
 
 
 python ~/steps.py
@@ -1417,3 +1423,254 @@ IHDP   √PEHE 6.005 ± 0.801     ε_ATE 0.531
 ACIC         4.113 ± 0.545           0.716
 PSID    17,272.6 ± 151.8            0.109
 PSIDbal 17,205.8 ± 155.6            0.114
+
+(venv) [furkanbd@login2 R-PFN]$ python ~/rc.py
+                                        dopfn_1d                         dopfn_joint2d                        cpfn1d_j32_50k
+IHDP                       4.824±0.750   [100] 0.317                 6.005±0.801   [100] 0.531                 0.734±0.119   [100] 0.040
+ACIC                       3.815±0.546   [ 10] 0.507                 4.113±0.545   [ 10] 0.716                 1.003±0.141   [ 10] 0.051
+CPS                   11,391.741±77.386  [ 22] 0.811            12,173.759±23.413  [ 53] 0.794             9,283.518±46.713  [100] 0.282
+PSID                  17,325.540±149.086 [100] 0.493            17,272.579±151.757 [100] 0.109            14,811.882±195.216 [100] 0.254
+PSID_bal              17,325.540±149.086 [100] 0.493            17,205.818±155.624 [100] 0.114            15,206.687±265.923 [100] 0.263
+
+
+
+## RealCause
+
+### IHDP
+
+| method | PEHE raw | PEHE em | eps_ATE raw | eps_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 1.2005 | 1.1995 | 0.2313 | 0.2311 | 0.9977 | 12.9062 | 13.0698 | — | — | — |
+
+### ACIC
+
+| method | PEHE raw | PEHE em | eps_ATE raw | eps_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 1.2638 | 1.2637 | 0.3048 | 0.3046 | 0.9969 | 11.7699 | 12.0701 | — | — | — |
+
+### CPS
+
+| method | PEHE raw | PEHE em | eps_ATE raw | eps_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 10902.4813 | 10902.6475 | 2730.1542 | 2729.6191 | 0.9436 | 42618.2961 | 50374.2102 | — | — | — |
+
+### PSID
+
+| method | PEHE raw | PEHE em | eps_ATE raw | eps_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 15557.2516 | 15552.0093 | 3365.9585 | 3288.2979 | 0.9561 | 57605.7928 | 91095.9564 | — | — | — |
+
+### PSID_bal
+
+| method | PEHE raw | PEHE em | eps_ATE raw | eps_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 16769.4319 | 16764.1358 | 4419.7026 | 4350.8590 | 0.9432 | 58404.2558 | 94855.9333 | — | — | — |
+
+## ComplexMech
+
+One table per node count d.
+
+
+### d = 5
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2484 | 0.2484 | 0.1397 | 0.1399 | 0.8758 | 0.7974 | 2.9819 | — | — | — |
+
+### d = 10
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.1486 | 0.1486 | 0.0440 | 0.0435 | 0.9339 | 0.7667 | 1.3535 | — | — | — |
+
+### d = 20
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2089 | 0.2089 | 0.0524 | 0.0524 | 0.9067 | 0.7762 | 1.6514 | — | — | — |
+
+### d = 30
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.1829 | 0.1829 | 0.0513 | 0.0512 | 0.9285 | 0.7540 | 1.5869 | — | — | — |
+
+### d = 40
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.1928 | 0.1928 | 0.0682 | 0.0681 | 0.9399 | 0.6673 | 1.1448 | — | — | — |
+
+### d = 50
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2106 | 0.2106 | 0.0523 | 0.0522 | 0.9476 | 0.7384 | 1.4098 | — | — | — |
+
+## Case studies
+
+One table per case, pooled over 24 (shift x d) cells by n_query weighting.
+
+> coverage and sd_ratio are scale-free and pool cleanly. length and IS carry the outcome's units, which differ across d — pooling those summarises differently-scaled quantities.
+
+### Observed_Confounder
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2078 | 0.2079 | 0.0914 | 0.0914 | 0.9972 | 2.5612 | 2.5964 | — | — | — |
+
+### Observed_Mediator
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.3589 | 0.3587 | 0.3369 | 0.3367 | 0.8963 | 1.6859 | 2.2828 | — | — | — |
+
+### Observed_Mediator_and_Confounder
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.4394 | 0.4395 | 0.3036 | 0.3037 | 0.9605 | 2.3217 | 2.8030 | — | — | — |
+
+### Unobserved_Confounder
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.4644 | 0.4645 | 0.2116 | 0.2116 | 0.9872 | 3.0228 | 3.2091 | — | — | — |
+
+### Frontdoor_Criterion
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2044 | 0.2045 | 0.0812 | 0.0812 | 0.9967 | 2.0312 | 2.0773 | — | — | — |
+
+### Backdoor_Criterion
+*pooled over 24 cells*
+
+| method | PEHE raw | PEHE em | L1_ATE raw | L1_ATE em | cov raw | len raw | IS raw | cov T | len T | IS T |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| cpfn2d | 0.2295 | 0.2296 | 0.0903 | 0.0904 | 0.9955 | 2.1239 | 2.1951 | — | — | — |
+
+(venv) furkanbd@klogin04:/scratch/furkanbd/rpfn_bench_kit$ 
+
+
+
+furkanbd@klogin04:~$ ls -lh /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/*.pt /scratch/furkanbd/final_checkpoints/*.pt /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt 2>&1
+-rw-r----- 1 furkanbd furkanbd 216M Sep 18 15:07 /scratch/furkanbd/final_checkpoints/cpfn1d_botharms_step50000.pt
+-rw-r----- 1 furkanbd furkanbd 208M Sep 18 10:31 /scratch/furkanbd/final_checkpoints/cpfn1d_j32_step50000.pt
+-rw-r----- 1 furkanbd furkanbd 216M Sep 18 10:31 /scratch/furkanbd/final_checkpoints/cpfn2d_j32_eta0_y01_step50000.pt
+-rw-r----- 1 furkanbd furkanbd  85M Sep 18 10:31 /scratch/furkanbd/final_checkpoints/dopfn_repro_1d_J100_step150000.pt
+-rw-r----- 1 furkanbd furkanbd  84M Sep 18 10:31 /scratch/furkanbd/final_checkpoints/dopfn_repro_1d_J10_step150000.pt
+-rw-r----- 1 furkanbd furkanbd  85M Sep 18 10:31 /scratch/furkanbd/final_checkpoints/dopfn_repro_joint2d_step150000.pt
+-rw-r--r-- 1 furkanbd furkanbd 129M Jul 15 04:39 /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+-rw-r----- 1 furkanbd furkanbd 216M Sep 14 12:38 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt
+-rw-r----- 1 furkanbd furkanbd 216M Sep 14 12:38 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/cpfn2d_j32_random_step_50000.pt
+-rw-r----- 1 furkanbd furkanbd  85M Sep  1 12:16 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_bb_j10_step_150000.pt
+-rw-r----- 1 furkanbd furkanbd 161M Sep  1 12:16 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/graph2d_step_50000.pt
+-rw-r----- 1 furkanbd furkanbd 185M Sep 18 10:40 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/step_50000_final.pt
+-rw-r----- 1 furkanbd furkanbd 129M Sep  1 12:16 /scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/uwyk_reproduce_best_model.pt
+furkanbd@klogin04:~$ 
+
+
+
+(venv) furkanbd@klogin04:/scratch/furkanbd/rpfn_bench_kit$ cd /scratch/furkanbd/rpfn_bench_kit
+for ds in IHDP ACIC CPS PSID PSID_bal; do
+  echo "================ $ds ================"
+  python R-PFN/benchmarks/coverage_by_realization.py \
+    --root $SCRATCH/rc_dens_uni --dataset $ds
+done
+================ IHDP ================
+root=/scratch/furkanbd/rc_dens_uni
+selector=IHDP
+variant=raw
+
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native         100 |   0.9876  0.0183  0.0018 |    25.9458   31.9254 |    30.1336 |    3.0419
+dopfn_bb             100 |   0.8569  0.1399  0.0140 |    15.0665   19.5915 |    31.6595 |    3.6758
+uwyk1d-noanc         100 |   0.9941  0.0133  0.0013 |    25.2236   26.1834 |    27.5693 |    3.4480
+uwyk1d-v3a           100 |   0.9908  0.0167  0.0017 |    23.1109   24.7320 |    25.7493 |    2.9919
+graph2d-noanc        100 |   0.9965  0.0098  0.0010 |    26.6088   28.5991 |    28.7165 |    2.2730
+graph2d-v3a          100 |   0.9945  0.0152  0.0015 |    22.9877   24.6190 |    25.6711 |    2.1355
+cpfn1d               100 |   0.9973  0.0087  0.0009 |     4.7040    1.2664 |     4.9948 |    0.4105
+cpfn2d               100 |   0.9981  0.0054  0.0005 |    12.6914   13.8239 |    12.8981 |    1.0742
+dopfn_repro_1d_J10      — | (no dumps)
+dopfn_repro_1d_J100      — | (no dumps)
+dopfn_repro_joint2d      — | (no dumps)
+================ ACIC ================
+root=/scratch/furkanbd/rc_dens_uni
+selector=ACIC
+variant=raw
+
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native          10 |   0.9863  0.0213  0.0067 |    26.3870    2.7180 |    27.9344 |    2.5104
+dopfn_bb              10 |   0.8459  0.1978  0.0625 |    16.5695   11.3178 |    35.1083 |    2.4617
+uwyk1d-noanc          10 |   0.9933  0.0128  0.0041 |    22.9992    4.8052 |    23.9862 |    2.0586
+uwyk1d-v3a            10 |   0.9938  0.0142  0.0045 |    20.0308    4.3235 |    21.1663 |    1.7061
+graph2d-noanc         10 |   0.9811  0.0385  0.0122 |    18.3035    8.1728 |    21.4627 |    1.5956
+graph2d-v3a           10 |   0.9788  0.0380  0.0120 |    16.6873    7.1057 |    20.1168 |    1.5445
+cpfn1d                10 |   0.9969  0.0046  0.0015 |     8.7590    2.5903 |     9.1427 |    0.7505
+cpfn2d                10 |   0.9950  0.0097  0.0031 |    11.8790    1.4886 |    12.3131 |    1.0884
+dopfn_repro_1d_J10      — | (no dumps)
+dopfn_repro_1d_J100      — | (no dumps)
+dopfn_repro_joint2d      — | (no dumps)
+================ CPS ================
+root=/scratch/furkanbd/rc_dens_uni
+selector=CPS
+variant=raw
+
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native         100 |   0.9427  0.0231  0.0023 | 48914.3684 1177.0273 | 50801.7675 | 6872.8918
+dopfn_bb             100 |   0.7161  0.0303  0.0030 | 25172.2262 1422.2655 | 76081.1465 | 7340.8951
+uwyk1d-noanc         100 |   0.9498  0.0220  0.0022 | 44817.9037  942.5655 | 48779.6876 | 7472.7360
+uwyk1d-v3a           100 |   0.9774  0.0099  0.0010 | 44641.4640 1196.2425 | 46430.3148 | 6326.6608
+graph2d-noanc        100 |   0.9028  0.0300  0.0030 | 41222.4472 3955.5262 | 50150.3735 | 8086.8580
+graph2d-v3a          100 |   0.8647  0.0681  0.0068 | 36546.6083 5737.3648 | 56090.7404 | 8657.6495
+cpfn1d               100 |   0.9763  0.0278  0.0028 | 47788.3816 2630.5761 | 49171.1130 | 5865.5545
+cpfn2d               100 |   0.9234  0.0680  0.0068 | 40731.5655 2049.5384 | 53548.1092 | 6250.8458
+dopfn_repro_1d_J10      — | (no dumps)
+dopfn_repro_1d_J100      — | (no dumps)
+dopfn_repro_joint2d      — | (no dumps)
+================ PSID ================
+root=/scratch/furkanbd/rc_dens_uni
+selector=PSID
+variant=raw
+
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native         100 |   0.9785  0.0091  0.0009 | 86249.2553 2989.2571 | 104512.9124 | 10848.0900
+dopfn_bb             100 |   0.6545  0.0431  0.0043 | 29097.1635 2095.5122 | 170778.4606 | 10552.9553
+uwyk1d-noanc         100 |   0.8822  0.0261  0.0026 | 59930.3127 2473.6198 | 118449.3700 | 12507.0330
+uwyk1d-v3a           100 |   0.9241  0.0189  0.0019 | 70948.8770 4628.3233 | 108283.8108 | 12667.8939
+graph2d-noanc        100 |   0.7459  0.1534  0.0153 | 41338.7454 10756.0752 | 163303.4865 | 13582.1059
+graph2d-v3a          100 |   0.6339  0.1712  0.0171 | 34668.7782 10160.4965 | 216079.7053 | 14305.8806
+cpfn1d               100 |   0.9493  0.0169  0.0017 | 76380.7939 12426.3359 | 102822.1515 | 8414.6726
+cpfn2d               100 |   0.9550  0.0132  0.0013 | 52267.9707 6424.3010 | 87095.9620 | 7302.4920
+dopfn_repro_1d_J10      — | (no dumps)
+dopfn_repro_1d_J100      — | (no dumps)
+dopfn_repro_joint2d      — | (no dumps)
+================ PSID_bal ================
+root=/scratch/furkanbd/rc_dens_uni
+selector=PSID_bal
+variant=raw
+
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native         100 |   0.9785  0.0091  0.0009 | 86249.2553 2989.2571 | 104512.9124 | 10848.0900
+dopfn_bb             100 |   0.6882  0.0394  0.0039 | 31590.5710 2438.3588 | 160884.5934 | 10629.3130
+uwyk1d-noanc         100 |   0.8965  0.0282  0.0028 | 59966.4494 3174.6496 | 109836.8861 | 12068.1842
+uwyk1d-v3a           100 |   0.9605  0.0165  0.0017 | 69246.4034 5574.5667 | 97637.3334 | 9436.6554
+graph2d-noanc        100 |   0.9356  0.0250  0.0025 | 58312.4450 4531.5005 | 97876.8079 | 11399.1938
+graph2d-v3a          100 |   0.7865  0.0826  0.0083 | 42733.5920 5317.8806 | 140139.9818 | 13557.6707
+cpfn1d               100 |   0.9343  0.0203  0.0020 | 71295.3177 12171.8068 | 101553.5585 | 8835.6573
+cpfn2d               100 |   0.9432  0.0262  0.0026 | 57035.9495 9629.7848 | 93210.2467 | 8006.7926
+dopfn_repro_1d_J10      — | (no dumps)
+dopfn_repro_1d_J100      — | (no dumps)
+dopfn_repro_joint2d      — | (no dumps)
+
