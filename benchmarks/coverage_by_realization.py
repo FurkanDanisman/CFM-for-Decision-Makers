@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 import sys
 
 import numpy as np
@@ -42,6 +43,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
 from cate_density_metrics import (METHODS, score_file, _resolve_dir,          # noqa: E402
                                   _configure_tau_smoother)
+
+
+def _valid_set(path):
+    """{realization index} judged usable, pooled over every cell in the manifest.
+
+    Realization indices are unique per cell, and a scoring run targets one cell,
+    so pooling the indices is safe and avoids having to reconstruct which cell a
+    dump came from.
+    """
+    if not path:
+        return None
+    import json
+    man = json.load(open(path))
+    keep = set()
+    for rows in man.get("cells", {}).values():
+        for r, v in rows.items():
+            if v.get("valid"):
+                keep.add(int(r))
+    print(f"[validity] {path}: keeping {len(keep)} realization indices "
+          f"(criteria {man.get('criteria')})", flush=True)
+    return keep
 
 _KEYS = ("cover", "length", "is05", "crps")
 
@@ -75,6 +97,12 @@ def cells(a):
                     if d:
                         files += sorted(glob.glob(os.path.join(d, "*.npz")))
         files = [f for f in files if os.path.basename(f) != "summary.npz"]
+        keep = getattr(a, "_keep", None)
+        if keep is not None:
+            def _r(p):
+                m = re.search(r"r(\d+)", os.path.basename(p))
+                return int(m.group(1)) if m else -1
+            files = [f for f in files if _r(f) in keep]
         if a.max_real:
             files = files[: a.max_real]
         out.append((label, tag, files))
@@ -95,6 +123,11 @@ def main():
                     choices=["nonzero", "zero", "total"])
     ap.add_argument("--methods", nargs="+", default=None)
     ap.add_argument("--max-real", type=int, default=None)
+    ap.add_argument("--valid-manifest", default=None,
+                    help="cmech_validity.py JSON; realizations marked invalid "
+                         "are skipped. Saturated ComplexMech realizations have "
+                         "no estimable effect, so including them measures the "
+                         "DGP's pathology rather than any model.")
     ap.add_argument("--tag", default=None,
                     help="density key suffix; defaults to each METHODS entry's own")
     # Variant T. The MALC runs only ever persisted aggregated tables, so a
@@ -108,6 +141,8 @@ def main():
     ap.add_argument("--n-tau", type=int, default=4001)
     ap.add_argument("--malc-workers", type=int, default=1)
     a = ap.parse_args()
+
+    a._keep = _valid_set(a.valid_manifest)
 
     if a.tau_smoother == "malc":
         from tau_smoother import SmootherConfig
