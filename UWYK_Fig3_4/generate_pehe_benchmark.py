@@ -258,6 +258,22 @@ def generate_realization(
     hide_fraction: float,
     test_feature_mask_fraction: float,
     max_resample_attempts: int = 200,
+    # Saturation rejection. ComplexMech's prior does not bound the
+    # pre-activation scale (unlike the case-study generator's fan-in bounded
+    # weights), so a tanh-like activation can pin the outcome at its boundary:
+    # measured up to 99.2% of units at |Y| = 1, and a control arm with
+    # sd(Y_do0) = 0.005 against a claimed ATE of 1.96. Such a realization has no
+    # estimable effect -- every model correctly returns ~0 -- and since
+    # saturation is a property of the REALIZATION, all of its queries fail
+    # together, which is what collapses per-realization coverage to 0/1.
+    #
+    # Rejecting and resampling is UWYK's own idiom here: this loop already
+    # continues on constant T, collapsed binarisation and low target variance.
+    # Defaults are permissive (no rejection) so existing behaviour is unchanged.
+    max_pinned: float = 1.0,
+    max_ate_sd_ratio: float = float("inf"),
+    sat_eps: float = 1e-3,
+    n_test_override: int | None = None,
 ) -> dict[str, Any]:
     """Sample one SCM and return a PEHE-ready realization.
 
@@ -281,6 +297,8 @@ def generate_realization(
     ds, pp = cfg["dataset_config"], cfg["preprocessing_config"]
     n_train = int(_val(ds, "max_number_train_samples_per_dataset"))
     n_test = int(_val(ds, "max_number_test_samples_per_dataset"))
+    if n_test_override:
+        n_test = int(n_test_override)
     max_features = int(_val(ds, "max_number_features"))
     min_target_variance = float(_val(ds, "min_target_variance", 1e-3))
 
@@ -361,6 +379,16 @@ def generate_realization(
         intv_scm = deepcopy(scm)
         intv_scm.intervene(node=t_node)
         res0, res1 = _propagate_paired(scm, intv_scm, t_node, n_test, t0_value, t1_value)
+
+        # --- saturation rejection (see max_pinned / max_ate_sd_ratio above) ---
+        _y0 = res0[y_node].reshape(-1).detach().cpu().numpy().astype(np.float64)
+        _y1 = res1[y_node].reshape(-1).detach().cpu().numpy().astype(np.float64)
+        _pinned = max(float((np.abs(_y0) > 1.0 - sat_eps).mean()),
+                      float((np.abs(_y1) > 1.0 - sat_eps).mean()))
+        _sd0 = float(_y0.std())
+        _ratio = abs(float((_y1 - _y0).mean())) / max(_sd0, 1e-12)
+        if _pinned > max_pinned or _ratio > max_ate_sd_ratio:
+            continue
 
         descendants = nx.descendants(scm.dag.g, t_node)
         n_descendant_features = sum(
@@ -523,6 +551,9 @@ def run_sweep(args) -> dict:
                             cfg, sampler, uwyk, regime,
                             seed=seed, hide_fraction=hide,
                             test_feature_mask_fraction=args.test_feature_mask_fraction,
+                            max_pinned=args.max_pinned,
+                            max_ate_sd_ratio=args.max_ate_sd_ratio,
+                            n_test_override=args.n_test,
                         )
                     except Exception as exc:  # noqa: BLE001
                         n_fail += 1
@@ -633,6 +664,18 @@ def main() -> None:
                    help="ancestor-matrix hide fractions; default 0.0 for lingaus, "
                         "the full Fig-4 sweep for complexmech")
     p.add_argument("--n-realizations", type=int, default=100)
+    p.add_argument("--n-test", type=int, default=None,
+                   help="queries per realization; overrides the prior config's "
+                        "max_number_test_samples_per_dataset (currently 1000)")
+    p.add_argument("--max-pinned", type=float, default=1.0,
+                   help="reject a draw when this fraction of |Y| exceeds "
+                        "1 - sat_eps in either arm (saturated outcome). "
+                        "1.0 = no rejection; 0.01 was measured to flag 42%% of "
+                        "5node/path_TY draws")
+    p.add_argument("--max-ate-sd-ratio", type=float, default=float("inf"),
+                   help="reject when |ATE| / sd(Y_do0) exceeds this -- an effect "
+                        "larger than a couple of times the outcome's own spread "
+                        "is a saturation artifact, not a recoverable effect")
     p.add_argument("--seed-base", type=int, default=0)
     p.add_argument("--out-dir", default=os.path.join(_REPO_ROOT, "UWYK_Fig3_4", "data"))
     p.add_argument("--test-feature-mask-fraction", type=float, default=0.0,
