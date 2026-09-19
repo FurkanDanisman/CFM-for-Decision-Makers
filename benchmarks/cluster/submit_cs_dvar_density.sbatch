@@ -69,9 +69,16 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_m
 # It emits the same noanc / v3a / v3b tags the scorer's METHODS expects.
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled)
 DS=(2 3 5 10 20 30 40 50)
-CASES=(Observed_Confounder Backdoor_Criterion Observed_Mediator
-       Observed_Mediator_and_Confounder Unobserved_Confounder
-       Frontdoor_Criterion)
+# CASES_OVERRIDE (space-separated) narrows the case list, so a smoke run can do
+# one case instead of all six. Unset leaves the full list, so existing
+# invocations are unchanged.
+if [ -n "${CASES_OVERRIDE:-}" ]; then
+    read -r -a CASES <<<"$CASES_OVERRIDE"
+else
+    CASES=(Observed_Confounder Backdoor_Criterion Observed_Mediator
+           Observed_Mediator_and_Confounder Unobserved_Confounder
+           Frontdoor_Criterion)
+fi
 
 MODEL="${MODELS[$(( SLURM_ARRAY_TASK_ID / 8 ))]}"
 D="${DS[$(( SLURM_ARRAY_TASK_ID % 8 ))]}"
