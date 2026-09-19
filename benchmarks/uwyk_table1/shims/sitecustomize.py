@@ -55,6 +55,10 @@ _STUB_TOPLEVEL = {
 
 class _StubModule(_types.ModuleType):
     def __getattr__(self, name):
+        # Dunders stay absent, so the import system's own probes (__path__,
+        # __file__, __wrapped__, ...) see a plain module, not a MagicMock.
+        if name.startswith('__') and name.endswith('__'):
+            raise AttributeError(name)
         # Any submodule access (huggingface_hub.hf_hub_download) → MagicMock
         m = _MagicMock(name=f'{self.__name__}.{name}')
         setattr(self, name, m)
@@ -62,6 +66,28 @@ class _StubModule(_types.ModuleType):
 
 
 class _StubFinder:
+    """Meta-path finder AND loader, via find_spec (PEP 451).
+
+    Python 3.12 stopped calling the legacy find_module/load_module on
+    meta-path finders, so a finder with only those is silently skipped there
+    and `import faiss` fails for real. find_spec works on every Python >= 3.4.
+    """
+
+    def find_spec(self, name, path=None, target=None):
+        if not self.find_module(name, path):
+            return None
+        from importlib.machinery import ModuleSpec
+        # is_package: `from name.sub import x` must work, as before.
+        return ModuleSpec(name, self, is_package=True)
+
+    def create_module(self, spec):
+        m = _StubModule(spec.name)
+        m.__path__ = []
+        return m
+
+    def exec_module(self, module):
+        pass
+
     def find_module(self, name, path=None):
         # Exact match only — NOT name.split('.')[0]. A dotted name here means
         # some package (possibly a real, installed one) is importing a

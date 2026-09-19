@@ -22,7 +22,7 @@
 # it trades a *guarantee* that models saw byte-identical context and outcome
 # scaling for an *assumption* that separate processes recompute them identically.
 # The UWYK pair receives the selected adjacency (the wrapper may propagate it);
-# neither DoPFN model accepts or receives graph information.
+# no DoPFN model accepts or receives graph information.
 # Realizations are independent by
 # construction, so splitting there is both wider (12x) and strictly safer.
 #
@@ -50,6 +50,11 @@
 # N_Y0=4096 is set by the JOINT path, not UWYK: UWYK's tail quadrature is at
 # 0.99998 by N_Y0=1024, while the joint only reaches 1e-4 mass error at 4096.
 #
+# MODEL_FAMILY=dopfn runs one method per DOPFN_MODELS entry (four by default,
+# see below). Joint entries pay the same N_Y0 tail quadrature as `joint`; 1D
+# entries use DoPFN's exact independence convolution. The timings above were
+# measured for UWYK only, so check the first DoPFN task before trusting --time.
+#
 # Submit:  sbatch benchmarks/cluster/submit_density_tauC.sbatch
 # Smoke:   sbatch --array=0 benchmarks/cluster/submit_density_tauC.sbatch
 #          (task 0 also runs the model-free gates and aborts if any fail)
@@ -68,11 +73,29 @@ export UWYK="${UWYK:-$REPO/g4cfm}"
 export CAUSALPFN="${CAUSALPFN:-/home/lukez/projects/aip-rgrosse/lukez/CausalPFN}"
 
 # Select uwyk (legacy default), dopfn, causalpfn, or all. The DoPFN checkout must include
-# its pretrained artifacts even when loading our joint checkpoint.
+# its pretrained artifacts even when only our checkpoints are listed below.
 # Example: MODEL_FAMILY=dopfn DOPFN_ROOT=/path/to/Do-PFN sbatch ...
 export MODEL_FAMILY="${MODEL_FAMILY:-uwyk}"
 export DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN:-}}"
-export DOPFN_JOINT_CKPT="${DOPFN_JOINT_CKPT:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
+
+# ── DoPFN models (MODEL_FAMILY=dopfn or all) ───────────────────────────────
+# Every entry becomes its own density row, dopfn_<name>, and all of them see the
+# same context. Add, drop or repoint models here; nothing else needs editing.
+#   native          the Do-PFN library regressor under $DOPFN_ROOT; no path
+#   <name>=<ckpt>   a checkpoint. Its kind is read from the file, not the name:
+#                     training_dopfn_repro dopfn_1d  -> 1D bars, arms convolved
+#                                                       under independence
+#                     training_dopfn_repro joint_2d  -> J x J joint
+#                     training_dopfn_base (dopfn_bb_*) -> J x J joint
+# Replace the whole list for one submission with DOPFN_MODELS (commas, no spaces):
+#   DOPFN_MODELS="native,bb_j10=$REPO/Required_checkpoints/old/dopfn_bb_j10_step_150000.pt" sbatch ...
+DOPFN_MODEL_LIST=(
+    "native"
+    "repro_1d_J10=$REPO/Required_checkpoints/new/dopfn_repro_1d_J10_step150000.pt"
+    "repro_1d_J100=$REPO/Required_checkpoints/new/dopfn_repro_1d_J100_step150000.pt"
+    "repro_joint2d=$REPO/Required_checkpoints/new/dopfn_repro_joint2d_step150000.pt"
+)
+export DOPFN_MODELS="${DOPFN_MODELS:-$(IFS=,; echo "${DOPFN_MODEL_LIST[*]}")}"
 export DOPFN_QUERY_CHUNK="${DOPFN_QUERY_CHUNK:-20}"
 export CAUSALPFN_CKPT="${CAUSALPFN_CKPT:-$REPO/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt}"
 export CAUSALPFN_JOINT_CKPT="${CAUSALPFN_JOINT_CKPT:-$REPO/Required_checkpoints/cpfn2d_j32_random_step_50000.pt}"
@@ -101,7 +124,7 @@ export UWYK_CFG="${UWYK_CFG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
 #                                   unconfoundedness (diag, Y->T, Y->X, T->X)
 #   ANC_MODE=full     ANC_TAG=anc   build_anc_full: T->Y, X_i->T, X_i->Y
 #                                   asserted +1, then propagate fills the -1s
-# The +/-1 matrix is handed only to the UWYK pair. Neither DoPFN model receives
+# The +/-1 matrix is handed only to the UWYK pair. No DoPFN model receives
 # it. ANC_TAG is ignored in a DoPFN-only run.
 export ANC_MODE="${ANC_MODE:-v6a_only}"
 export ANC_TAG="${ANC_TAG:-v6a}"
@@ -127,9 +150,13 @@ if [[ "$MODEL_FAMILY" == causalpfn || "$MODEL_FAMILY" == all ]]; then
 fi
 if [[ "$MODEL_FAMILY" == dopfn || "$MODEL_FAMILY" == all ]]; then
     [ -n "$DOPFN_ROOT" ] || { echo "FATAL: set DOPFN_ROOT" >&2; exit 1; }
-    inputs+=("$DOPFN_JOINT_CKPT" "$DOPFN_ROOT/artifacts/dopfn_model.pkl"
+    inputs+=("$DOPFN_ROOT/artifacts/dopfn_model.pkl"
              "$DOPFN_ROOT/artifacts/dopfn_config.pkl"
              "$DOPFN_ROOT/artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt")
+    IFS=, read -r -a _dopfn_entries <<< "$DOPFN_MODELS"
+    for entry in "${_dopfn_entries[@]}"; do
+        if [[ "$entry" == *=* ]]; then inputs+=("${entry#*=}"); fi
+    done
 fi
 for f in "${inputs[@]}"; do
     [ -f "$f" ] || { echo "FATAL: missing $f" >&2; exit 1; }
