@@ -181,4 +181,6 @@ for r in "${ROWS[@]}"; do
         | sed 's/^/   CS /'
 done
 echo
-echo "Queued. When they finish:  bash $REPO/benchmarks/cluster/check_smoke.sh"
+echo "If any sbatch above errored, NOTHING was queued for that cell -- this loop"
+echo "does not check exit status. Use submit_when_up.sh, which does."
+echo "When jobs finish:  bash $REPO/benchmarks/cluster/check_smoke.sh"
