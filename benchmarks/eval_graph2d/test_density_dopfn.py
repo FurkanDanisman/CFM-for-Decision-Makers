@@ -328,7 +328,7 @@ class DoPFNRegressor(Base):
                         return DensityTruth(np.zeros(2), cate.true_cate/y_scale,
                                             cate.true_cate/y_scale, 1, 1/y_scale, 1, 1/y_scale)
 
-                    def predict_native_and_joint(x, t, y, xt, xs, ys, xts, **affine):
+                    def predict_dopfn(x, t, y, xt, xs, ys, xts, **affine):
                         idx = np.random.default_rng(7).choice(9, 4, replace=False)
                         np.testing.assert_array_equal(x, cate.X_train[idx])
                         np.testing.assert_array_equal(t, cate.t_train[idx])
@@ -338,10 +338,17 @@ class DoPFNRegressor(Base):
                             np.testing.assert_array_equal(observed_contexts[0][0], xs[:, :3])
                             np.testing.assert_array_equal(observed_contexts[0][2].ravel(), ys)
                         f = DoPFN1D.from_pred([0, 1, 0], [-2, -1, 1, 2], **affine)
-                        return [[f, f], [f, f]], logits, dict(dopfn_joint_logits=logits)
+                        wide = DoPFN1D.from_pred([0, 1, 0], [-6, -3, 3, 6], **affine)
+                        jt = common.Joint2D.from_pred(logits[0], J, edges)
+                        return {'dopfn_native': ('1d', [[f, f], [f, f]]),
+                                'dopfn_wide': ('1d', [[wide, wide], [wide, wide]]),
+                                'dopfn_repro_joint2d': ('joint', [jt, jt])}, dict(
+                            dopfn_repro_joint2d_logits=logits)
 
-                    dopfn = (SimpleNamespace(predict=predict_native_and_joint, J=J, edges=edges)
-                              if family in ('dopfn', 'all') else None)
+                    dopfn = (SimpleNamespace(predict=predict_dopfn, sources={
+                        'dopfn_native': 'library', 'dopfn_wide': '/fake/wide.pt',
+                        'dopfn_repro_joint2d': '/fake/joint.pt'})
+                        if family in ('dopfn', 'all') else None)
 
                     def predict_causalpfn(xs, t, y, xts, **affine):
                         idx = np.random.default_rng(7).choice(9, 4, replace=False)
@@ -376,6 +383,18 @@ class DoPFNRegressor(Base):
                                                 dopfn, causalpfn)
                     self.assertEqual(row['n_context'], 4)
                     self.assertEqual('nll_dopfn_native' in row, dopfn is not None)
+                    if dopfn is not None:
+                        self.assertEqual(
+                            [m for m in row['methods'] if m.startswith('dopfn_')],
+                            ['dopfn_native', 'dopfn_wide', 'dopfn_repro_joint2d'])
+                        # Each 1D row must score its own arms, not the last model's.
+                        self.assertNotAlmostEqual(row['nll_dopfn_native'],
+                                                  row['nll_dopfn_wide'])
+                        self.assertIn('pehe_dopfn_repro_joint2d_inner', row)
+                        self.assertNotIn('pehe_dopfn_wide_inner', row)
+                        self.assertEqual(str(row['kind_dopfn_repro_joint2d']), 'joint')
+                        self.assertEqual(str(row['kind_dopfn_wide']), '1d')
+                        self.assertEqual(str(row['source_dopfn_wide']), '/fake/wide.pt')
                     self.assertEqual('nll_joint' in row, uwyk is not None)
                     self.assertEqual('nll_causalpfn_native' in row, causalpfn is not None)
                     self.assertEqual('pehe_causalpfn_joint_inner' in row, causalpfn is not None)
@@ -389,9 +408,280 @@ class DoPFNRegressor(Base):
                     with np.load(Path(out) / 'predictions' / f'{dataset}_r000.npz') as dump:
                         self.assertEqual('joint_logits' in dump, uwyk is not None)
                         self.assertEqual('adj_joint' in dump, uwyk is not None)
-                        self.assertEqual('dopfn_joint_logits' in dump, dopfn is not None)
+                        self.assertEqual('dopfn_repro_joint2d_logits' in dump,
+                                         dopfn is not None)
                         self.assertEqual('causalpfn_joint_logits' in dump, causalpfn is not None)
                         self.assertEqual(str(dump['model_family']), family)
+
+
+class DoPFNModelListTest(unittest.TestCase):
+    """DOPFN_MODELS parsing, checkpoint loading and each model's input contract."""
+
+    def test_parse_model_list(self):
+        from density_dopfn import parse_model_list
+
+        self.assertEqual(parse_model_list(' native ,\n a_1=/x/a.pt,b = rel/b.pt,, '),
+                         [('native', None), ('a_1', '/x/a.pt'), ('b', 'rel/b.pt')])
+        for bad, message in (('native=/x.pt', 'takes no checkpoint'),
+                             ('a=/x.pt,a=/y.pt', 'twice'),
+                             ('/x/a.pt', 'letters, digits'),
+                             ('a-b=/x.pt', 'letters, digits'),
+                             ('a', 'expected name=checkpoint'),
+                             ('a=', 'expected name=checkpoint'),
+                             (' , ', 'no models')):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, message):
+                parse_model_list(bad)
+
+    @staticmethod
+    def _model_set(models, query_chunk=2):
+        import torch
+        from density_dopfn import DoPFNModelSet
+
+        s = object.__new__(DoPFNModelSet)
+        s.device, s.query_chunk, s.root = torch.device('cpu'), query_chunk, '/fake/dopfn'
+        s.environment, s.models = nullcontext, models
+        return s
+
+    @staticmethod
+    def _net(n_out, calls):
+        import torch
+
+        def net(x_ctx, y_ctx, xq, only_return_standard_out):
+            assert only_return_standard_out
+            calls.append((x_ctx.clone(), y_ctx.clone(), xq.clone()))
+            # Depends on the query row, so chunk order and arm are both visible.
+            return (torch.linspace(-1, 1, n_out)
+                    + 0.1 * xq[:, :, 1:2] + 0.3 * torch.nan_to_num(xq[:, :, :1]))
+        return net
+
+    def _inputs(self):
+        rng = np.random.default_rng(0)
+        X = rng.normal(size=(6, 3)).astype(np.float32)
+        T = np.array([0, 1, 0, 1, 1, 0], dtype=np.float32)
+        y = np.array([1, 2, 4, 7, 11, 16], dtype=np.float32)
+        Xt = rng.normal(size=(5, 3)).astype(np.float32)
+        return X, T, y, Xt
+
+    def test_model_set_feeds_each_model_its_training_inputs(self):
+        import torch
+
+        X, T, y, Xt = self._inputs()
+        calls = {'r1': [], 'rj': [], 'bb': []}
+        borders = np.array([-2.0, -1.0, 0.0, 1.5, 3.0])
+
+        def bb(**kw):
+            calls['bb'].append(kw)
+            return {'predictions': torch.zeros(1, kw['X_query'].shape[1], 17)}
+
+        models = {
+            'dopfn_r1': SimpleNamespace(kind='repro_1d', net=self._net(4, calls['r1']),
+                                        borders=borders, source='/fake/r1.pt'),
+            'dopfn_rj': SimpleNamespace(kind='repro_joint', net=self._net(17, calls['rj']),
+                                        J=2, edges=np.linspace(-1, 1, 3),
+                                        query_fill=float('nan'), source='/fake/rj.pt'),
+            'dopfn_bb': SimpleNamespace(kind='bb_joint', net=bb, J=2,
+                                        edges=np.linspace(-1, 1, 3), source='/fake/bb.pt'),
+        }
+        out, dump = self._model_set(models).predict(
+            X, T, y, Xt, X / 10, np.linspace(-1, 1, 6), Xt / 10, y_shift=0.5, y_scale=2.0)
+
+        self.assertEqual(list(out), ['dopfn_r1', 'dopfn_rj', 'dopfn_bb'])
+        self.assertEqual([kind for kind, _ in out.values()], ['1d', 'joint', 'joint'])
+        self.assertEqual([len(out['dopfn_r1'][1][arm]) for arm in (0, 1)], [5, 5])
+        self.assertEqual(len(out['dopfn_rj'][1]), 5)
+        z = (y - y.mean()) / y.std(ddof=1)
+        for name, n_calls in (('r1', 6), ('rj', 3)):
+            self.assertEqual(len(calls[name]), n_calls)
+            self.assertEqual([len(c[2]) for c in calls[name]], [2, 2, 1] * (n_calls // 3))
+            for x_ctx, y_ctx, _ in calls[name]:
+                # Raw covariates, factual T in column 0, context-z-scored y.
+                np.testing.assert_array_equal(x_ctx[:, 0].numpy(),
+                                              np.column_stack((T, X)))
+                np.testing.assert_allclose(y_ctx[:, 0].numpy(), z, rtol=1e-6)
+            queries = [c[2][:, 0].numpy() for c in calls[name]]
+            np.testing.assert_array_equal(np.concatenate(queries[:3])[:, 1:], Xt)
+        for arm in (0, 1):
+            np.testing.assert_array_equal(
+                np.concatenate([c[2][:, 0, 0].numpy() for c in calls['r1'][3*arm:3*arm+3]]),
+                np.full(5, arm))
+        self.assertTrue(all(np.isnan(c[2][:, 0, 0].numpy()).all() for c in calls['rj']))
+        # The legacy joint keeps the harness inputs it was trained on.
+        np.testing.assert_allclose(calls['bb'][0]['X_context'][0].numpy(), X / 10)
+        np.testing.assert_allclose(calls['bb'][0]['Y_context'][0, :, 0].numpy(),
+                                   np.linspace(-1, 1, 6))
+        self.assertEqual(list(dump['dopfn_methods']), list(models))
+        self.assertEqual(list(dump['dopfn_kinds']), ['repro_1d', 'repro_joint', 'bb_joint'])
+        self.assertAlmostEqual(dump['dopfn_r1_y_scale'], float(y.std(ddof=1)), places=5)
+
+    def test_model_set_maps_repro_outputs_to_harness_axis(self):
+        import density_common as common
+
+        X, T, y, Xt = self._inputs()
+        J, edges = 2, np.linspace(-1, 1, 3)
+        borders = np.array([-2.0, -1.0, 0.0, 1.5, 3.0])
+        models = {
+            'dopfn_r1': SimpleNamespace(kind='repro_1d', net=self._net(4, []),
+                                        borders=borders, source='a'),
+            'dopfn_rj': SimpleNamespace(kind='repro_joint', net=self._net(J*J+13, []), J=J,
+                                        edges=edges, query_fill=float('nan'), source='b'),
+        }
+        y_shift, y_scale = 0.5, 2.0
+        out, dump = self._model_set(models).predict(
+            X, T, y, Xt, X, y, Xt, y_shift=y_shift, y_scale=y_scale)
+        # The z-score actually fed to the nets (float32 torch statistics).
+        mu, sd = dump['dopfn_r1_y_shift'], dump['dopfn_r1_y_scale']
+        self.assertEqual((dump['dopfn_rj_y_shift'], dump['dopfn_rj_y_scale']), (mu, sd))
+        self.assertAlmostEqual(sd, float(y.std(ddof=1)), places=5)
+        raw = np.linspace(-30, 50, 41)
+        h, zz = (raw - y_shift) / y_scale, (raw - mu) / sd
+        for q in range(len(Xt)):
+            for arm in (0, 1):
+                native = DoPFN1D.from_pred(dump[f'dopfn_r1_pred{arm}'][q], borders)
+                mapped = out['dopfn_r1'][1][arm][q]
+                np.testing.assert_allclose(mapped.density(h), native.density(zz) * y_scale / sd,
+                                           rtol=1e-9, atol=1e-15)
+                self.assertAlmostEqual(mapped.mean() * y_scale + y_shift,
+                                       native.mean() * sd + mu, places=9)
+            native = common.Joint2D.from_pred(dump['dopfn_rj_logits'][q], J, edges)
+            mapped = out['dopfn_rj'][1][q]
+            h0, h1 = np.meshgrid(h, h[::-1])
+            z0, z1 = np.meshgrid(zz, zz[::-1])
+            np.testing.assert_allclose(mapped.density(h0, h1),
+                                       native.density(z0, z1) * (y_scale / sd) ** 2,
+                                       rtol=1e-9, atol=1e-15)
+            for m, n in zip(mapped.mean(), native.mean()):
+                self.assertAlmostEqual(m * y_scale + y_shift, n * sd + mu, places=9)
+
+    @staticmethod
+    def _repro_checkpoint(variant, n_out, **batch_cfg):
+        import torch
+
+        state = {'encoder.weight': torch.randn(4, 3), 'encoder.bias': torch.randn(4),
+                 'decoder_dict.standard.0.weight': torch.randn(8, 4),
+                 'decoder_dict.standard.0.bias': torch.randn(8),
+                 'decoder_dict.standard.2.weight': torch.randn(n_out, 8),
+                 'decoder_dict.standard.2.bias': torch.randn(n_out),
+                 # dopfn_1d swaps in its own criterion; its size differs from the pickle's
+                 'criterion.borders': torch.linspace(-3, 3, n_out + 1)}
+        cfg = {'y_space': 'zscore_ctx', 'query_treatment': 'nan', **batch_cfg}
+        return {'model': state, 'provenance': dict(variant=variant, spec={'j_2d': 2},
+                                                   batch_cfg=cfg),
+                'edges': torch.linspace(-1, 1, 3) if variant == 'joint_2d' else None}
+
+    def test_repro_checkpoint_loading(self):
+        import torch
+
+        class Criterion(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer('borders', torch.zeros(101))
+
+        class Architecture(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.encoder = torch.nn.Linear(3, 4)
+                self.decoder_dict = torch.nn.ModuleDict({'standard': torch.nn.Linear(4, 100)})
+                self.criterion = Criterion()
+
+        loader = self._model_set({})
+        with patch('density_dopfn._dopfn_architecture', Architecture):
+            ck = self._repro_checkpoint('dopfn_1d', 10)
+            e = loader._load_repro(ck, 'one.pt')
+            self.assertEqual(e.kind, 'repro_1d')
+            np.testing.assert_allclose(e.borders, np.linspace(-3, 3, 11), atol=1e-6)
+            self.assertTrue(torch.equal(e.net.decoder_dict['standard'][2].weight,
+                                        ck['model']['decoder_dict.standard.2.weight']))
+            self.assertFalse(e.net.training)
+
+            e = loader._load_repro(self._repro_checkpoint('joint_2d', 17), 'joint.pt')
+            self.assertEqual((e.kind, e.J), ('repro_joint', 2))
+            self.assertTrue(np.isnan(e.query_fill))
+            np.testing.assert_allclose(e.edges, [-1, 0, 1])
+            e = loader._load_repro(
+                self._repro_checkpoint('joint_2d', 17, query_treatment='zero'), 'z.pt')
+            self.assertEqual(e.query_fill, 0.0)
+
+            for ck, error, message in (
+                    (self._repro_checkpoint('joint_2d', 18), ValueError, 'J\\^2\\+13'),
+                    (self._repro_checkpoint('dopfn_1d', 10, y_space='raw'),
+                     ValueError, 'zscore_ctx'),
+                    (self._repro_checkpoint('other', 10), ValueError, 'variant'),
+                    (self._repro_checkpoint('joint_2d', 17, query_treatment='x'),
+                     ValueError, 'query_treatment')):
+                with self.subTest(message=message), self.assertRaisesRegex(error, message):
+                    loader._load_repro(ck, 'bad.pt')
+            ck = self._repro_checkpoint('dopfn_1d', 10)
+            ck['model']['stray.weight'] = torch.zeros(1)
+            with self.assertRaisesRegex(RuntimeError, 'stray.weight'):
+                loader._load_repro(ck, 'bad.pt')
+
+    def test_released_repro_checkpoints_parse(self):
+        """The real files, with a stub architecture (no Do-PFN checkout needed)."""
+        paths = sorted((Path(__file__).resolve().parents[2]
+                        / 'Required_checkpoints/new').glob('dopfn_repro_*.pt'))
+        if not paths:
+            self.skipTest('no Required_checkpoints/new/dopfn_repro_*.pt here')
+
+        class Stub:
+            def __init__(self):
+                self.decoder_dict = {}
+
+            def load_state_dict(self, state, strict):
+                self.state = state
+                return [], []
+
+            def to(self, device):
+                return self
+
+            def eval(self):
+                return self
+
+        loader = self._model_set({})
+        with patch('density_dopfn._dopfn_architecture', Stub):
+            for path in paths:
+                with self.subTest(path=path.name):
+                    e = loader._load_checkpoint(str(path))
+                    self.assertFalse(any(k.startswith('criterion.') for k in e.net.state))
+                    n_out = e.net.state['decoder_dict.standard.2.bias'].shape[0]
+                    if e.kind == 'repro_1d':
+                        self.assertEqual(len(e.borders), n_out + 1)
+                    else:
+                        self.assertEqual(e.kind, 'repro_joint')
+                        self.assertEqual(e.J ** 2 + 13, n_out)
+                        self.assertTrue(np.isnan(e.query_fill))
+
+    def test_summary_reads_dopfn_rows_from_shards(self):
+        methods = ['dopfn_native', 'dopfn_repro_1d_J10', 'dopfn_repro_joint2d']
+        row = dict(n_queries=2, frac_tau_outside_grid=0.0, anc_tag='none',
+                   truth_noise_source='generator', sigma_raw=1.0, sigma_residual_raw=1.0,
+                   methods=np.asarray(methods), kind_dopfn_native='1d',
+                   kind_dopfn_repro_1d_J10='1d', kind_dopfn_repro_joint2d='joint',
+                   source_dopfn_native='library', source_dopfn_repro_1d_J10='/c/j10.pt',
+                   source_dopfn_repro_joint2d='/c/joint.pt')
+        for i, method in enumerate(methods):
+            for metric in ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass', 'pehe',
+                           'cate_l1', 'ate_abs_err'):
+                row[f'{metric}_{method}'] = 1.0 + i
+        row['pehe_dopfn_repro_joint2d_inner'] = 0.5
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            render_family('IHDP', [row, row], 'dopfn')
+        text = stream.getvalue()
+        for expected in ('DoPFN (x)indep native', 'DoPFN repro_1d_J10 (x)indep',
+                         'DoPFN repro_joint2d Joint-2D',
+                         'DoPFN repro_joint2d Joint-2D interior mean (raw)',
+                         '(dopfn_native -> dopfn_repro_joint2d)',
+                         '(dopfn_repro_1d_J10 -> dopfn_repro_joint2d)',
+                         '`dopfn_repro_1d_J10`: /c/j10.pt'):
+            self.assertIn(expected, text)
+        self.assertNotIn('MIXED', text)
+        other = dict(row, source_dopfn_repro_1d_J10='/c/other.pt')
+        with redirect_stdout(io.StringIO()) as stream:
+            render_family('IHDP', [row, other], 'dopfn')
+        self.assertIn('MIXED CHECKPOINTS', stream.getvalue())
+        with self.assertRaisesRegex(ValueError, 'reused'), redirect_stdout(io.StringIO()):
+            render_family('IHDP', [row, dict(row, kind_dopfn_repro_1d_J10='joint')],
+                          'dopfn')
 
 
 if __name__ == '__main__':

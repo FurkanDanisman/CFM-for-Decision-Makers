@@ -10,7 +10,7 @@ available for existing commands; the command-line flag takes precedence.
 | Family | Density rows | Model inputs |
 | --- | --- | --- |
 | UWYK / g4cfm | `uwyk_native`, `uwyk_matched`, `joint` | Existing `UWYK_CKPT`, `UWYK_CFG`, `CKPT` |
-| DoPFN | `dopfn_native`, `dopfn_joint` | `DOPFN_ROOT` and optional `DOPFN_JOINT_CKPT` |
+| DoPFN | `dopfn_<name>`, one per `DOPFN_MODELS` entry | `DOPFN_ROOT` and `DOPFN_MODELS` |
 | CausalPFN | `causalpfn_native`, `causalpfn_joint` | `CAUSALPFN` checkout; optional `CAUSALPFN_CKPT`, `CAUSALPFN_JOINT_CKPT` |
 
 ## CausalPFN
@@ -90,10 +90,28 @@ keyword spellings. If the error persists after updating, sync **both**
 `benchmarks/methods/dopfn.py` and `benchmarks/eval_graph2d/density_dopfn.py`
 to the cluster checkout used by the job and start a new job. A run reaching
 `fit()` without that log line is not using the updated adapter.
-The joint model uses `DoPFNBackboneWith2DHead` and defaults to
-`Required_checkpoints/dopfn_bb_j10_step_150000.pt` (J=10, 150,000 steps).
-The checkpoint's `num_features=6` records its training setting; it is not an
-inference feature cap.
+
+`DOPFN_MODELS` lists the DoPFN models, comma-separated. `native` is the library
+model above and takes no path; every other entry is `name=checkpoint` and is
+scored as row `dopfn_<name>`. The Slurm launcher holds the list
+(`DOPFN_MODEL_LIST` in `benchmarks/cluster/submit_density_tauC.sbatch`):
+
+    native
+    repro_1d_J10=Required_checkpoints/new/dopfn_repro_1d_J10_step150000.pt
+    repro_1d_J100=Required_checkpoints/new/dopfn_repro_1d_J100_step150000.pt
+    repro_joint2d=Required_checkpoints/new/dopfn_repro_joint2d_step150000.pt
+
+Direct runs without `DOPFN_MODELS` fall back to the same four. A checkpoint's
+kind comes from the file, never from its name:
+
+| Checkpoint | Kind | Density |
+| --- | --- | --- |
+| `training_dopfn_repro`, `dopfn_1d` | 1D | FullSupportBarDistribution arms, convolved under independence |
+| `training_dopfn_repro`, `joint_2d` | joint | `Joint2D`, diagonal-integrated with tails |
+| `training_dopfn_base` (`dopfn_bb_*`) | joint | `Joint2D`, diagonal-integrated with tails |
+
+Checkpoints' training-time feature counts (at most 6) are not inference
+feature caps.
 
 For a one-realization DoPFN smoke run, from the repository root:
 
@@ -119,9 +137,10 @@ MODEL_FAMILY=all DOPFN_ROOT=/path/to/Do-PFN \
 sbatch benchmarks/cluster/submit_density_tauC.sbatch
 ```
 
-Use `MODEL_FAMILY=dopfn` to run only the new pair. `DOPFN_QUERY_CHUNK=20`
-controls query batching for both DoPFN models. Combined runs take longer
-than the existing three-row evaluation; adjust Slurm time if needed.
+Use `MODEL_FAMILY=dopfn` to run only the DoPFN models. `DOPFN_QUERY_CHUNK=20`
+controls query batching for all of them. Each entry adds a density row, so
+check the first task's runtime against the Slurm time limit.
+`DOPFN_JOINT_CKPT` is no longer read; add that checkpoint to `DOPFN_MODELS`.
 
 ```bash
 python benchmarks/eval_graph2d/summarize_density_tauC.py \
@@ -129,13 +148,15 @@ python benchmarks/eval_graph2d/summarize_density_tauC.py \
 ```
 
 `--model uwyk` displays only UWYK/g4cfm, with its selected graph. `--model
-dopfn` displays only native and joint DoPFN, with `graph=none`. The default
+dopfn` displays the DoPFN rows the run produced, with `graph=none`, the
+checkpoint behind each row, and a contrast from every 1D row to every joint
+row. It flags a row name that points at different checkpoints across shards. The default
 `--model auto` detects every available family but prints each one as a separate
 section, never in a combined table. `--model all` is an explicit synonym for
 that behavior. Existing mixed result shards remain usable, so changing the
 summary selection does not require rerunning inference.
 
-New adapters can be added as another entry in `MODEL_METHODS` and
+New model families can be added as another entry in `MODEL_METHODS` and
 `MODEL_LABEL` in `summarize_density_tauC.py`; the evaluator also needs the
 corresponding inference adapter before accepting a new `--model` value. Use a
 separate output directory for each evaluation configuration to avoid
@@ -143,11 +164,17 @@ overwriting shards or mixing configurations across realizations.
 
 All models share the deterministically selected context rows and the outcome
 axis defined by `Y_SCALING=minmax` (default) or `Y_SCALING=std` with
-`STD_TARGET=0.3`. Native DoPFN receives raw features/outcomes and applies its
-own preprocessing. Its returned outcome borders are mapped to the common
-axis. Joint DoPFN receives the harness's standardized features and scaled
-factual outcomes. Both DoPFN models receive all covariates; UWYK retains its
-checkpoint feature cap. DoPFN consumes no adjacency matrix.
+`STD_TARGET=0.3`. Each DoPFN model gets the inputs it was trained on. Native
+DoPFN receives raw features/outcomes and applies its own preprocessing; its
+returned outcome borders are mapped to the common axis. `training_dopfn_repro`
+models receive raw features with the treatment in column 0 (their transformer
+normalizes features itself) and factual outcomes z-scored with context
+statistics (`torch.std`, correction=1), as in `training_dopfn_repro/batch.py`.
+The 1D query sets column 0 to the arm; the joint query sets it to NaN, the
+training placeholder. Their outputs are mapped affinely from the z-scored axis to
+the common axis. `training_dopfn_base` joints receive the harness's standardized
+features and scaled factual outcomes. Every DoPFN model receives all covariates;
+UWYK retains its checkpoint feature cap. DoPFN consumes no adjacency matrix.
 
 Native DoPFN assumes independence between the two predicted arms. Its first
 and last logits represent half-normal tails anchored at the *inner* borders;
@@ -165,10 +192,13 @@ NLL, L2, KL, and grid mass use the shared scaled tau axis; PEHE, CATE L1, and
 absolute ATE error use original outcome units. The 0.0005 tau grid contains
 the J=10 joint's nominal knots; native DoPFN's adaptive knots generally do
 not align, so its *grid metrics* retain numerical integration error. Check
-the saved mass and finite-grid mean diagnostics. `SAVE_PREDICTIONS=1` saves
-both native logits, raw borders/tail scales, joint logits/edges, outcome
-transform, and truth for CPU-only rescoring. `dopfn_joint_inner` additionally
-reports point errors for the joint's interior mean.
+the saved mass and finite-grid mean diagnostics. `SAVE_PREDICTIONS=1` saves,
+for CPU-only rescoring, the truth and outcome transform plus each model's raw
+outputs: `dopfn_pred0/1`, `dopfn_borders0/1_raw` and `dopfn_tail_scales0/1_raw` for
+native DoPFN, and keys prefixed by the row name for checkpoints (`_pred0/1`,
+`_borders_native` or `_logits`, `_edges2d_native`, `_y_shift`, `_y_scale`,
+`_ckpt`). `dopfn_methods`, `dopfn_kinds` and `dopfn_sources` record the list.
+Every joint row also gets `<row>_inner` point errors for its interior mean.
 
 Validation:
 

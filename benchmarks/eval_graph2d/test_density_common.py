@@ -27,7 +27,9 @@ import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.abspath(os.path.join(_HERE, '..', '..'))
-for _p in (_REPO, os.path.join(_REPO, 'g4cfm', 'src')):
+# Same UWYK checkout the eval uses (eval_density_tauC.py defaults it the same way).
+_UWYK = os.environ.get('UWYK', os.path.join(_REPO, 'g4cfm'))
+for _p in (_REPO, os.path.join(_UWYK, 'src')):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

@@ -25,15 +25,18 @@ Methods (rows):
     uwyk_matched  UWYK re-binned to the 2D head's J bins, then convolved
                   -- the resolution-matched control
     joint         the 2D head's own joint, diagonal-integrated
-    dopfn_native  DoPFNRegressor.predict_full, convolved under independence
-    dopfn_joint   DoPFN backbone with the trained 2D head, diagonal-integrated
+    dopfn_<name>  one row per DOPFN_MODELS entry. 1D models (the library
+                  DoPFNRegressor, training_dopfn_repro dopfn_1d) are convolved
+                  under independence; joint checkpoints are diagonal-integrated
     causalpfn_native  CausalPFN's finite 1D histograms, convolved independently
     causalpfn_joint   CausalPFN's full 2D head, diagonal-integrated with tails
 
---model uwyk (default), dopfn, causalpfn, or all selects model pairs. MODEL_FAMILY is the
+--model uwyk (default), dopfn, causalpfn, or all selects model families. MODEL_FAMILY is the
 equivalent environment setting used by Slurm. DoPFN needs
-DOPFN_ROOT (upstream checkout with artifacts); DOPFN_JOINT_CKPT defaults to
-Required_checkpoints/dopfn_bb_j10_step_150000.pt. DOPFN_QUERY_CHUNK defaults
+DOPFN_ROOT (upstream checkout with artifacts). DOPFN_MODELS lists the DoPFN
+models, comma-separated: `native` for the library model, `name=checkpoint` for
+the rest (see density_dopfn.parse_model_list). submit_density_tauC.sbatch
+holds the list used by Slurm runs. DOPFN_QUERY_CHUNK defaults
 to 20. DoPFN-only runs do not load UWYK checkpoints. See README.md here.
 CausalPFN defaults to the requested cpfn1d_j1024_headrand and cpfn2d_j32_random
 step_50000 checkpoints, with pooled standardization on the selected context.
@@ -43,9 +46,10 @@ CAUSALPFN_CKPT, CAUSALPFN_JOINT_CKPT and CAUSALPFN_QUERY_CHUNK override these.
 assumption is ours. Never label them plain 'UWYK'.
 
 The UWYK models share context, feature preprocessing and the y axis by importing
-eval_graph2d_realcause as the harness. DoPFN shares the selected context and
-scoring axis, retains all covariates, and uses its native preprocessing for
-the 1D model. UWYK's wrapper additionally propagates
+eval_graph2d_realcause as the harness. Every DoPFN model shares the selected
+context and scoring axis and retains all covariates. The library model uses its
+native preprocessing; each checkpoint gets the inputs it was trained on (see
+density_dopfn.DoPFNModelSet). UWYK's wrapper additionally propagates
 the supplied adjacency; prediction dumps record both matrices. Full densities with
 tails on both sides -- see density_common for why truncate-and-renormalise is
 not an option here.
@@ -145,8 +149,23 @@ OUT = os.environ.get('OUT', f'./results_density_tauC/{DATASET}')
 UWYK_CKPT = os.environ['UWYK_CKPT'] if USE_UWYK else ''
 UWYK_CFG = os.environ['UWYK_CFG'] if USE_UWYK else ''
 DOPFN_ROOT = os.environ.get('DOPFN_ROOT', os.environ.get('DOPFN', ''))
-DOPFN_JOINT_CKPT = os.environ.get('DOPFN_JOINT_CKPT', os.path.join(
-    _REPO, 'Required_checkpoints', 'dopfn_bb_j10_step_150000.pt'))
+# Fallback for direct runs only. Slurm runs use the list exported by
+# submit_density_tauC.sbatch; keep this in step with it.
+_DEFAULT_DOPFN_MODELS = ','.join((
+    'native',
+    *(f'{name}={os.path.join(_REPO, "Required_checkpoints", "new", ckpt)}'
+      for name, ckpt in (('repro_1d_J10', 'dopfn_repro_1d_J10_step150000.pt'),
+                         ('repro_1d_J100', 'dopfn_repro_1d_J100_step150000.pt'),
+                         ('repro_joint2d', 'dopfn_repro_joint2d_step150000.pt')))))
+if USE_DOPFN:
+    from density_dopfn import parse_model_list
+    DOPFN_MODELS = parse_model_list(os.environ.get('DOPFN_MODELS', _DEFAULT_DOPFN_MODELS))
+    if os.environ.get('DOPFN_JOINT_CKPT'):
+        print('[tauC] note: DOPFN_JOINT_CKPT is ignored here; list every DoPFN '
+              'model in DOPFN_MODELS instead.', flush=True)
+else:
+    DOPFN_MODELS = []
+DOPFN_METHODS = tuple(f'dopfn_{name}' for name, _ in DOPFN_MODELS)
 DOPFN_QUERY_CHUNK = int(os.environ.get('DOPFN_QUERY_CHUNK', '20'))
 CAUSALPFN_CKPT = os.environ.get('CAUSALPFN_CKPT', os.path.join(
     _REPO, 'Required_checkpoints', 'cpfn1d_j1024_headrand_step_50000.pt'))
@@ -155,9 +174,9 @@ CAUSALPFN_JOINT_CKPT = os.environ.get('CAUSALPFN_JOINT_CKPT', os.path.join(
 CAUSALPFN_QUERY_CHUNK = int(os.environ.get('CAUSALPFN_QUERY_CHUNK', '512'))
 if USE_DOPFN and not DOPFN_ROOT:
     raise ValueError('Set DOPFN_ROOT to the DoPFN checkout containing scripts/ and artifacts/')
-METHODS = (('uwyk_native', 'uwyk_matched', 'joint') if USE_UWYK else ()) + (
-    ('dopfn_native', 'dopfn_joint') if USE_DOPFN else ()) + (
-    ('causalpfn_native', 'causalpfn_joint') if USE_CAUSALPFN else ())
+METHODS = ((('uwyk_native', 'uwyk_matched', 'joint') if USE_UWYK else ())
+           + DOPFN_METHODS
+           + (('causalpfn_native', 'causalpfn_joint') if USE_CAUSALPFN else ()))
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
 SAVE_PREDICTIONS = os.environ.get('SAVE_PREDICTIONS', '1') == '1'
 # y0-quadrature resolution for the 8 TAIL regions only; the interior is
@@ -287,6 +306,7 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
             f'test queries')
 
     prediction_fields = {}
+    dopfn_models = {}
     if uwyk is not None:
         # -- Joint-2D: one forward pass ---------------------------------------
         _, _, logits, _ = H.marginals_from_forward(
@@ -310,7 +330,8 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
             adj_joint=adj, adj_uwyk=adj_uwyk,
             ckpt=H.CKPT, uwyk_ckpt=UWYK_CKPT, uwyk_cfg=UWYK_CFG)
     if dopfn is not None:
-        dopfn_arms, dopfn_logits, dopfn_dump = dopfn.predict(
+        # {method: ('1d', (arm0, arm1)) | ('joint', [Joint2D])}, in list order
+        dopfn_models, dopfn_dump = dopfn.predict(
             X_tr_raw, T_tr, y_tr_raw, X_te_raw,
             X_tr_std, y_scaled, X_te_std, y_shift=y_shift, y_scale=y_scale)
         prediction_fields.update(dopfn_dump)
@@ -337,12 +358,13 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
         )
 
     n_q = X_te_raw.shape[0]
-    methods = (('uwyk_native', 'uwyk_matched', 'joint') if uwyk is not None else ()) + (
-        ('dopfn_native', 'dopfn_joint') if dopfn is not None else ()) + (
-        ('causalpfn_native', 'causalpfn_joint') if causalpfn is not None else ())
+    methods = ((('uwyk_native', 'uwyk_matched', 'joint') if uwyk is not None else ())
+               + tuple(dopfn_models)
+               + (('causalpfn_native', 'causalpfn_joint') if causalpfn is not None else ()))
     rows = {m: [] for m in methods}
-    inner_methods = tuple(m + '_inner' for m in
-                          ('joint', 'dopfn_joint', 'causalpfn_joint') if m in methods)
+    joint_methods = [m for m in ('joint', 'causalpfn_joint') if m in methods] + [
+        m for m, (kind, _) in dopfn_models.items() if kind == 'joint']
+    inner_methods = tuple(m + '_inner' for m in methods if m in joint_methods)
     cate_means = {m: [] for m in (*rows, *inner_methods)}
     grid_means = {m: [] for m in rows}
     for q in range(n_q):
@@ -375,22 +397,24 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
                     joint_tau_density(jt, TAU_CENTERS, n_y0=N_Y0),
                     joint_tau_density(jt, t_star, n_y0=N_Y0)[0])),
             ))
-        if dopfn is not None:
-            df0, df1 = dopfn_arms[0][q], dopfn_arms[1][q]
-            djt = Joint2D.from_pred(dopfn_logits[q], dopfn.J, dopfn.edges)
-            m0, m1 = djt.mean()
-            i0, i1 = djt.inner_mean()
-            cate_means['dopfn_native'].append(df1.mean() - df0.mean())
-            cate_means['dopfn_joint'].append(m1 - m0)
-            cate_means['dopfn_joint_inner'].append(i1 - i0)
-            scorers.extend((
-                ('dopfn_native', lambda: (
+        # Default arguments bind this model's densities: a plain closure would
+        # see only the last DoPFN model by the time the scorers run.
+        for method, (kind, dens) in dopfn_models.items():
+            if kind == '1d':
+                df0, df1 = dens[0][q], dens[1][q]
+                cate_means[method].append(df1.mean() - df0.mean())
+                scorers.append((method, lambda df0=df0, df1=df1: (
                     dopfn_tau_density(df0, df1, TAU_CENTERS),
-                    dopfn_tau_density(df0, df1, t_star)[0])),
-                ('dopfn_joint', lambda: (
+                    dopfn_tau_density(df0, df1, t_star)[0])))
+            else:
+                djt = dens[q]
+                m0, m1 = djt.mean()
+                i0, i1 = djt.inner_mean()
+                cate_means[method].append(m1 - m0)
+                cate_means[method + '_inner'].append(i1 - i0)
+                scorers.append((method, lambda djt=djt: (
                     joint_tau_density(djt, TAU_CENTERS, n_y0=N_Y0),
-                    joint_tau_density(djt, t_star, n_y0=N_Y0)[0])),
-            ))
+                    joint_tau_density(djt, t_star, n_y0=N_Y0)[0])))
         if causalpfn is not None:
             cf0, cf1 = cpfn_arms[0][q], cpfn_arms[1][q]
             cjt = cpfn_joints[q]
@@ -420,6 +444,9 @@ def evaluate(r, ds, model2d, J, edges2d, uwyk, F, dopfn=None, causalpfn=None):
            'y_scaling': H.Y_SCALING, 'std_target': H.STD_TARGET,
            'true_cate': true_cate,
            'frac_tau_outside_grid': float(np.mean(np.abs(tau_star) > 3.0))}
+    for method, (kind, _) in dopfn_models.items():
+        out[f'kind_{method}'] = kind
+        out[f'source_{method}'] = dopfn.sources[method]
     for name, rr in rows.items():
         out[f'frac_zero_density_{name}'] = float(np.mean(
             [np.isposinf(x['nll']) for x in rr]))
@@ -468,10 +495,10 @@ def main():
 
     dopfn = None
     if USE_DOPFN:
-        from density_dopfn import DoPFNDensityModels
-        dopfn = DoPFNDensityModels(DOPFN_ROOT, DOPFN_JOINT_CKPT,
-                                   H.DEVICE, DOPFN_QUERY_CHUNK)
-        print(f'[tauC] DoPFN joint J={dopfn.J} ckpt={dopfn.checkpoint}', flush=True)
+        from density_dopfn import DoPFNModelSet
+        dopfn = DoPFNModelSet(DOPFN_ROOT, DOPFN_MODELS, H.DEVICE, DOPFN_QUERY_CHUNK)
+        for method in dopfn.models:
+            print(f'[tauC] {method}: {dopfn.describe(method)}', flush=True)
 
     causalpfn = None
     if USE_CAUSALPFN:

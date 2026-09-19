@@ -9,7 +9,9 @@ treat queries from one realization as independent and understate the SE.
 
 Output is markdown (one model-family table plus its contrasts per dataset), so
 it can be pasted straight into LATEST_RESULTS.md; mixed shards are separated
-into UWYK, DoPFN and CausalPFN sections. Use --model to select one family. The columns are
+into UWYK, DoPFN and CausalPFN sections. Use --model to select one family.
+DoPFN rows are whatever DOPFN_MODELS listed for the run, read from the shards;
+its contrasts pair every 1D row with every joint row. The columns are
 padded so they stay readable as plain terminal text too. The best cell is bolded --
 lowest value for the error metrics and the contrasts, closest to 1.0 for `mass`
 -- and a column whose entries all tie at display precision gets no bold, since
@@ -28,11 +30,10 @@ from pathlib import Path
 
 import numpy as np
 
-METHODS = ('uwyk_native', 'uwyk_matched', 'joint', 'dopfn_native', 'dopfn_joint',
-           'causalpfn_native', 'causalpfn_joint')
+# DoPFN has no fixed rows: family_methods reads them from the shards.
 MODEL_METHODS = {
     'uwyk': ('uwyk_native', 'uwyk_matched', 'joint'),
-    'dopfn': ('dopfn_native', 'dopfn_joint'),
+    'dopfn': (),
     'causalpfn': ('causalpfn_native', 'causalpfn_joint'),
 }
 MODEL_LABEL = {'uwyk': 'UWYK / g4cfm', 'dopfn': 'DoPFN', 'causalpfn': 'CausalPFN'}
@@ -42,13 +43,55 @@ LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
          'dopfn_native': 'DoPFN (x)indep native',
          'dopfn_joint': 'DoPFN Joint-2D',
          'causalpfn_native': 'CausalPFN (x)indep native',
-         'causalpfn_joint': 'CausalPFN Joint-2D'}
+         'causalpfn_joint': 'CausalPFN Joint-2D',
+         'joint_inner': 'Joint-2D interior mean (raw)'}
 # All four are errors or diagnostics; lower is better except `mass`, which
 # should sit at 1.0 and is a grid-coverage check, not a score.
 METRICS = ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass')
-POINT_METHODS = (*METHODS, 'joint_inner', 'dopfn_joint_inner', 'causalpfn_joint_inner')
 POINT_METRICS = ('pehe', 'cate_l1', 'ate_abs_err')
 MISSING = '--'
+
+
+def dopfn_methods(rows):
+    """DoPFN density rows, in the order the run listed them."""
+    found = []
+    for r in rows:
+        if 'methods' in r:
+            names = [str(m) for m in np.atleast_1d(r['methods'])]
+        else:       # hand-built rows carry only metric keys
+            names = [k.split('_', 1)[1] for k in r if k.startswith(('nll_', 'pehe_'))]
+        for m in names:
+            if m.startswith('dopfn_') and not m.endswith('_inner') and m not in found:
+                found.append(m)
+    return found
+
+
+def family_methods(rows, model):
+    methods = dopfn_methods(rows) if model == 'dopfn' else MODEL_METHODS[model]
+    return [m for m in methods if any(f'nll_{m}' in r for r in rows)]
+
+
+def dopfn_kind(rows, method):
+    """'1d' or 'joint'. Shards from before DOPFN_MODELS carry no kind_ field."""
+    kinds = {str(r[f'kind_{method}']) for r in rows if f'kind_{method}' in r}
+    if len(kinds) > 1:
+        raise ValueError(f'{method} is {sorted(kinds)} across shards; the name was '
+                         'reused for different models. Use separate result directories.')
+    if kinds:
+        return kinds.pop()
+    return 'joint' if method == 'dopfn_joint' else '1d'
+
+
+def label(rows, method):
+    if method in LABEL:
+        return LABEL[method]
+    if method.endswith('_inner'):
+        return f'{label(rows, method[:-len("_inner")])} interior mean (raw)'
+    if method.startswith('dopfn_'):
+        kind = dopfn_kind(rows, method)
+        return (f'DoPFN {method[len("dopfn_"):]} '
+                + ('(x)indep' if kind == '1d' else 'Joint-2D'))
+    return method
 
 
 def load(results_dir: Path, dataset: str):
@@ -139,22 +182,13 @@ def md_table(headers, rows, aligns=None):
 def point_table(rows, density_methods=None):
     """Point errors from the same logits; old density-only shards stay valid."""
     if density_methods is None:
-        point_methods = POINT_METHODS
-    else:
-        point_methods = list(density_methods)
-        if 'joint' in density_methods:
-            point_methods.append('joint_inner')
-        if 'dopfn_joint' in density_methods:
-            point_methods.append('dopfn_joint_inner')
-        if 'causalpfn_joint' in density_methods:
-            point_methods.append('causalpfn_joint_inner')
+        density_methods = [*MODEL_METHODS['uwyk'], *dopfn_methods(rows),
+                           *MODEL_METHODS['causalpfn']]
+    point_methods = [*density_methods, *(m + '_inner' for m in density_methods)]
     if not any(f'pehe_{m}' in r for r in rows for m in point_methods):
         return None
-    labels = {**LABEL, 'joint_inner': 'Joint-2D interior mean (raw)',
-              'dopfn_joint_inner': 'DoPFN Joint-2D interior mean (raw)',
-              'causalpfn_joint_inner': 'CausalPFN Joint-2D interior mean (raw)'}
     methods = [m for m in point_methods if any(f'pehe_{m}' in r for r in rows)]
-    body = [[labels[m]] for m in methods]
+    body = [[label(rows, m)] for m in methods]
     for metric in POINT_METRICS:
         cells, scores = [], []
         for method in methods:
@@ -174,8 +208,7 @@ def point_table(rows, density_methods=None):
 
 def render_family(dataset, rows, model):
     """Render one model family so unrelated backbones never share a table."""
-    methods = [m for m in MODEL_METHODS[model]
-               if any(f'nll_{m}' in r for r in rows)]
+    methods = family_methods(rows, model)
     print(f'\n### {dataset} — {MODEL_LABEL[model]}\n')
     if not methods:
         print(f'_no {MODEL_LABEL[model]} results found_')
@@ -188,9 +221,17 @@ def render_family(dataset, rows, model):
     graph = f'graph={rows[0]["anc_tag"]}' if model == 'uwyk' else 'graph=none'
     print(f'realizations={n_r}, ~{n_q} queries each, {graph}, '
           f'|tau*|>3: {oob:.2%}\n')
+    if model == 'dopfn':
+        for method in methods:
+            sources = sorted({str(r[f'source_{method}']) for r in rows
+                              if f'source_{method}' in r})
+            if sources:
+                mixed = ' **(MIXED CHECKPOINTS)**' if len(sources) > 1 else ''
+                print(f'- `{method}`: {", ".join(sources)}{mixed}')
+        print()
 
     table = {}
-    body = [[LABEL[m]] for m in methods]
+    body = [[label(rows, m)] for m in methods]
     for metric in METRICS:
         cells, scores = [], []
         for method in methods:
@@ -247,8 +288,9 @@ def render_family(dataset, rows, model):
     candidates = {
         'uwyk': [('**HEADLINE**', 'model gap as run', 'uwyk_native', 'joint'),
                  ('bridge', 'resolution handicap', 'uwyk_native', 'uwyk_matched')],
-        'dopfn': [('**HEADLINE**', 'model gap as run',
-                   'dopfn_native', 'dopfn_joint')],
+        'dopfn': [('as run', 'model gap', a, b)
+                  for a in methods if dopfn_kind(rows, a) == '1d'
+                  for b in methods if dopfn_kind(rows, b) == 'joint'],
         'causalpfn': [('**HEADLINE**', 'model gap as run',
                        'causalpfn_native', 'causalpfn_joint')],
     }
@@ -270,8 +312,8 @@ def render_family(dataset, rows, model):
         if model == 'uwyk' and 'uwyk_matched' in methods:
             print('_The bridge measures the effect of rebinning UWYK._')
         if model == 'dopfn':
-            print('_Native DoPFN and its joint head use different resolutions; '
-                  'this is an as-run comparison._')
+            print('_DoPFN rows differ in head resolution (and native DoPFN in '
+                  'preprocessing); these are as-run comparisons._')
 
     bad = [m for m in methods
            if (m, 'mass') in table and abs(table[(m, 'mass')] - 1) > 0.01]
@@ -295,9 +337,8 @@ def main():
         if not rows:
             print(f'\n### {dataset}\n\n_no shards found_')
             continue
-        available = [model for model, candidates in MODEL_METHODS.items()
-                     if any(any(f'nll_{method}' in row for row in rows)
-                            for method in candidates)]
+        available = [model for model in MODEL_METHODS
+                     if family_methods(rows, model)]
         selected = available if args.model in ('auto', 'all') else [args.model]
         for model in selected:
             render_family(dataset, rows, model)

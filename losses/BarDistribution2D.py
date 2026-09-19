@@ -721,7 +721,9 @@ def _boundary_cond_malc(fit_obj, y_in, boundary_axis, at_min):
 
     marg_dens = dmalc_2d(fit_obj, pts_marg)
     dy = (y_range[-1] - y_range[0]) / (n_eval - 1)
-    marginal = float(np.trapz(marg_dens, dx=dy))
+    # np.trapz is gone in numpy >= 2.4; trapezoid exists from 2.0.
+    trapezoid = np.trapezoid if hasattr(np, 'trapezoid') else np.trapz
+    marginal = float(trapezoid(marg_dens, dx=dy))
 
     return dens_bnd / max(marginal, 1e-45)
 
