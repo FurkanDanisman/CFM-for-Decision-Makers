@@ -40,7 +40,8 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
-from cate_density_metrics import METHODS, score_file, _resolve_dir   # noqa: E402
+from cate_density_metrics import (METHODS, score_file, _resolve_dir,          # noqa: E402
+                                  _configure_tau_smoother)
 
 _KEYS = ("cover", "length", "is05", "crps")
 
@@ -84,10 +85,31 @@ def main():
     ap.add_argument("--max-real", type=int, default=None)
     ap.add_argument("--tag", default=None,
                     help="density key suffix; defaults to each METHODS entry's own")
+    # Variant T. The MALC runs only ever persisted aggregated tables, so a
+    # per-realization MALC number cannot be re-derived from disk -- the fits
+    # have to be redone. Off by default; enabling it costs real time (~0.065 s
+    # per query at B=100, ~1.2 s at B=1000, divided by --malc-workers).
+    ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none")
+    ap.add_argument("--malc-B", type=int, default=100)
+    ap.add_argument("--malc-K", type=int, default=1)
+    ap.add_argument("--malc-seed", type=int, default=20180621)
+    ap.add_argument("--n-tau", type=int, default=4001)
+    ap.add_argument("--malc-workers", type=int, default=1)
     a = ap.parse_args()
 
+    if a.tau_smoother == "malc":
+        from tau_smoother import SmootherConfig
+        cfg = SmootherConfig(enabled=True, B=a.malc_B, K=a.malc_K,
+                             seed=a.malc_seed, n_tau=a.n_tau,
+                             n_workers=a.malc_workers)
+        _configure_tau_smoother(cfg)
+        print(f"[tau-smoother] MALC-1D ACTIVE  {cfg}", flush=True)
+    else:
+        _configure_tau_smoother(None)
+
     sel = a.dataset or f"CMECH_n{a.nodes}_{a.subset} (N={a.context})"
-    print(f"root={a.root}\nselector={sel}\n")
+    print(f"root={a.root}\nselector={sel}\n"
+          f"variant={'T (MALC B=%d K=%d)' % (a.malc_B, a.malc_K) if a.tau_smoother == 'malc' else 'raw'}\n")
     print(f"{'method':17s} {'n_real':>6s} | "
           f"{'coverage':>8s} {'sd':>7s} {'se':>7s} | "
           f"{'length':>10s} {'sd':>9s} | {'IS_0.05':>10s} | {'CRPS':>9s}")
