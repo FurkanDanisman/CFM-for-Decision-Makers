@@ -51,16 +51,31 @@ from generation import _SampledSCM, Realization, save_realization   # noqa: E402
 from generation_d import build_dag_d                                # noqa: E402
 
 
-def redraw_noise(scm, rng):
-    """Fresh exogenous draw for every node, same structural equations.
+def redraw_data(scm, rng):
+    """Fresh draw of ALL randomness, same structural equations.
 
-    _noise is sampled once in __init__ and reused by every forward(do_T=...) --
-    that reuse is exactly what makes the two arms share noise (rho = 1). Writing
-    new arrays of the same shapes gives an independent dataset from the SAME
-    SCM: same graph, same weights, same activations, new randomness.
+    Two dicts carry the randomness, and redrawing only one is a silent no-op:
+
+      scm._root   root nodes -- these ARE the covariates. Redrawing _noise alone
+                  leaves X identical in every cell, which produced 100 byte-wise
+                  identical files on the first attempt.
+      scm._noise  additive noise on structural nodes. Sampled once in __init__
+                  and reused by every forward(do_T=...) -- that reuse is what
+                  makes the arms share noise (rho = 1), and it is preserved here
+                  because we redraw the stored array rather than the mechanism.
+
+    Distributions match __init__ exactly (exo_std for normal roots, p=0.5 for
+    Bernoulli roots, noise_std for structural), so each call yields an
+    independent dataset from the SAME SCM: same graph, weights, activations.
     """
-    for k, v in scm._noise.items():
-        scm._noise[k] = rng.normal(0.0, scm.noise_std, size=v.shape)
+    N = scm.N
+    for n in scm.nodes:
+        if n.kind == "root_normal":
+            scm._root[n.name] = rng.normal(0.0, scm.exo_std, size=N)
+        elif n.kind == "root_bernoulli":
+            scm._root[n.name] = (rng.random(N) < 0.5).astype(np.float64)
+        elif n.kind == "structural":
+            scm._noise[n.name] = rng.normal(0.0, scm.noise_std, size=N)
 
 
 def main():
@@ -90,7 +105,7 @@ def main():
     feat = [n.name for n in nodes if not n.is_outcome and not n.is_treatment]
     stack = lambda d: np.column_stack([d[f] for f in feat]).astype(np.float64)
 
-    q = slice(a.n_context, N)
+    q = slice(0, a.n_query)
     Xq, Tq, Yq = stack(base)[q], base[scm.t_name][q], base[scm.y_name][q]
     mu0q, mu1q = mu0[q], mu1[q]
     tau_q = mu1q - mu0q
@@ -109,9 +124,9 @@ def main():
         # queries came from -- otherwise one of the 100 contexts would share its
         # randomness with the target and that cell would not be exchangeable
         # with the rest.
-        redraw_noise(scm, np.random.default_rng([a.seed, 1, r]))
+        redraw_data(scm, np.random.default_rng([a.seed, 1, r]))
         d_ = scm.forward()
-        c = slice(0, a.n_context)
+        c = slice(a.n_query, N)      # the resampled remainder
         Xc, Tc, Yc = stack(d_)[c], d_[scm.t_name][c], d_[scm.y_name][c]
         m0c = scm.forward(do_T=0.0, y_noiseless=True)[scm.y_name][c]
         m1c = scm.forward(do_T=1.0, y_noiseless=True)[scm.y_name][c]
@@ -120,12 +135,12 @@ def main():
             case_study=a.case, n_context=a.n_context, seed=int(r),
             exo_std=float(scm.exo_std), noise_std=float(scm.noise_std),
             feature_names=feat,
-            X=np.vstack([Xc, Xq]).astype(np.float32),
-            T=np.concatenate([Tc, Tq]).astype(np.float32),
-            Y=np.concatenate([Yc, Yq]).astype(np.float32),
-            cate=np.concatenate([m1c - m0c, tau_q]).astype(np.float32),
-            mu_0=np.concatenate([m0c, mu0q]).astype(np.float32),
-            mu_1=np.concatenate([m1c, mu1q]).astype(np.float32),
+            X=np.vstack([Xq, Xc]).astype(np.float32),
+            T=np.concatenate([Tq, Tc]).astype(np.float32),
+            Y=np.concatenate([Yq, Yc]).astype(np.float32),
+            cate=np.concatenate([tau_q, m1c - m0c]).astype(np.float32),
+            mu_0=np.concatenate([mu0q, m0c]).astype(np.float32),
+            mu_1=np.concatenate([mu1q, m1c]).astype(np.float32),
             graph_edges=scm.graph_edges(),
             cate_shift=float(a.cate_shift),
         )
