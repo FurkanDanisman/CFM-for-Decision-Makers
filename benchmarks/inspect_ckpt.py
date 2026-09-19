@@ -33,7 +33,8 @@ def describe(path):
     if isinstance(cfg, dict):
         # num_buckets / n_out is the J that matters: it is the only field that
         # tells 1D J=10 apart from J=100 without running the model.
-        for k in ("num_buckets", "n_buckets", "max_num_classes", "num_classes"):
+        for k in ("J", "j_2d", "num_buckets", "n_buckets",
+                  "max_num_classes", "num_classes"):
             if k in cfg:
                 info[f"cfg.{k}"] = cfg[k]
     if sd is None:
@@ -67,6 +68,10 @@ def describe(path):
             if 2 * J == W:          cand.append(f"{J} (two marginals)")
             if J * J + 2 * J == W:  cand.append(f"{J} (joint+marginals)")
             if J + 3 == W:          cand.append(f"{J} (J+3, DoPFN)")
+            # The dopfn_bb 2D head emits J^2 joint logits plus 13; this is the
+            # decomposition to_dopfn_bb_ckpt.py asserts, so it is the one that
+            # identifies a converted joint_2d checkpoint.
+            if J * J + 13 == W:     cand.append(f"{J} (J^2+13, dopfn_bb 2D head)")
         info["head_width"] = W
         info["J_candidates"] = cand or "no simple J decomposition"
     return info
