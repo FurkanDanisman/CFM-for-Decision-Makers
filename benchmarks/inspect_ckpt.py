@@ -53,6 +53,22 @@ def describe(path):
              and k.lower().endswith("weight") and len(v.shape) == 2]
     if heads:
         info["head_out"] = heads[-1]
+    # Derived J. `borders` gives J = numel - 1 for the 1D criterion; note that a
+    # 2D head can carry an inherited 1D criterion it never uses, so a mismatch
+    # between borders and the head width is not by itself a bug -- compare the
+    # head width against a reference checkpoint of known J instead.
+    if "borders_numel" in info:
+        info["J_from_borders"] = [n - 1 for _, n in info["borders_numel"]]
+    if heads:
+        W = heads[-1][1][0]
+        cand = []
+        for J in range(2, 257):
+            if J * J == W:          cand.append(f"{J} (JxJ joint)")
+            if 2 * J == W:          cand.append(f"{J} (two marginals)")
+            if J * J + 2 * J == W:  cand.append(f"{J} (joint+marginals)")
+            if J + 3 == W:          cand.append(f"{J} (J+3, DoPFN)")
+        info["head_width"] = W
+        info["J_candidates"] = cand or "no simple J decomposition"
     return info
 
 
