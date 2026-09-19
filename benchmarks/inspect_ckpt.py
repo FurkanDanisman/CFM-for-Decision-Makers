@@ -72,6 +72,11 @@ def describe(path):
             # decomposition to_dopfn_bb_ckpt.py asserts, so it is the one that
             # identifies a converted joint_2d checkpoint.
             if J * J + 13 == W:     cand.append(f"{J} (J^2+13, dopfn_bb 2D head)")
+            # CausalPFN 1D head is Linear(ninp, n_out + J) with n_out = 10; see
+            # rpfn_patches/cpfn2d_head_from_1d.py. This is what identifies J for
+            # the cpfn1d family, whose checkpoints record epoch rather than step
+            # and carry no bucket count in config.
+            if J + 10 == W:         cand.append(f"{J} (n_out+J, cpfn1d head)")
         info["head_width"] = W
         info["J_candidates"] = cand or "no simple J decomposition"
     return info
