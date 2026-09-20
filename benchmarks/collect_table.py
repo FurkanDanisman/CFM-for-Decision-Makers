@@ -59,9 +59,17 @@ def _load(perreal):
             if key not in _KEYS:
                 continue
             arr = np.asarray(z[k], dtype=float).ravel()
-            if arr.size:
-                acc[(method, stage, group)][key].append(arr)
-                slices[(method, stage, group)].add(sl)
+            if not arr.size:
+                continue
+            # Row identity is <root label>/<harness method>, NOT the method alone.
+            # Several models share a harness and therefore a subdir name -- the
+            # repro joint_2d and the repro 1D heads all dump under 'dopfn_native',
+            # as do the released weights in the shared root. Keying on the method
+            # alone would concatenate different models' realizations into one row
+            # and report the average as if it were a single model.
+            model = f"{label}/{method}"
+            acc[(model, stage, group)][key].append(arr)
+            slices[(model, stage, group)].add(sl)
     return acc, slices
 
 
