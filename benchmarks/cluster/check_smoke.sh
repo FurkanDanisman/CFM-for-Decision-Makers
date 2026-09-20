@@ -51,18 +51,29 @@ for d in "$SMOKE"/*; do
         fi
         {   echo "######## $name / $bench"; echo "$out"; echo; } >> "$LOG"
 
-        # A scored row carries a coverage in [0,1] and an n. Count rows whose n
-        # column is a positive integer; "(no dumps)" and n=0 rows do not count.
+        # Count the n_files column, NOT the last field. The table is
+        #   | method | n_files | n_query | coverage95 | length | is05 | ... | bias |
+        # and it ends with a trailing pipe, so splitting on "|" leaves $NF empty
+        # and an $NF test counts zero rows for a table that scored perfectly.
+        # Header and separator rows fail the numeric test on their own.
         scored=$(printf '%s\n' "$out" | awk -F'|' '
-            NF>4 { for(i=1;i<=NF;i++){ gsub(/ /,"",$i) }
-                   if ($NF ~ /^[0-9]+$/ && $NF+0 > 0) c++ }
+            NF>8 { f=$3; gsub(/ /,"",f); if (f ~ /^[0-9]+$/ && f+0 > 0) c++ }
             END { print c+0 }')
         note=""
         printf '%s\n' "$out" | grep -qi "no dumps" && note="no dumps seen"
-        printf '%s\n' "$out" | grep -qiE "traceback|error" && note="ERROR (see check.log)"
+        printf '%s\n' "$out" | grep -qiE "traceback|^[A-Za-z]*Error" && note="ERROR (see check.log)"
         [ "$scored" -gt 0 ] && [ -z "$note" ] && note="PASS"
         [ "$scored" -eq 0 ] && [ -z "$note" ] && note="FAIL: 0 scored rows"
         printf '%-22s %-10s %-9s %-9s %s\n' "$name" "$bench" "$n_npz" "$scored" "$note"
+        # method | n_files | coverage | length | is05 -- the columns being verified
+        printf '%s\n' "$out" | awk -F'|' '
+            NF>8 { f=$3; gsub(/ /,"",f)
+                   if (f ~ /^[0-9]+$/ && f+0 > 0) {
+                     m=$2; c=$5; l=$6; i=$7
+                     gsub(/^ +| +$/,"",m); gsub(/^ +| +$/,"",c)
+                     gsub(/^ +| +$/,"",l); gsub(/^ +| +$/,"",i)
+                     printf("      %-16s n=%-4s cov=%-7s len=%-18s IS=%s\n", m, f, c, l, i)
+                   } }' 
     done
 done
 

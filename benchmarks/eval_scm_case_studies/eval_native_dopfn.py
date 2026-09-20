@@ -236,7 +236,15 @@ def _resize_bins_to_ckpt(target, sd):
         cur = getattr(owner, leaf, None)
         # clone, not empty_like: the tensor then already holds the right
         # values, so nothing depends on the subsequent load touching it.
+        #
+        # ...and follow the module's device/dtype, not the checkpoint's. The
+        # checkpoint is loaded with map_location='cpu' while the regressor may
+        # already be on cuda, so a bare clone leaves the new head on CPU and the
+        # first matmul dies with "mat1 is on cuda:0, different from other
+        # tensors on cpu".
         new = v.detach().clone()
+        if cur is not None and hasattr(cur, 'device'):
+            new = new.to(device=cur.device, dtype=cur.dtype)
         if isinstance(cur, _nn.Parameter):
             setattr(owner, leaf, _nn.Parameter(
                 new, requires_grad=bool(cur.requires_grad)))
