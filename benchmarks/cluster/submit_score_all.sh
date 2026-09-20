@@ -42,7 +42,11 @@ cd "$KIT" || exit 1
 N=0
 for r in "${ROOTS[@]}"; do
     IFS='|' read -r lbl rc cs <<<"$r"
-    [ -n "${ONLY:-}" ] && [ "$ONLY" != "$lbl" ] && continue
+    # ONLY accepts a LIST, so a wave can name several roots in one submission.
+    if [ -n "${ONLY:-}" ]; then
+        case " $ONLY " in *" $lbl "*) ;; *) continue ;; esac
+    fi
+    case " ${SKIP:-} " in *" $lbl "*) printf 'score %-10s SKIPPED\n' "$lbl"; continue ;; esac
     # RealCause: one job per dataset.
     if [ -d "$rc" ]; then
         for ds in $RC_DS; do
