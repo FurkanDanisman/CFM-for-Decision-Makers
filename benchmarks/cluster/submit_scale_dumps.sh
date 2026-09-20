@@ -34,6 +34,7 @@ ROWS=(
   "cpfn1d_j32|4|CKPT_CPFN1D|$CK/cpfn1d_j32_step50000.pt"
   "cpfn1d_botharms|4|CKPT_CPFN1D|$CK/cpfn1d_botharms_step50000.pt"
   "cpfn_v0|4|CKPT_CPFN1D|${CKPT_CPFN_V0:-$CK/cpfn_v0_original.pt}"
+  "uwyk_bin|2|CKPT|$CK/uwyk_bin_step50000.pt"
 )
 
 cd "$KIT" || exit 1
@@ -52,8 +53,14 @@ for r in "${ROWS[@]}"; do
         N=$((N+1))
         if [ "$SUBMIT" = 1 ]; then
             printf '%-22s %s  -> ' "$name" "$b"
+            UWYK_EXTRA_CONFIG=""; UWYK_EXTRA_ENC=""
+            if [ "$name" = uwyk_bin ]; then
+                UWYK_EXTRA_CONFIG="${UWYK_BIN_CONFIG:-$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml}"
+                UWYK_EXTRA_ENC="${UWYK_T_ENCODING:-binary}"
+            fi
             MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT="$ck" \
             BENCH="$b" OUT_ROOT="$SC/dumps_all/$name/$b" SHIFT=0 \
+            CONFIG="$UWYK_EXTRA_CONFIG" UWYK_T_ENCODING="$UWYK_EXTRA_ENC" \
                 sbatch --time="$T" --job-name="dump-$b-$name" "$SB"
         else
             printf '%-22s %s  (idx %s, %s, %s)\n' "$name" "$b" "$idx" "$T" "$(basename "$ck")"

@@ -102,13 +102,15 @@ case "$MODEL" in
         --y-scaling "${Y_SCALING:-min_max}" --std-target "${STD_TARGET:-0.3}"
     ;;
   uwyk1d)
-    export CKPT="$UWYK_CKPT_DIR/best_model.pt"
-    export CONFIG="$UWYK_CKPT_DIR/best_model_config.yaml"
+    # Overridable so a UWYK VARIANT (e.g. the binarized head) can be run
+    # without inventing a fake checkpoint directory around it.
+    export CKPT="${CKPT:-$UWYK_CKPT_DIR/best_model.pt}"
+    export CONFIG="${CONFIG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
     export ANC_MODE=v3ab_only
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-        --anc-mode v3ab_only
+        --anc-mode v3ab_only --t-encoding "${UWYK_T_ENCODING:-target}"
     ;;
   graph2d)
     python -u "$REPO/realcause_eval/Table1/graph2d.py" \
