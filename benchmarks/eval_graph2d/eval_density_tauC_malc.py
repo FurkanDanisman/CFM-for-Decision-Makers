@@ -1,13 +1,30 @@
 """Tier-C density eval, MALC arm: p(tau | x) with region 0 smoothed.
 
-The MALC counterpart of eval_density_tauC.py. Same three methods, same truth,
-same metrics, same output schema -- summarize_density_tauC.py reads this
-directory unchanged. The ONLY difference is inside region 0, the inner x inner
-block, where the head's raw histogram is replaced by a K=1 log-concave MLE
-(see density_common's MALC section for what that estimator does and why K=1).
+The MALC counterpart of eval_density_tauC.py. Same methods, same truth, same
+metrics, same output schema -- summarize_density_tauC.py reads this directory
+unchanged. The ONLY difference is inside region 0, the inner x inner block,
+where the head's raw histogram is replaced by a K=1 log-concave MLE (see
+density_common's MALC section for what that estimator does and why K=1).
 Every one of the 8 non-interior regions goes through the identical code path
 with identical quadrature, so a raw-vs-MALC difference is attributable to
 region 0 and nothing else.
+
+MODEL FAMILIES. Scores whatever a dump carries: UWYK (uwyk_native,
+uwyk_matched, joint) and/or DoPFN (one method per DOPFN_MODELS entry). Both
+families reach MALC the same way, which is the point of doing it this way --
+a trained joint head hands over its own p_mat, and a pair of 1D arms hands
+over f0 (x) f1 under independence. Same estimator, same input shape, same
+output path, so 1D-vs-joint stays a comparison rather than two pipelines.
+
+DoPFN's 1D arms need one extra step, and skipping it fails silently. MALC_2D
+calibrates its Beta jitter from a SINGLE bin width read off grid_x[1] -
+grid_x[0] and validates nothing about the rest, while DoPFN's borders are
+quantile allocated -- measured on IHDP r000 at 0.107 to 536, a 5032x ratio.
+So the arms are rebinned onto a uniform grid first (DOPFN_MALC_BINS, default
+1024). That is CDF-exact and costs 0.004% relative L2 against the exact
+unequal-bar tau density. UWYK's bars are already uniform (measured ratio
+1.0001), so the same code path is a no-op there and its numbers are unchanged.
+test_density_malc.py gates 6-7 pin both halves.
 
 Runs entirely off the prediction dumps eval_density_tauC.py writes with
 SAVE_PREDICTIONS=1. CPU only -- no checkpoint, no GPU, no harness import, no
@@ -39,6 +56,7 @@ import multiprocessing as mp
 import os
 import sys
 import time
+import zlib
 
 # MALC's conic solver and numpy are both threaded; with one process per query
 # they oversubscribe badly. BLAS reads these AT IMPORT, so this must stay
@@ -52,7 +70,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 
 from density_common import (                                        # noqa: E402
-    Joint2D, UWYK1D, independent_f2d, joint_tau_density, uwyk_tau_density,
+    Joint2D, UWYK1D, DoPFN1D, independent_f2d, joint_tau_density,
+    uwyk_tau_density, dopfn_tau_density,
     truth_tau_density, l2_distance, kl, mass, point_metrics, TAU_CENTERS,
     fit_malc_interior, malc_tau_density, malc_interior_tau,
     malc_hull_tau_range, malc_inner_mean,
@@ -70,7 +89,18 @@ REAL_START = int(os.environ.get('REAL_START', '0'))
 REAL_END = os.environ.get('REAL_END')
 SAVE_FALLBACK_POINTS = os.environ.get('SAVE_FALLBACK_POINTS', '1') == '1'
 
-METHODS = ('uwyk_native', 'uwyk_matched', 'joint')
+# uwyk | dopfn | all | auto. 'auto' takes whichever families the dump carries,
+# so an existing uwyk-only dump keeps its exact previous behaviour.
+MODEL_FAMILY = os.environ.get('MODEL_FAMILY', 'auto')
+if MODEL_FAMILY not in ('uwyk', 'dopfn', 'all', 'auto'):
+    raise ValueError('MODEL_FAMILY must be uwyk, dopfn, all, or auto')
+
+# Bins for the uniform grid DoPFN's 1D arms are rebinned onto -- see
+# product_bundle. 1024 matches UWYK's 1000-bar product in both cost (8 MB) and
+# fidelity: measured 0.004% relative L2 against the exact unequal-bar tau
+# density, against 0.35% at 100 bins and 0.013% at 512.
+DOPFN_MALC_BINS = int(os.environ.get('DOPFN_MALC_BINS', '1024'))
+
 _G: dict = {}
 
 
@@ -98,52 +128,175 @@ def uwyk_arm_mean(f: UWYK1D, inner_mean: float) -> float:
                  + math.exp(f.log_pR) * (f.edges[-1] + h * f.sR))
 
 
-def build_query(q):
-    """The three (p_mat, edges, w0, tails, raw) bundles for one query.
+def joint_bundle(jt):
+    """A trained joint head: its own p_mat is already the MALC input."""
+    return dict(
+        p_mat=jt.p_mat, edges=np.asarray(jt.edges, dtype=np.float64),
+        w0=float(jt.w[0]), tail_f2d=jt.density,
+        pad=8.0 * jt.max_scale, align_bins=jt.p_mat.shape[0],
+        raw=lambda t: joint_tau_density(jt, t, n_y0=N_Y0),
+        raw_mean=lambda: (lambda m: m[1] - m[0])(jt.mean()),
+        malc_mean=lambda inner: (lambda m: m[1] - m[0])(jt.mean(inner=inner)),
+    )
 
-    This is the ONLY place the three methods differ. Everything downstream is
-    shared, which is what makes the comparison a comparison.
+
+def product_bundle(a, b, *, raw_density, uniform_bins=None):
+    """Two 1D arms as f0 (x) f1 under independence -- the same estimator, the
+    same input shape and the same output path as a trained joint head.
+
+    `uniform_bins` rebins both arms onto a uniform grid first, and DoPFN needs
+    it. MALC_2D reads ONE bin width off the grid (`grid_x[1] - grid_x[0]`) to
+    calibrate its Beta jitter, and nothing in it validates that the rest match.
+    UWYK's bars are uniform so this is a no-op there; DoPFN's are quantile
+    allocated, measured on IHDP r000 at widths 0.107 to 536 -- a 5032x ratio --
+    so passing them straight through would silently jitter almost every sample
+    with the wrong width. Both arms share a border set, so one grid over the
+    common interior support serves both and the half-normal tails, which are
+    anchored at that support's ends, carry through untouched.
+
+    The rebin is CDF-exact and costs essentially nothing: 0.004% relative L2
+    against the exact unequal-bar tau density at the default 1024 bins.
+    """
+    if uniform_bins is not None:
+        lo, hi = float(a.edges[0]), float(a.edges[-1])
+        if not np.allclose(a.edges, b.edges):
+            raise ValueError('product_bundle: arms must share a border grid')
+        grid = np.linspace(lo, hi, uniform_bins + 1)
+        a, b = a.rebin(grid), b.rebin(grid)
+
+    pa, pb = np.exp(a.log_pBars), np.exp(b.log_pBars)
+    return dict(
+        p_mat=np.outer(pa, pb),                  # sums to w0 by construction
+        edges=np.asarray(a.edges, dtype=np.float64),
+        w0=float(pa.sum() * pb.sum()),
+        tail_f2d=independent_f2d(a, b),
+        pad=8.0 * max(a.max_scale, b.max_scale),
+        align_bins=len(a.widths),
+        raw=lambda t: raw_density(t),
+        raw_mean=lambda a=a, b=b: b.mean() - a.mean(),
+        malc_mean=lambda inner, a=a, b=b: (uwyk_arm_mean(b, inner[1])
+                                           - uwyk_arm_mean(a, inner[0])),
+    )
+
+
+def build_query(q):
+    """The (p_mat, edges, w0, tails, raw) bundle per method for one query.
+
+    This is the ONLY place the methods differ. Everything downstream is shared,
+    which is what makes the comparison a comparison.
     """
     d = _G['d']
-    jt = Joint2D.from_pred(d['joint_logits'][q], _G['J'], _G['e2'])
-    f0 = UWYK1D.from_pred(d['uwyk_pred0'][q], _G['be'], _G['bw'],
-                          _G['sL'], _G['sR'])
-    f1 = UWYK1D.from_pred(d['uwyk_pred1'][q], _G['be'], _G['bw'],
-                          _G['sL'], _G['sR'])
-    f0m, f1m = f0.rebin(_G['e2']), f1.rebin(_G['e2'])
+    out = {}
 
-    def uwyk_bundle(a, b):
-        pa, pb = np.exp(a.log_pBars), np.exp(b.log_pBars)
-        return dict(
-            p_mat=np.outer(pa, pb),                  # sums to w0 by construction
-            edges=np.asarray(a.edges, dtype=np.float64),
-            w0=float(pa.sum() * pb.sum()),
-            tail_f2d=independent_f2d(a, b),
-            pad=8.0 * max(a.max_scale, b.max_scale),
-            align_bins=len(a.widths),
-            raw=lambda t, a=a, b=b: uwyk_tau_density(a, b, t, n_y0=N_Y0),
-            raw_mean=lambda a=a, b=b: b.mean() - a.mean(),
-            malc_mean=lambda inner, a=a, b=b: (uwyk_arm_mean(b, inner[1])
-                                               - uwyk_arm_mean(a, inner[0])),
-        )
+    if _G['uwyk']:
+        jt = Joint2D.from_pred(d['joint_logits'][q], _G['J'], _G['e2'])
+        f0 = UWYK1D.from_pred(d['uwyk_pred0'][q], _G['be'], _G['bw'],
+                              _G['sL'], _G['sR'])
+        f1 = UWYK1D.from_pred(d['uwyk_pred1'][q], _G['be'], _G['bw'],
+                              _G['sL'], _G['sR'])
+        f0m, f1m = f0.rebin(_G['e2']), f1.rebin(_G['e2'])
+        out['joint'] = joint_bundle(jt)
+        # UWYK's native grid is already uniform: no rebin, byte-identical to
+        # the behaviour this driver had before DoPFN was added.
+        out['uwyk_native'] = product_bundle(
+            f0, f1, raw_density=lambda t: uwyk_tau_density(f0, f1, t, n_y0=N_Y0))
+        out['uwyk_matched'] = product_bundle(
+            f0m, f1m,
+            raw_density=lambda t: uwyk_tau_density(f0m, f1m, t, n_y0=N_Y0))
 
-    return {
-        'joint': dict(
-            p_mat=jt.p_mat, edges=np.asarray(_G['e2'], dtype=np.float64),
-            w0=float(jt.w[0]), tail_f2d=jt.density,
-            pad=8.0 * jt.max_scale, align_bins=jt.p_mat.shape[0],
-            raw=lambda t: joint_tau_density(jt, t, n_y0=N_Y0),
-            raw_mean=lambda: (lambda m: m[1] - m[0])(jt.mean()),
-            malc_mean=lambda inner: (lambda m: m[1] - m[0])(jt.mean(inner=inner)),
-        ),
-        'uwyk_native': uwyk_bundle(f0, f1),
-        'uwyk_matched': uwyk_bundle(f0m, f1m),
-    }
+    for name, spec in _G['dopfn'].items():
+        if spec['kind'] == 'joint':
+            out[name] = joint_bundle(
+                Joint2D.from_pred(spec['logits'][q], spec['J'], spec['edges2d']))
+        else:
+            g0 = DoPFN1D.from_pred(spec['pred0'][q], spec['borders'],
+                                   y_shift=spec['y_shift'],
+                                   y_scale=spec['y_scale'],
+                                   tail_scales=spec['tail_scales'])
+            g1 = DoPFN1D.from_pred(spec['pred1'][q], spec['borders'],
+                                   y_shift=spec['y_shift'],
+                                   y_scale=spec['y_scale'],
+                                   tail_scales=spec['tail_scales'])
+            # raw= stays on the NATIVE unequal bars, exactly what the raw arm
+            # scored, so a fallback query is scored identically in both arms
+            # and raw-vs-MALC stays attributable to region 0.
+            out[name] = product_bundle(
+                g0, g1,
+                raw_density=lambda t, g0=g0, g1=g1: dopfn_tau_density(g0, g1, t),
+                uniform_bins=DOPFN_MALC_BINS)
+    return out
+
+
+#: Seed slots for the three UWYK methods, pinned to the values their position
+#: in the old fixed METHODS tuple gave them, so published UWYK numbers do not
+#: move now that the method list is dynamic.
+_SEED_SLOT = {'uwyk_native': 0, 'uwyk_matched': 1, 'joint': 2}
+
+
+def seed_slot(name: str) -> int:
+    """Per-method seed offset. Must NOT be the position in the method list.
+
+    An index shifts when MODEL_FAMILY selects a different set, which would
+    silently give a method a different MALC fit depending on what it happened
+    to be run alongside -- scoring dopfn alone and scoring it with uwyk would
+    disagree for no reason. Hash the name instead; crc32 because Python's
+    hash() is salted per process.
+    """
+    if name in _SEED_SLOT:
+        return _SEED_SLOT[name]
+    return 3 + (zlib.crc32(name.encode()) % 100_000)
+
+
+def dopfn_specs(d):
+    """DoPFN methods in a dump, as {method: spec}. Handles both dump schemas.
+
+    DoPFNModelSet (current) names its models in `dopfn_methods` and prefixes
+    each model's fields with the method name -- except the library model, whose
+    fields `_native_outputs` writes unprefixed. DoPFNDensityModels (the older
+    single-model path, which the 5353656 dumps use) writes only that unprefixed
+    set plus one joint. Both are read here so old dumps stay scoreable.
+    """
+    def arms(prefix, borders_key, scales_key, y_shift, y_scale):
+        return dict(kind='1d', pred0=d[f'{prefix}pred0'],
+                    pred1=d[f'{prefix}pred1'], borders=d[borders_key],
+                    tail_scales=d.get(scales_key), y_shift=y_shift,
+                    y_scale=y_scale)
+
+    y_shift, y_scale = float(d['y_shift']), float(d['y_scale'])
+    out = {}
+
+    if 'dopfn_methods' in d:                                  # DoPFNModelSet
+        names = [str(x) for x in np.atleast_1d(d['dopfn_methods'])]
+        kinds = [str(x) for x in np.atleast_1d(d['dopfn_kinds'])]
+        for name, kind in zip(names, kinds):
+            if kind.endswith('joint'):
+                out[name] = dict(kind='joint', logits=d[f'{name}_logits'],
+                                 J=int(d[f'{name}_J']),
+                                 edges2d=d[f'{name}_edges2d'])
+            elif kind == 'repro_1d':
+                # Tail scales are derived from the borders by DoPFN1D, which is
+                # what the raw arm did for this kind too.
+                out[name] = arms(f'{name}_', f'{name}_borders_raw',
+                                 f'{name}_tail_scales_raw', y_shift, y_scale)
+            else:                                             # library model
+                out[name] = arms('dopfn_', 'dopfn_borders0_raw',
+                                 'dopfn_tail_scales0_raw', y_shift, y_scale)
+        return out
+
+    if 'dopfn_pred0' in d:                          # DoPFNDensityModels (old)
+        out['dopfn_native'] = arms('dopfn_', 'dopfn_borders0_raw',
+                                   'dopfn_tail_scales0_raw', y_shift, y_scale)
+    if 'dopfn_joint_logits' in d:
+        out['dopfn_joint'] = dict(kind='joint', logits=d['dopfn_joint_logits'],
+                                  J=int(d['dopfn_J']),
+                                  edges2d=d['dopfn_edges2d'])
+    return out
 
 
 def run_query(q):
-    """One query, all three methods. Returns plain dicts (picklable)."""
+    """One query, every discovered method. Returns plain dicts (picklable)."""
     d = _G['d']
+    METHODS = _G['methods']
     tau_star = float(d['tau_star_scaled'][q])
     t_star = np.array([tau_star])
     p_true = truth_tau_density(float(d['mu0_scaled'][q]),
@@ -157,7 +310,7 @@ def run_query(q):
         # Seed on (realization, query, method): reproducible, and independent
         # across methods so a bad draw cannot favour one of them.
         seed = (_G['r'] * 1_000_003 + q * 1009
-                + METHODS.index(name) * 31) % (2 ** 31 - 1)
+                + seed_slot(name) * 31) % (2 ** 31 - 1)
         fit = fit_malc_interior(b['p_mat'], b['edges'], B=MALC_B, seed=seed)
 
         rec = dict(fallback=0, reason='', tau_hull_lo=float('nan'),
@@ -220,9 +373,31 @@ def evaluate(path, pool_cls):
     with np.load(path, allow_pickle=True) as z:
         d = {k: z[k] for k in z.files}
     r = int(d['realization'])
-    payload = dict(d=d, r=r, J=int(d['J']), e2=d['edges2d'],
-                   be=d['bar_edges'], bw=d['bar_widths'],
-                   sL=float(d['base_sL']), sR=float(d['base_sR']))
+
+    has_uwyk = 'uwyk_pred0' in d
+    dopfn = dopfn_specs(d)
+    want_uwyk = MODEL_FAMILY in ('uwyk', 'all', 'auto')
+    want_dopfn = MODEL_FAMILY in ('dopfn', 'all', 'auto')
+    use_uwyk = has_uwyk and want_uwyk
+    if not want_dopfn:
+        dopfn = {}
+    if MODEL_FAMILY == 'uwyk' and not has_uwyk:
+        raise SystemExit(f'[tauC-malc] {path}: MODEL_FAMILY=uwyk but the dump '
+                         f'carries no UWYK predictions')
+    if MODEL_FAMILY == 'dopfn' and not dopfn:
+        raise SystemExit(f'[tauC-malc] {path}: MODEL_FAMILY=dopfn but the dump '
+                         f'carries no DoPFN predictions')
+
+    methods = ((['uwyk_native', 'uwyk_matched', 'joint'] if use_uwyk else [])
+               + list(dopfn))
+    if not methods:
+        raise SystemExit(f'[tauC-malc] {path}: no scoreable methods')
+
+    payload = dict(d=d, r=r, methods=methods, uwyk=use_uwyk, dopfn=dopfn)
+    if use_uwyk:
+        payload.update(J=int(d['J']), e2=d['edges2d'],
+                       be=d['bar_edges'], bw=d['bar_widths'],
+                       sL=float(d['base_sL']), sR=float(d['base_sR']))
     n_q = len(d['tau_star_scaled'])
 
     if N_WORKERS > 1:
@@ -251,7 +426,7 @@ def evaluate(path, pool_cls):
            'frac_tau_outside_grid': float(
                np.mean(np.abs(d['tau_star_scaled']) > 3.0))}
 
-    for name in METHODS:
+    for name in methods:
         recs = [res[name] for _, res in results]
         for k in recs[0]['score']:
             row[f'{k}_{name}'] = float(np.mean([x['score'][k] for x in recs]))
@@ -280,7 +455,8 @@ def evaluate(path, pool_cls):
             row[f'malc_fallback_query_{name}'] = np.array(fq, dtype=np.int32)
             row[f'malc_fallback_points_{name}'] = (
                 np.concatenate(pts, axis=0) if pts else np.empty((0, 2)))
-    return row
+    row['methods'] = np.asarray(methods)
+    return row, methods
 
 
 def main():
@@ -291,8 +467,9 @@ def main():
     dataset = paths[0].rsplit('_r', 1)[0]
     lo, hi = max(0, REAL_START), (len(paths) if REAL_END is None
                                   else min(len(paths), int(REAL_END)))
-    print(f'[tauC-malc] dataset={dataset} dumps={DUMPS} '
+    print(f'[tauC-malc] dataset={dataset} dumps={DUMPS} family={MODEL_FAMILY} '
           f'B={MALC_B} K=1 malc_n_y0={MALC_N_Y0_ENV} tail_n_y0={N_Y0} '
+          f'dopfn_bins={DOPFN_MALC_BINS} '
           f'workers={N_WORKERS}  realizations [{lo}, {hi}) of {len(paths)}',
           flush=True)
 
@@ -302,14 +479,14 @@ def main():
 
     t0 = time.time()
     for path in paths[lo:hi]:
-        row = evaluate(os.path.join(DUMPS, path), pool_cls)
+        row, methods = evaluate(os.path.join(DUMPS, path), pool_cls)
         r = int(row['realization'])
         np.savez(os.path.join(OUT, f'{dataset}_r{r:03d}.npz'),
                  **{k: np.array(v) for k, v in row.items()})
         print(f'r={r:03d}  ' + '  |  '.join(
             f'{m}: nll={row[f"nll_{m}"]:7.3f} l2={row[f"l2_{m}"]:6.3f} '
             f'klrev={row[f"kl_rev_{m}"]:7.4f} pehe={row[f"pehe_{m}"]:7.3f} '
-            f'fb={row[f"n_fallback_{m}"]:d}' for m in METHODS)
+            f'fb={row[f"n_fallback_{m}"]:d}' for m in methods)
             + f'   ({time.time()-t0:.0f}s)', flush=True)
     print(f'[tauC-malc] done in {time.time()-t0:.0f}s -> {OUT}', flush=True)
 

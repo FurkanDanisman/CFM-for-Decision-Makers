@@ -208,3 +208,50 @@ python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_dopfn.py
 python -m unittest discover -s benchmarks/eval_graph2d -p 'test_density_causalpfn.py'
 python -m unittest discover -s benchmarks/methods -p 'test_dopfn_compat.py'
 ```
+
+## MALC arm
+
+`eval_density_tauC_malc.py` re-scores the raw run's prediction dumps with
+region 0 — the inner × inner block — replaced by a K=1 log-concave MLE. The
+8 tail regions go through the identical code path with identical quadrature,
+so a raw-vs-MALC difference is attributable to region 0 and nothing else. It
+is CPU-only: no checkpoint, no GPU, no dataset loader. Output schema matches
+the raw arm, so `summarize_density_tauC.py` reads either directory and the two
+tables compare row by row.
+
+Both model families reach MALC the same way, which is the point of doing it
+this way. A trained joint head hands over its own `p_mat`; a pair of 1D arms
+hands over `f0 ⊗ f1` under independence. Same estimator, same input shape,
+same output path, so 1D-vs-joint stays a comparison rather than two pipelines.
+
+DoPFN's 1D arms need one extra step, and skipping it fails *silently*.
+`MALC_2D` calibrates its Beta jitter from a single bin width read off
+`grid_x[1] - grid_x[0]` and validates nothing about the rest, while DoPFN's
+borders are quantile allocated — measured on IHDP r000 at 0.107 to 536, a
+**5032× ratio**. So the arms are rebinned onto a uniform grid first
+(`DOPFN_MALC_BINS`, default 1024). CDF interpolation is exact on a histogram's
+piecewise-linear CDF, so this costs 0.004% relative L2 against the exact
+unequal-bar tau density (0.35% at 100 bins, 0.013% at 512). UWYK's bars are
+already uniform — measured ratio 1.0001 — so the same code path is a no-op
+there and its numbers are unchanged. Fallback queries are scored on the
+*native* unequal bars, exactly as the raw arm scored them.
+
+`MODEL_FAMILY` selects `uwyk`, `dopfn`, `all`, or `auto` (default: whichever
+families the dump carries). Both dump schemas are read — the current
+`DoPFNModelSet` layout and the older single-model `DoPFNDensityModels` one.
+
+**`MALC_B` matters more for DoPFN than for UWYK.** Measured on one IHDP
+realization at `B=100`: `dopfn_native` 0/75 fallbacks, but the DoPFN joint
+11/75 (14.7%), an order of magnitude above UWYK's joint. Its head is J=10, so
+its `p_mat` has 100 bins against the UWYK joint's 1024, and 100 synthetic
+points drawn from that coarse a grid hull a much smaller region. Use the
+default `B=1000` for anything reportable.
+
+```bash
+DUMPS=./results_density_tauC/<JOBID>/IHDP/predictions \
+OUT=./results_density_tauC_malc/IHDP \
+MODEL_FAMILY=dopfn MALC_B=1000 N_WORKERS=32 \
+python -u benchmarks/eval_graph2d/eval_density_tauC_malc.py
+
+python benchmarks/eval_graph2d/test_density_malc.py   # 12 gates, no model
+```
