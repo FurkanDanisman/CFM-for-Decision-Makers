@@ -36,7 +36,11 @@ echo
 SLURM_ARRAY_TASK_ID=0 \
 DOPFN_CKPT="$CKPT" OUT_ROOT="$OUT" DENSITY_DUMP=1 \
     bash "$REPO/benchmarks/cluster/submit_realcause_density_unified.sbatch" 2>&1 \
-    | tee "$OUT/run.log" | grep -E "dopfn_native|2d\]|density|Error|error|Traceback|WARN" | head -40
+    | tee "$OUT/run.log" | grep -E "dopfn_native|2d\]|density|WARN" | head -30
+# A truncated traceback hides which call failed, so print the tail in full.
+if grep -q "Traceback" "$OUT/run.log"; then
+    echo; echo "--- traceback (full)"; sed -n '/Traceback/,$p' "$OUT/run.log" | head -40
+fi
 echo
 n=$(find "$OUT" -name '*.npz' 2>/dev/null | wc -l | tr -d ' ')
 echo "npz written: $n   (full log: $OUT/run.log)"
