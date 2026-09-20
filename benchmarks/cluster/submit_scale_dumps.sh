@@ -44,7 +44,11 @@ RC_TIME="${RC_TIME:-3:00:00}"; CS_TIME="${CS_TIME:-3:00:00}"
 ROWS=(
   "dopfn_repro_1d_J10|0|DOPFN_CKPT|$CK/dopfn_repro_1d_J10_step150000.pt"
   "dopfn_repro_1d_J100|0|DOPFN_CKPT|$CK/dopfn_repro_1d_J100_step150000.pt"
-  "dopfn_repro_joint2d|1|CKPT_DOPFN_BB|$CK/dopfn_repro_joint2d_bb.pt"
+  # joint_2d goes through the dopfn_native harness now, using the ORIGINAL
+  # repro checkpoint: eval_native_dopfn applies DoPFN's own y normalisation,
+  # so the grid is un-normalised by the map predict_full actually used rather
+  # than by a --y-scaling guess. The _bb conversion is no longer needed.
+  "dopfn_repro_joint2d|0|DOPFN_CKPT|$CK/dopfn_repro_joint2d_step150000.pt"
   "cpfn1d_j32|4|CKPT_CPFN1D|$CK/cpfn1d_j32_step50000.pt"
   "cpfn1d_botharms|4|CKPT_CPFN1D|$CK/cpfn1d_botharms_step50000.pt"
   "cpfn_v0|4|CKPT_CPFN1D|${CKPT_CPFN_V0:-$CK/cpfn_v0_original.pt}"

@@ -34,7 +34,8 @@ CS_SB="$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
 ROWS=(
   "dopfn_repro_1d_J10|DOPFN_CKPT|$CK/dopfn_repro_1d_J10_step150000.pt|0|2"
   "dopfn_repro_1d_J100|DOPFN_CKPT|$CK/dopfn_repro_1d_J100_step150000.pt|0|2"
-  "dopfn_repro_joint2d|CKPT_DOPFN_BB|$CK/dopfn_repro_joint2d_bb.pt|5|10"
+  # native harness (index 0): RC task 0, CS task 2
+  "dopfn_repro_joint2d|DOPFN_CKPT|$CK/dopfn_repro_joint2d_step150000.pt|0|2"
   "cpfn1d_j32|CKPT_CPFN1D|$CK/cpfn1d_j32_step50000.pt|20|34"
   "cpfn1d_botharms|CKPT_CPFN1D|$CK/cpfn1d_botharms_step50000.pt|20|34"
   # cpfn_v0 is a symlink to warmstart/causalpfn_v0.pt (75.4 MB, J=1024).
