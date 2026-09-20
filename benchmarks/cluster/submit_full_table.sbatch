@@ -56,6 +56,16 @@ NW="${MALC_WORKERS:-${SLURM_CPUS_PER_TASK:-64}}"
 STAGES="${STAGES:-point raw malc indep}"
 CS_CASES="${CS_CASES:-Observed_Confounder Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion Backdoor_Criterion}"
 RC_DATASETS="${RC_DATASETS:-IHDP ACIC CPS PSID PSID_bal}"
+# ONE_RC_ROOT / ONE_CS_ROOT: score exactly one root, so the driver can put one
+# (root, slice) in each job. MALC at B=1000 is the whole cost here, and a single
+# job cannot cover 13 models x 2 benchmarks inside a wall clock.
+[ -n "${ONE_RC_ROOT:-}" ] && RC_ROOT="$ONE_RC_ROOT"
+[ -n "${ONE_CS_ROOT:-}" ] && CS_ROOT="$ONE_CS_ROOT"
+[ -n "${ONE_RC_ROOT:-}${ONE_CS_ROOT:-}" ] && { ETA0_RC=/nonexistent; ETA0_CS=/nonexistent; }
+[ "${SKIP_RC:-0}" = 1 ] && RC_ROOT=/nonexistent
+[ "${SKIP_CS:-0}" = 1 ] && CS_ROOT=/nonexistent
+# CS_SHIFT restricts the case-study walk to one shift, matching one dump job.
+CS_SHIFT="${CS_SHIFT:-}"
 TAG="B${MALC_B}_K${MALC_K}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
@@ -112,7 +122,7 @@ done
 for R in "$CS_ROOT" "$ETA0_CS"; do
   [ -d "$R" ] || continue
   echo "==== CaseStudy  root=$R ===="
-  for cell in "$R"/shift*/d*/ctx1000; do
+  for cell in "$R"/shift${CS_SHIFT:-*}/d*/ctx1000; do
     [ -d "$cell" ] || continue
     echo "  cell ${cell#$R/}"
     for c in $CS_CASES; do
