@@ -69,6 +69,11 @@ RC_DATASETS="${RC_DATASETS:-IHDP ACIC CPS PSID PSID_bal}"
 [ "${SKIP_CS:-0}" = 1 ] && CS_ROOT=/nonexistent
 # CS_SHIFT restricts the case-study walk to one shift, matching one dump job.
 CS_SHIFT="${CS_SHIFT:-}"
+# CS_D restricts the walk to one d value. Needed because MALC at B=1000 on the
+# multi-method root is ~3.4M fits per shift (8 d x 6 cases x 100 real x 100
+# queries x ~7 methods), roughly 18h over 64 workers -- far past any 3h tier.
+# Per (shift, d) it is ~2.5h, which fits.
+CS_D="${CS_D:-}"
 # Per-realization dumps: one file per (stage, reporting-group, pooled-slice), so
 # collect_table.py can pool exactly and can build a table from a partial run.
 PERREAL="${PERREAL:-$SCRATCH/perreal}"
@@ -136,7 +141,7 @@ done
 for R in "$CS_ROOT" "$ETA0_CS"; do
   [ -d "$R" ] || continue
   echo "==== CaseStudy  root=$R ===="
-  for cell in "$R"/shift${CS_SHIFT:-*}/d*/ctx1000; do
+  for cell in "$R"/shift${CS_SHIFT:-*}/d${CS_D:-*}/ctx1000; do
     [ -d "$cell" ] || continue
     echo "  cell ${cell#$R/}"
     # shift and d out of <root>/shift<S>/d<D>/ctx1000
