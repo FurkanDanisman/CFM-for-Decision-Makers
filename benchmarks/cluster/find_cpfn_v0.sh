@@ -15,10 +15,16 @@
 #   bash R-PFN/benchmarks/cluster/find_cpfn_v0.sh
 
 set -uo pipefail
-KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
+# Paths are DERIVED, not hardcoded, so this runs on any cluster: the script lives
+# at <kit>/R-PFN/benchmarks/cluster/, so the kit root is three levels up. SCRATCH
+# must be set by the environment -- guessing a per-cluster scratch path is how a
+# run silently writes to the wrong filesystem.
+_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_KIT_DEFAULT="$(cd "$_SELF_DIR/../../.." && pwd)"
+KIT="${KIT:-$_KIT_DEFAULT}"
 REPO="${REPO:-$KIT/R-PFN}"
 CK="${CK:-$REPO/Required_checkpoints}"
-SC="${SCRATCH:-/scratch/furkanbd}"
+SC="${SCRATCH:?SCRATCH must be set}"
 
 echo "##### 1. every checkpoint: link status and TRUE size (-L follows symlinks)"
 printf '  %-46s %-12s %-12s %s\n' FILE LINK_SIZE TARGET_SIZE TARGET
