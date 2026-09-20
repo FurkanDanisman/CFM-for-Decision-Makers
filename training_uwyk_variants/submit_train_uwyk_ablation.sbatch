@@ -226,5 +226,54 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
 # checkpoint_dir / save_dir in their config are relative, so cwd decides output.
 cd "$UWYK_ROOT"
-python -u src/training/run.py --config "$OUT_CFG"
+
+# ── RESUME ───────────────────────────────────────────────────────────────────
+# Requires rpfn_patches/uwyk_resume. Upstream cannot continue a run: load_model
+# never restored global_step, so a reloaded checkpoint trained a further
+# max_steps instead of finishing the original run. With the patch, a job that
+# hits the walltime cap requeues and carries on from its last checkpoint --
+# which is what makes a ~23h/50k run safe on a cluster with a 24h cap.
+#
+# Pick the checkpoint with the HIGHEST recorded step, not the newest mtime:
+# interrupted.pt is written last on SIGTERM but may predate the final periodic
+# step_N.pt if the signal arrived just after one was saved.
+RESUME_ARGS=()
+if [ "${RESUME:-1}" = "1" ]; then
+    BEST_CKPT="$(python3 - "$CKPT_DIR" <<'PYRESUME'
+import glob, os, sys, torch
+best, best_step = None, -1
+for f in glob.glob(os.path.join(sys.argv[1], '**', '*.pt'), recursive=True):
+    try:
+        md = torch.load(f, map_location='cpu', weights_only=False).get('metadata', {})
+        step = int(md.get('step', md.get('global_step', -1)))
+    except Exception:
+        continue
+    if step > best_step:
+        best, best_step = f, step
+if best:
+    print(best)
+PYRESUME
+)" || BEST_CKPT=""
+    if [ -n "$BEST_CKPT" ]; then
+        RESUME_ARGS+=(--resume "$BEST_CKPT")
+        echo "[resume] continuing from $BEST_CKPT"
+    else
+        echo "[resume] no checkpoint in $CKPT_DIR — starting fresh"
+    fi
+fi
+
+# Forward SIGTERM so their signal handler writes interrupted.pt, then requeue.
+CHILD=""
+_on_term() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] SIGTERM — forwarding to child pid=$CHILD"
+    [ -n "$CHILD" ] && kill -TERM "$CHILD" 2>/dev/null || true
+    wait "$CHILD" 2>/dev/null || true
+    scontrol requeue "$SLURM_JOB_ID"
+    exit 0
+}
+trap _on_term SIGTERM
+
+python -u src/training/run.py --config "$OUT_CFG" "${RESUME_ARGS[@]}" &
+CHILD=$!
+wait "$CHILD"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] DONE"
