@@ -146,6 +146,16 @@ def main():
                     help="2D heads: 'learned' uses the anti-diagonal projection; "
                          "'indep' rebuilds tau from the joint's own marginals "
                          "under rho = 0. RealCause-only ablation.")
+    # Per-realization arrays, not just their summary. Two reasons:
+    #   1. POOLING. The case-study number is the pooling of shifts 0/+2/-2, and
+    #      averaging three per-shift means is not the pooled per-realization mean
+    #      unless every cell has the same realization count. Concatenating the
+    #      arrays at report time is exact however the work was split.
+    #   2. PARTIAL RESULTS. Each cell writes its own file as it finishes, so a job
+    #      dying midway costs that cell and nothing else.
+    ap.add_argument("--dump-per-real", default=None,
+                    help="write per-realization arrays to this .npz "
+                         "(keys <method>__<cover|length|is05|crps>)")
     ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none")
     ap.add_argument("--malc-B", type=int, default=1000)
     ap.add_argument("--malc-K", type=int, default=1)
@@ -176,6 +186,7 @@ def main():
           f"{'length':>10s} {'sd':>9s} | {'IS_0.05':>10s} | {'CRPS':>9s}")
     print("-" * 104)
 
+    _acc: dict = {}
     for label, tag, files in cells(a):
         per = {k: [] for k in _KEYS}
         for f in files:
@@ -192,12 +203,29 @@ def main():
             print(f"{label:17s} {'—':>6s} | (no dumps)")
             continue
         m = {k: np.asarray(per[k]) for k in _KEYS}
+        if a.dump_per_real:
+            _acc.update({f"{label}__{k}": m[k] for k in _KEYS})
         sd = lambda v: float(v.std(ddof=1)) if v.size > 1 else float("nan")
         print(f"{label:17s} {n:6d} | "
               f"{m['cover'].mean():8.4f} {sd(m['cover']):7.4f} "
               f"{sd(m['cover'])/np.sqrt(n):7.4f} | "
               f"{m['length'].mean():10.4f} {sd(m['length']):9.4f} | "
               f"{m['is05'].mean():10.4f} | {m['crps'].mean():9.4f}")
+
+    if a.dump_per_real:
+        _save(a.dump_per_real, _acc)
+
+
+def _save(path, acc):
+    """Atomic: write a temp file and rename, so a killed job never leaves a
+    half-written .npz that a collector would read as complete."""
+    if not acc:
+        return
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    np.savez(tmp, **acc)
+    os.replace(tmp if tmp.endswith(".npz") else tmp + ".npz", path)
+    print(f"[per-real] wrote {path} ({len(acc)} arrays)", flush=True)
 
 
 if __name__ == "__main__":

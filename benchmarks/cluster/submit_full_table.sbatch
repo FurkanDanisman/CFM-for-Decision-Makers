@@ -66,6 +66,11 @@ RC_DATASETS="${RC_DATASETS:-IHDP ACIC CPS PSID PSID_bal}"
 [ "${SKIP_CS:-0}" = 1 ] && CS_ROOT=/nonexistent
 # CS_SHIFT restricts the case-study walk to one shift, matching one dump job.
 CS_SHIFT="${CS_SHIFT:-}"
+# Per-realization dumps: one file per (stage, reporting-group, pooled-slice), so
+# collect_table.py can pool exactly and can build a table from a partial run.
+PERREAL="${PERREAL:-$SCRATCH/perreal}"
+LABEL="${LABEL:-$(basename "$(dirname "${ONE_RC_ROOT:-${ONE_CS_ROOT:-orig}}")")}"
+mkdir -p "$PERREAL/$LABEL"
 TAG="B${MALC_B}_K${MALC_K}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
@@ -93,6 +98,7 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
         # larger than the means themselves, so every CATE Cov/Len/IS number comes
         # from coverage_by_realization.
         run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
+            --dump-per-real "$PERREAL/$LABEL/raw__${ds}__-.npz" \
             > "$R/cbr_${ds}_raw_cate.md"
         echo "  raw $ds/ate"
         # ATE needs no per-realization treatment: one interval and one truth per
@@ -102,17 +108,22 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
       malc)  echo "  MALC $ds/cate (per-realization, B=$MALC_B K=$MALC_K)"
         run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
-            --malc-workers "$NW" > "$R/cbr_${ds}_T_${TAG}_cate.md"
+            --malc-workers "$NW" \
+            --dump-per-real "$PERREAL/$LABEL/malc__${ds}__-.npz" \
+            > "$R/cbr_${ds}_T_${TAG}_cate.md"
         echo "  MALC $ds/ate"
         run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
             --malc-workers "$NW" --out "$R/calib_${ds}_T_${TAG}_ate.md" ;;
       indep) echo "  indep $ds/cate raw + MALC (RealCause only, 2D heads)"
         run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
-            --joint-coupling indep > "$R/cbr_${ds}_indep_raw_cate.md"
+            --joint-coupling indep \
+            --dump-per-real "$PERREAL/$LABEL/indep_raw__${ds}__-.npz" \
+            > "$R/cbr_${ds}_indep_raw_cate.md"
         run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
             --malc-workers "$NW" --joint-coupling indep \
+            --dump-per-real "$PERREAL/$LABEL/indep_malc__${ds}__-.npz" \
             > "$R/cbr_${ds}_indep_T_${TAG}_cate.md" ;;
     esac; done
   done
@@ -125,17 +136,22 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
   for cell in "$R"/shift${CS_SHIFT:-*}/d*/ctx1000; do
     [ -d "$cell" ] || continue
     echo "  cell ${cell#$R/}"
+    # shift and d out of <root>/shift<S>/d<D>/ctx1000
+    _rel="${cell#$R/}"; _sh="${_rel%%/*}"; _d="${_rel#*/}"; _d="${_d%%/*}"
     for c in $CS_CASES; do
       for S in $STAGES; do case "$S" in
         point) run "$PT" --root "$cell" --dataset "$c" --modes raw \
                    --out-md "$cell/point_raw_em_${c}.md" ;;
         raw)   run "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
+                   --dump-per-real "$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz" \
                    > "$cell/cbr_raw_cate_${c}.md"
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother none --out "$cell/calib_raw_ate_${c}.md" ;;
         malc)  run "$CBR" --root "$cell" --dataset "$c" --tau-smoother malc \
                    --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
-                   --malc-workers "$NW" > "$cell/cbr_T_${TAG}_cate_${c}.md"
+                   --malc-workers "$NW" \
+                   --dump-per-real "$PERREAL/$LABEL/malc__${_d}_${c}__${_sh}.npz" \
+                   > "$cell/cbr_T_${TAG}_cate_${c}.md"
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
                    --n-tau "$N_TAU" --malc-workers "$NW" \

@@ -49,7 +49,7 @@ for r in "${ROOTS[@]}"; do
             N=$((N+1))
             if [ "$SUBMIT" = 1 ]; then
                 printf 'score %-10s rc/%-9s -> ' "$lbl" "$ds"
-                ONE_RC_ROOT="$rc" SKIP_CS=1 RC_DATASETS="$ds" STAGES="$STAGES" \
+                ONE_RC_ROOT="$rc" SKIP_CS=1 RC_DATASETS="$ds" STAGES="$STAGES" LABEL="$lbl" \
                     sbatch --time="$T" --job-name="sc-$lbl-$ds" "$SB"
             else printf 'score %-10s rc/%s\n' "$lbl" "$ds"; fi
         done
@@ -60,7 +60,7 @@ for r in "${ROOTS[@]}"; do
             N=$((N+1))
             if [ "$SUBMIT" = 1 ]; then
                 printf 'score %-10s cs/shift%-4s -> ' "$lbl" "$sh"
-                ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" STAGES="$STAGES" \
+                ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" STAGES="$STAGES" LABEL="$lbl" \
                     sbatch --time="$T" --job-name="sc-$lbl-cs$sh" "$SB"
             else printf 'score %-10s cs/shift%s\n' "$lbl" "$sh"; fi
         done
