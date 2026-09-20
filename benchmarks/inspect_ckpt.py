@@ -63,7 +63,10 @@ def describe(path):
     if heads:
         W = heads[-1][1][0]
         cand = []
-        for J in range(2, 257):
+        # Up to 4096: the cpfn1d family trains at J=1024, so a 256 cap
+        # reported 'no simple J decomposition' for head width 1034 even
+        # though it is exactly n_out+J with J=1024.
+        for J in range(2, 4097):
             if J * J == W:          cand.append(f"{J} (JxJ joint)")
             if 2 * J == W:          cand.append(f"{J} (two marginals)")
             if J * J + 2 * J == W:  cand.append(f"{J} (joint+marginals)")
