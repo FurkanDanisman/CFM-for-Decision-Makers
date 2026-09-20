@@ -134,8 +134,20 @@ def main():
     # per-realization MALC number cannot be re-derived from disk -- the fits
     # have to be redone. Off by default; enabling it costs real time (~0.065 s
     # per query at B=100, ~1.2 s at B=1000, divided by --malc-workers).
+    # Coupling passthroughs to score_file. Without --joint-coupling the
+    # forced-independent ablation could only be run under the POOLED mean, so the
+    # 2D heads' RealCause indep columns would use a different aggregation from
+    # every other coverage number in the same table.
+    ap.add_argument("--coupling", default="indep",
+                    choices=["indep", "comonotonic"],
+                    help="how 1D heads turn two marginals into p(tau).")
+    ap.add_argument("--joint-coupling", default="learned",
+                    choices=["learned", "indep", "comonotonic"],
+                    help="2D heads: 'learned' uses the anti-diagonal projection; "
+                         "'indep' rebuilds tau from the joint's own marginals "
+                         "under rho = 0. RealCause-only ablation.")
     ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none")
-    ap.add_argument("--malc-B", type=int, default=100)
+    ap.add_argument("--malc-B", type=int, default=1000)
     ap.add_argument("--malc-K", type=int, default=1)
     ap.add_argument("--malc-seed", type=int, default=20180621)
     ap.add_argument("--n-tau", type=int, default=4001)
@@ -167,7 +179,8 @@ def main():
     for label, tag, files in cells(a):
         per = {k: [] for k in _KEYS}
         for f in files:
-            got = score_file(f, a.tag if a.tag is not None else tag)
+            got = score_file(f, a.tag if a.tag is not None else tag,
+                             a.coupling, a.joint_coupling)
             if not got:
                 continue
             for k in _KEYS:
