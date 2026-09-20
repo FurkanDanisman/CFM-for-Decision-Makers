@@ -244,6 +244,11 @@ def main():
              "functionals. `raw` is the plug-in mean of the discretised law; `em`",
              "is the deconvolution mean (`_em_mean_1d`). Mean +- SE over realizations.",
              ""]
+    # Stamp the metric into the file. Tables written before --ate-metric existed
+    # report plain |dATE| under an "eps_ATE" header, so the header alone cannot
+    # tell a correct relative table from a stale absolute one -- and a progress
+    # view counting those files reports 100% complete for the wrong quantity.
+    stamp = f"<!-- ate_metric={_ATE_METRIC} -->"
     head = "| method | n | " + " | ".join(
         f"PEHE ({m}) | {_ATE_LABEL} ({m})" for m in args.modes) + " |"
     lines += [head, "|" + "---|" * (2 + 2 * len(args.modes))]
@@ -266,7 +271,7 @@ def main():
         lines.append("| " + " | ".join(row) + " |")
         print(f"[ok] {name}  n={n}", flush=True)
 
-    out = "\n".join(lines)
+    out = stamp + "\n" + "\n".join(lines)
     print("\n" + out)
     if args.out_md:
         os.makedirs(os.path.dirname(os.path.abspath(args.out_md)), exist_ok=True)
