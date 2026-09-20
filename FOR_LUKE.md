@@ -1674,3 +1674,47 @@ dopfn_repro_1d_J10      — | (no dumps)
 dopfn_repro_1d_J100      — | (no dumps)
 dopfn_repro_joint2d      — | (no dumps)
 
+
+
+
+
+
+WAVE 1 — submit now (40 jobs)
+
+These two don't touch each other. Wave 1a writes dumps_all/*; wave 1b reads rc_dens_uni / cs_dvar_dens, which already have dumps.
+
+# 1a — dumps for the 6 new models (24 jobs)
+SKIP=dopfn_repro_joint2d bash R-PFN/benchmarks/cluster/submit_scale_dumps.sh --submit
+
+# 1b — score the 7 models that ALREADY have dumps (16 jobs)
+ONLY="orig eta0" bash R-PFN/benchmarks/cluster/submit_score_all.sh --submit
+
+orig covers 6 models in one pass (they share a root); eta0 is the 7th.
+
+WAVE 2 — after 1a's dumps reach 100%
+
+ONLY="J10 J100 j32 botharms cpfn_v0 uwyk_bin" \
+  bash R-PFN/benchmarks/cluster/submit_score_all.sh --submit      # 48 jobs
+
+WAVE 3 — after the joint2d A/B finishes
+
+bash R-PFN/benchmarks/cluster/ab_joint2d_yscaling.sh --compare
+# then, with the winning Y_SCALING / STD_TARGET exported:
+ONLY=dopfn_repro_joint2d bash R-PFN/benchmarks/cluster/submit_scale_dumps.sh --submit   # 4
+ONLY=joint2d             bash R-PFN/benchmarks/cluster/submit_score_all.sh   --submit   # 8
+
+Check progress — any time, no risk
+
+bash R-PFN/benchmarks/cluster/progress.sh
+
+Percentage per model per task: dump-rc, dump-cs, score-raw, score-MALC, score-indep, cs-raw, cs-MALC. It counts files on disk, not slurm state — which matters, because the case-study sbatch ends every harness call with || echo WARN, so a cell that died on a traceback still reports COMPLETED exit 0.
+
+Get the table — any time, however incomplete
+
+python R-PFN/benchmarks/collect_table.py --perreal $SCRATCH/perreal
+
+Nothing is lost mid-run: each cell writes its own per-realization .npz the moment it finishes, with temp-file + rename so a killed job never leaves a half file. The collector pools by concatenation and prints, per stage, exactly which groups are still missing.
+
+Wave gating rule: wave 2 needs 1a's dump-rc and dump-cs at 100% for a given model — you can start that model's scoring as soon as it is done, no need to wait for all six (ONLY=j32 etc.).
+
+
