@@ -37,6 +37,21 @@ def describe(path):
                   "max_num_classes", "num_classes"):
             if k in cfg:
                 info[f"cfg.{k}"] = cfg[k]
+    # `edges` is the 2D grid, and WHICH SPACE it lives in decides how the joint
+    # must be un-normalised at eval. Range [-1,+1] means the target was min-max
+    # scaled; a wider symmetric range means it was z-scored.
+    e = blob.get("edges")
+    if e is not None:
+        try:
+            ev = [float(x) for x in (e.tolist() if hasattr(e, "tolist") else e)]
+            info["edges_n"] = len(ev)
+            info["edges_range"] = (round(ev[0], 4), round(ev[-1], 4))
+            info["edges_first3"] = [round(v, 4) for v in ev[:3]]
+            info["edges_space"] = ("min_max [-1,1]"
+                                   if abs(ev[0] + 1) < 0.05 and abs(ev[-1] - 1) < 0.05
+                                   else "NOT [-1,1] -- not min-max scaled")
+        except Exception as exc:
+            info["edges"] = f"unreadable: {type(exc).__name__}"
     if sd is None:
         info["error"] = "no state dict found"
         return info
