@@ -194,6 +194,74 @@ if _DOPFN_CKPT:
           f'variant={_variant} ({len(_REPRO_SD)} tensors)', flush=True)
 
 
+# ── J mismatch: rebuild the bin-shaped tensors before loading ────────────────
+# The released regressor is constructed at ITS OWN J -- 100 bins, so borders is
+# 101 wide. A repro checkpoint trained at J=10 carries a 10-row head and an
+# 11-point border grid, and load_state_dict rejects five tensors on shape:
+#   decoder_dict.standard.2.{weight,bias}
+#   criterion.{borders,bucket_widths,losses_per_bucket}
+# Every one is fully specified BY the checkpoint, so replacing the target's
+# tensors with correctly shaped ones loses nothing -- the load that follows
+# overwrites their contents. What we must not do is resize anything else, or a
+# real architecture difference would be silently reshaped away instead of
+# raising. Hence the allowlist: only the output head's final layer and the bar
+# distribution's own buffers may change width.
+_RESIZABLE = ('criterion.',)
+_RESIZABLE_SUFFIX = ('decoder_dict.standard.2.weight', 'decoder_dict.standard.2.bias')
+
+
+def _resizable(key):
+    return key.startswith(_RESIZABLE) or key.endswith(_RESIZABLE_SUFFIX)
+
+
+def _resize_bins_to_ckpt(target, sd):
+    """Widen/narrow the allowlisted bin-shaped tensors to match `sd`.
+
+    Returns the list of (key, old_shape, new_shape) actually changed, so the
+    caller can report it: a silent J change would be exactly the kind of thing
+    that makes a model score against the wrong grid.
+    """
+    import torch.nn as _nn
+    tgt = target.state_dict()
+    changed = []
+    for k, v in sd.items():
+        if k not in tgt or tuple(tgt[k].shape) == tuple(v.shape):
+            continue
+        if not _resizable(k):
+            continue                      # leave it to load_state_dict to reject
+        owner = target
+        for part in k.split('.')[:-1]:
+            owner = owner[int(part)] if part.isdigit() else getattr(owner, part)
+        leaf = k.split('.')[-1]
+        cur = getattr(owner, leaf, None)
+        # clone, not empty_like: the tensor then already holds the right
+        # values, so nothing depends on the subsequent load touching it.
+        new = v.detach().clone()
+        if isinstance(cur, _nn.Parameter):
+            setattr(owner, leaf, _nn.Parameter(
+                new, requires_grad=bool(cur.requires_grad)))
+        elif leaf in getattr(owner, '_buffers', {}):
+            owner._buffers[leaf] = new
+        else:
+            setattr(owner, leaf, new)
+        if isinstance(owner, _nn.Linear) and leaf == 'weight':
+            owner.out_features = int(v.shape[0])
+        changed.append((k, tuple(tgt[k].shape), tuple(v.shape)))
+
+    # Derived bin counts cached on the criterion would otherwise stay at the old
+    # J and be used to reshape logits later.
+    nb = None
+    for k, v in sd.items():
+        if k.endswith('criterion.borders') or k == 'criterion.borders':
+            nb = int(v.shape[0]) - 1
+    if nb is not None:
+        crit = getattr(target, 'criterion', None)
+        for attr in ('num_bars', 'num_buckets', 'n_bars', 'num_classes'):
+            if crit is not None and isinstance(getattr(crit, attr, None), int):
+                setattr(crit, attr, nb)
+    return changed
+
+
 def _inject_weights(reg):
     """Load our state dict into whichever nn.Module the regressor holds.
 
@@ -236,6 +304,13 @@ def _inject_weights(reg):
     # Guarded hard: every missing key must be a bias, and nothing we carry may
     # be unexpected. Anything else means the architectures genuinely differ and
     # a partial load would quietly evaluate a half-released, half-ours model.
+    _resized = _resize_bins_to_ckpt(target, _REPRO_SD)
+    if _resized and not getattr(_inject_weights, '_said_resize', False):
+        _inject_weights._said_resize = True
+        print(f'[dopfn_native] checkpoint J differs from the released model; '
+              f'rebuilt {len(_resized)} bin-shaped tensor(s):', flush=True)
+        for _k, _o, _n in _resized:
+            print(f'    {_k}: {_o} -> {_n}', flush=True)
     missing, unexpected = target.load_state_dict(_REPRO_SD, strict=False)
     if unexpected:
         raise SystemExit(
