@@ -154,8 +154,8 @@ def main():
         txt = card(name, real, info, digest)
         with open(os.path.join(out, f"{name}.md"), "w") as fh:
             fh.write(txt)
-        print(f"  card: {name}  J={info.get('cfg.J', info.get('head_width', '?'))} "
-              f"step={info.get('step')} sha={digest[:12]}")
+        print(f"  card: {name:<40} J={info.get('J', '?')!s:>6} "
+              f"step={info.get('step')!s:>7}  sha={digest[:12]}")
     print(f"\ncards written to {out}")
 
     if a.cards_only:
