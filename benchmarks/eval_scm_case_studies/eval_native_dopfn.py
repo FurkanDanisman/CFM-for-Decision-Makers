@@ -422,7 +422,7 @@ def _neutralise_criterion_summaries(crit):
           flush=True)
 
 
-def _predict_joint2d(model, X_test_full):
+def _predict_joint2d(model, X_test_full, y_train=None):
     """CATE and the joint density for a joint_2d head, inside DoPFN's own pipeline.
 
     Two things differ from the 1-D path and both are forced, not stylistic:
@@ -487,6 +487,33 @@ def _predict_joint2d(model, X_test_full):
         _predict_joint2d._said = True
         print(f'[dopfn_native][2d] data_std={data_std:.6g} data_mean={data_mean:.6g}  '
               f'edges_raw=[{edges_raw[0]:+.4f}, {edges_raw[-1]:+.4f}]', flush=True)
+        # Separate "the joint is placed correctly" from "the model predicts tau
+        # badly". E[Y0] and E[Y1] are ABSOLUTE outcome levels, so they can be
+        # checked against the observed y without knowing any counterfactual: if
+        # they do not sit near the data, the decode or the grid is wrong; if they
+        # do and tau is still poor, the model is weak and the pipeline is fine.
+        _m0 = float((p_mat.sum(axis=2) @ centers).mean())
+        _m1 = float((p_mat.sum(axis=1) @ centers).mean())
+        _mass_in = float(p_mat.sum(axis=(1, 2)).mean())
+        # rho of the joint, same construction as BarDistribution2D._compute_rho.
+        _a0 = p_mat.sum(axis=2); _a1 = p_mat.sum(axis=1)
+        _E0 = _a0 @ centers; _E1 = _a1 @ centers
+        _V0 = np.maximum(_a0 @ (centers ** 2) - _E0 ** 2, 1e-12)
+        _V1 = np.maximum(_a1 @ (centers ** 2) - _E1 ** 2, 1e-12)
+        _E01 = (p_mat * centers[None, :, None] * centers[None, None, :]).sum(axis=(1, 2))
+        _rho = float(np.mean((_E01 - _E0 * _E1) / np.sqrt(_V0 * _V1)))
+        print(f'[dopfn_native][2d] joint: E[Y0]={_m0:+.4f} E[Y1]={_m1:+.4f} '
+              f'ATE={_m1 - _m0:+.4f}  rho={_rho:+.4f}  inner_mass={_mass_in:.4f}',
+              flush=True)
+        if y_train is not None:
+            _y = np.asarray(y_train, dtype=np.float64).reshape(-1)
+            print(f'[dopfn_native][2d] observed y: mean={_y.mean():+.4f} '
+                  f'sd={_y.std():.4f} range=[{_y.min():+.4f}, {_y.max():+.4f}]',
+                  flush=True)
+            if not (_y.min() - 3 * _y.std() < _m0 < _y.max() + 3 * _y.std()):
+                print('[dopfn_native][2d][WARN] E[Y0] lies far outside the observed '
+                      'y range -- the grid or the decode is wrong, not the model.',
+                      flush=True)
     dens = dict(
         edges=edges_raw.astype(np.float32),
         p_joint_scaled=p_mat.astype(np.float32),
@@ -523,7 +550,7 @@ def evaluate(r: int, ds):
         _inject_weights(model)   # after fit: the module may be built there
         X_test_t = torch.from_numpy(X_test_full.astype(np.float32))
         if _IS_2D:
-            cate_pred, _dens2d = _predict_joint2d(model, X_test_full)
+            cate_pred, _dens2d = _predict_joint2d(model, X_test_full, y_train)
         else:
             cate_pred, _dens2d = model.predict_cate(X_test_t), None
         # For density dump: get raw bin probs via predict_full on both arms.
