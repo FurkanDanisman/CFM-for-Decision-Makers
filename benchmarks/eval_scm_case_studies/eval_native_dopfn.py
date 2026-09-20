@@ -179,8 +179,19 @@ finally:
 # as the regressor's own model, including criterion.borders -- which is where
 # the 1-D bar borders live, since install_criterion returns None for dopfn_1d
 # and the checkpoint's 'edges' field is empty.
+# The repro's own 2D decoder, so the logit layout is not re-derived here:
+# pred[..., :J*J] -> softmax -> (J, J), then 9 region weights + 4 tail scales.
+try:
+    from losses.BarDistribution2D import unpack_pred as _unpack_pred_2d
+except Exception:                                    # only needed for joint_2d
+    _unpack_pred_2d = None
+
 _DOPFN_CKPT = os.environ.get('DOPFN_CKPT', '')
 _REPRO_SD = None
+_IS_2D = False
+_CKPT_EDGES = None
+_J2D = None
+_REPRO_BORDERS = None
 if _DOPFN_CKPT:
     _blob = torch.load(_DOPFN_CKPT, map_location='cpu', weights_only=False)
     _REPRO_SD = _blob.get('model', _blob.get('model_state_dict'))
@@ -188,8 +199,26 @@ if _DOPFN_CKPT:
         raise SystemExit(f'DOPFN_CKPT {_DOPFN_CKPT} has no model/model_state_dict')
     _prov = _blob.get('provenance') or {}
     _variant = _prov.get('variant') if isinstance(_prov, dict) else None
-    if _variant not in (None, 'dopfn_1d'):
-        raise SystemExit(f'DOPFN_CKPT variant is {_variant!r}; this path is for dopfn_1d')
+    # joint_2d runs through THIS pipeline too, so DoPFN's own preprocessing --
+    # its y normalisation above all -- is applied exactly as the repro was
+    # trained to expect. The alternative (eval_dopfn_bb_raw) re-implements the
+    # scaling with a --y-scaling flag, and its grid is min-max [-1,1] while the
+    # repro's edges span [-2.4865, +3.7314]: the data then lands in ~3 of 10
+    # bins.
+    if _variant not in (None, 'dopfn_1d', 'joint_2d'):
+        raise SystemExit(f'DOPFN_CKPT variant is {_variant!r}; this path handles '
+                         f'dopfn_1d and joint_2d')
+    _IS_2D = (_variant == 'joint_2d')
+    _CKPT_EDGES = None
+    if _IS_2D:
+        _e = _blob.get('edges')
+        if _e is None:
+            raise SystemExit('joint_2d checkpoint has no edges; the 2D grid is required')
+        _CKPT_EDGES = np.asarray(_e.tolist() if hasattr(_e, 'tolist') else _e,
+                                 dtype=np.float64)
+        _J2D = _CKPT_EDGES.size - 1            # 11 edges -> J = 10
+        print(f'[dopfn_native] joint_2d: J={_J2D} edges=[{_CKPT_EDGES[0]:+.4f}, '
+              f'{_CKPT_EDGES[-1]:+.4f}] (training y-space)', flush=True)
     print(f'[dopfn_native] DOPFN_CKPT={_DOPFN_CKPT} step={_blob.get("step")} '
           f'variant={_variant} ({len(_REPRO_SD)} tensors)', flush=True)
 
@@ -334,11 +363,85 @@ def _inject_weights(reg):
         with torch.no_grad():
             for k in missing:
                 _tgt_sd[k].zero_()
+    global _REPRO_BORDERS
+    _b = getattr(getattr(target, 'criterion', None), 'borders', None)
+    if _b is not None:
+        _REPRO_BORDERS = _b.detach().cpu().numpy().astype('float64').copy()
     if not getattr(_inject_weights, '_announced', False):
         _inject_weights._announced = True
         print(f'[dopfn_native] loaded DOPFN_CKPT weights into regressor.{name} '
               f'({overlap:.1%} key match; zeroed {len(missing)} absent bias '
               f'tensors, 0 unexpected)', flush=True)
+
+
+def _predict_joint2d(model, X_test_full):
+    """CATE and the joint density for a joint_2d head, inside DoPFN's own pipeline.
+
+    Two things differ from the 1-D path and both are forced, not stylistic:
+
+    ONE FORWARD, NOT TWO. The 2-D head emits the JOINT p(Y0, Y1) for a query, so
+    there is no do(0)/do(1) pair to difference -- the treatment column is zeroed,
+    exactly as in training.
+
+    predict_cate IS UNUSABLE HERE. It computes criterion.mean(logits) with the
+    1-D criterion (100 bins) against 113-wide 2-D logits, which is meaningless.
+    The point estimate therefore comes from the joint itself,
+    E[tau] = sum_ij p_ij (c_j - c_i), which is the same quantity the density
+    represents rather than a second, inconsistent estimator.
+
+    Un-normalisation is recovered, not assumed: predict_full rescales the
+    criterion's borders as borders * data_std + data_mean, so comparing the
+    borders before and after that call pins the affine map exactly, and the same
+    map carries the 2-D grid from training space into raw Y units. That is the
+    whole reason for routing joint_2d through this pipeline -- no --y-scaling
+    choice to get wrong.
+    """
+    if _unpack_pred_2d is None:
+        raise SystemExit('joint_2d needs losses/BarDistribution2D.py on the path')
+    Xq = X_test_full.copy()
+    Xq[:, 0] = 0.0                                   # treatment zeroed for queries
+    fq = model.predict_full(torch.from_numpy(Xq.astype(np.float32)))
+    logits = np.asarray(fq['logits'], dtype=np.float64)          # (N_q, J*J+13)
+    J = int(_J2D)
+    need = J * J + 13
+    if logits.shape[-1] != need:
+        raise SystemExit(f'joint_2d expected {need} logits for J={J}, '
+                         f'got {logits.shape[-1]}')
+
+    # Affine map predict_full applied to the borders; two distinct points fix it.
+    B_after = np.asarray(fq['criterion'].borders.detach().cpu().numpy(), dtype=np.float64)
+    b_before = _REPRO_BORDERS
+    if b_before is None or b_before.size != B_after.size:
+        raise SystemExit('cannot recover the y normalisation: borders before/after '
+                         'predict_full do not correspond')
+    span = float(b_before[-1] - b_before[0])
+    if abs(span) < 1e-12:
+        raise SystemExit('degenerate borders; cannot recover data_std')
+    data_std = float(B_after[-1] - B_after[0]) / span
+    data_mean = float(B_after[0]) - float(b_before[0]) * data_std
+    edges_raw = _CKPT_EDGES * data_std + data_mean
+
+    p_mat = _unpack_pred_2d(torch.from_numpy(logits), J,
+                            float(_CKPT_EDGES[1] - _CKPT_EDGES[0]))[0]
+    p_mat = np.asarray(p_mat.detach().cpu().numpy(), dtype=np.float64)   # (N_q, J, J)
+    p_mat = p_mat / np.maximum(p_mat.sum(axis=(1, 2), keepdims=True), 1e-300)
+
+    centers = 0.5 * (edges_raw[:-1] + edges_raw[1:])
+    # axis 1 indexes Y0, axis 2 indexes Y1 (BarDistribution2D._compute_rho:
+    # marg0 = p_mat.sum(dim=-1), marg1 = p_mat.sum(dim=-2)).
+    cate = (p_mat.sum(axis=1) @ centers) - (p_mat.sum(axis=2) @ centers)
+
+    if not getattr(_predict_joint2d, '_said', False):
+        _predict_joint2d._said = True
+        print(f'[dopfn_native][2d] data_std={data_std:.6g} data_mean={data_mean:.6g}  '
+              f'edges_raw=[{edges_raw[0]:+.4f}, {edges_raw[-1]:+.4f}]', flush=True)
+    dens = dict(
+        edges=edges_raw.astype(np.float32),
+        p_joint_scaled=p_mat.astype(np.float32),
+        y_shift=np.float32(0.0),
+        y_scale=np.float32(1.0),                     # edges already in raw units
+    )
+    return cate.astype(np.float64), dens
 
 
 def evaluate(r: int, ds):
@@ -367,10 +470,13 @@ def evaluate(r: int, ds):
         model.fit(X_train_full, y_train)
         _inject_weights(model)   # after fit: the module may be built there
         X_test_t = torch.from_numpy(X_test_full.astype(np.float32))
-        cate_pred = model.predict_cate(X_test_t)
+        if _IS_2D:
+            cate_pred, _dens2d = _predict_joint2d(model, X_test_full)
+        else:
+            cate_pred, _dens2d = model.predict_cate(X_test_t), None
         # For density dump: get raw bin probs via predict_full on both arms.
-        dens = None
-        if os.environ.get('DENSITY_DUMP', '0') == '1':
+        dens = _dens2d
+        if (not _IS_2D) and os.environ.get('DENSITY_DUMP', '0') == '1':
             X0 = X_test_full.copy(); X0[:, 0] = 0.0
             X1 = X_test_full.copy(); X1[:, 0] = 1.0
             X0_t = torch.from_numpy(X0.astype(np.float32))
