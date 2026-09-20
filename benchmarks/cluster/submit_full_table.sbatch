@@ -64,6 +64,7 @@ export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export ATOM_GRID_MAX="${ATOM_GRID_MAX:-4096}"
 PT="$REPO/realcause_eval/point_raw_em.py"
 CD="$REPO/UWYK_Fig3_4/cate_density_metrics.py"
+CBR="$REPO/benchmarks/coverage_by_realization.py"
 FAILED=0
 run() { python -u "$@" >/dev/null 2>&1 || { echo "  ERROR: $*" >&2; FAILED=1; }; }
 
@@ -76,16 +77,33 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
       point) echo "  point $ds"
         run "$PT" --root "$R" --dataset "$ds" --modes raw \
             --out-md "$R/point_raw_em_${ds}.md" ;;
-      raw)   for t in cate ate; do echo "  raw $ds/$t"
-        run "$CD" --root "$R" --dataset "$ds" --target "$t" --tau-smoother none \
-            --out "$R/calib_${ds}_raw_${t}.md"; done ;;
-      malc)  for t in cate ate; do echo "  MALC $ds/$t"
-        run "$CD" --root "$R" --dataset "$ds" --target "$t" --tau-smoother malc \
+      raw)   echo "  raw $ds/cate (per-realization)"
+        # CATE coverage is the MEAN OF PER-REALIZATION COVERAGES +- sd, not the
+        # pooled mean over all (realization, query) pairs. Pooling hid spreads
+        # larger than the means themselves, so every CATE Cov/Len/IS number comes
+        # from coverage_by_realization.
+        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
+            > "$R/cbr_${ds}_raw_cate.md"
+        echo "  raw $ds/ate"
+        # ATE needs no per-realization treatment: one interval and one truth per
+        # realization already, so the pooled mean IS the per-realization mean.
+        run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother none \
+            --out "$R/calib_${ds}_raw_ate.md" ;;
+      malc)  echo "  MALC $ds/cate (per-realization, B=$MALC_B K=$MALC_K)"
+        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
-            --malc-workers "$NW" --out "$R/calib_${ds}_T_${TAG}_${t}.md"; done ;;
-      indep) for t in cate ate; do echo "  indep $ds/$t"
-        run "$CD" --root "$R" --dataset "$ds" --target "$t" --tau-smoother none \
-            --joint-coupling indep --out "$R/calib_${ds}_indep_${t}.md"; done ;;
+            --malc-workers "$NW" > "$R/cbr_${ds}_T_${TAG}_cate.md"
+        echo "  MALC $ds/ate"
+        run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother malc \
+            --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
+            --malc-workers "$NW" --out "$R/calib_${ds}_T_${TAG}_ate.md" ;;
+      indep) echo "  indep $ds/cate raw + MALC (RealCause only, 2D heads)"
+        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
+            --joint-coupling indep > "$R/cbr_${ds}_indep_raw_cate.md"
+        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
+            --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
+            --malc-workers "$NW" --joint-coupling indep \
+            > "$R/cbr_${ds}_indep_T_${TAG}_cate.md" ;;
     esac; done
   done
 done
@@ -101,14 +119,17 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
       for S in $STAGES; do case "$S" in
         point) run "$PT" --root "$cell" --dataset "$c" --modes raw \
                    --out-md "$cell/point_raw_em_${c}.md" ;;
-        raw)   for t in cate ate; do
-                 run "$CD" --root "$cell" --dataset "$c" --target "$t" \
-                     --tau-smoother none --out "$cell/calib_raw_${t}_${c}.md"; done ;;
-        malc)  for t in cate ate; do
-                 run "$CD" --root "$cell" --dataset "$c" --target "$t" \
-                     --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
-                     --n-tau "$N_TAU" --malc-workers "$NW" \
-                     --out "$cell/calib_T_${TAG}_${t}_${c}.md"; done ;;
+        raw)   run "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
+                   > "$cell/cbr_raw_cate_${c}.md"
+               run "$CD" --root "$cell" --dataset "$c" --target ate \
+                   --tau-smoother none --out "$cell/calib_raw_ate_${c}.md" ;;
+        malc)  run "$CBR" --root "$cell" --dataset "$c" --tau-smoother malc \
+                   --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
+                   --malc-workers "$NW" > "$cell/cbr_T_${TAG}_cate_${c}.md"
+               run "$CD" --root "$cell" --dataset "$c" --target ate \
+                   --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
+                   --n-tau "$N_TAU" --malc-workers "$NW" \
+                   --out "$cell/calib_T_${TAG}_ate_${c}.md" ;;
         # No indep stage here: forced independence is a RealCause-only ablation.
       # On the case studies the arms are near-comonotonic (rho = 1), so imposing
       # rho = 0 scores the imposed assumption rather than the head.
