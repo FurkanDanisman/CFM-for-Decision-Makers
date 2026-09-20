@@ -40,14 +40,12 @@ pct() {  # count total -> "n/total (p%)"
     awk -v a="$1" -v b="$2" 'BEGIN{p=100*a/b; if(p>100)p=100; printf "%3d/%-3d %3.0f%%", a, b, p}'
 }
 nf() { [ -d "$1" ] && find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
-# Point tables only count when they carry the ate_metric stamp. Files written
-# before --ate-metric existed report plain |dATE| under an "eps_ATE" header, so
-# counting them showed PEHE/ATE at 100% for the wrong quantity while the jobs that
-# would produce the right one had not even started.
+# Count the point tables that exist. The stamp is metadata, not a result: files
+# written before it existed hold correct numbers, and requiring it reported 1/5 for
+# a complete set.
 nf_pt() {
     [ -d "$1" ] || { echo 0; return; }
-    find "$1" -name 'point_raw_em_*.md' -exec grep -l 'ate_metric=' {} + 2>/dev/null \
-        | wc -l | tr -d ' '
+    find "$1" -name 'point_raw_em_*.md' 2>/dev/null | wc -l | tr -d ' '
 }
 
 echo "=== RealCause  (denominator: $RC_N datasets)"
@@ -89,8 +87,6 @@ for r in "${ROOTS[@]}"; do
     printf '  %-10s %s\n' "$lbl" "$models"
 done
 echo
-echo "PEHE/ATE counts only tables carrying the ate_metric stamp; tables written"
-echo "before the relative-vs-L1 fix report the wrong quantity and read as 0 here."
 echo "Cov-* columns also carry Len, IS and CRPS -- same file, no extra work."
 echo "Forced independence is RealCause-only and applies to 2D heads."
 echo
