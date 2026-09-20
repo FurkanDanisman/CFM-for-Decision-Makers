@@ -42,7 +42,7 @@ for r in "${ROWS[@]}"; do
     IFS='|' read -r name idx envv ck <<<"$r"
     [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
     if [ ! -f "$ck" ]; then printf '%-22s SKIP: no %s\n' "$name" "$ck"; continue; fi
-    sz=$(stat -c%s "$ck" 2>/dev/null || echo 0)
+    sz=$(stat -Lc%s "$ck" 2>/dev/null || echo 0)
     if [ "$sz" -lt 1000000 ]; then
         printf '%-22s SKIP: %s bytes -- git-lfs pointer, not weights\n' "$name" "$sz"; continue
     fi

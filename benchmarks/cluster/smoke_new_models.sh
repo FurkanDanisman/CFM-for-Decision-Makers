@@ -98,10 +98,12 @@ resolve() {
     shopt -u nullglob nocaseglob
     if [ "${#hits[@]}" -eq 1 ]; then
         local f="${hits[0]}"
-        local sz; sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
-        # A real checkpoint here is >=29 MB. Anything tiny is a git-lfs pointer
-        # checked out as text (killarney has no git-lfs), which would load as a
-        # parse error rather than a model.
+        local sz; sz=$(stat -Lc%s "$f" 2>/dev/null || echo 0)
+        # A real checkpoint here is >=29 MB. -L follows symlinks: without it,
+        # stat reports the LINK's size (its target path length, e.g. 58 bytes),
+        # so a perfectly good symlinked checkpoint reads as a truncated file.
+        # Size is measured on the target; anything genuinely tiny is a git-lfs
+        # pointer checked out as text, which torch cannot load.
         if [ "$sz" -lt 1000000 ]; then
             echo "  $name: $f is only ${sz} bytes -- a git-lfs POINTER, not weights:" >&2
             head -c 200 "$f" | sed 's/^/        /' >&2; echo >&2
