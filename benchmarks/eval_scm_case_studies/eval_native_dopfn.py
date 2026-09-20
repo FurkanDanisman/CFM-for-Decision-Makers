@@ -374,38 +374,52 @@ def _inject_weights(reg):
               f'tensors, 0 unexpected)', flush=True)
 
 
-def _neutralise_criterion_mean(crit):
+def _neutralise_criterion_summaries(crit):
     """Let predict_full run on 2-D logits.
 
-    predict_full unconditionally calls criterion.mean(logits) with the 1-D
-    criterion, which for a joint_2d head means 100 bucket-means against 113
-    logits:  "size mismatch, got input (75), mat (75x113), vec (100)".
+    predict_full builds a summary dict -- mean, median, quantiles -- and every one
+    of those interprets the logits as 1-D bar-distribution parameters. With a
+    joint_2d head they are 113 wide against a 100-bin criterion, so each fails in
+    its own way:
+        mean   -> size mismatch, got input (75), mat (75x113), vec (100)
+        median -> icdf -> IndexError: index 110 is out of bounds ... size 101
+    Gating them one at a time just moves the error, so the whole family is gated
+    together.
 
-    We only need two things out of predict_full -- the raw logits and the borders
-    it RESCALED by data_std/data_mean -- so a width-mismatched mean is made to
-    return zeros rather than raise. Nothing consumes that value on the 2-D path:
-    the point estimate is computed from the joint itself. The patch is width-gated
-    and class-level, so a genuine 1-D call is untouched and it survives the
+    Only two things are needed from predict_full: the raw logits, and the borders
+    it RESCALED by data_std/data_mean -- which is how the 2-D grid reaches raw Y
+    units. None of the summaries is read on the 2-D path; the point estimate comes
+    from the joint itself. Every patch is WIDTH-GATED, so a genuine 1-D call runs
+    the original code, and they are applied at class level so they survive the
     deepcopy predict_full makes of the criterion.
     """
     cls = type(crit)
-    if getattr(cls, '_j2d_mean_patched', False):
+    if getattr(cls, '_j2d_patched', False):
         return
-    _orig_mean = cls.mean
+    names = ('mean', 'median', 'mode', 'icdf', 'quantile', 'cdf', 'ucb', 'sample')
+    patched = []
+    for name in names:
+        orig = getattr(cls, name, None)
+        if not callable(orig):
+            continue
 
-    def mean(self, logits, *args, **kwargs):
-        nb = getattr(self, 'borders', None)
-        n_bins = (int(nb.shape[0]) - 1) if nb is not None else None
-        w = int(logits.shape[-1])
-        if n_bins is not None and w != n_bins:
-            return torch.zeros(logits.shape[:-1], dtype=logits.dtype,
-                               device=logits.device)
-        return _orig_mean(self, logits, *args, **kwargs)
+        def _make(orig_fn):
+            def wrapper(self, logits, *args, **kwargs):
+                nb = getattr(self, 'borders', None)
+                n_bins = (int(nb.shape[0]) - 1) if nb is not None else None
+                if n_bins is not None and int(logits.shape[-1]) != n_bins:
+                    # Width says these are not 1-D bar parameters. Return a
+                    # correctly shaped placeholder instead of raising.
+                    return torch.zeros(logits.shape[:-1], dtype=logits.dtype,
+                                       device=logits.device)
+                return orig_fn(self, logits, *args, **kwargs)
+            return wrapper
 
-    cls.mean = mean
-    cls._j2d_mean_patched = True
-    print(f'[dopfn_native][2d] neutralised {cls.__name__}.mean for '
-          f'width-mismatched logits', flush=True)
+        setattr(cls, name, _make(orig))
+        patched.append(name)
+    cls._j2d_patched = True
+    print(f'[dopfn_native][2d] width-gated {cls.__name__}: {", ".join(patched)}',
+          flush=True)
 
 
 def _predict_joint2d(model, X_test_full):
@@ -435,7 +449,7 @@ def _predict_joint2d(model, X_test_full):
     _crit = getattr(model, 'criterion', None) or getattr(
         getattr(model, 'model_processed_', None), 'criterion', None)
     if _crit is not None:
-        _neutralise_criterion_mean(_crit)
+        _neutralise_criterion_summaries(_crit)
     Xq = X_test_full.copy()
     Xq[:, 0] = 0.0                                   # treatment zeroed for queries
     fq = model.predict_full(torch.from_numpy(Xq.astype(np.float32)))
