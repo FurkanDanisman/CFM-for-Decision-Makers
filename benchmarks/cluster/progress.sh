@@ -1,72 +1,87 @@
 #!/bin/bash
-# Percentage complete, per model, per task. Safe to run at any moment.
+# Progress per model, in the reporting layout. Safe to run at any moment.
 #
-# Counts files on disk against what a finished task produces, so it reflects real
-# progress rather than slurm state -- which is unreliable here: the case-study
-# sbatch ends each harness call with `|| echo WARN`, so a cell that died reports
-# COMPLETED with exit 0.
+#   RealCause    PEHE/ATE (raw) | Cov (raw) | Cov (MALC) | Cov (indep, 2D only)
+#   Case study   PEHE/ATE (raw) | Cov (raw) | Cov (MALC)
 #
-# Expected counts per model:
-#   dump rc   5 datasets x ~100 realizations                  = ~500 npz
-#   dump cs   3 shifts x 8 d x 6 cases x ~100 realizations     = ~14400 npz
-#   score     one per-realization .npz per (stage, group, slice):
-#               rc  5 groups x 1 slice                         = 5
-#               cs  48 groups (8 d x 6 cases) x 3 shifts       = 144
+# Counts artefacts on disk, because slurm state is not trustworthy here: the
+# case-study sbatch ends each harness call with `|| echo WARN`, so a cell that
+# died on a traceback still reports COMPLETED with exit 0.
+#
+# Denominators:
+#   RealCause  5 datasets
+#   Case study 3 shifts x 8 d x 6 cases = 144 cells
+#
+# Point estimates are .md files written beside the dumps; coverage stages are the
+# per-realization .npz under $PERREAL, which is what the table is built from.
 #
 #   bash R-PFN/benchmarks/cluster/progress.sh
 
 set -uo pipefail
 SC="${SCRATCH:-/scratch/furkanbd}"
 PERREAL="${PERREAL:-$SC/perreal}"
-RC_EXP="${RC_EXP:-500}"; CS_EXP="${CS_EXP:-14400}"
-RC_SCORE_EXP=5; CS_SCORE_EXP=144
+RC_N=5; CS_N=144
 
-# label | rc dump root | cs dump root | is2d
-ROWS=(
-  "orig|$SC/rc_dens_uni|$SC/cs_dvar_dens|yes"
-  "eta0|$SC/rc_dens_eta0|$SC/cs_dvar_eta0|yes"
-  "J10|$SC/dumps_all/dopfn_repro_1d_J10/rc|$SC/dumps_all/dopfn_repro_1d_J10/cs|no"
-  "J100|$SC/dumps_all/dopfn_repro_1d_J100/rc|$SC/dumps_all/dopfn_repro_1d_J100/cs|no"
-  "joint2d|$SC/dumps_all/dopfn_repro_joint2d/rc|$SC/dumps_all/dopfn_repro_joint2d/cs|yes"
-  "j32|$SC/dumps_all/cpfn1d_j32/rc|$SC/dumps_all/cpfn1d_j32/cs|no"
-  "botharms|$SC/dumps_all/cpfn1d_botharms/rc|$SC/dumps_all/cpfn1d_botharms/cs|no"
-  "cpfn_v0|$SC/dumps_all/cpfn_v0/rc|$SC/dumps_all/cpfn_v0/cs|no"
-  "uwyk_bin|$SC/dumps_all/uwyk_bin/rc|$SC/dumps_all/uwyk_bin/cs|no"
+# label | rc dump root | cs dump root | 2D? | models covered
+ROOTS=(
+  "orig|$SC/rc_dens_uni|$SC/cs_dvar_dens|yes|dopfn_native,dopfn_bb,uwyk1d(x2),graph2d(x2),cpfn1d,cpfn2d"
+  "eta0|$SC/rc_dens_eta0|$SC/cs_dvar_eta0|yes|cpfn2d_eta0"
+  "J10|$SC/dumps_all/dopfn_repro_1d_J10/rc|$SC/dumps_all/dopfn_repro_1d_J10/cs|no|dopfn_repro_1d_J10"
+  "J100|$SC/dumps_all/dopfn_repro_1d_J100/rc|$SC/dumps_all/dopfn_repro_1d_J100/cs|no|dopfn_repro_1d_J100"
+  "joint2d|$SC/dumps_all/dopfn_repro_joint2d/rc|$SC/dumps_all/dopfn_repro_joint2d/cs|yes|dopfn_repro_joint2d"
+  "j32|$SC/dumps_all/cpfn1d_j32/rc|$SC/dumps_all/cpfn1d_j32/cs|no|cpfn1d_j32"
+  "botharms|$SC/dumps_all/cpfn1d_botharms/rc|$SC/dumps_all/cpfn1d_botharms/cs|no|cpfn1d_botharms"
+  "cpfn_v0|$SC/dumps_all/cpfn_v0/rc|$SC/dumps_all/cpfn_v0/cs|no|cpfn_v0"
+  "uwyk_bin|$SC/dumps_all/uwyk_bin/rc|$SC/dumps_all/uwyk_bin/cs|no|uwyk_bin"
 )
 
-pct() { [ "$2" -le 0 ] && { echo "  -"; return; }
-        awk -v a="$1" -v b="$2" 'BEGIN{p=100*a/b; if(p>100)p=100; printf "%3.0f%%", p}'; }
-cnt() { [ -d "$1" ] && find "$1" -name '*.npz' 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
-scnt() { [ -d "$PERREAL/$1" ] && \
-         find "$PERREAL/$1" -name "$2__*.npz" 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
+pct() {  # count total -> "n/total (p%)"
+    if [ "$2" -le 0 ]; then printf '%-13s' "-"; return; fi
+    awk -v a="$1" -v b="$2" 'BEGIN{p=100*a/b; if(p>100)p=100; printf "%3d/%-3d %3.0f%%", a, b, p}'
+}
+nf() { [ -d "$1" ] && find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
 
-printf '%-10s | %-14s %-14s | %-11s %-11s %-11s %-11s %s\n' \
-  MODEL dump-rc dump-cs score-raw score-MALC score-indep cs-raw cs-MALC
-printf '%.0s-' {1..108}; echo
-
-for r in "${ROWS[@]}"; do
-    IFS='|' read -r lbl rc cs is2d <<<"$r"
-    nrc=$(cnt "$rc"); ncs=$(cnt "$cs")
-    sraw=$(scnt "$lbl" raw); smal=$(scnt "$lbl" malc)
-    sind=$(scnt "$lbl" indep_raw)
-    # rc groups have slice "-", cs groups carry shift<S>
-    rcraw=$(find "$PERREAL/$lbl" -name 'raw__*__-.npz'  2>/dev/null | wc -l | tr -d ' ')
-    rcmal=$(find "$PERREAL/$lbl" -name 'malc__*__-.npz' 2>/dev/null | wc -l | tr -d ' ')
-    csraw=$((sraw - rcraw)); csmal=$((smal - rcmal))
-    ind_disp="$(pct "$sind" "$RC_SCORE_EXP")"
-    [ "$is2d" = no ] && ind_disp="  n/a"
-    printf '%-10s | %6s %-7s %6s %-7s | %5s %-5s %5s %-5s %5s %-5s %5s %-5s %5s\n' \
-      "$lbl" "$nrc" "$(pct "$nrc" "$RC_EXP")" "$ncs" "$(pct "$ncs" "$CS_EXP")" \
-      "$rcraw" "$(pct "$rcraw" "$RC_SCORE_EXP")" \
-      "$rcmal" "$(pct "$rcmal" "$RC_SCORE_EXP")" \
-      "$sind" "$ind_disp" \
-      "$csraw" "$(pct "$csraw" "$CS_SCORE_EXP")" \
-      "$csmal" "$(pct "$csmal" "$CS_SCORE_EXP")"
+echo "=== RealCause  (denominator: $RC_N datasets)"
+printf '%-10s %-14s %-14s %-14s %-14s %s\n' ROOT PEHE/ATE Cov-raw Cov-MALC Cov-indep DUMPS
+printf '%.0s-' {1..96}; echo
+for r in "${ROOTS[@]}"; do
+    IFS='|' read -r lbl rc cs is2d models <<<"$r"
+    p_pt=$(nf "$rc" 'point_raw_em_*.md')
+    p_raw=$(nf "$PERREAL/$lbl" 'raw__*__-.npz')
+    p_mal=$(nf "$PERREAL/$lbl" 'malc__*__-.npz')
+    p_ind=$(nf "$PERREAL/$lbl" 'indep_raw__*__-.npz')
+    nd=$(nf "$rc" '*.npz')
+    ind_col="$(pct "$p_ind" "$RC_N")"
+    [ "$is2d" = no ] && ind_col="$(printf '%-13s' 'n/a (1D)')"
+    printf '%-10s %s %s %s %s %s\n' "$lbl" \
+      "$(pct "$p_pt" "$RC_N")" "$(pct "$p_raw" "$RC_N")" \
+      "$(pct "$p_mal" "$RC_N")" "$ind_col" "$nd npz"
 done
 
 echo
-echo "score-* columns count per-realization .npz files (the table's inputs)."
-echo "score-indep is RealCause-only and applies to 2D heads, so n/a elsewhere."
+echo "=== Case study  (denominator: $CS_N cells = 3 shifts x 8 d x 6 cases)"
+printf '%-10s %-14s %-14s %-14s %s\n' ROOT PEHE/ATE Cov-raw Cov-MALC DUMPS
+printf '%.0s-' {1..80}; echo
+for r in "${ROOTS[@]}"; do
+    IFS='|' read -r lbl rc cs is2d models <<<"$r"
+    c_pt=$(nf "$cs" 'point_raw_em_*.md')
+    # cs per-real files carry a shift slice; rc files carry "-".
+    c_raw=$(find "$PERREAL/$lbl" -name 'raw__*__shift*.npz' 2>/dev/null | wc -l | tr -d ' ')
+    c_mal=$(find "$PERREAL/$lbl" -name 'malc__*__shift*.npz' 2>/dev/null | wc -l | tr -d ' ')
+    nd=$(nf "$cs" '*.npz')
+    printf '%-10s %s %s %s %s npz\n' "$lbl" \
+      "$(pct "$c_pt" "$CS_N")" "$(pct "$c_raw" "$CS_N")" "$(pct "$c_mal" "$CS_N")" "$nd"
+done
+
 echo
-echo "Table from whatever exists right now:"
+echo "models per root:"
+for r in "${ROOTS[@]}"; do
+    IFS='|' read -r lbl rc cs is2d models <<<"$r"
+    printf '  %-10s %s\n' "$lbl" "$models"
+done
+echo
+echo "Cov-* columns also carry Len, IS and CRPS -- same file, no extra work."
+echo "Forced independence is RealCause-only and applies to 2D heads."
+echo
+echo "table from whatever exists now:"
 echo "  python R-PFN/benchmarks/collect_table.py --perreal $PERREAL"
