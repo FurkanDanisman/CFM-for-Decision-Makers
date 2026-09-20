@@ -5,6 +5,9 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=64
 #SBATCH --mem=128G
+# No --gres: this job is numpy only and never touches a GPU. Left on a GPU
+# partition it queues behind real GPU work for nothing -- which is what starved
+# the joint2d A/B. Pass --partition on the sbatch line to place it on CPU nodes.
 #
 # CPU ONLY. The full reporting matrix for RealCause and the case studies:
 #

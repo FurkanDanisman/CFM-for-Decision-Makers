@@ -23,7 +23,10 @@ SB="$REPO/benchmarks/cluster/submit_full_table.sbatch"
 STAGES="${STAGES:-point raw malc indep}"
 RC_DS="${RC_DS:-IHDP ACIC CPS PSID PSID_bal}"
 SHIFTS="${SHIFTS:-0 +2 -2}"
-T="${SCORE_TIME:-12:00:00}"
+T="${SCORE_TIME:-6:00:00}"
+# SCORE_PARTITION: these jobs are CPU-only. Putting them on a CPU partition stops
+# them queueing behind GPU work and competing with the dump jobs.
+PART=""; [ -n "${SCORE_PARTITION:-}" ] && PART="--partition=$SCORE_PARTITION"
 
 # label | rc root | cs root
 ROOTS=(
@@ -54,7 +57,7 @@ for r in "${ROOTS[@]}"; do
             if [ "$SUBMIT" = 1 ]; then
                 printf 'score %-10s rc/%-9s -> ' "$lbl" "$ds"
                 ONE_RC_ROOT="$rc" SKIP_CS=1 RC_DATASETS="$ds" STAGES="$STAGES" LABEL="$lbl" \
-                    sbatch --time="$T" --job-name="sc-$lbl-$ds" "$SB"
+                    sbatch --time="$T" $PART --job-name="sc-$lbl-$ds" "$SB"
             else printf 'score %-10s rc/%s\n' "$lbl" "$ds"; fi
         done
     else printf 'score %-10s rc  SKIP (no root)\n' "$lbl"; fi
@@ -65,7 +68,7 @@ for r in "${ROOTS[@]}"; do
             if [ "$SUBMIT" = 1 ]; then
                 printf 'score %-10s cs/shift%-4s -> ' "$lbl" "$sh"
                 ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" STAGES="$STAGES" LABEL="$lbl" \
-                    sbatch --time="$T" --job-name="sc-$lbl-cs$sh" "$SB"
+                    sbatch --time="$T" $PART --job-name="sc-$lbl-cs$sh" "$SB"
             else printf 'score %-10s cs/shift%s\n' "$lbl" "$sh"; fi
         done
     else printf 'score %-10s cs  SKIP (no root)\n' "$lbl"; fi
