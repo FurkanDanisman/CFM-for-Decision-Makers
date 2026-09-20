@@ -6,6 +6,13 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=128G
 #SBATCH --requeue
+# Fire SIGTERM 300s BEFORE the walltime cap, to the batch shell (B:), so the
+# trap below can forward it and let their handler finish writing
+# interrupted.pt. Slurm's default notification is only seconds ahead of
+# SIGKILL -- far too short to torch.save a model this size, which would make
+# the requeue resume from the last periodic checkpoint instead of the
+# current step, silently throwing away up to save_every steps of work.
+#SBATCH --signal=B:TERM@300
 
 # UWYK ablations on THEIR code, unmodified.
 #
