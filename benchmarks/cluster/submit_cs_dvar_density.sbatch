@@ -136,13 +136,20 @@ for CASE in "${CASES[@]}"; do
             --std-target "${STD_TARGET:-0.3}" || echo "WARN: $MODEL $CASE failed"
         ;;
       uwyk1d)
-        export CKPT="$UWYK_CKPT_DIR/best_model.pt"
-        export CONFIG="$UWYK_CKPT_DIR/best_model_config.yaml"
+        # Overridable so a UWYK VARIANT (e.g. the binarized head) can be run
+        # without inventing a fake checkpoint directory around it.
+        export CKPT="${CKPT:-$UWYK_CKPT_DIR/best_model.pt}"
+        export CONFIG="${CONFIG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
         export ANC_MODE=case_family
+        # --t-encoding: uwyk1d.py defaults to 'target'. A binarized model needs
+        # 'binary' (T fed as {0,1}); without this passthrough the flag could
+        # never be set from a job, and a binary head would run under target
+        # encoding and quietly score a model fed the wrong treatment variable.
         python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
             --dataset "$CASE" --outdir "$OUT" \
             --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-            --anc-mode case_family || echo "WARN: $MODEL $CASE failed"
+            --anc-mode case_family \
+            --t-encoding "${UWYK_T_ENCODING:-target}" || echo "WARN: $MODEL $CASE failed"
         ;;
       graph2d)
         python -u "$REPO/realcause_eval/Table1/graph2d.py" \

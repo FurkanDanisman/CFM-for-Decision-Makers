@@ -41,6 +41,9 @@ ROWS=(
   # It was absent from this list, so ONLY=cpfn_v0 silently matched nothing
   # and reported submitted=0.
   "cpfn_v0|CKPT_CPFN1D|${CKPT_CPFN_V0:-$CK/cpfn_v0_original.pt}|20|34"
+  # Binarized UWYK. Harness index 2 (uwyk1d), so RC task 10 and CS task 18.
+  # Needs CONFIG and UWYK_T_ENCODING=binary alongside CKPT -- see EXTRA below.
+  "uwyk_bin|CKPT|$CK/uwyk_bin_step50000.pt|10|18"
 )
 
 cd "$KIT" || exit 1
@@ -60,7 +63,14 @@ for r in "${ROWS[@]}"; do
         else                  task="$cs"; sb="$CS_SB"; extra="SHIFT=0"
         fi
         echo "--- $name/$b  array=$task"
-        timeout "$TMO" env "$env=$ck" OUT_ROOT="$SMOKE/$name/$b" DENSITY_DUMP=1 $extra \
+        # The UWYK harness needs a config YAML and a treatment encoding beside
+        # its weights; every other model needs only CKPT. Default the config to
+        # the one shipped in Required_checkpoints unless UWYK_BIN_CONFIG is set.
+        uwyk_extra=""
+        if [ "$name" = uwyk_bin ]; then
+            uwyk_extra="CONFIG=${UWYK_BIN_CONFIG:-$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml} UWYK_T_ENCODING=${UWYK_T_ENCODING:-binary}"
+        fi
+        timeout "$TMO" env "$env=$ck" OUT_ROOT="$SMOKE/$name/$b" DENSITY_DUMP=1 $extra $uwyk_extra \
             sbatch --array="$task" --job-name="sm-$b-$name" "$sb"
         st=$?
         if [ "$st" = 0 ]; then OK=$((OK+1))

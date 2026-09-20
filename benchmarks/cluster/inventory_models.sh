@@ -35,7 +35,8 @@ ROWS=(
   "dopfn_repro_joint2d|$SC/dumps_all/dopfn_repro_joint2d/rc|$SC/dumps_all/dopfn_repro_joint2d/cs|dopfn_bb"
   "cpfn1d_j32|$SC/dumps_all/cpfn1d_j32/rc|$SC/dumps_all/cpfn1d_j32/cs|cpfn1d"
   "cpfn1d_botharms|$SC/dumps_all/cpfn1d_botharms/rc|$SC/dumps_all/cpfn1d_botharms/cs|cpfn1d"
-  "cpfn_v0|-|-|cpfn1d"
+  "cpfn_v0|$SC/dumps_all/cpfn_v0/rc|$SC/dumps_all/cpfn_v0/cs|cpfn1d"
+  "uwyk_bin|$SC/dumps_all/uwyk_bin/rc|$SC/dumps_all/uwyk_bin/cs|uwyk1d"
 )
 # Smoke roots hold ONE cell per benchmark, not the full grid, so they are
 # reported separately rather than mistaken for a completed dump.
