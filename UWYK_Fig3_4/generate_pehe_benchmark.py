@@ -123,6 +123,49 @@ _UWYK_ROOT = os.environ.get("UWYK_ROOT", os.path.dirname(_UWYK_SRC.rstrip("/")))
 from pehe_metrics import NULL_EFFECT_REGIMES, REGIMES  # noqa: E402,F401
 
 
+REJECT_TALLY = {
+    "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0,
+    "pinned_vals": [], "ratio_vals": [], "accepted_pinned": [],
+}
+
+
+def _reset_tally():
+    REJECT_TALLY.update(seen=0, accepted=0, saturation=0, ate_ratio=0)
+    REJECT_TALLY["pinned_vals"] = []
+    REJECT_TALLY["ratio_vals"] = []
+    REJECT_TALLY["accepted_pinned"] = []
+
+
+def _tally_line():
+    """One line describing what the saturation filter actually did.
+
+    A rejection resamples, so it leaves no trace in n_ok / n_fail: "100 ok / 0
+    fail" cannot distinguish a filter that fired 42 times from one that never
+    fired at all. This reports the DISTRIBUTION of the pinned fraction as well as
+    the reject counts, so the threshold can be chosen from the data rather than
+    guessed, and so "nothing to reject" is visibly different from "not reached".
+    """
+    t = REJECT_TALLY
+    if not t["seen"]:
+        return "saturation filter: NEVER REACHED (no SCM got as far as the check)"
+    pv = np.asarray(t["pinned_vals"], dtype=float)
+    rv = np.asarray(t["ratio_vals"], dtype=float)
+    q = np.quantile(pv, [0.5, 0.9, 0.99]) if pv.size else [float("nan")] * 3
+    ap = np.asarray(t["accepted_pinned"], dtype=float)
+    return ("  [filter] seen={seen} accepted={acc} rejected_pinned={sat} "
+            "rejected_ratio={rat}\n"
+            "  [filter] pinned  p50={p50:.4f} p90={p90:.4f} p99={p99:.4f} "
+            "max={mx:.4f}   accepted_max={amx:.4f}\n"
+            "  [filter] |ATE|/sd  p50={r50:.3f} p90={r90:.3f} max={rmx:.3f}").format(
+        seen=t["seen"], acc=t["accepted"], sat=t["saturation"], rat=t["ate_ratio"],
+        p50=q[0], p90=q[1], p99=q[2],
+        mx=float(pv.max()) if pv.size else float("nan"),
+        amx=float(ap.max()) if ap.size else float("nan"),
+        r50=float(np.quantile(rv, 0.5)) if rv.size else float("nan"),
+        r90=float(np.quantile(rv, 0.9)) if rv.size else float("nan"),
+        rmx=float(rv.max()) if rv.size else float("nan"))
+
+
 def _import_uwyk():
     """Import UWYK's prior/preprocessing classes (lazy: needs UWYK_SRC present)."""
     if _UWYK_SRC not in sys.path:
@@ -387,8 +430,21 @@ def generate_realization(
                       float((np.abs(_y1) > 1.0 - sat_eps).mean()))
         _sd0 = float(_y0.std())
         _ratio = abs(float((_y1 - _y0).mean())) / max(_sd0, 1e-12)
-        if _pinned > max_pinned or _ratio > max_ate_sd_ratio:
+        # Record WHY, and record the value even when accepting: a rejection that
+        # resamples successfully is otherwise invisible in n_ok / n_fail, so
+        # "100 ok / 0 fail" cannot distinguish a filter that fired 42 times from
+        # one that never fired at all.
+        REJECT_TALLY["seen"] += 1
+        REJECT_TALLY["pinned_vals"].append(_pinned)
+        REJECT_TALLY["ratio_vals"].append(_ratio)
+        if _pinned > max_pinned:
+            REJECT_TALLY["saturation"] += 1
             continue
+        if _ratio > max_ate_sd_ratio:
+            REJECT_TALLY["ate_ratio"] += 1
+            continue
+        REJECT_TALLY["accepted"] += 1
+        REJECT_TALLY["accepted_pinned"].append(_pinned)
 
         descendants = nx.descendants(scm.dag.g, t_node)
         n_descendant_features = sum(
@@ -539,6 +595,7 @@ def run_sweep(args) -> dict:
                                         regime, f"hide_{hide}")
                 t0 = time.time()
                 n_ok = n_fail = 0
+                _reset_tally()
                 descendant_free = 0
                 for r in range(args.n_realizations):
                     out_path = os.path.join(cell_dir, f"r{r}.npz")
@@ -574,6 +631,7 @@ def run_sweep(args) -> dict:
                     "seconds": round(dt, 1),
                 }
                 manifest["cells"].append(cell)
+                print(_tally_line(), flush=True)
                 print(f"[done] {regime} n={n_nodes} hide={hide}: {n_ok} ok / "
                       f"{n_fail} fail, {descendant_free} descendant-free, {dt:.0f}s",
                       flush=True)
