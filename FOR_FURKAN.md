@@ -531,7 +531,152 @@ _negative = destination method has lower error. The UWYK bridge measures rebinni
 
 ---
 
-# Do-PFN Raw
+# DoPFN — IHDP, all runs
+
+Two runs on IHDP, pooled here for readability; the per-run sections below keep the full
+metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
+tail notes.
+
+- **stale** = `# Do-PFN Old`. Raw only, realizations=100, ~75 queries each, graph=none.
+  Training-residual sigma mean=1.0023, range=[0.9485, 1.0683].
+- **new** = `# Updated DoPFN Reprodcution results` (raw) and `# Dopfn MALC reproduction` (MALC).
+  realizations=90, ~75 queries each, graph=none. Training-residual sigma mean=1.0029,
+  range=[0.9550, 1.0683]. Checkpoints:
+  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
+  `native` is the library model in both runs.
+
+Rows are grouped by method family (the blocks between rules). Within each block and each
+column, **bold** = best and $\underline{underline}$ = second best. Stale and new are not on
+the same query set (100 vs 90 realizations), so within-block comparisons across runs are indicative only.
+
+## Density
+
+| run        | method                       |                         nll |                          l2 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |           **0.1849±0.0354** |               1.4193±0.1118 |
+| new (raw)  | DoPFN (x)indep native        | $\underline{0.2115±0.0343}$ |           **1.3222±0.1080** |
+| new (MALC) | DoPFN (x)indep native        |               0.2179±0.0341 | $\underline{1.3254±0.1081}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **0.6903±0.0540** |           **1.4401±0.1024** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  | $\underline{0.6917±0.0543}$ | $\underline{1.4406±0.1024}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep | $\underline{0.1121±0.0247}$ |           **1.2533±0.1141** |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |           **0.1120±0.0246** | $\underline{1.2575±0.1140}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |               0.5781±0.0475 |               1.6428±0.1104 |
+| new (raw)  | DoPFN repro_joint2d Joint-2D | $\underline{0.4802±0.0449}$ | $\underline{1.4690±0.1099}$ |
+| new (MALC) | DoPFN repro_joint2d (x)indep |           **0.3514±0.0347** |           **1.3874±0.1122** |
+
+## Point estimates
+
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |               6.6013±0.9953 |               4.4945±0.6109 |               2.4695±0.4023 |
+| new (raw)  | DoPFN (x)indep native        |           **6.0065±1.0287** |           **4.1687±0.6372** |           **2.2837±0.4223** |
+| new (MALC) | DoPFN (x)indep native        | $\underline{6.0133±1.0283}$ | $\underline{4.1739±0.6379}$ | $\underline{2.2864±0.4233}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  | $\underline{9.2522±0.6143}$ | $\underline{7.6938±0.4089}$ | $\underline{6.5640±0.3247}$ |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |           **9.2498±0.6144** |           **7.6893±0.4089** |           **6.5626±0.3252** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **4.3980±0.7484** | $\underline{3.3470±0.5329}$ | $\underline{0.8957±0.0953}$ |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{4.3993±0.7485}$ |           **3.3460±0.5324** |           **0.8914±0.0954** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |               5.7038±0.8368 |               4.4645±0.5963 |           **1.5492±0.1466** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |           **5.4772±0.8300** |           **4.3394±0.5797** | $\underline{1.8038±0.1371}$ |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{5.4801±0.8303}$ | $\underline{4.3408±0.5794}$ |               1.8041±0.1364 |
+
+**Caveats carried over from the per-run sections:**
+
+- The finite tau grid omits distant tail mass: for `dopfn_native` in the stale run, and for
+  all four methods in the new raw run (the MALC section prints no tail note). NLL is at the
+  observed tau and point errors use exact full-density means; l2 (and kl/mass) are
+  finite-grid quantities.
+- `dopfn_repro_1d_J10` has p(tau) mass ~0.816 on IHDP in both new runs (0.8158 raw, 0.8157
+  MALC) — >1% off 1.0, so the tau grid is clipping real density and its numbers should not
+  be read as calibrated. Widen `TAU_EDGES`.
+- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
+  run, as printed by each run.
+
+---
+
+# DoPFN — ACIC, all runs
+
+Two runs on ACIC, pooled here for readability; the per-run sections below keep the full
+metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
+tail notes.
+
+- **stale** = `# Do-PFN Old`. Raw only, realizations=10, ~481 queries each, graph=none.
+  Training-residual sigma mean=0.9951, range=[0.9800, 1.0119].
+- **new** = `# Updated DoPFN Reprodcution results` (raw) and `# Dopfn MALC reproduction` (MALC).
+  realizations=8, ~481 queries each, graph=none. Training-residual sigma mean=0.9963,
+  range=[0.9806, 1.0119]. Checkpoints:
+  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
+  `native` is the library model in both runs.
+
+Rows are grouped by method family (the blocks between rules). Within each block and each
+column, **bold** = best and $\underline{underline}$ = second best. Stale and new are not on
+the same query set (10 vs 8 realizations), so within-block comparisons across runs are indicative only.
+
+## Density
+
+| run        | method                       |                          nll |                          l2 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |               -0.0245±0.1144 |           **1.7014±0.0452** |
+| new (raw)  | DoPFN (x)indep native        |           **-0.0374±0.1436** | $\underline{1.7047±0.0549}$ |
+| new (MALC) | DoPFN (x)indep native        | $\underline{-0.0255±0.1401}$ |               1.7151±0.0584 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |  $\underline{0.1911±0.1491}$ |           **1.7408±0.0557** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |            **0.1902±0.1497** | $\underline{1.7408±0.0558}$ |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **-0.0085±0.1400** |           **1.7155±0.0550** |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{-0.0032±0.1382}$ | $\underline{1.7212±0.0569}$ |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |           **-0.2285±0.2289** |           **1.5219±0.0903** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |                0.2644±0.2574 |               1.8911±0.0684 |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{-0.0454±0.1929}$ | $\underline{1.6979±0.0543}$ |
+
+## Point estimates
+
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |           **4.1553±0.5434** |               3.3656±0.4353 |           **2.4312±0.3214** |
+| new (raw)  | DoPFN (x)indep native        | $\underline{4.1863±0.6864}$ |           **3.3368±0.5497** | $\underline{2.4508±0.3163}$ |
+| new (MALC) | DoPFN (x)indep native        |               4.1972±0.6844 | $\underline{3.3441±0.5474}$ |               2.4533±0.3157 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **4.7559±0.6123** | $\underline{3.7696±0.5274}$ |           **1.6296±0.5955** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  | $\underline{4.7559±0.6132}$ |           **3.7678±0.5280** | $\underline{1.6302±0.5954}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **3.8339±0.7193** |           **2.9316±0.5915** | $\underline{1.8055±0.3326}$ |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{3.8483±0.7190}$ | $\underline{2.9421±0.5909}$ |           **1.8048±0.3352** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |           **3.2313±0.5948** |           **2.4505±0.4441** |           **0.8903±0.1348** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |               4.1702±0.5990 |               3.2844±0.4916 |               2.1617±0.3401 |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{4.1692±0.5992}$ | $\underline{3.2821±0.4913}$ | $\underline{2.1608±0.3397}$ |
+
+**Caveats carried over from the per-run sections:**
+
+- The finite tau grid omits distant tail mass: for `dopfn_native` in the stale run, and for
+  all four methods in the new raw run (the MALC section prints no tail note). NLL is at the
+  observed tau and point errors use exact full-density means; l2 (and kl/mass) are
+  finite-grid quantities.
+- p(tau) mass off 1.0 by >1% on ACIC for `dopfn_repro_1d_J10` in both new runs (0.9313 in
+  each) and, in the raw run only, `dopfn_repro_joint2d` (0.9899). Under MALC the joint2d
+  mass is 0.9902, just inside the 1% threshold, so that run warns for J10 alone. Where the
+  grid clips, the numbers are not calibrated — widen `TAU_EDGES`.
+- sqrt PEHE for `repro_1d_J10` is 4.7559 in both new runs; the bold/underline split inside
+  that block is by row order, not a real difference.
+- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
+  run, as printed by each run.
+
+---
+
+# Do-PFN Old
 ### IHDP — DoPFN
 
 Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
@@ -593,7 +738,7 @@ _negative = destination method has lower error._
 _Native DoPFN and its joint head use different resolutions; this is an as-run comparison._
 
 ---
-# Updated Reprodcution results
+# Updated DoPFN Reprodcution results
 
 
 ### IHDP — DoPFN
@@ -685,3 +830,56 @@ _negative = destination method has lower error._
 _DoPFN rows differ in head resolution (and native DoPFN in preprocessing); these are as-run comparisons._
 
 **WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10', 'dopfn_repro_joint2d'] -- the tau grid is clipping real density; widen TAU_EDGES.
+
+
+# Dopfn MALC reproduction
+
+### IHDP — DoPFN
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0029, range=[0.9550, 1.0683].
+
+realizations=90, ~75 queries each, graph=none, |tau*|>3: 0.00%
+
+
+| method                       |               nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| ---------------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| DoPFN (x)indep native        |     0.2179±0.0341 |     1.3254±0.1081 |     0.9673±0.0716 |     25.7897±6.8165 | **0.9999±0.0000** |
+| DoPFN repro_1d_J10 (x)indep  |     0.6917±0.0543 |     1.4406±0.1024 |     1.4220±0.0560 |     41.2970±7.2206 |     0.8157±0.0126 |
+| DoPFN repro_1d_J100 (x)indep | **0.1120±0.0246** | **1.2575±0.1140** | **0.8494±0.0787** | **25.0180±6.7366** |     0.9944±0.0003 |
+| DoPFN repro_joint2d (x)indep |     0.3514±0.0347 |     1.3874±0.1122 |     1.0936±0.0792 |     26.0094±6.8208 |     0.9981±0.0002 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| DoPFN (x)indep native        |     6.0133±1.0283 |     4.1739±0.6379 |     2.2864±0.4233 |
+| DoPFN repro_1d_J10 (x)indep  |     9.2498±0.6144 |     7.6893±0.4089 |     6.5626±0.3252 |
+| DoPFN repro_1d_J100 (x)indep | **4.3993±0.7485** | **3.3460±0.5324** | **0.8914±0.0954** |
+| DoPFN repro_joint2d (x)indep |     5.4801±0.8303 |     4.3408±0.5794 |     1.8041±0.1364 |
+
+**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES.
+
+### ACIC — DoPFN
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9963, range=[0.9806, 1.0119].
+
+realizations=8, ~481 queries each, graph=none, |tau*|>3: 0.00%
+
+
+| method                       |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
+| ---------------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
+| DoPFN (x)indep native        |     -0.0255±0.1401 |     1.7151±0.0584 |     1.2753±0.0895 | **14.4787±2.0263** | **0.9999±0.0000** |
+| DoPFN repro_1d_J10 (x)indep  |      0.1902±0.1497 |     1.7408±0.0558 |     1.4876±0.0949 |     59.3346±4.0367 |     0.9313±0.0090 |
+| DoPFN repro_1d_J100 (x)indep |     -0.0032±0.1382 |     1.7212±0.0569 |     1.2936±0.0862 |     19.1105±2.0893 |     0.9966±0.0013 |
+| DoPFN repro_joint2d (x)indep | **-0.0454±0.1929** | **1.6979±0.0543** | **1.2544±0.1416** |     16.2514±2.0455 |     0.9902±0.0038 |
+
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+
+| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ---------------------------- | ----------------: | ----------------: | ----------------: |
+| DoPFN (x)indep native        |     4.1972±0.6844 |     3.3441±0.5474 |     2.4533±0.3157 |
+| DoPFN repro_1d_J10 (x)indep  |     4.7559±0.6132 |     3.7678±0.5280 | **1.6302±0.5954** |
+| DoPFN repro_1d_J100 (x)indep | **3.8483±0.7190** | **2.9421±0.5909** |     1.8048±0.3352 |
+| DoPFN repro_joint2d (x)indep |     4.1692±0.5992 |     3.2821±0.4913 |     2.1608±0.3397 |
+
+**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES.
