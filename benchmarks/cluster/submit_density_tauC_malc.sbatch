@@ -42,6 +42,13 @@
 #   B=3000   ~0, at 4x the cost of B=1000 -- no reason to go there
 # Use B=100 for a first look, B=1000 for anything that goes in the paper.
 #
+# DoPFN NEEDS B=1000 MORE THAN UWYK DOES. Measured on one IHDP realization at
+# B=100: dopfn_native 0/75 fallbacks, but the DoPFN joint 11/75 (14.7%), an
+# order of magnitude above UWYK's joint. Its head is J=10, so its p_mat has 100
+# bins against the UWYK joint's 1024, and B=100 synthetic points drawn from
+# that coarse a grid hull a much smaller region. Do not read a B=100 DoPFN
+# joint number as a result.
+#
 # MALC_K is FORCED TO 1 in the eval and is not exposed here. It is well
 # specified (the DGP's p(y0,y1|x) is a single bivariate Gaussian, which is
 # log-concave) and K>1 is not usable at these resolutions anyway: malc_2d's
@@ -69,6 +76,12 @@ DUMPS_ROOT="${DUMPS_ROOT:?DUMPS_ROOT required -- the results_density_tauC/<JOBID
 export MALC_B="${MALC_B:-1000}"
 export MALC_N_Y0="${MALC_N_Y0:-512}"     # interior; measured 1.1e-4 max err
 export N_Y0="${N_Y0:-4096}"              # tails; MUST match the raw run
+# uwyk | dopfn | all | auto. 'auto' scores whichever families the dump holds.
+export MODEL_FAMILY="${MODEL_FAMILY:-auto}"
+# Uniform grid DoPFN's 1D arms are rebinned onto before MALC sees them; MALC_2D
+# reads a single bin width and DoPFN's borders are quantile spaced. No effect
+# on UWYK, whose bars are already uniform.
+export DOPFN_MALC_BINS="${DOPFN_MALC_BINS:-1024}"
 export N_WORKERS="${N_WORKERS:-$SLURM_CPUS_PER_TASK}"
 export SAVE_FALLBACK_POINTS="${SAVE_FALLBACK_POINTS:-1}"
 export OUT_ROOT="${OUT_ROOT:-$REPO/results_density_tauC_malc/$SLURM_ARRAY_JOB_ID}"
@@ -96,7 +109,7 @@ ls "$DUMPS"/*.npz >/dev/null 2>&1 || { echo "FATAL: $DUMPS holds no npz" >&2; ex
 source "$REPO/.venv/bin/activate"
 cd "$REPO"
 
-echo "[submit] $DATASET  dumps=$DUMPS  B=$MALC_B K=1  workers=$N_WORKERS"
+echo "[submit] $DATASET  dumps=$DUMPS  family=$MODEL_FAMILY  B=$MALC_B K=1  dopfn_bins=$DOPFN_MALC_BINS  workers=$N_WORKERS"
 echo "[submit] out=$OUT"
 
 # The model-free gates first: a wrong p_mat orientation returns p(-tau) with

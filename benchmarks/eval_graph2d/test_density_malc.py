@@ -130,6 +130,53 @@ check('5  mean override: passing inner_mean() back reproduces mean()',
       max(abs(a[0] - b[0]), abs(a[1] - b[1])) < 1e-12,
       f'{a} vs {b}')
 
+# -- gates 6-7: DoPFN's non-uniform borders ----------------------------------
+# MALC_2D calibrates its Beta jitter from ONE bin width, grid_x[1] - grid_x[0],
+# and validates nothing about the rest. UWYK's bars are uniform so its product
+# can be handed over as-is; DoPFN's are quantile allocated, so the MALC arm
+# rebins them first. These gates pin both halves of that: the hazard is real,
+# and the rebin that removes it does not move the density.
+from density_common import DoPFN1D, dopfn_tau_density, l2_distance  # noqa: E402
+
+
+def make_dopfn_arm(mu=0.0, K=100, seed=0):
+    """A DoPFN1D on QUANTILE-spaced borders, as the real head produces."""
+    rng = np.random.default_rng(seed)
+    draws = rng.standard_t(df=3, size=200_000) + mu     # heavy tailed, like the prior
+    borders = np.quantile(draws, np.linspace(0.001, 0.999, K + 1))
+    centers = 0.5 * (borders[:-1] + borders[1:])
+    logits = -0.5 * ((centers - mu) / 1.0) ** 2
+    return DoPFN1D.from_pred(logits, borders)
+
+
+f0 = make_dopfn_arm(mu=-0.4, seed=1)
+f1 = make_dopfn_arm(mu=+0.4, seed=2)
+w = np.diff(f0.edges)
+ratio = float(w.max() / w.min())
+check('6  DoPFN borders really are non-uniform (the hazard is real)',
+      ratio > 10.0,
+      f'width ratio {ratio:.1f}x  ({w.min():.4f} to {w.max():.4f}) -- MALC would '
+      f'jitter every bin with grid[1]-grid[0] = {w[0]:.4f}')
+
+grid = np.linspace(float(f0.edges[0]), float(f0.edges[-1]), 1024 + 1)
+g0, g1 = f0.rebin(grid), f1.rebin(grid)
+wr = np.diff(g0.edges)
+check('6b rebinned grid is uniform, which is what MALC assumes',
+      bool(np.allclose(wr, wr[0])), f'width ratio {wr.max() / wr.min():.6f}')
+
+tau = np.linspace(-6.0, 6.0, 1201)
+exact = dopfn_tau_density(f0, f1, tau)
+rebinned = dopfn_tau_density(g0, g1, tau)
+rel = float(l2_distance(exact, rebinned, tau)
+            / np.sqrt(np.trapezoid(exact ** 2, tau)))
+check('7  the rebin does not move the tau density',
+      rel < 5e-3, f'relative L2 {rel:.4%} at 1024 bins')
+m_before = float(np.exp(f0.log_pBars).sum())
+m_after = float(np.exp(g0.log_pBars).sum())
+check('7b the rebin preserves interior mass exactly',
+      abs(m_before - m_after) < 1e-12,
+      f'{m_before:.12f} -> {m_after:.12f}')
+
 print()
 n_fail = sum(1 for _, ok, _ in RESULTS if not ok)
 print(f'{len(RESULTS) - n_fail}/{len(RESULTS)} gates passed')
