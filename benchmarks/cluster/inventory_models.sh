@@ -32,7 +32,7 @@ ROWS=(
   "cpfn2d_eta0|$SC/rc_dens_eta0|$SC/cs_dvar_eta0|cpfn2d_pooled"
   "dopfn_repro_1d_J10|$SC/dumps_all/dopfn_repro_1d_J10/rc|$SC/dumps_all/dopfn_repro_1d_J10/cs|dopfn_native"
   "dopfn_repro_1d_J100|$SC/dumps_all/dopfn_repro_1d_J100/rc|$SC/dumps_all/dopfn_repro_1d_J100/cs|dopfn_native"
-  "dopfn_repro_joint2d|$SC/dumps_all/dopfn_repro_joint2d/rc|$SC/dumps_all/dopfn_repro_joint2d/cs|dopfn_bb"
+  "dopfn_repro_joint2d|$SC/dumps_all/dopfn_repro_joint2d/rc|$SC/dumps_all/dopfn_repro_joint2d/cs|dopfn_native"
   "cpfn1d_j32|$SC/dumps_all/cpfn1d_j32/rc|$SC/dumps_all/cpfn1d_j32/cs|cpfn1d"
   "cpfn1d_botharms|$SC/dumps_all/cpfn1d_botharms/rc|$SC/dumps_all/cpfn1d_botharms/cs|cpfn1d"
   "cpfn_v0|$SC/dumps_all/cpfn_v0/rc|$SC/dumps_all/cpfn_v0/cs|cpfn1d"
