@@ -67,10 +67,11 @@ def card(name, path, info, digest):
         v = info.get(k, default)
         return default if v is None else v
 
-    J = g("cfg.J", None) or g("J", None)
-    if J is None:
-        cands = info.get("J_candidates") or []
-        J = cands[0] if isinstance(cands, list) and cands else "see head width"
+    # Resolved by architecture in inspect_ckpt.resolve_j, with the evidence named.
+    # Taking the first matching formula instead reported head widths as J -- 1034
+    # for a J=1024 model, 113 for a J=10 one.
+    J = info.get("J", "undetermined")
+    J_src = info.get("J_source", "")
     lines = [
         "---", "library_name: pytorch", "tags:", "  - causal-inference",
         "  - tabular", "  - prior-fitted-network", "---", "",
@@ -81,8 +82,9 @@ def card(name, path, info, digest):
         "", "| field | value |", "|---|---|",
         f"| variant | `{g('variant')}` |",
         f"| training step | `{g('step')}` |",
-        f"| bins (J) | `{J}` |",
+        f"| bins (J) | `{J}` |" + (f" <!-- {J_src} -->" if J_src else ""),
         f"| head output width | `{g('head_width')}` |",
+        f"| J determined from | {J_src or 'n/a'} |",
         f"| tensors in state dict | `{g('n_tensors')}` |",
         f"| size | `{os.path.getsize(path) / 1e6:.1f} MB` |",
         f"| sha256 | `{digest}` |",
@@ -115,6 +117,9 @@ def main():
     ap.add_argument("--cards-only", action="store_true")
     ap.add_argument("--out", default=None, help="where to write cards")
     ap.add_argument("--upload", action="store_true")
+    ap.add_argument("--update-cards", action="store_true",
+                    help="upload ONLY the cards, leaving the .pt files "
+                         "already in the repo untouched.")
     ap.add_argument("--public", action="store_true")
     a = ap.parse_args()
 
@@ -155,7 +160,7 @@ def main():
 
     if a.cards_only:
         return 0
-    if not a.upload:
+    if not (a.upload or a.update_cards):
         print("\n(no --upload given; nothing was sent)")
         return 0
 
@@ -167,10 +172,12 @@ def main():
     api.create_repo(a.repo, repo_type="model", private=not a.public, exist_ok=True)
     print(f"\nuploading to {a.repo} ({'public' if a.public else 'private'})")
     for name, p, real, size in plan:
-        api.upload_file(path_or_fileobj=real, path_in_repo=f"{name}.pt", repo_id=a.repo)
+        if not a.update_cards:
+            api.upload_file(path_or_fileobj=real, path_in_repo=f"{name}.pt",
+                            repo_id=a.repo)
         api.upload_file(path_or_fileobj=os.path.join(out, f"{name}.md"),
                         path_in_repo=f"cards/{name}.md", repo_id=a.repo)
-        print(f"  sent {name} ({size:.0f} MB)")
+        print(f"  sent {name}" + ("" if a.update_cards else f" ({size:.0f} MB)"))
     print("done")
     return 0
 
