@@ -27,7 +27,10 @@ SKIP="${SKIP:-}"
 # shift per job -- so a model needs three case-study jobs, not one. 24 cells in
 # the reference tree is 3 shifts x 8 d values, which is what this reproduces.
 SHIFTS="${SHIFTS:-0 +2 -2}"
-RC_TIME="${RC_TIME:-12:00:00}"; CS_TIME="${CS_TIME:-12:00:00}"
+# Sized from the smoke runs, not guessed: RealCause was 1m20s for one dataset
+# (5 -> well under an hour) and a case-study cell of 6 cases was ~6 min (8 d ->
+# ~1h). A 12h request queues far worse than a 3h one for the same work.
+RC_TIME="${RC_TIME:-2:00:00}"; CS_TIME="${CS_TIME:-4:00:00}"
 
 # name | MODEL_IDX | CKPT_ENV | checkpoint
 # MODEL_IDX indexes the inner MODELS array:
