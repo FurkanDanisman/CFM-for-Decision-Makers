@@ -11,7 +11,7 @@
 #   PEHE / ATEerr        point estimates, raw mean (no MALC)
 #   Cov / Len / IS       raw tau density
 #   Cov / Len / IS MALC  variant T
-#   + for 2D heads on RealCause: the same with the coupling FORCED INDEPENDENT
+#   + RealCause ONLY, 2D heads: the same with the coupling FORCED INDEPENDENT
 #
 # The forced-independent pass is the controlled test of the joint head: same
 # model, same marginals, same data -- only the coupling differs. So any score
@@ -51,7 +51,7 @@ RC_ROOT="${RC_ROOT:-$SCRATCH/rc_dens_uni}"
 CS_ROOT="${CS_ROOT:-$SCRATCH/cs_dvar_dens}"
 ETA0_RC="${ETA0_RC:-$SCRATCH/rc_dens_eta0}"
 ETA0_CS="${ETA0_CS:-$SCRATCH/cs_dvar_eta0}"
-MALC_B="${MALC_B:-100}"; MALC_K="${MALC_K:-1}"; N_TAU="${N_TAU:-4001}"
+MALC_B="${MALC_B:-1000}"; MALC_K="${MALC_K:-1}"; N_TAU="${N_TAU:-4001}"
 NW="${MALC_WORKERS:-${SLURM_CPUS_PER_TASK:-64}}"
 STAGES="${STAGES:-point raw malc indep}"
 CS_CASES="${CS_CASES:-Observed_Confounder Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion Backdoor_Criterion}"
@@ -109,10 +109,10 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
                      --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
                      --n-tau "$N_TAU" --malc-workers "$NW" \
                      --out "$cell/calib_T_${TAG}_${t}_${c}.md"; done ;;
-        indep) for t in cate ate; do
-                 run "$CD" --root "$cell" --dataset "$c" --target "$t" \
-                     --tau-smoother none --joint-coupling indep \
-                     --out "$cell/calib_indep_${t}_${c}.md"; done ;;
+        # No indep stage here: forced independence is a RealCause-only ablation.
+      # On the case studies the arms are near-comonotonic (rho = 1), so imposing
+      # rho = 0 scores the imposed assumption rather than the head.
+      indep) ;;
       esac; done
     done
   done
