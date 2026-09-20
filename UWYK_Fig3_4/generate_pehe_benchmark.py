@@ -124,17 +124,32 @@ from pehe_metrics import NULL_EFFECT_REGIMES, REGIMES  # noqa: E402,F401
 
 
 REJECT_TALLY = {
-    "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0,
+    "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0, "no_het": 0,
     "pinned_vals": [], "ratio_vals": [], "accepted_pinned": [], "abs_vals": [],
+    "tau_cv": [], "tau_rel": [], "tau_sd": [], "acc_tau_rel": [],
 }
 
 
 def _reset_tally():
-    REJECT_TALLY.update(seen=0, accepted=0, saturation=0, ate_ratio=0)
+    REJECT_TALLY.update(seen=0, accepted=0, saturation=0, ate_ratio=0, no_het=0)
     REJECT_TALLY["pinned_vals"] = []
     REJECT_TALLY["ratio_vals"] = []
     REJECT_TALLY["accepted_pinned"] = []
     REJECT_TALLY["abs_vals"] = []
+    REJECT_TALLY["tau_cv"] = []
+    REJECT_TALLY["tau_rel"] = []
+    REJECT_TALLY["tau_sd"] = []
+    REJECT_TALLY["acc_tau_rel"] = []
+
+
+def _q(vals, q):
+    a = np.asarray(vals, dtype=float)
+    return float(np.quantile(a, q)) if a.size else float("nan")
+
+
+def _below(vals, thr):
+    a = np.asarray(vals, dtype=float)
+    return int(np.sum(a < thr)) if a.size else 0
 
 
 def _tally_line():
@@ -154,13 +169,22 @@ def _tally_line():
     q = np.quantile(pv, [0.5, 0.9, 0.99]) if pv.size else [float("nan")] * 3
     ap = np.asarray(t["accepted_pinned"], dtype=float)
     return ("  [filter] seen={seen} accepted={acc} rejected_pinned={sat} "
-            "rejected_ratio={rat}\n"
+            "rejected_ratio={rat} rejected_no_het={nh}\n"
             "  [filter] pinned  p50={p50:.4f} p90={p90:.4f} p99={p99:.4f} "
             "max={mx:.4f}   accepted_max={amx:.4f}\n"
             "  [filter] pinned_abs (frac |y|>1-eps, only meaningful if y is "
             "bounded) p50={a50:.4f} max={amax:.4f}\n"
-            "  [filter] |ATE|/sd  p50={r50:.3f} p90={r90:.3f} max={rmx:.3f}").format(
+            "  [filter] |ATE|/sd  p50={r50:.3f} p90={r90:.3f} max={rmx:.3f}\n"
+            "  [filter] sd(tau)/|E tau|  p10={c10:.4f} p50={c50:.4f} p90={c90:.4f}\n"
+            "  [filter] sd(tau)/sd(y0)   p10={t10:.4f} p50={t50:.4f} p90={t90:.4f}\n"
+            "  [filter] sd(tau) abs      p10={s10:.4g} p50={s50:.4g}\n"
+            "  [filter] would-reject at sd(tau)/sd(y0) < : "
+            "0.01 -> {b1}/{n}  0.05 -> {b5}/{n}  0.10 -> {b10}/{n}  0.20 -> {b20}/{n}\n"
+            "  [filter] would-reject at pinned > 0.50: {bp}/{n}\n"
+            "  [filter] ACCEPTED sd(tau)/sd(y0)  min={am:.4g} p10={ap10:.4g} "
+            "p50={ap50:.4g}   (must all clear --min-tau-het)").format(
         seen=t["seen"], acc=t["accepted"], sat=t["saturation"], rat=t["ate_ratio"],
+        nh=t["no_het"],
         p50=q[0], p90=q[1], p99=q[2],
         mx=float(pv.max()) if pv.size else float("nan"),
         amx=float(ap.max()) if ap.size else float("nan"),
@@ -168,6 +192,17 @@ def _tally_line():
         if t["abs_vals"] else float("nan"),
         amax=float(np.max(np.asarray(t["abs_vals"], dtype=float)))
         if t["abs_vals"] else float("nan"),
+        c10=_q(t["tau_cv"], 0.10), c50=_q(t["tau_cv"], 0.50), c90=_q(t["tau_cv"], 0.90),
+        t10=_q(t["tau_rel"], 0.10), t50=_q(t["tau_rel"], 0.50), t90=_q(t["tau_rel"], 0.90),
+        s10=_q(t["tau_sd"], 0.10), s50=_q(t["tau_sd"], 0.50),
+        n=t["seen"],
+        b1=_below(t["tau_rel"], 0.01), b5=_below(t["tau_rel"], 0.05),
+        b10=_below(t["tau_rel"], 0.10), b20=_below(t["tau_rel"], 0.20),
+        bp=int(np.sum(np.asarray(t["pinned_vals"], dtype=float) > 0.5))
+        if t["pinned_vals"] else 0,
+        am=(float(np.min(np.asarray(t["acc_tau_rel"], dtype=float)))
+            if t["acc_tau_rel"] else float("nan")),
+        ap10=_q(t["acc_tau_rel"], 0.10), ap50=_q(t["acc_tau_rel"], 0.50),
         r50=float(np.quantile(rv, 0.5)) if rv.size else float("nan"),
         r90=float(np.quantile(rv, 0.9)) if rv.size else float("nan"),
         rmx=float(rv.max()) if rv.size else float("nan"))
@@ -321,6 +356,7 @@ def generate_realization(
     # continues on constant T, collapsed binarisation and low target variance.
     # Defaults are permissive (no rejection) so existing behaviour is unchanged.
     max_pinned: float = 1.0,
+    min_tau_het: float = 0.0,
     max_ate_sd_ratio: float = float("inf"),
     sat_eps: float = 1e-3,
     n_test_override: int | None = None,
@@ -463,7 +499,18 @@ def generate_realization(
         _pinned_abs = max(_pin_abs(_y0), _pin_abs(_y1))
         _pinned = max(_pin_rel(_y0), _pin_rel(_y1))
         _sd0 = float(_y0.std())
-        _ratio = abs(float((_y1 - _y0).mean())) / max(_sd0, 1e-12)
+        _tau = _y1 - _y0
+        _tau_mean = float(_tau.mean())
+        _tau_sd = float(_tau.std())
+        _ratio = abs(_tau_mean) / max(_sd0, 1e-12)
+        # HETEROGENEITY is what decides whether per-realization coverage can be
+        # anything other than 0 or 1. If tau is near-constant across units, every
+        # query in the realization has essentially the same truth, so one interval
+        # either covers all of them or none -- which is exactly the binary 0/1
+        # coverage seen on this benchmark. Reported relative to tau's own level
+        # and to the outcome scale, since either alone can be misread.
+        _tau_cv = _tau_sd / max(abs(_tau_mean), 1e-12)
+        _tau_rel = _tau_sd / max(_sd0, 1e-12)
         # Record WHY, and record the value even when accepting: a rejection that
         # resamples successfully is otherwise invisible in n_ok / n_fail, so
         # "100 ok / 0 fail" cannot distinguish a filter that fired 42 times from
@@ -471,15 +518,29 @@ def generate_realization(
         REJECT_TALLY["seen"] += 1
         REJECT_TALLY["pinned_vals"].append(_pinned)
         REJECT_TALLY["abs_vals"].append(_pinned_abs)
+        REJECT_TALLY["tau_cv"].append(_tau_cv)
+        REJECT_TALLY["tau_rel"].append(_tau_rel)
+        REJECT_TALLY["tau_sd"].append(_tau_sd)
         REJECT_TALLY["ratio_vals"].append(_ratio)
         if _pinned > max_pinned:
             REJECT_TALLY["saturation"] += 1
+            continue
+        # NO-HETEROGENEITY rejection. Measured on this prior: 39% of realizations
+        # at n=5 and 19% at n=20 have sd(tau)/sd(y0) < 0.01, i.e. tau is constant
+        # across units. Every query then shares one truth, so a realization's
+        # coverage can only be 0 or 1 -- which is the binary coverage this
+        # benchmark produced. The mass sits AT zero rather than spread out (39
+        # below 0.01 against 48 below 0.20), so a small threshold removes the
+        # degenerate spike without trimming healthy realizations.
+        if _tau_rel < min_tau_het:
+            REJECT_TALLY["no_het"] += 1
             continue
         if _ratio > max_ate_sd_ratio:
             REJECT_TALLY["ate_ratio"] += 1
             continue
         REJECT_TALLY["accepted"] += 1
         REJECT_TALLY["accepted_pinned"].append(_pinned)
+        REJECT_TALLY["acc_tau_rel"].append(_tau_rel)
 
         descendants = nx.descendants(scm.dag.g, t_node)
         n_descendant_features = sum(
@@ -644,6 +705,7 @@ def run_sweep(args) -> dict:
                             seed=seed, hide_fraction=hide,
                             test_feature_mask_fraction=args.test_feature_mask_fraction,
                             max_pinned=args.max_pinned,
+                            min_tau_het=args.min_tau_het,
                             max_ate_sd_ratio=args.max_ate_sd_ratio,
                             n_test_override=args.n_test,
                         )
@@ -765,6 +827,11 @@ def main() -> None:
                         "1 - sat_eps in either arm (saturated outcome). "
                         "1.0 = no rejection; 0.01 was measured to flag 42%% of "
                         "5node/path_TY draws")
+    p.add_argument("--min-tau-het", type=float, default=0.0,
+                   help="reject a realization when sd(tau)/sd(y0) is below this. "
+                        "Guards against tau being CONSTANT across units, which makes "
+                        "per-realization coverage necessarily 0 or 1. Measured on "
+                        "complexmech: 39%% of n=5 realizations are below 0.01.")
     p.add_argument("--max-ate-sd-ratio", type=float, default=float("inf"),
                    help="reject when |ATE| / sd(Y_do0) exceeds this -- an effect "
                         "larger than a couple of times the outcome's own spread "
