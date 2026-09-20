@@ -125,7 +125,7 @@ from pehe_metrics import NULL_EFFECT_REGIMES, REGIMES  # noqa: E402,F401
 
 REJECT_TALLY = {
     "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0,
-    "pinned_vals": [], "ratio_vals": [], "accepted_pinned": [],
+    "pinned_vals": [], "ratio_vals": [], "accepted_pinned": [], "abs_vals": [],
 }
 
 
@@ -134,6 +134,7 @@ def _reset_tally():
     REJECT_TALLY["pinned_vals"] = []
     REJECT_TALLY["ratio_vals"] = []
     REJECT_TALLY["accepted_pinned"] = []
+    REJECT_TALLY["abs_vals"] = []
 
 
 def _tally_line():
@@ -156,11 +157,17 @@ def _tally_line():
             "rejected_ratio={rat}\n"
             "  [filter] pinned  p50={p50:.4f} p90={p90:.4f} p99={p99:.4f} "
             "max={mx:.4f}   accepted_max={amx:.4f}\n"
+            "  [filter] pinned_abs (frac |y|>1-eps, only meaningful if y is "
+            "bounded) p50={a50:.4f} max={amax:.4f}\n"
             "  [filter] |ATE|/sd  p50={r50:.3f} p90={r90:.3f} max={rmx:.3f}").format(
         seen=t["seen"], acc=t["accepted"], sat=t["saturation"], rat=t["ate_ratio"],
         p50=q[0], p90=q[1], p99=q[2],
         mx=float(pv.max()) if pv.size else float("nan"),
         amx=float(ap.max()) if ap.size else float("nan"),
+        a50=float(np.quantile(np.asarray(t["abs_vals"], dtype=float), 0.5))
+        if t["abs_vals"] else float("nan"),
+        amax=float(np.max(np.asarray(t["abs_vals"], dtype=float)))
+        if t["abs_vals"] else float("nan"),
         r50=float(np.quantile(rv, 0.5)) if rv.size else float("nan"),
         r90=float(np.quantile(rv, 0.9)) if rv.size else float("nan"),
         rmx=float(rv.max()) if rv.size else float("nan"))
@@ -426,8 +433,35 @@ def generate_realization(
         # --- saturation rejection (see max_pinned / max_ate_sd_ratio above) ---
         _y0 = res0[y_node].reshape(-1).detach().cpu().numpy().astype(np.float64)
         _y1 = res1[y_node].reshape(-1).detach().cpu().numpy().astype(np.float64)
-        _pinned = max(float((np.abs(_y0) > 1.0 - sat_eps).mean()),
-                      float((np.abs(_y1) > 1.0 - sat_eps).mean()))
+        # TWO saturation measures, because the absolute one is only meaningful if
+        # y is bounded to [-1, 1]:
+        #
+        #   _pinned_abs  frac(|y| > 1 - sat_eps).  This is what the earlier
+        #       diagnosis used (99.2% of units at |Y| = 1). It is correct for a
+        #       clipped/tanh outcome and MEANINGLESS otherwise -- a standard
+        #       normal puts ~32% of its mass beyond |1|, so on unbounded y it
+        #       reports a third of every sample as saturated.
+        #
+        #   _pinned_rel  mass piled within sat_eps of the sample's OWN range.
+        #       Scale-free: ~0.2% for any continuous y, large only when values
+        #       actually stack at a boundary. This is the one that detects
+        #       clipping without assuming where the clip is.
+        #
+        # Rejection uses the relative measure; both are reported so the filter's
+        # behaviour can be read off rather than assumed.
+        def _pin_abs(v):
+            return float((np.abs(v) > 1.0 - sat_eps).mean())
+
+        def _pin_rel(v):
+            lo, hi = float(v.min()), float(v.max())
+            span = hi - lo
+            if not np.isfinite(span) or span <= 0:
+                return 1.0                      # constant outcome: fully degenerate
+            tol = sat_eps * span
+            return float(((v >= hi - tol) | (v <= lo + tol)).mean())
+
+        _pinned_abs = max(_pin_abs(_y0), _pin_abs(_y1))
+        _pinned = max(_pin_rel(_y0), _pin_rel(_y1))
         _sd0 = float(_y0.std())
         _ratio = abs(float((_y1 - _y0).mean())) / max(_sd0, 1e-12)
         # Record WHY, and record the value even when accepting: a rejection that
@@ -436,6 +470,7 @@ def generate_realization(
         # one that never fired at all.
         REJECT_TALLY["seen"] += 1
         REJECT_TALLY["pinned_vals"].append(_pinned)
+        REJECT_TALLY["abs_vals"].append(_pinned_abs)
         REJECT_TALLY["ratio_vals"].append(_ratio)
         if _pinned > max_pinned:
             REJECT_TALLY["saturation"] += 1
