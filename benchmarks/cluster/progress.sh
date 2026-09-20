@@ -40,13 +40,22 @@ pct() {  # count total -> "n/total (p%)"
     awk -v a="$1" -v b="$2" 'BEGIN{p=100*a/b; if(p>100)p=100; printf "%3d/%-3d %3.0f%%", a, b, p}'
 }
 nf() { [ -d "$1" ] && find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
+# Point tables only count when they carry the ate_metric stamp. Files written
+# before --ate-metric existed report plain |dATE| under an "eps_ATE" header, so
+# counting them showed PEHE/ATE at 100% for the wrong quantity while the jobs that
+# would produce the right one had not even started.
+nf_pt() {
+    [ -d "$1" ] || { echo 0; return; }
+    find "$1" -name 'point_raw_em_*.md' -exec grep -l 'ate_metric=' {} + 2>/dev/null \
+        | wc -l | tr -d ' '
+}
 
 echo "=== RealCause  (denominator: $RC_N datasets)"
 printf '%-10s %-14s %-14s %-14s %-14s %s\n' ROOT PEHE/ATE Cov-raw Cov-MALC Cov-indep DUMPS
 printf '%.0s-' {1..96}; echo
 for r in "${ROOTS[@]}"; do
     IFS='|' read -r lbl rc cs is2d models <<<"$r"
-    p_pt=$(nf "$rc" 'point_raw_em_*.md')
+    p_pt=$(nf_pt "$rc")
     p_raw=$(nf "$PERREAL/$lbl" 'raw__*__-.npz')
     p_mal=$(nf "$PERREAL/$lbl" 'malc__*__-.npz')
     p_ind=$(nf "$PERREAL/$lbl" 'indep_raw__*__-.npz')
@@ -64,7 +73,7 @@ printf '%-10s %-14s %-14s %-14s %s\n' ROOT PEHE/ATE Cov-raw Cov-MALC DUMPS
 printf '%.0s-' {1..80}; echo
 for r in "${ROOTS[@]}"; do
     IFS='|' read -r lbl rc cs is2d models <<<"$r"
-    c_pt=$(nf "$cs" 'point_raw_em_*.md')
+    c_pt=$(nf_pt "$cs")
     # cs per-real files carry a shift slice; rc files carry "-".
     c_raw=$(find "$PERREAL/$lbl" -name 'raw__*__shift*.npz' 2>/dev/null | wc -l | tr -d ' ')
     c_mal=$(find "$PERREAL/$lbl" -name 'malc__*__shift*.npz' 2>/dev/null | wc -l | tr -d ' ')
@@ -80,6 +89,8 @@ for r in "${ROOTS[@]}"; do
     printf '  %-10s %s\n' "$lbl" "$models"
 done
 echo
+echo "PEHE/ATE counts only tables carrying the ate_metric stamp; tables written"
+echo "before the relative-vs-L1 fix report the wrong quantity and read as 0 here."
 echo "Cov-* columns also carry Len, IS and CRPS -- same file, no extra work."
 echo "Forced independence is RealCause-only and applies to 2D heads."
 echo
