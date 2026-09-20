@@ -120,7 +120,14 @@ def main():
     ap.add_argument("--update-cards", action="store_true",
                     help="upload ONLY the cards, leaving the .pt files "
                          "already in the repo untouched.")
-    ap.add_argument("--public", action="store_true")
+    ap.add_argument("--public", action="store_true",
+                    help="create the repo public. Has NO effect on a repo that "
+                         "already exists -- use --make-public for that.")
+    ap.add_argument("--make-public", action="store_true",
+                    help="flip an EXISTING repo to public. Separate from --public "
+                         "because create_repo(exist_ok=True) silently ignores the "
+                         "visibility argument, so --public alone would appear to "
+                         "work while leaving the repo private.")
     a = ap.parse_args()
 
     files = sorted(f for f in os.listdir(a.ckpt_dir) if f.endswith(".pt"))
@@ -160,6 +167,20 @@ def main():
 
     if a.cards_only:
         return 0
+    if a.make_public:
+        try:
+            from huggingface_hub import HfApi
+        except ImportError:
+            print("\npip install huggingface_hub", file=sys.stderr); return 1
+        api = HfApi()
+        # Publishing is outward-facing and effectively irreversible: once public,
+        # the files can be mirrored and cached regardless of a later change.
+        api.update_repo_settings(repo_id=a.repo, repo_type="model", private=False)
+        info = api.repo_info(repo_id=a.repo, repo_type="model")
+        print(f"\n{a.repo} is now {'PRIVATE' if info.private else 'PUBLIC'}")
+        print(f"  https://huggingface.co/{a.repo}")
+        return 0
+
     if not (a.upload or a.update_cards):
         print("\n(no --upload given; nothing was sent)")
         return 0
