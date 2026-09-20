@@ -74,8 +74,15 @@ source "$VENV/bin/activate"
 OUT_CFG="$UWYK_ROOT/configs_ablation/config_${TAG}.yaml"
 mkdir -p "$(dirname "$OUT_CFG")"
 
+# Their checkpoint_dir is relative (./checkpoints) and the run subdirectory
+# name comes from the config's experiment name, NOT from TAG -- so every
+# ablation writes to the same path and whichever finishes second destroys
+# the first one's checkpoints. Give each TAG its own absolute root.
+CKPT_DIR="${CKPT_DIR:-$UWYK_ROOT/checkpoints_ablation/$TAG}"
+mkdir -p "$CKPT_DIR"
+
 NUM_BARS="${NUM_BARS:-}" BINARIZE="${BINARIZE:-}" NUM_WORKERS="${NUM_WORKERS:-}" \
-BATCH_SIZE="${BATCH_SIZE:-}" ACCUM="${ACCUM:-}" \
+BATCH_SIZE="${BATCH_SIZE:-}" ACCUM="${ACCUM:-}" CKPT_DIR="$CKPT_DIR" \
 python3 - "$SRC_CFG" "$OUT_CFG" <<'PYEOF'
 import os, re, sys, yaml
 
@@ -85,6 +92,7 @@ binarize = os.environ.get('BINARIZE') or None
 workers  = os.environ.get('NUM_WORKERS') or None
 bsz      = os.environ.get('BATCH_SIZE') or None
 accum    = os.environ.get('ACCUM') or None
+ckpt_dir = os.environ.get('CKPT_DIR') or None
 
 lines = open(src).read().splitlines(keepends=True)
 expected = set()
@@ -149,6 +157,20 @@ for _key, _val, _path in (('batch_size', bsz, 'training_config.batch_size.value'
     lines = out
     expected.add(_path)
 
+# --- checkpoint_dir: per-TAG absolute root so ablations cannot overwrite each
+# --- other. Same rewrite shape as num_bars: the `value:` line after the key.
+if ckpt_dir:
+    out, hits, armed = [], 0, False
+    for ln in lines:
+        if armed and re.match(r'^\s*value:', ln):
+            out.append(re.sub(r'(^\s*value:\s*)\S+', rf'\g<1>{ckpt_dir}', ln)); hits += 1; armed = False
+            continue
+        if re.match(r'^\s*checkpoint_dir:', ln):
+            armed = True
+        out.append(ln)
+    assert hits == 1, f'checkpoint_dir: expected 1 value line, rewrote {hits}'
+    lines = out
+
 open(dst, 'w').writelines(lines)
 
 # --- semantic verification: parsed-YAML leaf diff must equal `expected` ------
@@ -161,6 +183,10 @@ def flat(d, p=''):
 
 a = dict(flat(yaml.safe_load(open(src))))
 b = dict(flat(yaml.safe_load(open(dst))))
+if ckpt_dir:
+    _hit = [k for k in b if k.endswith('checkpoint_dir.value')]
+    assert len(_hit) == 1, f'checkpoint_dir: {len(_hit)} matching keys, expected 1'
+    expected.add(_hit[0])
 changed = {k for k in set(a) | set(b) if a.get(k, '<absent>') != b.get(k, '<absent>')}
 print(f'[config] intended changes : {sorted(expected) or "(none)"}')
 print(f'[config] actual  changes  : {sorted(changed) or "(none)"}')
@@ -195,6 +221,7 @@ export UWYK_LOG_EVERY="${UWYK_LOG_EVERY:-50}"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] UWYK ablation TAG=$TAG"
 echo "  NUM_BARS=${NUM_BARS:-<released 1000>}  BINARIZE=${BINARIZE:-<default 0.0>}  BOTH_ARMS=$UWYK_BOTH_ARMS  NUM_WORKERS=${NUM_WORKERS:-<released 50>}  LOG_EVERY=$UWYK_LOG_EVERY  BATCH=${BATCH_SIZE:-<8>}x${ACCUM:-<4>}"
 echo "  CONFIG=$OUT_CFG"
+echo "  CKPT_DIR=$CKPT_DIR"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
 # checkpoint_dir / save_dir in their config are relative, so cwd decides output.
