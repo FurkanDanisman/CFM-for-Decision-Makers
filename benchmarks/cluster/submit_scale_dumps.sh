@@ -30,7 +30,13 @@ SHIFTS="${SHIFTS:-0 +2 -2}"
 # Sized from the smoke runs, not guessed: RealCause was 1m20s for one dataset
 # (5 -> well under an hour) and a case-study cell of 6 cases was ~6 min (8 d ->
 # ~1h). A 12h request queues far worse than a 3h one for the same work.
-RC_TIME="${RC_TIME:-2:00:00}"; CS_TIME="${CS_TIME:-4:00:00}"
+# Killarney has NO cpu partition -- every partition is GPU -- and they are TIERED
+# BY WALLTIME, with shorter requests reaching far more nodes:
+#   b1  3h   168 l40s      b2  12h  126      b3  1d  84      b4  3d  42
+# So staying under 3h is the scheduling lever, not the partition name. Measured
+# from the smoke runs: one RealCause dataset 1m20s (five ~ 10 min) and one
+# case-study cell of 6 cases ~6 min (eight d ~ 50 min). Both fit 3h with room.
+RC_TIME="${RC_TIME:-3:00:00}"; CS_TIME="${CS_TIME:-3:00:00}"
 
 # name | MODEL_IDX | CKPT_ENV | checkpoint
 # MODEL_IDX indexes the inner MODELS array:

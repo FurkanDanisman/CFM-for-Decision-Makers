@@ -23,9 +23,13 @@ SB="$REPO/benchmarks/cluster/submit_full_table.sbatch"
 STAGES="${STAGES:-point raw malc indep}"
 RC_DS="${RC_DS:-IHDP ACIC CPS PSID PSID_bal}"
 SHIFTS="${SHIFTS:-0 +2 -2}"
-T="${SCORE_TIME:-6:00:00}"
-# SCORE_PARTITION: these jobs are CPU-only. Putting them on a CPU partition stops
-# them queueing behind GPU work and competing with the dump jobs.
+# Default 3h so scoring lands in the 3h tier (168 l40s nodes) rather than the 12h
+# tier (126). Raw/point/indep finish well inside that. MALC at B=1000 is the one
+# stage that may not, so run it as its own wave with SCORE_TIME=12:00:00 --
+# which is also what keeps partial results flowing: the cheap columns land first.
+T="${SCORE_TIME:-3:00:00}"
+# SCORE_PARTITION: there is no CPU partition on this cluster, so this normally
+# stays unset and the walltime tier does the work instead. Kept for portability.
 PART=""; [ -n "${SCORE_PARTITION:-}" ] && PART="--partition=$SCORE_PARTITION"
 
 # label | rc root | cs root
