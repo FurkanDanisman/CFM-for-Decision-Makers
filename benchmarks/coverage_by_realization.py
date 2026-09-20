@@ -220,6 +220,11 @@ def _save(path, acc):
     """Atomic: write a temp file and rename, so a killed job never leaves a
     half-written .npz that a collector would read as complete."""
     if not acc:
+        # Silence here made a scoring pass that produced NOTHING look like success:
+        # exit 0, no file, and the caller cannot tell it apart from a clean run.
+        print(f"[per-real] NOTHING TO WRITE for {path} -- every cell scored 0 "
+              f"realizations. The stage did not fail, it found no usable data.",
+              flush=True)
         return
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     tmp = path + ".tmp"

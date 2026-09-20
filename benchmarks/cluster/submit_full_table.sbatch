@@ -89,7 +89,34 @@ PT="$REPO/realcause_eval/point_raw_em.py"
 CD="$REPO/UWYK_Fig3_4/cate_density_metrics.py"
 CBR="$REPO/benchmarks/coverage_by_realization.py"
 FAILED=0
-run() { python -u "$@" >/dev/null 2>&1 || { echo "  ERROR: $*" >&2; FAILED=1; }; }
+# Two runners, because discarding output made a silent failure indistinguishable
+# from success. The old single runner did `>/dev/null 2>&1` INSIDE the function, so
+# an outer `> file.md` redirect captured nothing AND every python error message was
+# thrown away -- which is how a MALC stage that scored zero cells looked like a
+# clean run: it exits 0, and coverage_by_realization's _save() returns early on an
+# empty accumulator rather than writing a file.
+#
+#   run  CMD...        stdout+stderr to a per-stage log
+#   runo OUT CMD...    stdout to OUT (the table), stderr to OUT.err
+STAGELOG="${STAGELOG:-$PWD/logs_full_table/stage}"
+mkdir -p "$STAGELOG"
+_n=0
+run() {
+    _n=$((_n+1))
+    local lg="$STAGELOG/s${SLURM_JOB_ID:-0}_${_n}.log"
+    python -u "$@" > "$lg" 2>&1 \
+        || { echo "  ERROR (log: $lg): $*" >&2; FAILED=1; }
+}
+runo() {
+    _n=$((_n+1))
+    local out="$1"; shift
+    python -u "$@" > "$out" 2> "$out.err" \
+        || { echo "  ERROR (stderr: $out.err): $*" >&2; FAILED=1; }
+    # An empty table with a non-empty stderr is a failure the exit code missed.
+    if [ ! -s "$out" ] && [ -s "$out.err" ]; then
+        echo "  WARN empty output, stderr non-empty: $out.err" >&2; FAILED=1
+    fi
+}
 
 # ── RealCause ────────────────────────────────────────────────────────────────
 for R in "$RC_ROOT" "$ETA0_RC"; do
@@ -106,34 +133,30 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
         # pooled mean over all (realization, query) pairs. Pooling hid spreads
         # larger than the means themselves, so every CATE Cov/Len/IS number comes
         # from coverage_by_realization.
-        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
-            --dump-per-real "$PERREAL/$LABEL/raw__${ds}__-.npz" \
-            > "$R/cbr_${ds}_raw_cate.md"
+        runo "$R/cbr_${ds}_raw_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
+            --dump-per-real "$PERREAL/$LABEL/raw__${ds}__-.npz"
         echo "  raw $ds/ate"
         # ATE needs no per-realization treatment: one interval and one truth per
         # realization already, so the pooled mean IS the per-realization mean.
         run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother none \
             --out "$R/calib_${ds}_raw_ate.md" ;;
       malc)  echo "  MALC $ds/cate (per-realization, B=$MALC_B K=$MALC_K)"
-        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
+        runo "$R/cbr_${ds}_T_${TAG}_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
             --malc-workers "$NW" \
-            --dump-per-real "$PERREAL/$LABEL/malc__${ds}__-.npz" \
-            > "$R/cbr_${ds}_T_${TAG}_cate.md"
+            --dump-per-real "$PERREAL/$LABEL/malc__${ds}__-.npz"
         echo "  MALC $ds/ate"
         run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
             --malc-workers "$NW" --out "$R/calib_${ds}_T_${TAG}_ate.md" ;;
       indep) echo "  indep $ds/cate raw + MALC (RealCause only, 2D heads)"
-        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
+        runo "$R/cbr_${ds}_indep_raw_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
             --joint-coupling indep \
-            --dump-per-real "$PERREAL/$LABEL/indep_raw__${ds}__-.npz" \
-            > "$R/cbr_${ds}_indep_raw_cate.md"
-        run "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
+            --dump-per-real "$PERREAL/$LABEL/indep_raw__${ds}__-.npz"
+        runo "$R/cbr_${ds}_indep_T_${TAG}_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
             --malc-workers "$NW" --joint-coupling indep \
-            --dump-per-real "$PERREAL/$LABEL/indep_malc__${ds}__-.npz" \
-            > "$R/cbr_${ds}_indep_T_${TAG}_cate.md" ;;
+            --dump-per-real "$PERREAL/$LABEL/indep_malc__${ds}__-.npz" ;;
     esac; done
   done
 done
@@ -151,16 +174,14 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
       for S in $STAGES; do case "$S" in
         point) run "$PT" --root "$cell" --dataset "$c" --modes raw --ate-metric l1 \
                    --out-md "$cell/point_raw_em_${c}.md" ;;
-        raw)   run "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
-                   --dump-per-real "$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz" \
-                   > "$cell/cbr_raw_cate_${c}.md"
+        raw)   runo "$cell/cbr_raw_cate_${c}.md" "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
+                   --dump-per-real "$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz"
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother none --out "$cell/calib_raw_ate_${c}.md" ;;
-        malc)  run "$CBR" --root "$cell" --dataset "$c" --tau-smoother malc \
+        malc)  runo "$cell/cbr_T_${TAG}_cate_${c}.md" "$CBR" --root "$cell" --dataset "$c" --tau-smoother malc \
                    --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
                    --malc-workers "$NW" \
-                   --dump-per-real "$PERREAL/$LABEL/malc__${_d}_${c}__${_sh}.npz" \
-                   > "$cell/cbr_T_${TAG}_cate_${c}.md"
+                   --dump-per-real "$PERREAL/$LABEL/malc__${_d}_${c}__${_sh}.npz"
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
                    --n-tau "$N_TAU" --malc-workers "$NW" \
