@@ -374,6 +374,40 @@ def _inject_weights(reg):
               f'tensors, 0 unexpected)', flush=True)
 
 
+def _neutralise_criterion_mean(crit):
+    """Let predict_full run on 2-D logits.
+
+    predict_full unconditionally calls criterion.mean(logits) with the 1-D
+    criterion, which for a joint_2d head means 100 bucket-means against 113
+    logits:  "size mismatch, got input (75), mat (75x113), vec (100)".
+
+    We only need two things out of predict_full -- the raw logits and the borders
+    it RESCALED by data_std/data_mean -- so a width-mismatched mean is made to
+    return zeros rather than raise. Nothing consumes that value on the 2-D path:
+    the point estimate is computed from the joint itself. The patch is width-gated
+    and class-level, so a genuine 1-D call is untouched and it survives the
+    deepcopy predict_full makes of the criterion.
+    """
+    cls = type(crit)
+    if getattr(cls, '_j2d_mean_patched', False):
+        return
+    _orig_mean = cls.mean
+
+    def mean(self, logits, *args, **kwargs):
+        nb = getattr(self, 'borders', None)
+        n_bins = (int(nb.shape[0]) - 1) if nb is not None else None
+        w = int(logits.shape[-1])
+        if n_bins is not None and w != n_bins:
+            return torch.zeros(logits.shape[:-1], dtype=logits.dtype,
+                               device=logits.device)
+        return _orig_mean(self, logits, *args, **kwargs)
+
+    cls.mean = mean
+    cls._j2d_mean_patched = True
+    print(f'[dopfn_native][2d] neutralised {cls.__name__}.mean for '
+          f'width-mismatched logits', flush=True)
+
+
 def _predict_joint2d(model, X_test_full):
     """CATE and the joint density for a joint_2d head, inside DoPFN's own pipeline.
 
@@ -398,6 +432,10 @@ def _predict_joint2d(model, X_test_full):
     """
     if _unpack_pred_2d is None:
         raise SystemExit('joint_2d needs losses/BarDistribution2D.py on the path')
+    _crit = getattr(model, 'criterion', None) or getattr(
+        getattr(model, 'model_processed_', None), 'criterion', None)
+    if _crit is not None:
+        _neutralise_criterion_mean(_crit)
     Xq = X_test_full.copy()
     Xq[:, 0] = 0.0                                   # treatment zeroed for queries
     fq = model.predict_full(torch.from_numpy(Xq.astype(np.float32)))
