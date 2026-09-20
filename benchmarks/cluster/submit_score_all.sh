@@ -23,6 +23,9 @@ SB="$REPO/benchmarks/cluster/submit_full_table.sbatch"
 STAGES="${STAGES:-point raw malc indep}"
 RC_DS="${RC_DS:-IHDP ACIC CPS PSID PSID_bal}"
 SHIFTS="${SHIFTS:-0 +2 -2}"
+# CS_DS empty = one job per shift (fine for single-method roots). Set it to the d
+# list to split per (shift, d), which MALC needs on the multi-method root.
+CS_DS="${CS_DS:-}"
 # Default 3h so scoring lands in the 3h tier (168 l40s nodes) rather than the 12h
 # tier (126). Raw/point/indep finish well inside that. MALC at B=1000 is the one
 # stage that may not, so run it as its own wave with SCORE_TIME=12:00:00 --
@@ -68,12 +71,17 @@ for r in "${ROOTS[@]}"; do
     # Case studies: one job per shift.
     if [ -d "$cs" ]; then
         for sh in $SHIFTS; do
-            N=$((N+1))
-            if [ "$SUBMIT" = 1 ]; then
-                printf 'score %-10s cs/shift%-4s -> ' "$lbl" "$sh"
-                ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" STAGES="$STAGES" LABEL="$lbl" \
-                    sbatch --time="$T" $PART --job-name="sc-$lbl-cs$sh" "$SB"
-            else printf 'score %-10s cs/shift%s\n' "$lbl" "$sh"; fi
+            for dv in ${CS_DS:-ALL}; do
+                N=$((N+1))
+                _d=""; _t="cs$sh"
+                [ "$dv" != ALL ] && { _d="$dv"; _t="cs$sh-d$dv"; }
+                if [ "$SUBMIT" = 1 ]; then
+                    printf 'score %-10s %-14s -> ' "$lbl" "$_t"
+                    ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" CS_D="$_d" \
+                    STAGES="$STAGES" LABEL="$lbl" \
+                        sbatch --time="$T" $PART --job-name="sc-$lbl-$_t" "$SB"
+                else printf 'score %-10s %s\n' "$lbl" "$_t"; fi
+            done
         done
     else printf 'score %-10s cs  SKIP (no root)\n' "$lbl"; fi
 done
