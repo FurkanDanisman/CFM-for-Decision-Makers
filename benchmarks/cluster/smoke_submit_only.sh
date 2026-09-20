@@ -37,6 +37,10 @@ ROWS=(
   "dopfn_repro_joint2d|CKPT_DOPFN_BB|$CK/dopfn_repro_joint2d_bb.pt|5|10"
   "cpfn1d_j32|CKPT_CPFN1D|$CK/cpfn1d_j32_step50000.pt|20|34"
   "cpfn1d_botharms|CKPT_CPFN1D|$CK/cpfn1d_botharms_step50000.pt|20|34"
+  # cpfn_v0 is a symlink to warmstart/causalpfn_v0.pt (75.4 MB, J=1024).
+  # It was absent from this list, so ONLY=cpfn_v0 silently matched nothing
+  # and reported submitted=0.
+  "cpfn_v0|CKPT_CPFN1D|${CKPT_CPFN_V0:-$CK/cpfn_v0_original.pt}|20|34"
 )
 
 cd "$KIT" || exit 1
@@ -65,5 +69,9 @@ for r in "${ROWS[@]}"; do
     done
 done
 echo
+if [ "$OK" = 0 ] && [ "$BAD" = 0 ]; then
+    echo "NOTHING MATCHED. ONLY='${ONLY}' selected no row; known rows are:" >&2
+    for r in "${ROWS[@]}"; do echo "    ${r%%|*}" >&2; done
+fi
 echo "submitted=$OK  failed=$BAD"
 echo "watch:  squeue --me -o '%.10i %.18j %.8T %.10M %R'"
