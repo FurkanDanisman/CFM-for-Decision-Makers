@@ -15,10 +15,16 @@
 #   STAGES="point raw" bash ...   # skip MALC for a fast first table
 
 set -uo pipefail
+# Paths are DERIVED, not hardcoded, so this runs on any cluster: the script lives
+# at <kit>/R-PFN/benchmarks/cluster/, so the kit root is three levels up. SCRATCH
+# must be set by the environment -- guessing a per-cluster scratch path is how a
+# run silently writes to the wrong filesystem.
+_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_KIT_DEFAULT="$(cd "$_SELF_DIR/../../.." && pwd)"
 SUBMIT=0; [ "${1:-}" = "--submit" ] && SUBMIT=1
-KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
+KIT="${KIT:-$_KIT_DEFAULT}"
 REPO="${REPO:-$KIT/R-PFN}"
-SC="${SCRATCH:-/scratch/furkanbd}"
+SC="${SCRATCH:?SCRATCH must be set}"
 SB="$REPO/benchmarks/cluster/submit_full_table.sbatch"
 STAGES="${STAGES:-point raw malc indep}"
 RC_DS="${RC_DS:-IHDP ACIC CPS PSID PSID_bal}"

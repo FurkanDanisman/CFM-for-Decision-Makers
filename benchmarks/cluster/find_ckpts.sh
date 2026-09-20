@@ -13,7 +13,7 @@
 #   bash R-PFN/benchmarks/cluster/find_ckpts.sh
 
 set -uo pipefail
-SC="${SCRATCH:-/scratch/furkanbd}"
+SC="${SCRATCH:?SCRATCH must be set}"
 KIT="${KIT:-$SC/rpfn_bench_kit}"
 
 echo "##### 1. flat checkpoint dirs (is final_checkpoints really empty?)"

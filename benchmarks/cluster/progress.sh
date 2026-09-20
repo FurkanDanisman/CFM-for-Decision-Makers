@@ -18,7 +18,7 @@
 #   bash R-PFN/benchmarks/cluster/progress.sh
 
 set -uo pipefail
-SC="${SCRATCH:-/scratch/furkanbd}"
+SC="${SCRATCH:?SCRATCH must be set}"
 PERREAL="${PERREAL:-$SC/perreal}"
 RC_N=5; CS_N=144
 

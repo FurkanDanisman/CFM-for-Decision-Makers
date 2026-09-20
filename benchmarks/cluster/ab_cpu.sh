@@ -11,10 +11,16 @@
 #   bash R-PFN/benchmarks/cluster/ab_joint2d_yscaling.sh --compare
 
 set -uo pipefail
-KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
+# Paths are DERIVED, not hardcoded, so this runs on any cluster: the script lives
+# at <kit>/R-PFN/benchmarks/cluster/, so the kit root is three levels up. SCRATCH
+# must be set by the environment -- guessing a per-cluster scratch path is how a
+# run silently writes to the wrong filesystem.
+_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_KIT_DEFAULT="$(cd "$_SELF_DIR/../../.." && pwd)"
+KIT="${KIT:-$_KIT_DEFAULT}"
 REPO="${REPO:-$KIT/R-PFN}"
 CK="${CK:-$REPO/Required_checkpoints}"
-SC="${SCRATCH:-/scratch/furkanbd}"
+SC="${SCRATCH:?SCRATCH must be set}"
 AB="${AB:-$SC/ab_joint2d}"
 NT="${NTHREAD:-8}"
 export CUDA_VISIBLE_DEVICES=""
