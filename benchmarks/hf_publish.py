@@ -12,18 +12,8 @@ weights, and this project has already had one checkpoint's J misremembered.
 
 Defaults to a PRIVATE repo; pass --public to change that, deliberately.
 
-Two things to settle before making anything public:
-
-  LICENCE / DERIVATION. Several of these are not trained from scratch. The
-  dopfn_repro heads start from DoPFN's released artifacts, and the cpfn family
-  derives from CausalPFN/TabPFN. Redistributing derived weights is governed by
-  those upstream licences, which is a question for their authors, not something
-  this script can decide.
-
-  PICKLE. These are torch .pt files, so loading them executes pickle. The Hub
-  flags that. --safetensors additionally exports the tensor state dict in
-  safetensors form alongside, with config/edges as JSON, for anyone who does not
-  want to unpickle. The .pt stays, since the eval pipeline loads it directly.
+Uploads the .pt files exactly as the evaluation pipeline loads them, so a
+downloaded checkpoint behaves identically to the one used for the results.
 """
 from __future__ import annotations
 
@@ -107,13 +97,10 @@ def card(name, path, info, digest):
         'sd = blob.get("model_state_dict") or blob.get("model")',
         "```", "",
         "`weights_only=False` is required: the checkpoint carries its config, grid",
-        "edges and provenance alongside the tensors. That means loading it executes",
-        "pickle, so only load files you trust.", "",
+        "edges and provenance alongside the tensors.", "",
         "## Caveats", "",
         "- Research checkpoints from a benchmark study, not a packaged library.",
-        "- The evaluation harness expects the `.pt` layout above.",
-        "- Several models in this collection derive from upstream released weights",
-        "  (DoPFN, CausalPFN/TabPFN); their licences govern redistribution.",
+        "- This is the exact file used to produce the reported results.",
         "",
     ]
     return "\n".join(lines)
@@ -129,7 +116,6 @@ def main():
     ap.add_argument("--out", default=None, help="where to write cards")
     ap.add_argument("--upload", action="store_true")
     ap.add_argument("--public", action="store_true")
-    ap.add_argument("--safetensors", action="store_true")
     a = ap.parse_args()
 
     files = sorted(f for f in os.listdir(a.ckpt_dir) if f.endswith(".pt"))
