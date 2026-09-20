@@ -192,6 +192,7 @@ _IS_2D = False
 _CKPT_EDGES = None
 _J2D = None
 _REPRO_BORDERS = None
+_QUERY_T = 'nan'
 if _DOPFN_CKPT:
     _blob = torch.load(_DOPFN_CKPT, map_location='cpu', weights_only=False)
     _REPRO_SD = _blob.get('model', _blob.get('model_state_dict'))
@@ -217,8 +218,25 @@ if _DOPFN_CKPT:
         _CKPT_EDGES = np.asarray(_e.tolist() if hasattr(_e, 'tolist') else _e,
                                  dtype=np.float64)
         _J2D = _CKPT_EDGES.size - 1            # 11 edges -> J = 10
+        # WHICH value the treatment column takes on query rows is a TRAINING
+        # choice, not ours: batch.py sets x[sep:,:,0] to float('nan') for
+        # query_treatment='nan' (the default) or 0.0 for 'zero'. Feeding 0.0 to a
+        # model trained on nan says "T=0" where training said "T unknown", which
+        # biases every prediction. Read it from provenance instead of picking.
+        _bcfg = _prov.get('batch_cfg') if isinstance(_prov, dict) else None
+        _QT = None
+        if isinstance(_bcfg, dict):
+            _QT = _bcfg.get('query_treatment')
+        if _QT is None:
+            _QT = os.environ.get('DOPFN_QUERY_T', 'nan')
+            print(f'[dopfn_native][2d][WARN] provenance carries no '
+                  f'batch_cfg.query_treatment; falling back to {_QT!r}', flush=True)
+        if _QT not in ('nan', 'zero'):
+            raise SystemExit(f'unknown query_treatment {_QT!r} (expected nan|zero)')
+        _QUERY_T = _QT
         print(f'[dopfn_native] joint_2d: J={_J2D} edges=[{_CKPT_EDGES[0]:+.4f}, '
-              f'{_CKPT_EDGES[-1]:+.4f}] (training y-space)', flush=True)
+              f'{_CKPT_EDGES[-1]:+.4f}] (training y-space)  '
+              f'query_treatment={_QUERY_T!r}', flush=True)
     print(f'[dopfn_native] DOPFN_CKPT={_DOPFN_CKPT} step={_blob.get("step")} '
           f'variant={_variant} ({len(_REPRO_SD)} tensors)', flush=True)
 
@@ -451,7 +469,9 @@ def _predict_joint2d(model, X_test_full, y_train=None):
     if _crit is not None:
         _neutralise_criterion_summaries(_crit)
     Xq = X_test_full.copy()
-    Xq[:, 0] = 0.0                                   # treatment zeroed for queries
+    # Matches training: batch.py writes nan (default) or 0.0 into column 0 of the
+    # query rows, per batch_cfg.query_treatment recorded in the checkpoint.
+    Xq[:, 0] = float('nan') if _QUERY_T == 'nan' else 0.0
     fq = model.predict_full(torch.from_numpy(Xq.astype(np.float32)))
     logits = np.asarray(fq['logits'], dtype=np.float64)          # (N_q, J*J+13)
     J = int(_J2D)
