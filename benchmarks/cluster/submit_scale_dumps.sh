@@ -22,6 +22,11 @@ CK="${CK:-$REPO/Required_checkpoints}"
 SC="${SCRATCH:-/scratch/furkanbd}"
 SB="$REPO/benchmarks/cluster/submit_dump_one_model.sbatch"
 ONLY="${ONLY:-}"; WANT_BENCH="${BENCH:-both}"
+SKIP="${SKIP:-}"
+# Case studies are the pooling of shifts 0, +2 and -2, and the sbatch handles ONE
+# shift per job -- so a model needs three case-study jobs, not one. 24 cells in
+# the reference tree is 3 shifts x 8 d values, which is what this reproduces.
+SHIFTS="${SHIFTS:-0 +2 -2}"
 RC_TIME="${RC_TIME:-12:00:00}"; CS_TIME="${CS_TIME:-12:00:00}"
 
 # name | MODEL_IDX | CKPT_ENV | checkpoint
@@ -42,29 +47,34 @@ N=0
 for r in "${ROWS[@]}"; do
     IFS='|' read -r name idx envv ck <<<"$r"
     [ -n "$ONLY" ] && [ "$ONLY" != "$name" ] && continue
+    case " $SKIP " in *" $name "*) printf '%-22s SKIPPED (SKIP=)\n' "$name"; continue ;; esac
     if [ ! -f "$ck" ]; then printf '%-22s SKIP: no %s\n' "$name" "$ck"; continue; fi
     sz=$(stat -Lc%s "$ck" 2>/dev/null || echo 0)
     if [ "$sz" -lt 1000000 ]; then
         printf '%-22s SKIP: %s bytes -- git-lfs pointer, not weights\n' "$name" "$sz"; continue
     fi
+    UWYK_EXTRA_CONFIG=""; UWYK_EXTRA_ENC=""
+    if [ "$name" = uwyk_bin ]; then
+        UWYK_EXTRA_CONFIG="${UWYK_BIN_CONFIG:-$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml}"
+        UWYK_EXTRA_ENC="${UWYK_T_ENCODING:-binary}"
+    fi
     for b in rc cs; do
         [ "$WANT_BENCH" = both ] || [ "$WANT_BENCH" = "$b" ] || continue
-        [ "$b" = rc ] && T="$RC_TIME" || T="$CS_TIME"
-        N=$((N+1))
-        if [ "$SUBMIT" = 1 ]; then
-            printf '%-22s %s  -> ' "$name" "$b"
-            UWYK_EXTRA_CONFIG=""; UWYK_EXTRA_ENC=""
-            if [ "$name" = uwyk_bin ]; then
-                UWYK_EXTRA_CONFIG="${UWYK_BIN_CONFIG:-$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml}"
-                UWYK_EXTRA_ENC="${UWYK_T_ENCODING:-binary}"
+        if [ "$b" = rc ]; then T="$RC_TIME"; shift_list="-"; else T="$CS_TIME"; shift_list="$SHIFTS"; fi
+        for sh in $shift_list; do
+            N=$((N+1))
+            tag="$b"; [ "$sh" != "-" ] && tag="$b$sh"
+            if [ "$SUBMIT" = 1 ]; then
+                printf '%-22s %-6s -> ' "$name" "$tag"
+                MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT="$ck" \
+                BENCH="$b" OUT_ROOT="$SC/dumps_all/$name/$b" \
+                SHIFT="$([ "$sh" = "-" ] && echo 0 || echo "$sh")" \
+                CONFIG="$UWYK_EXTRA_CONFIG" UWYK_T_ENCODING="$UWYK_EXTRA_ENC" \
+                    sbatch --time="$T" --job-name="dump-$tag-$name" "$SB"
+            else
+                printf '%-22s %-6s (idx %s, %s, %s)\n' "$name" "$tag" "$idx" "$T" "$(basename "$ck")"
             fi
-            MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT="$ck" \
-            BENCH="$b" OUT_ROOT="$SC/dumps_all/$name/$b" SHIFT=0 \
-            CONFIG="$UWYK_EXTRA_CONFIG" UWYK_T_ENCODING="$UWYK_EXTRA_ENC" \
-                sbatch --time="$T" --job-name="dump-$b-$name" "$SB"
-        else
-            printf '%-22s %s  (idx %s, %s, %s)\n' "$name" "$b" "$idx" "$T" "$(basename "$ck")"
-        fi
+        done
     done
 done
 echo
