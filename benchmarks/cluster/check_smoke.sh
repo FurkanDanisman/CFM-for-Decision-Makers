@@ -84,7 +84,12 @@ echo "point estimates (RealCause/IHDP), one root per model:"
 for d in "$SMOKE"/*; do
     [ -d "$d/rc" ] || continue
     printf '  %-22s ' "$(basename "$d")"
-    python -u "$PT" --root "$d/rc" --dataset IHDP --modes raw 2>&1 \
-        | grep -iE '^\|' | grep -viE 'method|:---' | head -2 | tr '\n' ' ' || echo "(none)"
     echo
+    # Drop the separator by its real shape: it is |---|---|---| with no colons,
+    # so a ':---' filter let it through and it consumed one of the two lines
+    # printed -- which is why only uwyk1d-noanc appeared and uwyk1d-v3a looked
+    # like it had errored. Print every model row instead of the first two lines.
+    python -u "$PT" --root "$d/rc" --dataset IHDP --modes raw 2>&1 \
+        | grep -E '^\|' | grep -viE '^\| *method|^\|[- :|]*$' \
+        | sed 's/^/        /' || echo "        (none)" 
 done
