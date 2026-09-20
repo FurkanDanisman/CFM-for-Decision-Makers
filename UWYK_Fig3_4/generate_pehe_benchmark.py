@@ -124,14 +124,14 @@ from pehe_metrics import NULL_EFFECT_REGIMES, REGIMES  # noqa: E402,F401
 
 
 REJECT_TALLY = {
-    "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0, "no_het": 0,
+    "seen": 0, "accepted": 0, "saturation": 0, "ate_ratio": 0, "no_het": 0, "hi_het": 0,
     "pinned_vals": [], "ratio_vals": [], "accepted_pinned": [], "abs_vals": [],
     "tau_cv": [], "tau_rel": [], "tau_sd": [], "acc_tau_rel": [],
 }
 
 
 def _reset_tally():
-    REJECT_TALLY.update(seen=0, accepted=0, saturation=0, ate_ratio=0, no_het=0)
+    REJECT_TALLY.update(seen=0, accepted=0, saturation=0, ate_ratio=0, no_het=0, hi_het=0)
     REJECT_TALLY["pinned_vals"] = []
     REJECT_TALLY["ratio_vals"] = []
     REJECT_TALLY["accepted_pinned"] = []
@@ -169,7 +169,7 @@ def _tally_line():
     q = np.quantile(pv, [0.5, 0.9, 0.99]) if pv.size else [float("nan")] * 3
     ap = np.asarray(t["accepted_pinned"], dtype=float)
     return ("  [filter] seen={seen} accepted={acc} rejected_pinned={sat} "
-            "rejected_ratio={rat} rejected_no_het={nh}\n"
+            "rejected_ratio={rat} rejected_no_het={nh} rejected_hi_het={hh}\n"
             "  [filter] pinned  p50={p50:.4f} p90={p90:.4f} p99={p99:.4f} "
             "max={mx:.4f}   accepted_max={amx:.4f}\n"
             "  [filter] pinned_abs (frac |y|>1-eps, only meaningful if y is "
@@ -184,7 +184,7 @@ def _tally_line():
             "  [filter] ACCEPTED sd(tau)/sd(y0)  min={am:.4g} p10={ap10:.4g} "
             "p50={ap50:.4g}   (must all clear --min-tau-het)").format(
         seen=t["seen"], acc=t["accepted"], sat=t["saturation"], rat=t["ate_ratio"],
-        nh=t["no_het"],
+        nh=t["no_het"], hh=t["hi_het"],
         p50=q[0], p90=q[1], p99=q[2],
         mx=float(pv.max()) if pv.size else float("nan"),
         amx=float(ap.max()) if ap.size else float("nan"),
@@ -357,6 +357,7 @@ def generate_realization(
     # Defaults are permissive (no rejection) so existing behaviour is unchanged.
     max_pinned: float = 1.0,
     min_tau_het: float = 0.0,
+    max_tau_het: float = float('inf'),
     max_ate_sd_ratio: float = float("inf"),
     sat_eps: float = 1e-3,
     n_test_override: int | None = None,
@@ -532,8 +533,25 @@ def generate_realization(
         # benchmark produced. The mass sits AT zero rather than spread out (39
         # below 0.01 against 48 below 0.20), so a small threshold removes the
         # degenerate spike without trimming healthy realizations.
+        # BAND, not a floor. Per-realization coverage behaves like
+        #     cov_i ~= 2*Phi(h / sigma_i) - 1
+        # with h the model's interval half-width, so a realization at half the
+        # median spread already reads 0.9999 and one at 4x reads 0.68. Measured on
+        # this prior, sigma/sd(y0) spans 1.5e13 unfiltered, and 73% of realizations
+        # land as near-total-cover or near-total-miss. A floor alone leaves 43% of
+        # them at >0.99, because the high tail is as damaging as the zeros.
+        #
+        # The band's job is NOT to make coverage stable -- only a model that adapts
+        # its width per realization can do that, which is exactly what a calibrated
+        # conditional density should do. It is to remove the PATHOLOGICAL cases:
+        # sigma = 0, where every query shares one truth and coverage is 0 or 1 by
+        # construction, and the extreme tail. What remains is attributable to the
+        # models rather than to the data.
         if _tau_rel < min_tau_het:
             REJECT_TALLY["no_het"] += 1
+            continue
+        if _tau_rel > max_tau_het:
+            REJECT_TALLY["hi_het"] += 1
             continue
         if _ratio > max_ate_sd_ratio:
             REJECT_TALLY["ate_ratio"] += 1
@@ -706,6 +724,7 @@ def run_sweep(args) -> dict:
                             test_feature_mask_fraction=args.test_feature_mask_fraction,
                             max_pinned=args.max_pinned,
                             min_tau_het=args.min_tau_het,
+                            max_tau_het=args.max_tau_het,
                             max_ate_sd_ratio=args.max_ate_sd_ratio,
                             n_test_override=args.n_test,
                         )
@@ -729,6 +748,20 @@ def run_sweep(args) -> dict:
                 }
                 manifest["cells"].append(cell)
                 print(_tally_line(), flush=True)
+                if os.environ.get("CMECH_DUMP_TALLY"):
+                    # Raw per-attempt values, so a threshold or band can be chosen
+                    # offline against the real prior instead of from quantiles.
+                    _tp = os.path.join(
+                        args.out_dir,
+                        f"tally_{regime}_n{n_nodes}_h{hide}.npz")
+                    os.makedirs(args.out_dir, exist_ok=True)
+                    np.savez(_tp,
+                             tau_rel=np.asarray(REJECT_TALLY["tau_rel"], dtype=float),
+                             tau_cv=np.asarray(REJECT_TALLY["tau_cv"], dtype=float),
+                             tau_sd=np.asarray(REJECT_TALLY["tau_sd"], dtype=float),
+                             pinned=np.asarray(REJECT_TALLY["pinned_vals"], dtype=float),
+                             ratio=np.asarray(REJECT_TALLY["ratio_vals"], dtype=float))
+                    print(f"  [filter] tally -> {_tp}", flush=True)
                 print(f"[done] {regime} n={n_nodes} hide={hide}: {n_ok} ok / "
                       f"{n_fail} fail, {descendant_free} descendant-free, {dt:.0f}s",
                       flush=True)
@@ -832,6 +865,12 @@ def main() -> None:
                         "Guards against tau being CONSTANT across units, which makes "
                         "per-realization coverage necessarily 0 or 1. Measured on "
                         "complexmech: 39%% of n=5 realizations are below 0.01.")
+    p.add_argument("--max-tau-het", type=float, default=float("inf"),
+                   help="reject when sd(tau)/sd(y0) EXCEEDS this. Pairs with "
+                        "--min-tau-het to bound the dynamic range of tau's spread. "
+                        "Unfiltered that range is 1.5e13 on complexmech, and the "
+                        "extreme tail forces coverage to 0 just as the zeros force "
+                        "it to 1. See benchmarks/cmech_band_analysis.py.")
     p.add_argument("--max-ate-sd-ratio", type=float, default=float("inf"),
                    help="reject when |ATE| / sd(Y_do0) exceeds this -- an effect "
                         "larger than a couple of times the outcome's own spread "
