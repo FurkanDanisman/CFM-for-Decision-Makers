@@ -189,7 +189,16 @@ def main():
     _acc: dict = {}
     for label, tag, files in cells(a):
         per = {k: [] for k in _KEYS}
-        for f in files:
+        # Progress, because a MALC cell is minutes of silence otherwise and there is
+        # no way to tell slow from hung.
+        _loud = a.tau_smoother == "malc"
+        if _loud:
+            print(f"  [{label}] {len(files)} realization file(s) ...",
+                  end="", flush=True)
+        for _fi, f in enumerate(files):
+            if _loud:
+                print(f"\r  [{label}] realization {_fi + 1}/{len(files)}"
+                      f"{' ' * 20}", end="", flush=True)
             got = score_file(f, a.tag if a.tag is not None else tag,
                              a.coupling, a.joint_coupling)
             if not got:
@@ -198,6 +207,8 @@ def main():
                 v = [g[k] for g in got if g.get(k) is not None]
                 if v:
                     per[k].append(float(np.mean(v)))
+        if _loud:
+            print(f"\r  [{label}] done{' ' * 40}", flush=True)
         n = len(per["cover"])
         if not n:
             print(f"{label:17s} {'—':>6s} | (no dumps)")
