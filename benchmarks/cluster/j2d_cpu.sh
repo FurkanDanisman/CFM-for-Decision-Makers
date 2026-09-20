@@ -49,7 +49,7 @@ echo "npz written: $n   (full log: $OUT/run.log)"
 source "$KIT/venv/bin/activate"
 echo
 echo "--- point estimate"
-python -u "$REPO/realcause_eval/point_raw_em.py" --root "$OUT" --dataset IHDP --modes raw 2>&1 \
+python -u "$REPO/realcause_eval/point_raw_em.py" --root "$OUT" --dataset IHDP --modes raw --ate-metric rel 2>&1 \
   | grep -E '^\|' | grep -viE '^\| *method|^\|[- :|]*$'
 echo
 echo "--- calibration (raw)"

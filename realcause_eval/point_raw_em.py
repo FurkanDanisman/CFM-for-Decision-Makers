@@ -152,6 +152,10 @@ def _files_in(cell_dir):
     return files
 
 
+_ATE_METRIC = "l1"          # set from --ate-metric in main()
+_ATE_LABEL = "L1_ATE"
+
+
 def run_cell(cell_dirs, tag, mode, max_real=None):
     """PEHE / eps_ATE over one or more cell dirs treated as ONE query set.
 
@@ -192,7 +196,18 @@ def run_cell(cell_dirs, tag, mode, max_real=None):
         if tau.size == 0 or not np.isfinite(tau).all():
             continue
         pehe.append(float(np.sqrt(np.mean((tau - truth) ** 2))))
-        eps_ate.append(float(abs(tau.mean() - truth.mean())))
+        # L1 vs RELATIVE. This column has been labelled eps_ATE while computing
+        # plain |dATE|, whereas eval_dopfn_bb_raw.py divides by
+        # max(|ATE_true|, 0.1) -- so numbers from the two scripts were not
+        # comparable. RealCause reports the relative eps_ATE; the other two
+        # benchmarks report L1. Default follows --ate-metric, and the header says
+        # which one was used.
+        _d = float(abs(tau.mean() - truth.mean()))
+        if _ATE_METRIC == "rel":
+            # Floor at 0.1, matching eval_dopfn_bb_raw, so a near-zero true ATE
+            # cannot turn a small absolute error into an enormous ratio.
+            _d /= max(abs(float(truth.mean())), 0.1)
+        eps_ate.append(_d)
         n_ok += 1
     if not n_ok:
         return None
@@ -212,9 +227,16 @@ def main():
     ap.add_argument("--methods", nargs="+", default=None,
                     help="subset of the cate_density_metrics METHODS names")
     ap.add_argument("--modes", nargs="+", default=["raw", "em"], choices=["raw", "em"])
+    ap.add_argument("--ate-metric", default="rel", choices=["rel", "l1"],
+
+                    help="rel = |dATE| / max(|ATE_true|, 0.1), the RealCause convention and what eval_dopfn_bb_raw reports; l1 = plain |dATE|, used for ComplexMech and the case studies.")
+
     ap.add_argument("--max-real", type=int, default=None)
     ap.add_argument("--out-md", default=None)
     args = ap.parse_args()
+    global _ATE_METRIC, _ATE_LABEL
+    _ATE_METRIC = args.ate_metric
+    _ATE_LABEL = "eps_ATE" if args.ate_metric == "rel" else "L1_ATE"
 
     todo = [m for m in METHODS if args.methods is None or m[0] in args.methods]
     lines = [f"### Point estimates — {' + '.join(args.dataset)} (no MALC)", "",
@@ -223,7 +245,7 @@ def main():
              "is the deconvolution mean (`_em_mean_1d`). Mean +- SE over realizations.",
              ""]
     head = "| method | n | " + " | ".join(
-        f"PEHE ({m}) | eps_ATE ({m})" for m in args.modes) + " |"
+        f"PEHE ({m}) | {_ATE_LABEL} ({m})" for m in args.modes) + " |"
     lines += [head, "|" + "---|" * (2 + 2 * len(args.modes))]
 
     for name, subdir, tag in todo:

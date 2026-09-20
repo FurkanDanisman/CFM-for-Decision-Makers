@@ -98,7 +98,8 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
   for ds in $RC_DATASETS; do
     for S in $STAGES; do case "$S" in
       point) echo "  point $ds"
-        run "$PT" --root "$R" --dataset "$ds" --modes raw \
+        # RealCause reports the RELATIVE eps_ATE; the case studies report L1.
+        run "$PT" --root "$R" --dataset "$ds" --modes raw --ate-metric rel \
             --out-md "$R/point_raw_em_${ds}.md" ;;
       raw)   echo "  raw $ds/cate (per-realization)"
         # CATE coverage is the MEAN OF PER-REALIZATION COVERAGES +- sd, not the
@@ -148,7 +149,7 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
     _rel="${cell#$R/}"; _sh="${_rel%%/*}"; _d="${_rel#*/}"; _d="${_d%%/*}"
     for c in $CS_CASES; do
       for S in $STAGES; do case "$S" in
-        point) run "$PT" --root "$cell" --dataset "$c" --modes raw \
+        point) run "$PT" --root "$cell" --dataset "$c" --modes raw --ate-metric l1 \
                    --out-md "$cell/point_raw_em_${c}.md" ;;
         raw)   run "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
                    --dump-per-real "$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz" \
