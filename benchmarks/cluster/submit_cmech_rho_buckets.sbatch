@@ -2,7 +2,7 @@
 #SBATCH --job-name=cm-rho
 #SBATCH --output=logs_cmech_rho/rho_%j.out
 #SBATCH --error=logs_cmech_rho/rho_%j.err
-#SBATCH --time=3:00:00
+#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
 #
@@ -42,6 +42,11 @@ CTX="${CTX:-1000}"
 NODES="${CM_NODES:-5 10 20 30 40 50}"
 THRESHOLDS="${THRESHOLDS:-0.8 0.9}"
 OUT="${OUT:-$SCRATCH/cmech_rho_buckets.md}"
+# TAU_SMOOTHER=malc runs the MALC variant instead of raw. MALC is far slower,
+# so it gets the whole allocation as workers and a longer default walltime.
+TAU_SMOOTHER="${TAU_SMOOTHER:-none}"
+MALC_B="${MALC_B:-1000}"; MALC_K="${MALC_K:-1}"; N_TAU="${N_TAU:-4001}"
+NW="${MALC_WORKERS:-${SLURM_CPUS_PER_TASK:-32}}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
@@ -65,10 +70,15 @@ fi
 echo "[$(date '+%F %T')] ${#ROOT_ARR[@]} root(s), nodes=$NODES, ctx=$CTX"
 echo "  data=$UWYK_FIG34_DATA"
 echo "  out=$OUT"
+echo "  variant=$TAU_SMOOTHER"
 
 EXTRA=()
 [ -n "${METHODS:-}" ] && { read -r -a _m <<<"$METHODS"; EXTRA+=(--methods "${_m[@]}"); }
 [ -n "${MAX_REAL:-}" ] && EXTRA+=(--max-real "$MAX_REAL")
+if [ "$TAU_SMOOTHER" = malc ]; then
+    EXTRA+=(--tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K"
+            --n-tau "$N_TAU" --malc-workers "$NW")
+fi
 
 python -u "$REPO/benchmarks/cmech_coverage_by_rho.py" \
     --root "${ROOT_ARR[@]}" \

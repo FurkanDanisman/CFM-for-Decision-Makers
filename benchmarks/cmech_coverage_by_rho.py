@@ -45,7 +45,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
-from cate_density_metrics import (METHODS, score_file, _resolve_dir)   # noqa: E402
+from cate_density_metrics import (METHODS, score_file, _resolve_dir,     # noqa: E402
+                                  _configure_tau_smoother)
 from uwyk_fig34_dataset import UWYKFig34Dataset                        # noqa: E402
 
 
@@ -106,11 +107,31 @@ def main():
     ap.add_argument("--coupling", default="indep")
     ap.add_argument("--joint-coupling", default="learned")
     ap.add_argument("--max-real", type=int, default=0, help="0 = all")
+    # MALC, configured exactly as coverage_by_realization does so a bucketed
+    # number is the same quantity the main tables report.
+    ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none")
+    ap.add_argument("--malc-B", type=int, default=1000)
+    ap.add_argument("--malc-K", type=int, default=1)
+    ap.add_argument("--malc-seed", type=int, default=20180621)
+    ap.add_argument("--n-tau", type=int, default=4001)
+    ap.add_argument("--malc-workers", type=int, default=1)
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
+    if a.tau_smoother == "malc":
+        from tau_smoother import SmootherConfig
+        cfg = SmootherConfig(enabled=True, B=a.malc_B, K=a.malc_K,
+                             seed=a.malc_seed, n_tau=a.n_tau,
+                             n_workers=a.malc_workers)
+        _configure_tau_smoother(cfg)
+        print(f"[tau-smoother] MALC-1D ACTIVE  {cfg}", flush=True)
+    else:
+        _configure_tau_smoother(None)
+
     ths = sorted(a.thresholds)
-    L = ["## ComplexMech coverage vs arm-noise correlation", "",
+    variant = ("MALC B=%d K=%d" % (a.malc_B, a.malc_K)
+               if a.tau_smoother == "malc" else "raw")
+    L = [f"## ComplexMech coverage vs arm-noise correlation  ({variant})", "",
          "| model | n | realizations | Cov (all) | Len (all) "
          + "".join(f"| N(rho>{t}) | Cov (rho>{t}) | Len (rho>{t}) " for t in ths)
          + f"| N(rho<={ths[0]}) | Cov (rho<={ths[0]}) | corr(cov, rho) |",
@@ -147,6 +168,10 @@ def main():
                              if os.path.basename(f) != "summary.npz"]
                     if a.max_real:
                         files = files[: a.max_real]
+                    if a.tau_smoother == "malc":
+                        print(f"  [{os.path.basename(root.rstrip('/'))}/{label} "
+                              f"n={n} {sub}] {len(files)} realization(s) ...",
+                              flush=True)
                     for f in files:
                         m = re.search(r"r(\d+)", os.path.basename(f))
                         if not m:
