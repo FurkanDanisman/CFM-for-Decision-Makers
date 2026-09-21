@@ -31,6 +31,11 @@ TIME="${DUMP_TIME:-3:00:00}"
 # (232), a5000 and t4 are smaller and often quicker to schedule for a single-GPU
 # inference job like this.
 GRES="${GRES:-gpu:h100:1}"
+# Memory and cores must be overridable per GPU type: the sbatch asks for 64G, which
+# exceeds what a t4 node offers, and slurm reports that as "Requested node
+# configuration is not available" rather than as a memory problem.
+MEM="${MEM:-32G}"
+CPUS="${CPUS:-8}"
 ONLY="${ONLY:-}"
 SB="$REPO/benchmarks/cluster/submit_cmech_dump_one.sbatch"
 
@@ -83,7 +88,7 @@ for r in "${ROWS[@]}"; do
         env MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT_PATH="$ck" \
             EXTRA_ENV="$extra" OUT_ROOT="$SC/cmech_dumps/$name" \
             UWYK_FIG34_DATA="$DATA" \
-            sbatch --time="$TIME" --gres="$GRES" \
+            sbatch --time="$TIME" --gres="$GRES" --mem="$MEM" --cpus-per-task="$CPUS" \
                    ${ACCT:+--account=$ACCT} ${PART:+--partition=$PART} \
                    --job-name="cm-$name" "$SB"
     else

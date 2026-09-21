@@ -35,6 +35,14 @@ import numpy as np
 _KEYS = ("cover", "length", "is05", "crps")
 RC_DS = ["IHDP", "ACIC", "CPS", "PSID", "PSID_bal"]
 
+# Released upstream weights, not this project's models. Marked so a reader cannot
+# mistake a baseline for a contribution.
+RELEASED = {"dopfn_native", "dopfn_bb"}
+
+# Case-study d values to report. d=2 and d=3 are dropped by default: they exist in
+# the dumps but are not part of the reported sweep.
+CS_D_DEFAULT = ["5", "10", "20", "30", "40", "50"]
+
 # label | realcause dump root | case-study dump root | single-model name or None
 ROOTS = [
     ("orig",     "rc_dens_uni",                   "cs_dvar_dens",                   None),
@@ -74,10 +82,19 @@ def parse_point(path):
     return out
 
 
-def load_perreal(perreal, label, stage, pattern):
-    """-> {method: {key: [arrays]}} for one stage, over files matching pattern."""
+def load_perreal(perreal, label, stage, pattern, keep_d=None):
+    """-> {method: {key: [arrays]}} for one stage, over files matching pattern.
+
+    keep_d restricts case-study files to those d values. File names carry the
+    reporting group as d<D>_<Case>, so the d is read from the name rather than
+    inferred from a directory.
+    """
     acc = defaultdict(lambda: defaultdict(list))
     for f in sorted(glob.glob(os.path.join(perreal, label, f"{stage}__{pattern}.npz"))):
+        if keep_d is not None:
+            m = re.match(r"^[a-z_]+__d(\d+)_", os.path.basename(f))
+            if m and m.group(1) not in keep_d:
+                continue
         try:
             z = np.load(f)
         except Exception:
@@ -120,8 +137,11 @@ def main():
     ap.add_argument("--scratch", default=os.environ.get("SCRATCH", ""))
     ap.add_argument("--out", default=None)
     ap.add_argument("--malc-tag", default="malc")
+    ap.add_argument("--cs-d", nargs="+", default=CS_D_DEFAULT,
+                    help="case-study d values to report (default drops d=2 and d=3)")
     a = ap.parse_args()
     SC = a.scratch or os.path.dirname(a.perreal.rstrip("/"))
+    keep_d = [str(x) for x in a.cs_d]
     L = []
 
     def emit(s=""):
@@ -150,18 +170,16 @@ def main():
                 rows.append((display_name(label, meth, single), n, pehe, ate, r, m, i, im))
         if not rows:
             continue
-        emit(f"\n## RealCause — {ds}\n")
-        emit("| model | n | PEHE | eps_ATE | Cov | Len | IS | Cov-MALC | Len-MALC "
-             "| IS-MALC | Cov-indep | Len-indep | IS-indep "
-             "| Cov-indepMALC | Len-indepMALC | IS-indepMALC |")
-        emit("|" + "---|" * 16)
+        emit(f"\n## RealCause — {ds}   (eps_ATE is RELATIVE)\n")
+        emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) "
+             "| Cov (MALC) | Len (MALC) |")
+        emit("|" + "---|" * 8)
         for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
-            emit(f"| {nm} | {n if n else '—'} | "
+            tag = " *(released)*" if nm in RELEASED else ""
+            emit(f"| {nm}{tag} | {n if n else '—'} | "
                  f"{pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} | "
-                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | {fmt(i['is05'], 4)} | "
-                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} | {fmt(im['is05'], 4)} |")
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} |")
 
     # ── Case study: pooled over shifts, d and cases ─────────────────────────
     rows = []
@@ -170,6 +188,9 @@ def main():
         per_method = defaultdict(lambda: {"pehe2": [], "ate": [], "n": 0, "cells": 0})
         for f in glob.glob(os.path.join(SC, cs, "shift*", "d*", "ctx*",
                                         "point_raw_em_*.md")):
+            dm = re.search(r"/d(\d+)/", f)
+            if dm and dm.group(1) not in keep_d:
+                continue
             for meth, (n, pehe, ate) in parse_point(f).items():
                 d = per_method[meth]
                 if np.isfinite(pehe):
@@ -178,8 +199,8 @@ def main():
                     d["ate"].append(ate)
                 d["n"] += n
                 d["cells"] += 1
-        raw = load_perreal(a.perreal, label, "raw", "*__shift*")
-        mal = load_perreal(a.perreal, label, a.malc_tag, "*__shift*")
+        raw = load_perreal(a.perreal, label, "raw", "*__shift*", keep_d)
+        mal = load_perreal(a.perreal, label, a.malc_tag, "*__shift*", keep_d)
         methods = sorted(set(per_method) | set(raw) | set(mal))
         for meth in methods:
             d = per_method.get(meth)
@@ -192,23 +213,25 @@ def main():
                 continue
             rows.append((display_name(label, meth, single), cells, pehe, ate, r, m))
     if rows:
-        emit("\n## Case study — pooled over shifts 0/+2/-2, all d, all cases\n")
-        emit("| model | cells | PEHE (rms) | L1_ATE | Cov | Len | IS | Cov-MALC "
-             "| Len-MALC | IS-MALC |")
-        emit("|" + "---|" * 10)
+        emit(f"\n## Case study — pooled over shifts 0/+2/-2, all cases, "
+             f"d in {{{', '.join(keep_d)}}}   (L1_ATE is ABSOLUTE)\n")
+        emit("| model | cells | PEHE (rms) | L1_ATE | Cov (raw) | Len (raw) "
+             "| Cov (MALC) | Len (MALC) |")
+        emit("|" + "---|" * 8)
         for nm, cells, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
-            emit(f"| {nm} | {cells} | {pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+            tag = " *(released)*" if nm in RELEASED else ""
+            emit(f"| {nm}{tag} | {cells} | {pehe:.4f} | {ate:.4f} | "
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} |")
 
     emit("\n---\n")
     emit("Cov/Len/IS pool per-realization arrays by concatenation, so how the work")
     emit("was split across jobs does not change the number. PEHE pools as an RMS")
     emit("across cells because PEHE is itself an RMSE; ATE error pools as a mean.")
     emit("RealCause reports RELATIVE eps_ATE, the case studies absolute L1_ATE.")
-    emit("Cov-indep / Cov-indepMALC are the forced-independent ablation, raw and")
-    emit("MALC: RealCause only, and meaningful only for 2D heads -- a 1D head has no")
-    emit("joint to discard, so its indep columns just restate the raw ones.")
+    emit("Models marked *(released)* are upstream DoPFN weights, not this project's.")
+    emit("The forced-independent ablation is computed but not shown here; it is a")
+    emit("RealCause-only 2D diagnostic rather than a headline result.")
     emit("A dash means that stage has not been scored yet.")
 
     txt = "\n".join(L)
