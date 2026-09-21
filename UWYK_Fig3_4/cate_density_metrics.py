@@ -606,12 +606,25 @@ _SUBDIR_ALIASES = {
 }
 
 
+# Leaf (dataset-dir) aliases. dopfn_bb handles the Do-PFN semi-real sets natively
+# and is therefore given the BARE name, so it writes .../sales/ while every other
+# model writes .../SEMIREAL_sales/. Same class of divergence as PSIDbal vs PSID_bal,
+# and the same fix: try both spellings rather than let one silently resolve to
+# nothing.
+_LEAF_ALIASES = {
+    "SEMIREAL_sales": ("SEMIREAL_sales", "sales"),
+    "SEMIREAL_law_race": ("SEMIREAL_law_race", "law_race"),
+    "PSID_bal": ("PSID_bal", "PSIDbal"),
+}
+
+
 def _resolve_dir(root, subdir, leaf):
-    """First existing <root>/<alias>/<leaf>, else the canonical path."""
+    """First existing <root>/<subdir alias>/<leaf alias>, else the canonical path."""
     for alt in _SUBDIR_ALIASES.get(subdir, (subdir,)):
-        d = os.path.join(root, alt, leaf)
-        if os.path.isdir(d):
-            return d
+        for lf in _LEAF_ALIASES.get(leaf, (leaf,)):
+            d = os.path.join(root, alt, lf)
+            if os.path.isdir(d):
+                return d
     return os.path.join(root, subdir, leaf)
 
 
