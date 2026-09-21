@@ -87,6 +87,50 @@ for r in "${ROOTS[@]}"; do
       "$(pct "$c_pt" "$CS_N")" "$(pct "$c_raw" "$CS_N")" "$(pct "$c_mal" "$CS_N")" "$nd"
 done
 
+# ── ComplexMech ─────────────────────────────────────────────────────────────
+# Dumps only: the scoring side is not wired yet (submit_cmech_density_score still
+# points at the old data root and has no per-model driver), so there is no coverage
+# column to report here rather than a zero that would look like pending work.
+CMECH="${CMECH_DUMPS:-$SC/cmech_dumps}"
+if [ -d "$CMECH" ]; then
+    CM_NODES="${CM_NODES:-5 10 20 30 40 50}"
+    CM_CELLS=0
+    for n in $CM_NODES; do CM_CELLS=$((CM_CELLS+2)); done   # nonzero + zero
+    echo
+    echo "=== ComplexMech  (denominator: $CM_CELLS cells = 6 node counts x 2 subsets, N=1000)"
+    printf '%-22s %-12s %-10s %s\n' MODEL CELLS NPZ NOTE
+    printf '%.0s-' {1..62}; echo
+    for d in "$CMECH"/*; do
+        [ -d "$d" ] || continue
+        c=0; nz=0
+        for n in $CM_NODES; do
+            for sub in nonzero zero; do
+                k=$(find "$d" -type d -name "CMECH_n${n}_${sub}" 2>/dev/null \
+                    -exec find {} -name '*.npz' \; 2>/dev/null | wc -l | tr -d ' ')
+                [ "$k" -gt 0 ] && { c=$((c+1)); nz=$((nz+k)); }
+            done
+        done
+        note=""; [ "$c" -lt "$CM_CELLS" ] && note="incomplete"
+        printf '%-22s %-12s %-10s %s\n' "$(basename "$d")" "$c/$CM_CELLS" "$nz" "$note"
+    done
+    echo "  scoring not wired yet -- dumps only"
+fi
+
+# ── Do-PFN semi-real (sales, law_race) ──────────────────────────────────────
+SR="${SEMIREAL_DUMPS:-$SC/semireal_dumps}"
+if [ -d "$SR" ]; then
+    echo
+    echo "=== Semi-real  (5 splits per dataset -- small n, state it when reporting)"
+    printf '%-22s %-10s %-10s %s\n' MODEL SALES LAW_RACE NPZ
+    printf '%.0s-' {1..56}; echo
+    for d in "$SR"/*; do
+        [ -d "$d" ] || continue
+        a=$(find "$d" -path '*SEMIREAL_sales*' -name '*.npz' 2>/dev/null | wc -l | tr -d ' ')
+        b=$(find "$d" -path '*SEMIREAL_law_race*' -name '*.npz' 2>/dev/null | wc -l | tr -d ' ')
+        printf '%-22s %-10s %-10s %s\n' "$(basename "$d")" "$a/5" "$b/5" "$((a+b))"
+    done
+fi
+
 echo
 echo "models per root:"
 for r in "${ROOTS[@]}"; do
