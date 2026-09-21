@@ -81,18 +81,37 @@ export UWYK_FIG34_DATA="${UWYK_FIG34_DATA:-$REPO/UWYK_Fig3_4/data}"
     echo "FATAL: no benchmark data at $UWYK_FIG34_DATA/complexmech" >&2
     echo "       run UWYK_Fig3_4/generate_pehe_benchmark.py first (see header)" >&2
     exit 1; }
+# The regenerated benchmark carries a manifest recording the validity band. Its
+# absence means this is the OLD, unfiltered data -- where ~13% of realizations have
+# tau constant across units and per-realization coverage is 0 or 1 by construction.
+# Scoring that silently is the failure this check exists to prevent.
+if [ ! -f "$UWYK_FIG34_DATA/manifest_complexmech.json" ]; then
+    echo "WARN: no manifest_complexmech.json under $UWYK_FIG34_DATA" >&2
+    echo "      this may be the PRE-FILTER benchmark. Set CMECH_ALLOW_UNFILTERED=1" >&2
+    echo "      to proceed deliberately." >&2
+    [ "${CMECH_ALLOW_UNFILTERED:-0}" = 1 ] || exit 1
+fi
 
 # ── per-model checkpoints (override via env) ─────────────────────────────────
-CKPT_CPFN1D="${CKPT_CPFN1D:-/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt}"
-CKPT_CPFN2D="${CKPT_CPFN2D:-/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0050000.pt}"
+# Defaults point at Required_checkpoints, matching submit_realcause_density_unified
+# and submit_cs_dvar_density. They previously pointed at training run directories
+# and, for dopfn_bb, at checkpoints_dopfn_backbone_j10/step_200000.pt -- a path that
+# does not exist in this deployment and is a DIFFERENT step from the j10 weights
+# every other benchmark used. Left as it was, this script would have compared
+# ComplexMech results against RealCause and case-study results produced by
+# different weights for the same named model.
+CKPT_CPFN1D="${CKPT_CPFN1D:-$REPO/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt}"
+CKPT_CPFN2D="${CKPT_CPFN2D:-$REPO/Required_checkpoints/cpfn2d_j32_eta0_y01_step50000.pt}"
 CKPT_GRAPH2D="${CKPT_GRAPH2D:-$REPO/Required_checkpoints/graph2d_step_50000.pt}"
-CKPT_DOPFN_BB="${CKPT_DOPFN_BB:-$DEPLOY_ROOT/checkpoints_dopfn_backbone_j10/step_200000.pt}"
+CKPT_DOPFN_BB="${CKPT_DOPFN_BB:-$REPO/Required_checkpoints/dopfn_bb_j10_step_150000.pt}"
 UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0}"
 
 # ── task dispatch: model x nodes x subset ────────────────────────────────────
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled cpfn2d_log)
-NODES=(5 10 20 30 40 50)
-CONTEXTS=(50 100 250 500 1000)
+# Overridable: the reported ComplexMech results use N=1000 only, so the default
+# five-context sweep is 5x more work than is wanted.
+read -r -a NODES <<<"${CMECH_NODES:-5 10 20 30 40 50}"
+read -r -a CONTEXTS <<<"${CMECH_CONTEXTS:-50 100 250 500 1000}"
 # Override with SUBSET=zero to run the zero-effect queries into the same
 # tree; DATASET already carries the subset, so no path change is needed.
 SUBSET="${SUBSET:-nonzero}"
