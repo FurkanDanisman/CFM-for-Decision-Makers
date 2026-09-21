@@ -128,7 +128,17 @@ def fmt(s, prec=3):
 
 
 def display_name(label, method, single):
-    return single if single else method
+    """Row name. A single-model root normally supplies its own name, but a root can
+    still carry SEVERAL method rows -- uwyk_bin has both a noanc and a v3a ancestry
+    variant -- and collapsing those to the root label reported two different
+    configurations under one name. Keep the distinguishing suffix when there is one.
+    """
+    if not single:
+        return method
+    for suffix in ("-noanc", "-v3a", "-v3ab"):
+        if method.endswith(suffix):
+            return single + suffix
+    return single
 
 
 def main():
@@ -172,55 +182,99 @@ def main():
             continue
         emit(f"\n## RealCause — {ds}   (eps_ATE is RELATIVE)\n")
         emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) "
-             "| Cov (MALC) | Len (MALC) |")
-        emit("|" + "---|" * 8)
+             "| Cov (MALC) | Len (MALC) "
+             "| Cov (indep) | Len (indep) | Cov (indep+MALC) | Len (indep+MALC) |")
+        emit("|" + "---|" * 12)
         for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
             tag = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tag} | {n if n else '—'} | "
                  f"{pehe:.4f} | {ate:.4f} | "
                  f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} |")
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
+                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | "
+                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} |")
 
-    # ── Case study: pooled over shifts, d and cases ─────────────────────────
-    rows = []
+    # ── Case study: one table PER CASE, aggregated over d AND shifts ────────
+    # The mechanism (confounder, mediator, frontdoor, ...) is the thing being
+    # compared, so cases must stay separate; d is a nuisance axis and pools. Groups
+    # are named d<D>_<Case> in the per-realization files, so the case is recovered
+    # from the group name rather than from a directory walk.
+    by_case = {}
     for label, rc, cs, single in ROOTS:
-        # PEHE is an RMSE: only its squares pool. ATE error pools as a mean.
-        per_method = defaultdict(lambda: {"pehe2": [], "ate": [], "n": 0, "cells": 0})
+        raw = load_perreal(a.perreal, label, "raw", "*__shift*", keep_d)
+        mal = load_perreal(a.perreal, label, a.malc_tag, "*__shift*", keep_d)
+        # point tables, split by case
+        pt_by_case = defaultdict(lambda: defaultdict(
+            lambda: {"pehe2": [], "ate": [], "cells": 0}))
         for f in glob.glob(os.path.join(SC, cs, "shift*", "d*", "ctx*",
                                         "point_raw_em_*.md")):
             dm = re.search(r"/d(\d+)/", f)
             if dm and dm.group(1) not in keep_d:
                 continue
+            case = os.path.basename(f)[len("point_raw_em_"):-3]
             for meth, (n, pehe, ate) in parse_point(f).items():
-                d = per_method[meth]
+                d = pt_by_case[case][meth]
                 if np.isfinite(pehe):
                     d["pehe2"].append(pehe ** 2)
                 if np.isfinite(ate):
                     d["ate"].append(ate)
-                d["n"] += n
                 d["cells"] += 1
-        raw = load_perreal(a.perreal, label, "raw", "*__shift*", keep_d)
-        mal = load_perreal(a.perreal, label, a.malc_tag, "*__shift*", keep_d)
-        methods = sorted(set(per_method) | set(raw) | set(mal))
-        for meth in methods:
-            d = per_method.get(meth)
-            pehe = float(np.sqrt(np.mean(d["pehe2"]))) if d and d["pehe2"] else float("nan")
-            ate = float(np.mean(d["ate"])) if d and d["ate"] else float("nan")
-            cells = d["cells"] if d else 0
-            r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
-            m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
-            if all(v is None for v in r.values()) and not np.isfinite(pehe):
-                continue
-            rows.append((display_name(label, meth, single), cells, pehe, ate, r, m))
-    if rows:
-        emit(f"\n## Case study — pooled over shifts 0/+2/-2, all cases, "
-             f"d in {{{', '.join(keep_d)}}}   (L1_ATE is ABSOLUTE)\n")
+        # per-realization arrays, split by case via the group name
+        cov_by_case = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        mal_by_case = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        for stage_acc, dest in ((raw, cov_by_case), (mal, mal_by_case)):
+            for meth, keyed in stage_acc.items():
+                for k, arrs in keyed.items():
+                    dest["__ALL__"][meth][k].extend(arrs)
+        # Re-read per file so the case can be recovered from each name.
+        for stage, dest in ((("raw"), cov_by_case), ((a.malc_tag), mal_by_case)):
+            for f in sorted(glob.glob(os.path.join(a.perreal, label,
+                                                   f"{stage}__*__shift*.npz"))):
+                gm = re.match(r"^[a-z_]+__d(\d+)_(.+)__shift", os.path.basename(f))
+                if not gm or gm.group(1) not in keep_d:
+                    continue
+                case = gm.group(2)
+                try:
+                    z = np.load(f)
+                except Exception:
+                    continue
+                for k in z.files:
+                    if "__" not in k:
+                        continue
+                    meth, key = k.rsplit("__", 1)
+                    if key not in _KEYS:
+                        continue
+                    arr = np.asarray(z[k], dtype=float).ravel()
+                    if arr.size:
+                        dest[case][meth][key].append(arr)
+        cases = sorted(set(pt_by_case) | set(k for k in cov_by_case if k != "__ALL__"))
+        for case in cases:
+            for meth in sorted(set(pt_by_case.get(case, {}))
+                               | set(cov_by_case.get(case, {}))):
+                d = pt_by_case.get(case, {}).get(meth)
+                pehe = (float(np.sqrt(np.mean(d["pehe2"])))
+                        if d and d["pehe2"] else float("nan"))
+                ate = float(np.mean(d["ate"])) if d and d["ate"] else float("nan")
+                cells = d["cells"] if d else 0
+                r = {k: stat(cov_by_case.get(case, {}).get(meth, {}).get(k, []))
+                     for k in _KEYS}
+                m = {k: stat(mal_by_case.get(case, {}).get(meth, {}).get(k, []))
+                     for k in _KEYS}
+                if all(v is None for v in r.values()) and not np.isfinite(pehe):
+                    continue
+                by_case.setdefault(case, []).append(
+                    (display_name(label, meth, single), cells, pehe, ate, r, m))
+
+    for case in sorted(by_case):
+        emit(f"\n## Case study — {case}   "
+             f"(pooled over shifts 0/+2/-2 and d in {{{', '.join(keep_d)}}}; "
+             f"L1_ATE is ABSOLUTE)\n")
         emit("| model | cells | PEHE (rms) | L1_ATE | Cov (raw) | Len (raw) "
              "| Cov (MALC) | Len (MALC) |")
         emit("|" + "---|" * 8)
-        for nm, cells, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
-            tag = " *(released)*" if nm in RELEASED else ""
-            emit(f"| {nm}{tag} | {cells} | {pehe:.4f} | {ate:.4f} | "
+        for nm, cells, pehe, ate, r, m in sorted(by_case[case], key=lambda t: t[2]):
+            tg = " *(released)*" if nm in RELEASED else ""
+            emit(f"| {nm}{tg} | {cells} | {pehe:.4f} | {ate:.4f} | "
                  f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
                  f"{fmt(m['cover'])} | {fmt(m['length'], 4)} |")
 
