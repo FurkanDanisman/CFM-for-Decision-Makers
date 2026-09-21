@@ -19,6 +19,12 @@
 # Raw scoring only (no MALC), so this is minutes per model, not hours.
 #
 # Optional: ROOTS, CM_NODES, CTX, THRESHOLDS, OUT, METHODS, MAX_REAL
+#
+# nibi requires an explicit account (there is more than one _cpu
+# allocation), and it is left off the #SBATCH lines so the same file
+# works on both clusters:
+#   sbatch --account=def-rgrosse submit_cmech_rho_buckets.sbatch
+# Killarney used --account=aip-rgrosse.
 
 set -uo pipefail
 mkdir -p logs_cmech_rho

@@ -19,6 +19,12 @@
 # realization it already accepted (tracked in the manifest).
 #
 # Optional: NODES, TARGET_REAL, N_TEST, RHO_MIN, BATCH, MAX_BATCHES, OUT_ROOT, SEED_BASE
+#
+# nibi requires an explicit account (there is more than one _cpu
+# allocation), and it is left off the #SBATCH lines so the same file
+# works on both clusters:
+#   sbatch --account=def-rgrosse submit_cmech_rho99_gen.sbatch
+# Killarney used --account=aip-rgrosse.
 
 set -uo pipefail
 mkdir -p logs_cmech_rho99
