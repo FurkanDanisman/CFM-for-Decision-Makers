@@ -145,8 +145,11 @@ for CASE in "${CASES[@]}"; do
         # 'binary' (T fed as {0,1}); without this passthrough the flag could
         # never be set from a job, and a binary head would run under target
         # encoding and quietly score a model fed the wrong treatment variable.
+        # See the RealCause sbatch: exporting CKPT is not enough, uwyk1d.py
+        # overwrites it from args.ckpt.
         python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
             --dataset "$CASE" --outdir "$OUT" \
+            --ckpt "$CKPT" --config "$CONFIG" \
             --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
             --anc-mode case_family \
             --t-encoding "${UWYK_T_ENCODING:-target}" || echo "WARN: $MODEL $CASE failed"
