@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import numpy as np
@@ -112,51 +113,50 @@ class DoPFNSemiRealDataset:
     # while the ten harnesses that do not add UWYK to the path succeeded.
     _SHADOWED = ("utils", "datasets", "priors", "model", "scripts")
 
-    def _load(self):
-        if self._raw is not None:
-            return self._raw
+    @contextmanager
+    def _dopfn_namespace(self):
+        """Run a block with Do-PFN's package namespace in force, then restore.
+
+        EVERY entry into Do-PFN code needs this, not just the initial load:
+        generate_valid_split does its own `from utils import get_cv_split_for_data`,
+        so guarding only _load moved the failure rather than fixing it.
+        """
         root = _dopfn_root()
         cwd = os.getcwd()
         saved_path = list(sys.path)
-        # Evict anything already bound to another package's copy of these names,
-        # and restore it afterwards: the harness still needs ITS `utils` once the
-        # dataset is loaded, so this is a window, not a permanent change.
         saved_mods = {}
         for name in list(sys.modules):
             if name in self._SHADOWED or any(
                     name.startswith(p + ".") for p in self._SHADOWED):
                 saved_mods[name] = sys.modules.pop(name)
         try:
-            # Front of the path, not merely present: a later entry loses to the
-            # UWYK one that is already there.
             sys.path.insert(0, root)
             os.chdir(root)
-            from datasets import load_dataset as _dopfn_load
-            self._raw = _dopfn_load(ds_name=self.ds_name)
+            yield root
         finally:
             os.chdir(cwd)
             sys.path[:] = saved_path
-            # Drop whatever Do-PFN bound under these names, then put the
-            # harness's own modules back exactly as they were.
             for name in list(sys.modules):
                 if name in self._SHADOWED or any(
                         name.startswith(p + ".") for p in self._SHADOWED):
                     del sys.modules[name]
             sys.modules.update(saved_mods)
+
+    def _load(self):
+        if self._raw is not None:
+            return self._raw
+        with self._dopfn_namespace():
+            from datasets import load_dataset as _dopfn_load
+            self._raw = _dopfn_load(ds_name=self.ds_name)
         return self._raw
 
     def _split(self, r: int):
         """Do-PFN's own split, so the protocol matches its published numbers."""
         ds = self._load()
-        root = _dopfn_root()
-        cwd = os.getcwd()
-        try:
-            os.chdir(root)
+        with self._dopfn_namespace():
             # split_number is 1-based upstream; r is 0-based here.
             return ds.generate_valid_split(split_number=r + 1,
                                            n_splits=self.n_splits)
-        finally:
-            os.chdir(cwd)
 
     # ── the contract every harness expects ──────────────────────────────────
     def __len__(self) -> int:
