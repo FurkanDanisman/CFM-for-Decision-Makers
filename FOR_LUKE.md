@@ -1720,3 +1720,40 @@ chmod 600 ~/.ssh/authorized_keys
 cd /scratch/furkanbd/rpfn_bench_kit
 export SCRATCH=/scratch/furkanbd
 bash R-PFN/benchmarks/cluster/progress.sh
+
+
+GRES=gpu:t4:1 MEM=16G CPUS=4 ACCOUNT=def-zhijing PARTITION=gpubase_bygpu_b1 \
+  bash R-PFN/benchmarks/cluster/submit_cmech_dumps.sh --submit
+
+
+## Arm-noise correlation  rho = corr(Y(0)-E[Y(0)|X], Y(1)-E[Y(1)|X])
+
+| dataset | rho (combined) | 95% CI | p (rho=0) | mean ± sd over realizations | realizations | n | E[Y\|X] from | realization = |
+|---|---|---|---|---|---|---|---|---|
+| RealCause / IHDP | +0.0024 | [-0.0052, +0.0099] | 0.541 | +0.0024 ± 0.0365 | 100 | 67200 | mu | replicate (of 100) |
+| RealCause / ACIC | +0.0024 | [-0.0066, +0.0113] | 0.603 | +0.0024 ± 0.0128 | 10 | 48020 | mu | zymu setting |
+| RealCause / lalonde_cps_sample | -0.0008 | [-0.0023, +0.0007] | 0.313 | -0.0008 ± 0.0087 | 100 | 1617700 | within-unit | draw (of 100) |
+| RealCause / lalonde_psid_sample | +0.0026 | [-0.0012, +0.0064] | 0.183 | +0.0026 ± 0.0192 | 100 | 267500 | within-unit | draw (of 100) |
+| ComplexMech (all n, pooled) | +0.7886 | [+0.7872, +0.7900] | &lt; 1e-300 | +0.5063 ± 0.4597 | 3000 | 300000 | ols-on-X | r*.npz realization |
+| Case study (all cases, pooled) | **+1.0000** | [+1.0000, +1.0000] | &lt; 1e-300 | +1.0000 ± 0.0000 | 150 | 150000 | shared-eps | (case, seed) |
+
+**rho (combined)** is Fisher-z inverse-variance across realizations; **mean ± sd** is the unweighted spread of the per-realization rho, which shows whether the combined number is representative.
+
+**Case study.** rho = 1 is not an estimate. The generator draws each node's noise once and reuses it for the do(T=0) and do(T=1) passes, so Y(0) = mu_0 + eps and Y(1) = mu_1 + eps with the SAME eps. Evaluating both arms over 150 (case, seed) realizations gives max|e0 - e1| = 1.78e-15 (machine epsilon) and sd(Y(1) - Y(0)) = sd(mu_1 - mu_0) to full precision: tau carries no noise, so no 95% interval for tau is well posed.
+
+**ComplexMech.** Its generator also shares noise across arms by design ("exogenous *and* endogenous noise shared across the do(t0) and do(t1) passes"), so the dependence is structural. It falls below 1 because the shared noise passes through mechanisms whose mediator values differ by arm, and the row is an `ols-on-X` upper bound besides.
+
+`mu` / `within-unit` / `shared-eps` are exact. `ols-on-X` fits E[Y|X] by linear regression because only one draw per unit is stored and no noiseless mean is kept; nonlinearity it misses stays in the residual and inflates |rho|, so those rows are UPPER BOUNDS.
+
+Why it matters: Var(tau) = s0^2 + s1^2 - 2 rho s0 s1. At rho = 0 the convolution of two marginals is correct and a joint head has no dependence to learn; at rho = 1 tau is deterministic given X.
+
+wrote /scratch/furkanbd/arm_noise.md
+(venv) furkanbd@klogin01:/scratch/furkanbd/rpfn_bench_kit$ 
+
+[furkanbd@login1 ~]$ squeue --me
+          JOBID     USER      ACCOUNT           NAME  ST  TIME_LEFT NODES CPUS TRES_PER_N MIN_MEM NODELIST (REASON) 
+       60277427 furkanbd def-rgrosse_       uwyk-abl  PD 2-12:00:00     1   32 gres/gpu:h    128G  (ReqNodeNotAvail, UnavailableNodes:fc[10615,10713,10715]) 
+       60277428 furkanbd def-rgrosse_       uwyk-abl  PD 2-12:00:00     1   32 gres/gpu:h    128G  (ReqNodeNotAvail, UnavailableNodes:fc[10615,10713,10715]) 
+       60277429 furkanbd def-rgrosse_       uwyk-abl  PD 2-12:00:00     1   32 gres/gpu:h    128G  (ReqNodeNotAvail, UnavailableNodes:fc[10615,10713,10715]) 
+
+
