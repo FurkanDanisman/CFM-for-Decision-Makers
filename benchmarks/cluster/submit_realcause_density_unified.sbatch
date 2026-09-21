@@ -62,7 +62,10 @@ UWYK_CKPT_DIR="${UWYK_CKPT_DIR:-$UWYK/experiments/checkpoints/full_conditioned_m
 MODELS=(dopfn_native dopfn_bb uwyk1d graph2d cpfn1d cpfn2d_pooled)
 SETS=(IHDP ACIC CPS PSID PSID_bal)
 MODEL="${MODELS[$(( SLURM_ARRAY_TASK_ID / 5 ))]}"
-DATASET="${SETS[$(( SLURM_ARRAY_TASK_ID % 5 ))]}"
+# DATASET_OVERRIDE lets a non-RealCause dataset reuse this whole dispatch -- the
+# Do-PFN semi-real sets (SEMIREAL_sales, SEMIREAL_law_race) resolve through the same
+# _cmech_dataset hook every harness already has, so only the NAME needs changing.
+DATASET="${DATASET_OVERRIDE:-${SETS[$(( SLURM_ARRAY_TASK_ID % 5 ))]}}"
 
 export DENSITY_DUMP=1
 export SKIP_EM="${SKIP_EM:-1}"
