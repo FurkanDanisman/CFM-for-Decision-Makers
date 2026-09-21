@@ -619,13 +619,25 @@ _LEAF_ALIASES = {
 
 
 def _resolve_dir(root, subdir, leaf):
-    """First existing <root>/<subdir alias>/<leaf alias>, else the canonical path."""
+    """First NON-EMPTY <root>/<subdir alias>/<leaf alias>, else the canonical path.
+
+    Non-empty, not merely existing: a failed run can leave an empty directory under
+    one spelling while the data sits under another. dopfn_bb had exactly that --
+    empty SEMIREAL_sales/ from a run that died, real data in sales/ from the retry --
+    and preferring the first existing path scored nothing in three seconds with no
+    error to show for it.
+    """
+    fallback = None
     for alt in _SUBDIR_ALIASES.get(subdir, (subdir,)):
         for lf in _LEAF_ALIASES.get(leaf, (leaf,)):
             d = os.path.join(root, alt, lf)
-            if os.path.isdir(d):
+            if not os.path.isdir(d):
+                continue
+            if glob.glob(os.path.join(d, "*.npz")):
                 return d
-    return os.path.join(root, subdir, leaf)
+            if fallback is None:
+                fallback = d          # exists but empty; use only if nothing better
+    return fallback or os.path.join(root, subdir, leaf)
 
 
 # A dumped density must reproduce the model's own point estimate to be worth
