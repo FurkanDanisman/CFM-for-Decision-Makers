@@ -38,7 +38,7 @@ TOTAL_BAD=0
 for d in "$ROOT"/*; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
-    cells=0; npz=0; short=0; missing=""
+    cells=0; npz=0; short=0; missing=""; zerocnt=""
     for n in $NODES; do
         for s in $SUBSETS; do
             # the harness subdir name is not known here, so glob it
@@ -46,8 +46,16 @@ for d in "$ROOT"/*; do
                   -exec find {} -name '*.npz' \; 2>/dev/null | wc -l | tr -d ' ')
             if [ "$cnt" -gt 0 ]; then
                 cells=$((cells+1)); npz=$((npz+cnt))
-                [ "$cnt" -lt "$EXPECT_REAL" ] && { short=$((short+1))
-                    missing="$missing n${n}_${s}($cnt)"; }
+                # The ZERO subset is legitimately smaller now. A realization whose
+                # queries all have zero effect has constant tau, and the validity
+                # band rejects exactly those -- so the filter that fixed the
+                # benchmark necessarily thins the zero-effect subset. Only the
+                # nonzero subset is held to EXPECT_REAL.
+                if [ "$s" != zero ] && [ "$cnt" -lt "$EXPECT_REAL" ]; then
+                    short=$((short+1)); missing="$missing n${n}_${s}($cnt)"
+                elif [ "$s" = zero ]; then
+                    zerocnt="$zerocnt n${n}($cnt)"
+                fi
             else
                 missing="$missing n${n}_${s}(0)"
             fi
@@ -59,11 +67,14 @@ for d in "$ROOT"/*; do
     [ "$short" -gt 0 ] && [ "$verdict" = OK ] && { verdict="SHORT CELLS"; TOTAL_BAD=$((TOTAL_BAD+1)); }
     printf '%-22s %-8s %-9s %-11s %s\n' \
         "$name" "$cells/$n_cells_expected" "$npz" "$short" "$verdict"
-    [ -n "$missing" ] && echo "    missing/short:$missing"
+    [ -n "$missing" ] && echo "    missing/short (nonzero):$missing"
+    [ -n "$zerocnt" ] && echo "    zero-subset realizations:$zerocnt"
 done
 
 echo
-echo "expected per model: $n_cells_expected cells x ~$EXPECT_REAL realizations"
+echo "expected: $n_cells_expected cells; ~$EXPECT_REAL realizations in each NONZERO cell."
+echo "The zero subset is smaller by construction -- the validity band rejects"
+echo "constant-tau realizations, and an all-zero-effect realization is one."
 echo "first error in each cmech job log:"
 for f in $(ls -t logs_cmech_dump/*.err 2>/dev/null | head -14); do
     msg=$(grep -m1 -E "^[A-Za-z]*Error|Traceback|FATAL|invalid choice|no usable|CELL FAILED" "$f" 2>/dev/null)
@@ -77,8 +88,12 @@ if [ "${SCORE:-0}" = 1 ]; then
     for d in "$ROOT"/*; do
         [ -d "$d" ] || continue
         printf '  %-22s ' "$(basename "$d")"
+        # --root is the MODEL root: cate_density_metrics appends N<context>/<subdir>
+        # itself (see its line 691), so passing "$d/N$CTX" made it look for
+        # N1000/N1000/... and find nothing -- which read as "NOT readable" when the
+        # dumps were fine.
         out=$(python -u "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-                --root "$d/N$CTX" --nodes 5 --subset nonzero --context "$CTX" \
+                --root "$d" --nodes 5 --subset nonzero --context "$CTX" \
                 --target cate --tau-smoother none --max-real 2 2>&1)
         rows=$(printf '%s\n' "$out" | awk -F'|' '
             NF>8 { f=$3; gsub(/ /,"",f); if (f ~ /^[0-9]+$/ && f+0>0) c++ } END {print c+0}')
