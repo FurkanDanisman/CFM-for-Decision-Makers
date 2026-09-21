@@ -345,6 +345,74 @@ def main():
                  f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
                  f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
 
+    # ── ComplexMech: one table per node count ───────────────────────────────
+    # Per node count, not pooled: graph size is the axis this benchmark varies, so
+    # collapsing it would hide the trend it exists to show. `total` = nonzero + zero,
+    # and ATE error is L1 here rather than the relative form.
+    CM = os.path.join(SC, "cmech_dumps")
+    if os.path.isdir(CM):
+        for n in (5, 10, 20, 30, 40, 50):
+            rows = []
+            for d in sorted(glob.glob(os.path.join(CM, "*"))):
+                if not os.path.isdir(d):
+                    continue
+                label = os.path.basename(d)
+                pt = parse_point(os.path.join(d, "N1000",
+                                              f"point_raw_em_CMECH_n{n}.md"))
+                raw = load_perreal(a.perreal, label, "raw", f"cmech_n{n}__-")
+                mal = load_perreal(a.perreal, label, a.malc_tag, f"cmech_n{n}__-")
+                for meth in sorted(set(pt) | set(raw) | set(mal)):
+                    nn, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
+                    r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
+                    m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
+                    if all(v is None for v in r.values()) and nn is None:
+                        continue
+                    rows.append((display_name(label, meth, label), nn, pehe, ate, r, m))
+            if not rows:
+                continue
+            emit(f"\n## ComplexMech — n={n} nodes, N=1000, subset=total   "
+                 f"(L1_ATE is ABSOLUTE)\n")
+            emit("| model | n | PEHE | L1_ATE | Cov (raw) | Len (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 10)
+            for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
+                tg = " *(released)*" if nm in RELEASED else ""
+                emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
+                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
+                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+
+    # ── Do-PFN semi-real: one table per dataset ─────────────────────────────
+    SR = os.path.join(SC, "semireal_dumps")
+    if os.path.isdir(SR):
+        for ds in ("sales", "law_race"):
+            rows = []
+            for d in sorted(glob.glob(os.path.join(SR, "*"))):
+                if not os.path.isdir(d):
+                    continue
+                label = os.path.basename(d)
+                pt = parse_point(os.path.join(d, f"point_raw_em_SEMIREAL_{ds}.md"))
+                raw = load_perreal(a.perreal, label, "raw", f"{ds}__semireal")
+                mal = load_perreal(a.perreal, label, a.malc_tag, f"{ds}__semireal")
+                for meth in sorted(set(pt) | set(raw) | set(mal)):
+                    nn, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
+                    r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
+                    m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
+                    if all(v is None for v in r.values()) and nn is None:
+                        continue
+                    rows.append((display_name(label, meth, label), nn, pehe, ate, r, m))
+            if not rows:
+                continue
+            emit(f"\n## Do-PFN semi-real — {ds}   "
+                 f"(5 SPLITS ONLY -- wide error bars; eps_ATE is RELATIVE)\n")
+            emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 10)
+            for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
+                tg = " *(released)*" if nm in RELEASED else ""
+                emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
+                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
+                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+
     emit("\n---\n")
     emit("Cov/Len/IS pool per-realization arrays by concatenation, so how the work")
     emit("was split across jobs does not change the number. PEHE pools as an RMS")
