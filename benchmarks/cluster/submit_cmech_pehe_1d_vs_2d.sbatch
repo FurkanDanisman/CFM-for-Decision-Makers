@@ -180,12 +180,24 @@ case "$MODEL" in
         --y-scaling "${Y_SCALING:-min_max}" --std-target "${STD_TARGET:-0.3}"
     ;;
   uwyk1d)
-    export CKPT="$UWYK_CKPT_DIR/best_model.pt"
-    export CONFIG="$UWYK_CKPT_DIR/best_model_config.yaml"
+    # DEFAULT, not overwrite: uwyk_bin runs this same harness and the driver hands
+    # it CKPT/CONFIG for its own weights. An unconditional export clobbered them,
+    # so uwyk_bin silently evaluated the default UWYK checkpoint and returned rows
+    # identical to uwyk1d.
+    export CKPT="${CKPT:-$UWYK_CKPT_DIR/best_model.pt}"
+    export CONFIG="${CONFIG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
+    [ -f "$CKPT" ] || { echo "FATAL: uwyk ckpt not found: $CKPT" >&2; exit 1; }
+    echo "  uwyk1d ckpt=$CKPT"
+    echo "  uwyk1d config=$CONFIG"
+    # --ckpt / --config explicitly: uwyk1d.py reads args.ckpt and then OVERWRITES
+    # env['CKPT'] with it, so exporting CKPT alone is silently discarded and the
+    # default UWYK weights load instead (fixed for the other benchmarks in
+    # 2a9590d6; this path was missed).
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" \
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-        --anc-mode v3ab_only \
+        --ckpt "$CKPT" --config "$CONFIG" \
+        --anc-mode v3ab_only --t-encoding "${UWYK_T_ENCODING:-target}" \
         --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   graph2d)
