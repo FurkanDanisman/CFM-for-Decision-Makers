@@ -54,15 +54,28 @@ RHO_MIN="${RHO_MIN:-0.99}"
 BATCH="${BATCH:-100}"
 MAX_BATCHES="${MAX_BATCHES:-60}"
 SEED_BASE="${SEED_BASE:-100000}"
+# Same acceptance band as submit_cmech_gen.sbatch. These are the ComplexMech
+# repair: without them the generator emits constant-tau realizations and this
+# cell would not be the same benchmark as every other ComplexMech number.
+MIN_HET="${MIN_HET:-0.05}"; MAX_HET="${MAX_HET:-2.0}"; MAX_PIN="${MAX_PIN:-0.5}"
 OUT_ROOT="${OUT_ROOT:-$SCRATCH/cmech_data_rho99}"
+
+# generate_pehe_benchmark builds the SCMs through the UWYK checkout, so these
+# must point at the deployed copy -- without them it looks in /tmp and dies.
+export UWYK_SRC="${UWYK_SRC:-$DEPLOY_ROOT/external/uwyk_reproduce/src}"
+export UWYK_ROOT="${UWYK_ROOT:-$DEPLOY_ROOT/external/uwyk_reproduce}"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1
+[ -d "$UWYK_ROOT/experiments" ] || {
+    echo "FATAL: no UWYK configs at $UWYK_ROOT/experiments" >&2; exit 1; }
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 echo "[$(date '+%F %T')] n=$NODES  target=$TARGET_REAL  n_test=$N_TEST  rho>$RHO_MIN"
 echo "  out=$OUT_ROOT"
+echo "  band: sd(tau)/sd(y0) in [$MIN_HET, $MAX_HET], pinned <= $MAX_PIN"
+echo "  uwyk: $UWYK_ROOT"
 
 python -u "$REPO/benchmarks/make_cmech_rho_filtered.py" \
     --nodes "$NODES" \
@@ -72,7 +85,8 @@ python -u "$REPO/benchmarks/make_cmech_rho_filtered.py" \
     --batch "$BATCH" \
     --max-batches "$MAX_BATCHES" \
     --seed-base "$SEED_BASE" \
-    --out-root "$OUT_ROOT"
+    --out-root "$OUT_ROOT" \
+    --extra --min-tau-het "$MIN_HET" --max-tau-het "$MAX_HET" --max-pinned "$MAX_PIN"
 rc=$?
 echo "[$(date '+%F %T')] done rc=$rc"
 if [ $rc -ne 0 ]; then
