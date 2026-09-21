@@ -23,7 +23,7 @@
 # nibi requires an explicit account (there is more than one _cpu
 # allocation), and it is left off the #SBATCH lines so the same file
 # works on both clusters:
-#   sbatch --account=def-rgrosse submit_cmech_rho99_gen.sbatch
+#   sbatch --account=def-zhijing submit_cmech_rho99_gen.sbatch
 # Killarney used --account=aip-rgrosse.
 
 set -uo pipefail
