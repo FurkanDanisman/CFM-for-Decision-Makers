@@ -107,6 +107,18 @@ run() {
     python -u "$@" > "$lg" 2>&1 \
         || { echo "  ERROR (log: $lg): $*" >&2; FAILED=1; }
 }
+# RESUME. Each cell writes its own per-realization .npz, so a job killed by the
+# walltime leaves completed cells on disk -- but nothing skipped them, so a
+# resubmission redid work already finished. With the case-study MALC stage running
+# 24-66% complete across roots, restarting from zero would waste hours.
+#
+# A cell is done if its .npz exists and is non-empty. FORCE_RESCORE=1 overrides,
+# which is what you want after changing the scorer rather than after a timeout.
+done_already() {
+    [ "${FORCE_RESCORE:-0}" = 1 ] && return 1
+    [ -s "$1" ]
+}
+
 runo() {
     _n=$((_n+1))
     local out="$1"; shift
@@ -133,18 +145,21 @@ for R in "$RC_ROOT" "$ETA0_RC"; do
         # pooled mean over all (realization, query) pairs. Pooling hid spreads
         # larger than the means themselves, so every CATE Cov/Len/IS number comes
         # from coverage_by_realization.
-        runo "$R/cbr_${ds}_raw_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother none \
-            --dump-per-real "$PERREAL/$LABEL/raw__${ds}__-.npz"
+        _o="$PERREAL/$LABEL/raw__${ds}__-.npz"
+        if done_already "$_o"; then echo "    skip (done): raw $ds"
+        else runo "$R/cbr_${ds}_raw_cate.md" "$CBR" --root "$R" --dataset "$ds" \
+            --tau-smoother none --dump-per-real "$_o"; fi
         echo "  raw $ds/ate"
         # ATE needs no per-realization treatment: one interval and one truth per
         # realization already, so the pooled mean IS the per-realization mean.
         run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother none \
             --out "$R/calib_${ds}_raw_ate.md" ;;
       malc)  echo "  MALC $ds/cate (per-realization, B=$MALC_B K=$MALC_K)"
-        runo "$R/cbr_${ds}_T_${TAG}_cate.md" "$CBR" --root "$R" --dataset "$ds" --tau-smoother malc \
-            --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
-            --malc-workers "$NW" \
-            --dump-per-real "$PERREAL/$LABEL/malc__${ds}__-.npz"
+        _o="$PERREAL/$LABEL/malc__${ds}__-.npz"
+        if done_already "$_o"; then echo "    skip (done): MALC $ds"
+        else runo "$R/cbr_${ds}_T_${TAG}_cate.md" "$CBR" --root "$R" --dataset "$ds" \
+            --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
+            --n-tau "$N_TAU" --malc-workers "$NW" --dump-per-real "$_o"; fi
         echo "  MALC $ds/ate"
         run "$CD" --root "$R" --dataset "$ds" --target ate --tau-smoother malc \
             --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
@@ -174,14 +189,18 @@ for R in "$CS_ROOT" "$ETA0_CS"; do
       for S in $STAGES; do case "$S" in
         point) run "$PT" --root "$cell" --dataset "$c" --modes raw --ate-metric l1 \
                    --out-md "$cell/point_raw_em_${c}.md" ;;
-        raw)   runo "$cell/cbr_raw_cate_${c}.md" "$CBR" --root "$cell" --dataset "$c" --tau-smoother none \
-                   --dump-per-real "$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz"
+        raw)   _o="$PERREAL/$LABEL/raw__${_d}_${c}__${_sh}.npz"
+               if done_already "$_o"; then echo "    skip (done): raw ${_d}/${c}/${_sh}"
+               else runo "$cell/cbr_raw_cate_${c}.md" "$CBR" --root "$cell" \
+                   --dataset "$c" --tau-smoother none --dump-per-real "$_o"; fi
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother none --out "$cell/calib_raw_ate_${c}.md" ;;
-        malc)  runo "$cell/cbr_T_${TAG}_cate_${c}.md" "$CBR" --root "$cell" --dataset "$c" --tau-smoother malc \
-                   --malc-B "$MALC_B" --malc-K "$MALC_K" --n-tau "$N_TAU" \
-                   --malc-workers "$NW" \
-                   --dump-per-real "$PERREAL/$LABEL/malc__${_d}_${c}__${_sh}.npz"
+        malc)  _o="$PERREAL/$LABEL/malc__${_d}_${c}__${_sh}.npz"
+               if done_already "$_o"; then echo "    skip (done): MALC ${_d}/${c}/${_sh}"
+               else runo "$cell/cbr_T_${TAG}_cate_${c}.md" "$CBR" --root "$cell" \
+                   --dataset "$c" --tau-smoother malc --malc-B "$MALC_B" \
+                   --malc-K "$MALC_K" --n-tau "$N_TAU" --malc-workers "$NW" \
+                   --dump-per-real "$_o"; fi
                run "$CD" --root "$cell" --dataset "$c" --target ate \
                    --tau-smoother malc --malc-B "$MALC_B" --malc-K "$MALC_K" \
                    --n-tau "$N_TAU" --malc-workers "$NW" \
