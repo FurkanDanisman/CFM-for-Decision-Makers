@@ -54,7 +54,17 @@ mkdir -p "$PERREAL/$MODEL_NAME"
 
 # Same resume rule as the other benchmarks: a cell whose output already exists is
 # skipped, so a walltime kill costs only the cell in flight.
-done_already() { [ "${FORCE_RESCORE:-0}" = 1 ] && return 1; [ -s "$1" ]; }
+done_already() {
+    [ "${FORCE_RESCORE:-0}" = 1 ] && return 1
+    [ -s "$1" ] || return 1
+    # A markdown table with a header and NO data rows is not done. dopfn_bb's point
+    # table came out exactly that way -- the directory it needed resolved to an empty
+    # leftover -- and a plain -s test called it finished, so the rescore skipped it.
+    case "$1" in
+      *.md) grep -qE '^\| *[A-Za-z0-9_-]+ *\| *[0-9]' "$1" || return 1 ;;
+    esac
+    return 0
+}
 
 echo "[$(date '+%F %T')] $MODEL_NAME  root=$ROOT  nodes=${NODES[*]}  N=$CTX"
 FAILED=0

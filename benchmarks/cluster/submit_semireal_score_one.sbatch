@@ -49,7 +49,17 @@ PT="$REPO/realcause_eval/point_raw_em.py"
 CBR="$REPO/benchmarks/coverage_by_realization.py"
 mkdir -p "$PERREAL/$MODEL_NAME"
 
-done_already() { [ "${FORCE_RESCORE:-0}" = 1 ] && return 1; [ -s "$1" ]; }
+done_already() {
+    [ "${FORCE_RESCORE:-0}" = 1 ] && return 1
+    [ -s "$1" ] || return 1
+    # A markdown table with a header and NO data rows is not done. dopfn_bb's point
+    # table came out exactly that way -- the directory it needed resolved to an empty
+    # leftover -- and a plain -s test called it finished, so the rescore skipped it.
+    case "$1" in
+      *.md) grep -qE '^\| *[A-Za-z0-9_-]+ *\| *[0-9]' "$1" || return 1 ;;
+    esac
+    return 0
+}
 
 echo "[$(date '+%F %T')] $MODEL_NAME  root=$ROOT  datasets=${DSETS[*]}"
 FAILED=0
