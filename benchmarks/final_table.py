@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import re
 from collections import defaultdict
@@ -161,6 +162,28 @@ def fmt(s, prec=3):
     return f"{s[0]:.{prec}f} ± {s[1]:.{prec}f}"
 
 
+# sd(Y) per reporting group, from length_normalizers.py. Empty unless
+# --normalizers is given, in which case every Len/sd(Y) cell prints as "—".
+NORM: dict = {}
+
+
+def nsd(group, key):
+    """sd(Y) for one reporting group, or None when no normaliser is available."""
+    try:
+        v = float(NORM.get(group, {}).get(str(key)))
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) and v > 0 else None
+
+
+def fmtn(s, sd, prec=3):
+    """Length in units of outcome spread. Mean and sd both scale by the same
+    constant, so the +- carries over unchanged."""
+    if s is None or sd is None:
+        return "—"
+    return f"{s[0] / sd:.{prec}f} ± {s[1] / sd:.{prec}f}"
+
+
 def display_name(label, method, single):
     """Row name. A single-model root normally supplies its own name, but a root can
     still carry SEVERAL method rows -- uwyk_bin has both a noanc and a v3a ancestry
@@ -181,11 +204,17 @@ def main():
     ap.add_argument("--scratch", default=os.environ.get("SCRATCH", ""))
     ap.add_argument("--out", default=None)
     ap.add_argument("--malc-tag", default="malc")
+    ap.add_argument("--normalizers", default=None,
+                    help="JSON from length_normalizers.py; adds Len/sd(Y) columns")
     ap.add_argument("--cs-d", nargs="+", default=CS_D_DEFAULT,
                     help="case-study d values to report (default drops d=2 and d=3)")
     a = ap.parse_args()
     SC = a.scratch or os.path.dirname(a.perreal.rstrip("/"))
     keep_d = [str(x) for x in a.cs_d]
+    if a.normalizers:
+        global NORM
+        with open(a.normalizers) as fh:
+            NORM = json.load(fh)
     L = []
 
     def emit(s=""):
@@ -215,19 +244,26 @@ def main():
         if not rows:
             continue
         emit(f"\n## RealCause — {ds}   (eps_ATE is RELATIVE)\n")
-        emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) | IS (raw) "
-             "| Cov (MALC) | Len (MALC) | IS (MALC) "
-             "| Cov (indep) | Len (indep) | IS (indep) "
-             "| Cov (indep+MALC) | Len (indep+MALC) | IS (indep+MALC) |")
-        emit("|" + "---|" * 16)
+        emit("| model | n | PEHE | eps_ATE "
+             "| Cov (raw) | Len (raw) | Len/sd(Y) (raw) | IS (raw) "
+             "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) "
+             "| Cov (indep) | Len (indep) | Len/sd(Y) (indep) | IS (indep) "
+             "| Cov (indep+MALC) | Len (indep+MALC) | Len/sd(Y) (indep+MALC) "
+             "| IS (indep+MALC) |")
+        emit("|" + "---|" * 20)
+        _sd = nsd("realcause", ds)
         for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
             tag = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tag} | {n if n else '—'} | "
                  f"{pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} | "
-                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | {fmt(i['is05'], 4)} | "
-                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} | {fmt(im['is05'], 4)} |")
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                 f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
+                 f"{fmtn(m['length'], _sd)} | {fmt(m['is05'], 4)} | "
+                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | "
+                 f"{fmtn(i['length'], _sd)} | {fmt(i['is05'], 4)} | "
+                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} | "
+                 f"{fmtn(im['length'], _sd)} | {fmt(im['is05'], 4)} |")
 
         # ── ATE-interval calibration, from the --target ate tables ──────────
         # A different claim from CATE coverage: one interval for the average effect
@@ -250,16 +286,20 @@ def main():
                 ate_rows.append((nm, a1, a2))
         if ate_rows:
             emit(f"\n### RealCause — {ds} — ATE interval (one per realization)\n")
-            emit("| model | n | Cov (raw) | Len (raw) | IS (raw) "
-                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
-            emit("|" + "---|" * 8)
+            emit("| model | n | Cov (raw) | Len (raw) | Len/sd(Y) (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 10)
             for nm, a1, a2 in sorted(ate_rows, key=lambda t: t[0]):
                 tg = " *(released)*" if nm in RELEASED else ""
                 n_ = (a1 or a2)[0]
                 f3 = lambda a, j: ("—" if a is None or not np.isfinite(a[j])
                                    else f"{a[j]:.4f}")
-                emit(f"| {nm}{tg} | {n_} | {f3(a1,1)} | {f3(a1,2)} | {f3(a1,3)} | "
-                     f"{f3(a2,1)} | {f3(a2,2)} | {f3(a2,3)} |")
+                f3n = lambda a, j: ("—" if a is None or _sd is None
+                                    or not np.isfinite(a[j])
+                                    else f"{a[j] / _sd:.4f}")
+                emit(f"| {nm}{tg} | {n_} | {f3(a1,1)} | {f3(a1,2)} | "
+                     f"{f3n(a1,2)} | {f3(a1,3)} | "
+                     f"{f3(a2,1)} | {f3(a2,2)} | {f3n(a2,2)} | {f3(a2,3)} |")
 
     # ── Case study: one table PER CASE, aggregated over d AND shifts ────────
     # The mechanism (confounder, mediator, frontdoor, ...) is the thing being
@@ -336,14 +376,18 @@ def main():
         emit(f"\n## Case study — {case}   "
              f"(pooled over shifts 0/+2/-2 and d in {{{', '.join(keep_d)}}}; "
              f"L1_ATE is ABSOLUTE)\n")
-        emit("| model | cells | PEHE (rms) | L1_ATE | Cov (raw) | Len (raw) "
-             "| IS (raw) | Cov (MALC) | Len (MALC) | IS (MALC) |")
-        emit("|" + "---|" * 10)
+        emit("| model | cells | PEHE (rms) | L1_ATE "
+             "| Cov (raw) | Len (raw) | Len/sd(Y) (raw) | IS (raw) "
+             "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
+        emit("|" + "---|" * 12)
+        _sd = nsd("case_study", case)
         for nm, cells, pehe, ate, r, m in sorted(by_case[case], key=lambda t: t[2]):
             tg = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tg} | {cells} | {pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                 f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
+                 f"{fmtn(m['length'], _sd)} | {fmt(m['is05'], 4)} |")
 
     # ── ComplexMech: one table per node count ───────────────────────────────
     # Per node count, not pooled: graph size is the axis this benchmark varies, so
@@ -372,14 +416,18 @@ def main():
                 continue
             emit(f"\n## ComplexMech — n={n} nodes, N=1000, subset=total   "
                  f"(L1_ATE is ABSOLUTE)\n")
-            emit("| model | n | PEHE | L1_ATE | Cov (raw) | Len (raw) | IS (raw) "
-                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
-            emit("|" + "---|" * 10)
+            emit("| model | n | PEHE | L1_ATE "
+                 "| Cov (raw) | Len (raw) | Len/sd(Y) (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 12)
+            _sd = nsd("cmech", n)
             for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
                 tg = " *(released)*" if nm in RELEASED else ""
                 emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
-                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                     f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
+                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
+                     f"{fmtn(m['length'], _sd)} | {fmt(m['is05'], 4)} |")
 
     # ── Do-PFN semi-real: one table per dataset ─────────────────────────────
     SR = os.path.join(SC, "semireal_dumps")
@@ -404,20 +452,34 @@ def main():
                 continue
             emit(f"\n## Do-PFN semi-real — {ds}   "
                  f"(5 SPLITS ONLY -- wide error bars; eps_ATE is RELATIVE)\n")
-            emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) | IS (raw) "
-                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
-            emit("|" + "---|" * 10)
+            emit("| model | n | PEHE | eps_ATE "
+                 "| Cov (raw) | Len (raw) | Len/sd(Y) (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 12)
+            _sd = nsd("semireal", ds)
             for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
                 tg = " *(released)*" if nm in RELEASED else ""
                 emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
-                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
-                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
+                     f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
+                     f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
+                     f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
+                     f"{fmtn(m['length'], _sd)} | {fmt(m['is05'], 4)} |")
 
     emit("\n---\n")
     emit("Cov/Len/IS pool per-realization arrays by concatenation, so how the work")
     emit("was split across jobs does not change the number. PEHE pools as an RMS")
     emit("across cells because PEHE is itself an RMSE; ATE error pools as a mean.")
     emit("RealCause reports RELATIVE eps_ATE, the case studies absolute L1_ATE.")
+    if NORM:
+        emit("")
+        emit("Len/sd(Y) divides each length by that dataset's outcome spread, so it")
+        emit("reads in units of outcome SD and is comparable across models. For a")
+        emit("calibrated 95% interval Len/sd(Y) = 3.92*sd(tau|X)/sd(Y), which is")
+        emit("bounded by 5.54 (independent arms, sigma <= sd(Y)) -- a value above")
+        emit("that is over-dispersed on any dataset. On the case studies the arms")
+        emit("share one noise draw, so tau is deterministic given X and the oracle")
+        emit("length is 0: there, lower is strictly better and the column measures")
+        emit("excess width rather than calibration.")
     emit("Models marked *(released)* are upstream DoPFN weights, not this project's.")
     emit("Cov/Len/IS (indep) and (indep+MALC) are the forced-independent ablation:")
     emit("RealCause only, and meaningful only for 2D heads -- a 1D head has no joint")
