@@ -135,11 +135,32 @@ def _get_dataset(name: str):
 
 
 def _cate_ds_from(ds, r: int, name: str):
-    """Return the CATE-style dataset for realization r."""
+    """Return the CATE-style dataset for realization r.
+
+    PSID_bal IS the PSID loader -- the balanced variant is not a different dataset
+    class but the SAME one with a seed=42 balance-subsample applied per
+    realization (realcause_eval/Table1/do_pfn.py::_psid_balance_subsample, from
+    dofm_psid_balanced.py). _get_dataset therefore maps both names to the same
+    constructor, which is correct, but without this step PSID_bal evaluated PSID
+    and merely recorded the other name: every array in the two dumps was identical
+    except the stored `dataset` string.
+
+    Imported rather than reimplemented so the subsample is bit-identical to the one
+    the other harnesses use -- a second implementation of a seeded subsample is a
+    second chance to disagree.
+    """
     if name in _REALCAUSE:
         # RealCause loaders: ds[r] returns (cate_ds, meta) or just cate_ds.
         got = ds[r]
-        return got[0] if isinstance(got, tuple) else got
+        cate_ds = got[0] if isinstance(got, tuple) else got
+        if name == 'PSID_bal':
+            import sys as _sys
+            _t1 = os.path.join(REPO_SRC, 'realcause_eval', 'Table1')
+            if _t1 not in _sys.path:
+                _sys.path.insert(0, _t1)
+            from do_pfn import _psid_balance_subsample
+            cate_ds = _psid_balance_subsample(cate_ds)
+        return cate_ds
     # SCMCaseStudyDataset: ds[r] returns (cate_ds, meta).
     return ds[r][0]
 
