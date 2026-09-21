@@ -40,6 +40,10 @@ T="${SCORE_TIME:-3:00:00}"
 # SCORE_PARTITION: there is no CPU partition on this cluster, so this normally
 # stays unset and the walltime tier does the work instead. Kept for portability.
 PART=""; [ -n "${SCORE_PARTITION:-}" ] && PART="--partition=$SCORE_PARTITION"
+# Cores drive the MALC fan-out: submit_full_table takes MALC_WORKERS from
+# SLURM_CPUS_PER_TASK, so requesting more cores directly shortens a MALC cell.
+CPUS=""; [ -n "${SCORE_CPUS:-}" ] && CPUS="--cpus-per-task=$SCORE_CPUS"
+MEM=""; [ -n "${SCORE_MEM:-}" ] && MEM="--mem=$SCORE_MEM"
 
 # label | rc root | cs root
 ROOTS=(
@@ -70,7 +74,7 @@ for r in "${ROOTS[@]}"; do
             if [ "$SUBMIT" = 1 ]; then
                 printf 'score %-10s rc/%-9s -> ' "$lbl" "$ds"
                 ONE_RC_ROOT="$rc" SKIP_CS=1 RC_DATASETS="$ds" STAGES="$STAGES" LABEL="$lbl" \
-                    sbatch --time="$T" $PART --job-name="sc-$lbl-$ds" "$SB"
+                    sbatch --time="$T" $PART $CPUS $MEM --job-name="sc-$lbl-$ds" "$SB"
             else printf 'score %-10s rc/%s\n' "$lbl" "$ds"; fi
         done
     else printf 'score %-10s rc  SKIP (no root)\n' "$lbl"; fi
@@ -85,7 +89,7 @@ for r in "${ROOTS[@]}"; do
                     printf 'score %-10s %-14s -> ' "$lbl" "$_t"
                     ONE_CS_ROOT="$cs" SKIP_RC=1 CS_SHIFT="$sh" CS_D="$_d" \
                     STAGES="$STAGES" LABEL="$lbl" \
-                        sbatch --time="$T" $PART --job-name="sc-$lbl-$_t" "$SB"
+                        sbatch --time="$T" $PART $CPUS $MEM --job-name="sc-$lbl-$_t" "$SB"
                 else printf 'score %-10s %s\n' "$lbl" "$_t"; fi
             done
         done
