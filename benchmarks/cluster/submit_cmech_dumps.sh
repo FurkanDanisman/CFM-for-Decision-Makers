@@ -25,6 +25,9 @@ REPO="${REPO:-$KIT/R-PFN}"
 CK="${CK:-$REPO/Required_checkpoints}"
 SC="${SCRATCH:?SCRATCH must be set}"
 DATA="${CMECH_DATA:-$SC/cmech_data_v2}"
+# Dump root is overridable so a run on a DIFFERENT data root (e.g. the
+# rho>0.99 cells) writes beside the main dumps instead of overwriting them.
+DUMP_ROOT="${CMECH_DUMP_ROOT:-$SC/cmech_dumps}"
 ACCT="${ACCOUNT:-}"; PART="${PARTITION:-}"
 TIME="${DUMP_TIME:-3:00:00}"
 # nibi refuses a bare --gres=gpu:N and demands a type. h100 is the most plentiful
@@ -86,7 +89,7 @@ for r in "${ROWS[@]}"; do
     if [ "$SUBMIT" = 1 ]; then
         printf '%-22s idx=%s -> ' "$name" "$idx"
         env MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT_PATH="$ck" \
-            EXTRA_ENV="$extra" OUT_ROOT="$SC/cmech_dumps/$name" \
+            EXTRA_ENV="$extra" OUT_ROOT="$DUMP_ROOT/$name" \
             UWYK_FIG34_DATA="$DATA" \
             sbatch --time="$TIME" --gres="$GRES" --mem="$MEM" --cpus-per-task="$CPUS" \
                    ${ACCT:+--account=$ACCT} ${PART:+--partition=$PART} \
@@ -97,4 +100,6 @@ for r in "${ROWS[@]}"; do
 done
 echo
 echo "jobs: $N   (each walks 6 node counts x 2 subsets at N=1000)"
+echo "data:  $DATA"
+echo "dumps: $DUMP_ROOT"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"

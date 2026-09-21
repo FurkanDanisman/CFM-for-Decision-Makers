@@ -103,7 +103,11 @@ def main():
 
     out_cell = cell_dir(a.out_root, a.prior, a.nodes, a.regime, a.hide)
     os.makedirs(out_cell, exist_ok=True)
-    stage_root = a.stage_root or os.path.join(a.out_root, "_stage")
+    # Per-node stage dir. Batch dirs are named b0, b1, ... and the cleanup
+    # rmtree()s them, so a shared _stage would let one node count delete
+    # another's in-flight batch when several run concurrently.
+    stage_root = a.stage_root or os.path.join(a.out_root, "_stage",
+                                              f"n{a.nodes}")
 
     # Resume: count what is already accepted so a re-run tops up rather than restarts.
     kept = sorted(glob.glob(os.path.join(out_cell, "r*.npz")),
