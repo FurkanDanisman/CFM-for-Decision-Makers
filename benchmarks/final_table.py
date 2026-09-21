@@ -82,6 +82,40 @@ def parse_point(path):
     return out
 
 
+_CAL_ROW = re.compile(r"^\|\s*([A-Za-z0-9_\-]+)\s*\|(.*)\|\s*$")
+
+
+def parse_calib(path):
+    """-> {method: (n_files, coverage, length, is05)} from a cate_density_metrics table.
+
+    This is the ATE-target calibration, which no table has ever shown: the scorer
+    writes calib_*_ate.md files and final_table only ever read the CATE side, so the
+    ATE interval's coverage was computed and then discarded. Columns are
+    method | n_files | n_query | coverage95 | length | is05 | ...
+    """
+    out = {}
+    if not os.path.exists(path):
+        return out
+    for line in open(path):
+        m = _CAL_ROW.match(line.rstrip("\n"))
+        if not m:
+            continue
+        meth, rest = m.group(1), m.group(2)
+        if meth.lower() == "method":
+            continue
+        cells = [c.strip() for c in rest.split("|")]
+        if len(cells) < 5:
+            continue
+        def num(i):
+            f = _NUM.search(cells[i]) if i < len(cells) else None
+            return float(f.group(1)) if f else float("nan")
+        n_files = num(0)
+        if not np.isfinite(n_files):
+            continue
+        out[meth] = (int(n_files), num(2), num(3), num(4))
+    return out
+
+
 def load_perreal(perreal, label, stage, pattern, keep_d=None):
     """-> {method: {key: [arrays]}} for one stage, over files matching pattern.
 
@@ -181,18 +215,51 @@ def main():
         if not rows:
             continue
         emit(f"\n## RealCause — {ds}   (eps_ATE is RELATIVE)\n")
-        emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) "
-             "| Cov (MALC) | Len (MALC) "
-             "| Cov (indep) | Len (indep) | Cov (indep+MALC) | Len (indep+MALC) |")
-        emit("|" + "---|" * 12)
+        emit("| model | n | PEHE | eps_ATE | Cov (raw) | Len (raw) | IS (raw) "
+             "| Cov (MALC) | Len (MALC) | IS (MALC) "
+             "| Cov (indep) | Len (indep) | IS (indep) "
+             "| Cov (indep+MALC) | Len (indep+MALC) | IS (indep+MALC) |")
+        emit("|" + "---|" * 16)
         for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
             tag = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tag} | {n if n else '—'} | "
                  f"{pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
-                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | "
-                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} |")
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} | "
+                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | {fmt(i['is05'], 4)} | "
+                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} | {fmt(im['is05'], 4)} |")
+
+        # ── ATE-interval calibration, from the --target ate tables ──────────
+        # A different claim from CATE coverage: one interval for the average effect
+        # per realization, not one per query. Read from markdown rather than perreal
+        # because the ATE stage was never routed through coverage_by_realization --
+        # it needs no per-realization aggregation, since a realization yields exactly
+        # one ATE interval and one truth.
+        ate_rows = []
+        for label, rc, cs, single in ROOTS:
+            R = os.path.join(SC, rc)
+            craw = parse_calib(os.path.join(R, f"calib_{ds}_raw_ate.md"))
+            cmal = {}
+            for cand in sorted(glob.glob(os.path.join(R, f"calib_{ds}_T_*_ate.md"))):
+                cmal = parse_calib(cand)
+            for meth in sorted(set(craw) | set(cmal)):
+                nm = display_name(label, meth, single)
+                a1 = craw.get(meth); a2 = cmal.get(meth)
+                if a1 is None and a2 is None:
+                    continue
+                ate_rows.append((nm, a1, a2))
+        if ate_rows:
+            emit(f"\n### RealCause — {ds} — ATE interval (one per realization)\n")
+            emit("| model | n | Cov (raw) | Len (raw) | IS (raw) "
+                 "| Cov (MALC) | Len (MALC) | IS (MALC) |")
+            emit("|" + "---|" * 8)
+            for nm, a1, a2 in sorted(ate_rows, key=lambda t: t[0]):
+                tg = " *(released)*" if nm in RELEASED else ""
+                n_ = (a1 or a2)[0]
+                f3 = lambda a, j: ("—" if a is None or not np.isfinite(a[j])
+                                   else f"{a[j]:.4f}")
+                emit(f"| {nm}{tg} | {n_} | {f3(a1,1)} | {f3(a1,2)} | {f3(a1,3)} | "
+                     f"{f3(a2,1)} | {f3(a2,2)} | {f3(a2,3)} |")
 
     # ── Case study: one table PER CASE, aggregated over d AND shifts ────────
     # The mechanism (confounder, mediator, frontdoor, ...) is the thing being
@@ -270,13 +337,13 @@ def main():
              f"(pooled over shifts 0/+2/-2 and d in {{{', '.join(keep_d)}}}; "
              f"L1_ATE is ABSOLUTE)\n")
         emit("| model | cells | PEHE (rms) | L1_ATE | Cov (raw) | Len (raw) "
-             "| Cov (MALC) | Len (MALC) |")
-        emit("|" + "---|" * 8)
+             "| IS (raw) | Cov (MALC) | Len (MALC) | IS (MALC) |")
+        emit("|" + "---|" * 10)
         for nm, cells, pehe, ate, r, m in sorted(by_case[case], key=lambda t: t[2]):
             tg = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tg} | {cells} | {pehe:.4f} | {ate:.4f} | "
-                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
-                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} |")
+                 f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
+                 f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} |")
 
     emit("\n---\n")
     emit("Cov/Len/IS pool per-realization arrays by concatenation, so how the work")
@@ -284,8 +351,11 @@ def main():
     emit("across cells because PEHE is itself an RMSE; ATE error pools as a mean.")
     emit("RealCause reports RELATIVE eps_ATE, the case studies absolute L1_ATE.")
     emit("Models marked *(released)* are upstream DoPFN weights, not this project's.")
-    emit("The forced-independent ablation is computed but not shown here; it is a")
-    emit("RealCause-only 2D diagnostic rather than a headline result.")
+    emit("Cov/Len/IS (indep) and (indep+MALC) are the forced-independent ablation:")
+    emit("RealCause only, and meaningful only for 2D heads -- a 1D head has no joint")
+    emit("to discard, so its indep columns restate the raw ones.")
+    emit("The ATE-interval tables are a DIFFERENT claim from CATE coverage: one")
+    emit("interval for the average effect per realization, not one per query.")
     emit("A dash means that stage has not been scored yet.")
 
     txt = "\n".join(L)
