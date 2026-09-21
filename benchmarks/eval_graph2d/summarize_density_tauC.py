@@ -10,8 +10,9 @@ treat queries from one realization as independent and understate the SE.
 Output is markdown (one model-family table plus its contrasts per dataset), so
 it can be pasted straight into LATEST_RESULTS.md; mixed shards are separated
 into UWYK, DoPFN and CausalPFN sections. Use --model to select one family.
-DoPFN rows are whatever DOPFN_MODELS listed for the run, read from the shards;
-its contrasts pair every 1D row with every joint row. The columns are
+DoPFN and CausalPFN rows are whatever DOPFN_MODELS / CAUSALPFN_MODELS listed
+for the run, read from the shards; their contrasts pair every 1D row with every
+joint row. The columns are
 padded so they stay readable as plain terminal text too. The best cell is bolded --
 lowest value for the error metrics and the contrasts, closest to 1.0 for `mass`
 -- and a column whose entries all tie at display precision gets no bold, since
@@ -30,11 +31,12 @@ from pathlib import Path
 
 import numpy as np
 
-# DoPFN has no fixed rows: family_methods reads them from the shards.
+# DoPFN and CausalPFN have no fixed rows: family_methods reads them from the
+# shards, so a run's own DOPFN_MODELS / CAUSALPFN_MODELS list defines the table.
 MODEL_METHODS = {
     'uwyk': ('uwyk_native', 'uwyk_matched', 'joint'),
     'dopfn': (),
-    'causalpfn': ('causalpfn_native', 'causalpfn_joint'),
+    'causalpfn': (),
 }
 MODEL_LABEL = {'uwyk': 'UWYK / g4cfm', 'dopfn': 'DoPFN', 'causalpfn': 'CausalPFN'}
 LABEL = {'uwyk_native': 'UWYK (x)indep K=1000',
@@ -52,8 +54,8 @@ POINT_METRICS = ('pehe', 'cate_l1', 'ate_abs_err')
 MISSING = '--'
 
 
-def dopfn_methods(rows):
-    """DoPFN density rows, in the order the run listed them."""
+def listed_methods(rows, prefix):
+    """Density rows under `prefix`, in the order the run listed them."""
     found = []
     for r in rows:
         if 'methods' in r:
@@ -61,25 +63,26 @@ def dopfn_methods(rows):
         else:       # hand-built rows carry only metric keys
             names = [k.split('_', 1)[1] for k in r if k.startswith(('nll_', 'pehe_'))]
         for m in names:
-            if m.startswith('dopfn_') and not m.endswith('_inner') and m not in found:
+            if m.startswith(prefix) and not m.endswith('_inner') and m not in found:
                 found.append(m)
     return found
 
 
 def family_methods(rows, model):
-    methods = dopfn_methods(rows) if model == 'dopfn' else MODEL_METHODS[model]
+    methods = (listed_methods(rows, f'{model}_') if model in ('dopfn', 'causalpfn')
+               else MODEL_METHODS[model])
     return [m for m in methods if any(f'nll_{m}' in r for r in rows)]
 
 
-def dopfn_kind(rows, method):
-    """'1d' or 'joint'. Shards from before DOPFN_MODELS carry no kind_ field."""
+def method_kind(rows, method):
+    """'1d' or 'joint'. Shards predating the model lists carry no kind_ field."""
     kinds = {str(r[f'kind_{method}']) for r in rows if f'kind_{method}' in r}
     if len(kinds) > 1:
         raise ValueError(f'{method} is {sorted(kinds)} across shards; the name was '
                          'reused for different models. Use separate result directories.')
     if kinds:
         return kinds.pop()
-    return 'joint' if method == 'dopfn_joint' else '1d'
+    return 'joint' if method in ('dopfn_joint', 'causalpfn_joint') else '1d'
 
 
 def label(rows, method):
@@ -87,10 +90,11 @@ def label(rows, method):
         return LABEL[method]
     if method.endswith('_inner'):
         return f'{label(rows, method[:-len("_inner")])} interior mean (raw)'
-    if method.startswith('dopfn_'):
-        kind = dopfn_kind(rows, method)
-        return (f'DoPFN {method[len("dopfn_"):]} '
-                + ('(x)indep' if kind == '1d' else 'Joint-2D'))
+    for prefix, family in (('dopfn_', 'DoPFN'), ('causalpfn_', 'CausalPFN')):
+        if method.startswith(prefix):
+            kind = method_kind(rows, method)
+            return (f'{family} {method[len(prefix):]} '
+                    + ('(x)indep' if kind == '1d' else 'Joint-2D'))
     return method
 
 
@@ -182,8 +186,8 @@ def md_table(headers, rows, aligns=None):
 def point_table(rows, density_methods=None):
     """Point errors from the same logits; old density-only shards stay valid."""
     if density_methods is None:
-        density_methods = [*MODEL_METHODS['uwyk'], *dopfn_methods(rows),
-                           *MODEL_METHODS['causalpfn']]
+        density_methods = [*MODEL_METHODS['uwyk'], *listed_methods(rows, 'dopfn_'),
+                           *listed_methods(rows, 'causalpfn_')]
     point_methods = [*density_methods, *(m + '_inner' for m in density_methods)]
     if not any(f'pehe_{m}' in r for r in rows for m in point_methods):
         return None
@@ -221,7 +225,7 @@ def render_family(dataset, rows, model):
     graph = f'graph={rows[0]["anc_tag"]}' if model == 'uwyk' else 'graph=none'
     print(f'realizations={n_r}, ~{n_q} queries each, {graph}, '
           f'|tau*|>3: {oob:.2%}\n')
-    if model == 'dopfn':
+    if model in ('dopfn', 'causalpfn'):
         for method in methods:
             sources = sorted({str(r[f'source_{method}']) for r in rows
                               if f'source_{method}' in r})
@@ -249,12 +253,16 @@ def render_family(dataset, rows, model):
     print(md_table(['method', *METRICS], body,
                    ['l'] + ['r'] * len(METRICS)))
     if model == 'causalpfn':
-        key = 'frac_zero_density_causalpfn_native'
-        if all(key in r for r in rows):
+        # Every 1D CausalPFN row has finite support, so it can put exactly zero
+        # density on tau*; that NLL stays +inf instead of being dropped.
+        for method in methods:
+            key = f'frac_zero_density_{method}'
+            if method_kind(rows, method) != '1d' or not all(key in r for r in rows):
+                continue
             fraction = np.mean([float(r[key]) for r in rows])
-            print(f'\nNative finite support: zero density at tau* in {fraction:.2%} '
-                  'of queries (mean over realizations); NLL retains +inf. '
-                  'Grid KL uses the shared numerical density floor.')
+            print(f'\nFinite support ({method}): zero density at tau* in '
+                  f'{fraction:.2%} of queries (mean over realizations); NLL '
+                  'retains +inf. Grid KL uses the shared numerical density floor.')
 
     points = point_table(rows, methods)
     if points is not None:
@@ -285,16 +293,23 @@ def render_family(dataset, rows, model):
         mu, se, _ = mean_se([float(r[kb]) - float(r[ka]) for r in rows])
         return f'{mu:+.4f}±{se:.4f}', mu
 
-    candidates = {
-        'uwyk': [('**HEADLINE**', 'model gap as run', 'uwyk_native', 'joint'),
-                 ('bridge', 'resolution handicap', 'uwyk_native', 'uwyk_matched')],
-        'dopfn': [('as run', 'model gap', a, b)
-                  for a in methods if dopfn_kind(rows, a) == '1d'
-                  for b in methods if dopfn_kind(rows, b) == 'joint'],
-        'causalpfn': [('**HEADLINE**', 'model gap as run',
-                       'causalpfn_native', 'causalpfn_joint')],
-    }
-    contrasts = [c for c in candidates[model] if c[2] in methods and c[3] in methods]
+    if model == 'uwyk':
+        candidates = [('**HEADLINE**', 'model gap as run', 'uwyk_native', 'joint'),
+                      ('bridge', 'resolution handicap', 'uwyk_native', 'uwyk_matched')]
+    else:
+        # Every 1D row against every joint row of the same family.
+        pairs = [(a, b) for a in methods if method_kind(rows, a) == '1d'
+                 for b in methods if method_kind(rows, b) == 'joint']
+        if model == 'dopfn':
+            candidates = [('as run', 'model gap', a, b) for a, b in pairs]
+        else:
+            # The pre-CAUSALPFN_MODELS pair keeps its headline billing when a
+            # run still has exactly those two rows.
+            candidates = [('**HEADLINE**' if (a, b) == ('causalpfn_native',
+                                                        'causalpfn_joint')
+                           else 'as run', 'model gap as run', a, b)
+                          for a, b in pairs]
+    contrasts = [c for c in candidates if c[2] in methods and c[3] in methods]
     if contrasts:
         cbody = [[kind, f'{what} ({a} -> {b})']
                  for kind, what, a, b in contrasts]
@@ -314,6 +329,9 @@ def render_family(dataset, rows, model):
         if model == 'dopfn':
             print('_DoPFN rows differ in head resolution (and native DoPFN in '
                   'preprocessing); these are as-run comparisons._')
+        if model == 'causalpfn' and len(contrasts) > 1:
+            print('_CausalPFN rows differ in head resolution and in what they '
+                  'were trained on; these are as-run comparisons._')
 
     bad = [m for m in methods
            if (m, 'mass') in table and abs(table[(m, 'mass')] - 1) > 0.01]

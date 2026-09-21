@@ -2,13 +2,24 @@
 #SBATCH --job-name=tauC-dens
 #SBATCH --output=logs_density_tauC/eval_%A_%a.out
 #SBATCH --error=logs_density_tauC/eval_%A_%a.err
-#SBATCH --partition=gpubase_h100_b1
 #SBATCH --account=aip-rgrosse
 #SBATCH --time=03:00:00
-#SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --array=0-11
+
+# NO --partition AND NO --gres ON PURPOSE (see RUN_KILLARNEY.md "Killarney
+# specifics"). The trailing _b1.._bN of gpubase_* is a TIME BUCKET: pinning
+# gpubase_h100_b1 caps --time at 3:00:00 and makes anything longer a
+# SUBMISSION ERROR, not a slower queue. Unset, Slurm routes by --time, and
+# <=3h is the shallowest (fastest-draining) bucket -- so if a task outgrows
+# the wall clock, WIDEN THE ARRAY rather than lengthening --time.
+# The GPU is dropped because the per-query cost here is the numpy tau
+# quadrature, not the forwards: h100 has 8-10 nodes against l40s's 168 and a
+# --test-only probe scheduled the same job ~1.5h later on h100. The eval still
+# uses cuda when it finds it (H.DEVICE), so to take the GPU tier anyway:
+#   sbatch --partition=gpubase_h100_b2 --gres=gpu:h100:1 --time=... ...
+# Measure before assuming either way: the smoke run below prints s/realization.
 
 # Tier-C density eval: p(tau | x) for UWYK-1D vs Joint-2D on IHDP + ACIC.
 # v1 = RAW path only (no MALC). Spec: density_eval_pipeline.md.
@@ -45,7 +56,11 @@
 #   IHDP task = 10 real x 75 q  ~= 14 min  + model load/forwards
 #   ACIC task =  5 real x 480 q ~= 44 min  + model load/forwards
 # That is ~5x the old cost per query, not "about the same"; --time=03:00:00
-# still leaves >3x headroom on the ACIC tasks.
+# still leaves >3x headroom on the ACIC tasks -- but that headroom was measured
+# for the THREE UWYK methods. A DoPFN run pays per DOPFN_MODELS entry, and each
+# JOINT entry costs about what `joint` above does, so budget the sum. ACIC is
+# the long pole (5 realizations x ~481 queries per task, against IHDP's
+# 10 x 75); split it finer in the array map below before raising --time.
 #
 # N_Y0=4096 is set by the JOINT path, not UWYK: UWYK's tail quadrature is at
 # 0.99998 by N_Y0=1024, while the joint only reaches 1e-4 mass error at 4096.
@@ -55,7 +70,19 @@
 # entries use DoPFN's exact independence convolution. The timings above were
 # measured for UWYK only, so check the first DoPFN task before trusting --time.
 #
+# MODEL_FAMILY=causalpfn works the same way over CAUSALPFN_MODELS: five entries
+# by default, TWO of them cpfn2d joints. Each joint pays the full N_Y0 tail
+# quadrature -- the dominant per-query cost -- so the default list is roughly
+# 2x the quadrature of the old single-joint run, on top of ~2.7x the forwards
+# (three 1D heads x two arms + two joints per query chunk, against one 1D head
+# and one joint before). The 1D convolutions themselves stay cheap even at
+# K=1024. Nothing here has been timed on a compute node: WATCH THE FIRST ACIC
+# TASK (array id 10 or 11, ~481 queries x 5 realizations) against the 3h cap.
+# If it runs out, the run is resumable -- see RESUMABLE below -- so re-submitting
+# the same array finishes it; widen the array before touching --time.
+#
 # Submit:  sbatch benchmarks/cluster/submit_density_tauC.sbatch
+# CausalPFN: MODEL_FAMILY=causalpfn sbatch benchmarks/cluster/submit_density_tauC.sbatch
 # Smoke:   sbatch --array=0 benchmarks/cluster/submit_density_tauC.sbatch
 #          (task 0 also runs the model-free gates and aborts if any fail)
 # 1 real:  REAL_END=1 sbatch --array=0 benchmarks/cluster/submit_density_tauC.sbatch
@@ -63,6 +90,12 @@
 # Point errors are now computed from the same logits, with no extra forwards.
 # SAVE_PREDICTIONS=1 (default) retains raw outputs under <OUT>/predictions for
 # future CPU checks. Use a fresh OUT_ROOT to keep the previous run intact.
+# RESUMABLE: the eval skips any realization whose shard already exists, so a
+# task killed at the wall clock costs one realization and re-submitting the
+# same array finishes the rest. The flip side is that it trusts the shard and
+# not the config that made it -- change a checkpoint, DOPFN_MODELS,
+# CAUSALPFN_MODELS, ANC_TAG or N_Y0 and you MUST use a fresh OUT_ROOT, or stale
+# shards are silently kept.
 
 set -euo pipefail
 mkdir -p logs_density_tauC
@@ -97,9 +130,32 @@ DOPFN_MODEL_LIST=(
 )
 export DOPFN_MODELS="${DOPFN_MODELS:-$(IFS=,; echo "${DOPFN_MODEL_LIST[*]}")}"
 export DOPFN_QUERY_CHUNK="${DOPFN_QUERY_CHUNK:-20}"
-export CAUSALPFN_CKPT="${CAUSALPFN_CKPT:-$REPO/Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt}"
-export CAUSALPFN_JOINT_CKPT="${CAUSALPFN_JOINT_CKPT:-$REPO/Required_checkpoints/cpfn2d_j32_random_step_50000.pt}"
+
+# ── CausalPFN models (MODEL_FAMILY=causalpfn or all) ───────────────────────
+# Same contract as DOPFN_MODELS above: every entry becomes its own density row,
+# causalpfn_<name>, and all of them see the same context, the same pooled
+# standardization and the same scoring axis. Two differences from DoPFN:
+#   * every entry needs a checkpoint -- there is no library model to name on
+#     its own, so a bare word is rejected;
+#   * a 1D head and a cpfn2d joint are told apart by reading the FILE
+#     (model_type/edges vs bin_edges), never the name. The _1d / _2d suffixes
+#     below are for the summary tables' benefit only.
+# Replace the whole list for one submission with CAUSALPFN_MODELS (commas, no
+# spaces):
+#   CAUSALPFN_MODELS="j32_random_2d=$CPFN_DIR/cpfn2d_j32_random_step_50000.pt" sbatch ...
+CPFN_DIR="${CPFN_DIR:-$REPO/Required_checkpoints/new_checkpoints}"
+CAUSALPFN_MODEL_LIST=(
+    "j32_random_2d=$CPFN_DIR/cpfn2d_j32_random_step_50000.pt"
+    "j32_eta0_y01_2d=$CPFN_DIR/cpfn2d_j32_eta0_y01_step50000.pt"
+    "j1024_headrand_1d=$CPFN_DIR/cpfn1d_j1024_headrand_step_50000.pt"
+    "j32_1d=$CPFN_DIR/cpfn1d_j32_step50000.pt"
+    "botharms_1d=$CPFN_DIR/cpfn1d_botharms_step50000.pt"
+)
+export CAUSALPFN_MODELS="${CAUSALPFN_MODELS:-$(IFS=,; echo "${CAUSALPFN_MODEL_LIST[*]}")}"
 export CAUSALPFN_QUERY_CHUNK="${CAUSALPFN_QUERY_CHUNK:-512}"
+# NOT SET ON PURPOSE: CAUSALPFN_CKPT / CAUSALPFN_JOINT_CKPT. Setting either one
+# puts the eval back on its pre-list two-row layout (causalpfn_native +
+# causalpfn_joint) and ignores everything above.
 
 # ── checkpoints ────────────────────────────────────────────────────────────
 # Joint-2D: our graph2d head. step_50000 matches the "Ours V6A - 5206104" row
@@ -145,8 +201,14 @@ case "$MODEL_FAMILY" in
     *) echo "FATAL: MODEL_FAMILY must be uwyk, dopfn, causalpfn, or all" >&2; exit 1 ;;
 esac
 if [[ "$MODEL_FAMILY" == causalpfn || "$MODEL_FAMILY" == all ]]; then
-    inputs+=("$CAUSALPFN_CKPT" "$CAUSALPFN_JOINT_CKPT"
-             "$CAUSALPFN/src/causalpfn/models/model.py")
+    inputs+=("$CAUSALPFN/src/causalpfn/models/model.py")
+    IFS=, read -r -a _causalpfn_entries <<< "$CAUSALPFN_MODELS"
+    for entry in "${_causalpfn_entries[@]}"; do
+        [[ "$entry" == *=* ]] || {
+            echo "FATAL: CAUSALPFN_MODELS entry '$entry' must be name=checkpoint" >&2
+            exit 1; }
+        inputs+=("${entry#*=}")
+    done
 fi
 if [[ "$MODEL_FAMILY" == dopfn || "$MODEL_FAMILY" == all ]]; then
     [ -n "$DOPFN_ROOT" ] || { echo "FATAL: set DOPFN_ROOT" >&2; exit 1; }
