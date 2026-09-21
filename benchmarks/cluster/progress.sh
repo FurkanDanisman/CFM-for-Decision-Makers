@@ -49,20 +49,27 @@ nf_pt() {
 }
 
 echo "=== RealCause  (denominator: $RC_N datasets)"
-printf '%-10s %-14s %-14s %-14s %-14s %s\n' ROOT PEHE/ATE Cov-raw Cov-MALC Cov-indep DUMPS
-printf '%.0s-' {1..96}; echo
+printf '%-10s %-14s %-14s %-14s %-14s %-14s %s\n' \
+  ROOT PEHE/ATE Cov-raw Cov-MALC Cov-indep Cov-indepM DUMPS
+printf '%.0s-' {1..112}; echo
 for r in "${ROOTS[@]}"; do
     IFS='|' read -r lbl rc cs is2d models <<<"$r"
     p_pt=$(nf_pt "$rc")
     p_raw=$(nf "$PERREAL/$lbl" 'raw__*__-.npz')
     p_mal=$(nf "$PERREAL/$lbl" 'malc__*__-.npz')
     p_ind=$(nf "$PERREAL/$lbl" 'indep_raw__*__-.npz')
+    # The indep stage runs BOTH a raw and a B=1000 MALC pass, and the MALC half was
+    # being computed but never reported -- which is why jobs kept running long after
+    # Cov-indep reached 100%.
+    p_indm=$(nf "$PERREAL/$lbl" 'indep_malc__*__-.npz')
     nd=$(nf "$rc" '*.npz')
     ind_col="$(pct "$p_ind" "$RC_N")"
-    [ "$is2d" = no ] && ind_col="$(printf '%-13s' 'n/a (1D)')"
-    printf '%-10s %s %s %s %s %s\n' "$lbl" \
+    indm_col="$(pct "$p_indm" "$RC_N")"
+    [ "$is2d" = no ] && { ind_col="$(printf '%-13s' 'n/a (1D)')"
+                          indm_col="$(printf '%-13s' 'n/a (1D)')"; }
+    printf '%-10s %s %s %s %s %s %s\n' "$lbl" \
       "$(pct "$p_pt" "$RC_N")" "$(pct "$p_raw" "$RC_N")" \
-      "$(pct "$p_mal" "$RC_N")" "$ind_col" "$nd npz"
+      "$(pct "$p_mal" "$RC_N")" "$ind_col" "$indm_col" "$nd npz"
 done
 
 echo
