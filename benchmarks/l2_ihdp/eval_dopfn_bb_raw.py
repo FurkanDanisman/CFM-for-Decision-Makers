@@ -143,11 +143,21 @@ def _cmech_bench_dir():
 
 def _cmech_names():
     _cmech_bench_dir()
+    # Also advertises the Do-PFN semi-real datasets. Extending this one helper
+    # rather than adding a parallel dispatch means every --dataset choices list
+    # and every lookup that already consults it picks them up unchanged.
+    out = ()
     try:
         from uwyk_fig34_dataset import dataset_names
+        out += tuple(dataset_names())
     except ImportError:
-        return ()
-    return tuple(dataset_names())
+        pass
+    try:
+        from dopfn_semireal_dataset import dataset_names as _semireal_names
+        out += tuple(_semireal_names())
+    except ImportError:
+        pass
+    return out
 
 
 def _cmech_dataset(name):
@@ -155,9 +165,20 @@ def _cmech_dataset(name):
     _cmech_bench_dir()
     try:
         from uwyk_fig34_dataset import UWYKFig34Dataset, parse_name
+        if parse_name(name):
+            return UWYKFig34Dataset(name)
     except ImportError:
-        return None
-    return UWYKFig34Dataset(name) if parse_name(name) else None
+        pass
+    # Do-PFN's semi-real known-graph datasets (sales, law_race) speak the same
+    # ds[r] -> (cate_slice, adj_slice) contract, so they resolve here too.
+    try:
+        from dopfn_semireal_dataset import (DoPFNSemiRealDataset,
+                                            parse_name as _semireal_parse)
+        if _semireal_parse(name):
+            return DoPFNSemiRealDataset(name)
+    except ImportError:
+        pass
+    return None
 
 
 _CMECH_CASES = _cmech_names()
