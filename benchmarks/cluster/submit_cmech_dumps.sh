@@ -34,6 +34,13 @@ TIME="${DUMP_TIME:-3:00:00}"
 # (232), a5000 and t4 are smaller and often quicker to schedule for a single-GPU
 # inference job like this.
 GRES="${GRES:-gpu:h100:1}"
+# CPU_ONLY=1 runs the dumps without a GPU. The harnesses choose their device with
+# torch.cuda.is_available(), so CUDA_VISIBLE_DEVICES="" (set per cell by
+# submit_cmech_dump_one.sbatch) is what sends them to CPU. --gres=none is passed
+# EXPLICITLY rather than omitted, because submit_cmech_dump_one.sbatch carries its
+# own "#SBATCH --gres=gpu:1" line and dropping the flag would leave that in force.
+CPU_ONLY="${CPU_ONLY:-0}"
+[ "$CPU_ONLY" = 1 ] && GRES="none"
 # Memory and cores must be overridable per GPU type: the sbatch asks for 64G, which
 # exceeds what a t4 node offers, and slurm reports that as "Requested node
 # configuration is not available" rather than as a memory problem.
@@ -90,7 +97,7 @@ for r in "${ROWS[@]}"; do
         printf '%-22s idx=%s -> ' "$name" "$idx"
         env MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT_PATH="$ck" \
             EXTRA_ENV="$extra" OUT_ROOT="$DUMP_ROOT/$name" \
-            UWYK_FIG34_DATA="$DATA" \
+            UWYK_FIG34_DATA="$DATA" CPU_ONLY="$CPU_ONLY" \
             sbatch --time="$TIME" --gres="$GRES" --mem="$MEM" --cpus-per-task="$CPUS" \
                    ${ACCT:+--account=$ACCT} ${PART:+--partition=$PART} \
                    --job-name="cm-$name" "$SB"
@@ -102,4 +109,5 @@ echo
 echo "jobs: $N   (each walks 6 node counts x 2 subsets at N=1000)"
 echo "data:  $DATA"
 echo "dumps: $DUMP_ROOT"
+echo "gres:  $GRES   (CPU_ONLY=$CPU_ONLY)"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"

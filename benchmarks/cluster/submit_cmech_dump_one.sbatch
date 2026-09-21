@@ -44,6 +44,7 @@ echo "[$(date '+%F %T')] $MODEL_NAME  harness_idx=$MODEL_IDX"
 echo "  $CKPT_ENV=${CKPT_PATH:-（none)}"
 echo "  data=$UWYK_FIG34_DATA  out=$OUT_ROOT"
 echo "  nodes=${NODES[*]}  subsets=${SUBSETS[*]}  N=1000"
+[ "${CPU_ONLY:-0}" = 1 ] && echo "  device=CPU (CUDA_VISIBLE_DEVICES blanked)"
 echo
 
 FAILED=0
@@ -55,6 +56,11 @@ for sub in "${SUBSETS[@]}"; do
         ENVS=(OUT_ROOT="$OUT_ROOT" UWYK_FIG34_DATA="$UWYK_FIG34_DATA"
               DENSITY_DUMP=1 SUBSET="$sub" CMECH_CONTEXTS=1000
               CMECH_NODES="${NODES[*]}")
+        # CPU_ONLY=1: the harnesses pick their device with torch.cuda.is_available(),
+        # so blanking CUDA_VISIBLE_DEVICES sends them to CPU instead of failing.
+        # Set inside ENVS rather than relying on inheritance, so it holds for every
+        # cell regardless of how the job was launched.
+        [ "${CPU_ONLY:-0}" = 1 ] && ENVS+=(CUDA_VISIBLE_DEVICES=)
         [ "$CKPT_ENV" != NONE ] && ENVS+=("$CKPT_ENV=$CKPT_PATH")
         # shellcheck disable=SC2086
         SLURM_ARRAY_TASK_ID="$task" env "${ENVS[@]}" ${EXTRA_ENV:-} bash "$INNER"
