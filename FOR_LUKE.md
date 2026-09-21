@@ -1677,44 +1677,46 @@ dopfn_repro_joint2d      — | (no dumps)
 
 
 
-
-
-WAVE 1 — submit now (40 jobs)
-
-These two don't touch each other. Wave 1a writes dumps_all/*; wave 1b reads rc_dens_uni / cs_dvar_dens, which already have dumps.
-
-# 1a — dumps for the 6 new models (24 jobs)
-SKIP=dopfn_repro_joint2d bash R-PFN/benchmarks/cluster/submit_scale_dumps.sh --submit
-
-# 1b — score the 7 models that ALREADY have dumps (16 jobs)
-ONLY="orig eta0" bash R-PFN/benchmarks/cluster/submit_score_all.sh --submit
-
-orig covers 6 models in one pass (they share a root); eta0 is the 7th.
-
-WAVE 2 — after 1a's dumps reach 100%
-
-ONLY="J10 J100 j32 botharms cpfn_v0 uwyk_bin" \
-  bash R-PFN/benchmarks/cluster/submit_score_all.sh --submit      # 48 jobs
-
-WAVE 3 — after the joint2d A/B finishes
-
-bash R-PFN/benchmarks/cluster/ab_joint2d_yscaling.sh --compare
-# then, with the winning Y_SCALING / STD_TARGET exported:
-ONLY=dopfn_repro_joint2d bash R-PFN/benchmarks/cluster/submit_scale_dumps.sh --submit   # 4
-ONLY=joint2d             bash R-PFN/benchmarks/cluster/submit_score_all.sh   --submit   # 8
-
-Check progress — any time, no risk
-
 bash R-PFN/benchmarks/cluster/progress.sh
 
-Percentage per model per task: dump-rc, dump-cs, score-raw, score-MALC, score-indep, cs-raw, cs-MALC. It counts files on disk, not slurm state — which matters, because the case-study sbatch ends every harness call with || echo WARN, so a cell that died on a traceback still reports COMPLETED exit 0.
+Where each model stands
 
-Get the table — any time, however incomplete
+┌──────────┬─────────────────────────────────────────────┬────────────────┬──────────────────┐
+│   root   │                   models                    │     dumps      │     scoring      │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ orig     │ dopfn_native, dopfn_bb, uwyk1d ×2, graph2d  │ ✅ complete    │ queued           │
+│          │ ×2, cpfn1d, cpfn2d                          │                │ (5564457–64)     │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ eta0     │ cpfn2d_eta0                                 │ ✅ complete    │ queued           │
+│          │                                             │                │ (5564465–72)     │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ J10      │ dopfn_repro_1d_J10                          │ queued         │ waiting on dumps │
+│          │                                             │ 5564351–54     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ J100     │ dopfn_repro_1d_J100                         │ queued         │ waiting on dumps │
+│          │                                             │ 5564355–58     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ j32      │ cpfn1d_j32                                  │ queued         │ waiting on dumps │
+│          │                                             │ 5564359–62     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ botharms │ cpfn1d_botharms                             │ queued         │ waiting on dumps │
+│          │                                             │ 5564363–66     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ cpfn_v0  │ cpfn_v0                                     │ queued         │ waiting on dumps │
+│          │                                             │ 5564367–70     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ uwyk_bin │ uwyk_bin                                    │ queued         │ waiting on dumps │
+│          │                                             │ 5564371–74     │                  │
+├──────────┼─────────────────────────────────────────────┼────────────────┼──────────────────┤
+│ joint2d  │ dopfn_repro_joint2d                         │ queued         │ waiting on dumps │
+│          │                                             │ 5565584–87     │                  │
+└──────────┴─────────────────────────────────────────────┴────────────────┴──────────────────┘
 
-python R-PFN/benchmarks/collect_table.py --perreal $SCRATCH/perreal
 
-Nothing is lost mid-run: each cell writes its own per-realization .npz the moment it finishes, with temp-file + rename so a killed job never leaves a half file. The collector pools by concatenation and prints, per stage, exactly which groups are still missing.
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH8tAR5E1gv+Klpw/z6/5aU1zthZfU2WebDWgJFvDS9k nibi-to-killarney' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 
-Wave gating rule: wave 2 needs 1a's dump-rc and dump-cs at 100% for a given model — you can start that model's scoring as soon as it is done, no need to wait for all six (ONLY=j32 etc.).
-
-
+cd /scratch/furkanbd/rpfn_bench_kit
+export SCRATCH=/scratch/furkanbd
+bash R-PFN/benchmarks/cluster/progress.sh
