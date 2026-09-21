@@ -5,6 +5,8 @@
 #SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
+# No type here on purpose: nibi rejects a bare gpu:N, and the right type varies by
+# cluster, so the driver passes --gres explicitly and overrides this line.
 #SBATCH --gres=gpu:1
 #
 # ONE job = ONE model on ComplexMech, walking 6 node counts x 2 subsets at N=1000.

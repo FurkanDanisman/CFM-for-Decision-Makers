@@ -27,6 +27,10 @@ SC="${SCRATCH:?SCRATCH must be set}"
 DATA="${CMECH_DATA:-$SC/cmech_data_v2}"
 ACCT="${ACCOUNT:-}"; PART="${PARTITION:-}"
 TIME="${DUMP_TIME:-3:00:00}"
+# nibi refuses a bare --gres=gpu:N and demands a type. h100 is the most plentiful
+# (232), a5000 and t4 are smaller and often quicker to schedule for a single-GPU
+# inference job like this.
+GRES="${GRES:-gpu:h100:1}"
 ONLY="${ONLY:-}"
 SB="$REPO/benchmarks/cluster/submit_cmech_dump_one.sbatch"
 
@@ -79,7 +83,8 @@ for r in "${ROWS[@]}"; do
         env MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT_PATH="$ck" \
             EXTRA_ENV="$extra" OUT_ROOT="$SC/cmech_dumps/$name" \
             UWYK_FIG34_DATA="$DATA" \
-            sbatch --time="$TIME" ${ACCT:+--account=$ACCT} ${PART:+--partition=$PART} \
+            sbatch --time="$TIME" --gres="$GRES" \
+                   ${ACCT:+--account=$ACCT} ${PART:+--partition=$PART} \
                    --job-name="cm-$name" "$SB"
     else
         printf '%-22s idx=%-2s %s\n' "$name" "$idx" "$(basename "$ck")"
