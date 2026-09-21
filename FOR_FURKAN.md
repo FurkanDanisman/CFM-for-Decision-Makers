@@ -41,250 +41,556 @@ Two designs: IHDP/ACIC ship both potential outcomes and both μ_t, so noise is d
 
 More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks/empirical_tests/prove_arm_independence.py, FULL RESULTS in arm_independence_5312807.out
 
-# Plan
-- Datasets: IHDP, ACIC, CPD, PSID
-- Evaluation: 
-    - Tier A: Marginals. UWYK: the two passes, we get this directly. Ours: the exact marginal of the 9-region mixture — not p_mat.sum(-1).
-    - Tier B/C: 
-        - Prescreening (B): Full 2D Distribution Evaluation. Assumes independence anyway, might as well capture more details.
-        - CATE (C): Ours: diagonal integration, p(τ) = ∫ f(y₀, y₀+τ) dy₀. UWYK build f₀ ⊗ f₁ = f(y₀, y₁), requires independence assumption. 
-- Metrics:
-- 
-| Tier / Metric  | Scope       | Eval  | Model score                                       | Truth / reference                                                |
-| -------------- | ----------- | ----- | ------------------------------------------------- | ---------------------------------------------------------------- |
-| Tier 1 — NLL   | All 5       | **A** | $-\log g_0(y_0^*) - \log g_1(y_1^*)$              | $N(\mu_t,\sigma^2)$ on `Y_CENTERS`; inner-conditional both sides |
-| Tier 1 — NLL   | All 5       | **B** | $-\log f(y_0^*,y_1^*)$                            | $\otimes$ product                                                |
-| Tier 1 — NLL   | All 5       | **C** | $-\log p_\tau(\tau^*)$                            | $N(\mu_1-\mu_0, 2\sigma^2)$ on `TAU_CENTERS`                     |
-| Tier 2 — L2/KL | IHDP + ACIC | **A** | L2 / KL between predicted and true marginals      | $N(\mu_t,\sigma^2)$ on `Y_CENTERS`; inner-conditional both sides |
-| Tier 2 — L2/KL | IHDP + ACIC | **B** | —                                                 | 2D L2 not defined in `density_calc.md`                           |
-| Tier 2 — L2/KL | IHDP + ACIC | **C** | L2 / KL between predicted and true $\tau$ density | $N(\mu_1-\mu_0, 2\sigma^2)$ on `TAU_CENTERS`                     |
 
+# UWYK — IHDP, all runs
 
-### v1:
-- IHDP, ACIC
-- Jumping to CATE to directly see the impact of independent draws in RealCause. 
-- Comparing Ours @ 32x32 bins to UWYK @ 1000 bins. Raw densities, no malc. If we use MALC on Ours then we have to use it on UWYK too, but we have documented bugs on UWYK 1D MALC. We also need the raw density evaluation anyway: 
-    1. it is a intermediate step for MALC. The adjustment I have in mind is to ditch the malc_1d_cvxpy attempt --> UWYK build f₀ ⊗ f₁ from its marginals, MALC the 2D product f₀⊗f₁, then diagonal-integrate. this means same estimator, same input shape, same output path as the joint. 
-    2. raw density comparison to separate the contribution of MALC from the contribution of the architecture. 
-- I use FULL density rather than inner bins. 
+The live UWYK runs on IHDP, pooled here for readability. Per-run detail — the full metric set
+(kl_fwd, kl_rev, mass), the resolution-matched control, the interior-mean rows and the
+HEADLINE/bridge contrast tables — is in the commented-out `# Raw` block and the live
+`# MALC` block below. The HTML-commented blocks for anc=anc and the earlier v3a pass are
+excluded here too; they are superseded.
 
+- **raw** = the `# Raw` runs, anchors noanc / v3a / v3b. **MALC** = the `# MALC` runs,
+  noanc only. So v3a and v3b have no MALC counterpart.
+- realizations=100, ~75 queries each, |tau*|>3: 0.00%. Training-residual sigma mean=1.0023, range=[0.9485, 1.0683].
 
-### Main flags for v1
-- Resolution mismatch
-- Claude debugging (did not take the time to understand):
-```
-One thing I had to change on the way
-Trapezoid quadrature is O(h)-wrong at every discontinuity of a staircase density — and the error scales with bin count, so it would have been larger for the J=32 joint than for K=1000 UWYK. A differential bias between the two columns, which is precisely what this eval must not have.
+Rows are grouped by **variant** (the blocks between rules); each block carries the two main
+models. **bold** = best in that column across the **whole table**; $\underline{underline}$
+= best within its own block. A block whose winner is also the table winner shows the bold
+only, so each column carries one bold (or a tied set) and at most one underline per block.
+Rows that tie on a value are marked alike.
 
-Fixed by doing the interior in closed form. For uniform bins with τ = (d + φ)·bw:
+## Density
 
+<!-- previous grouping: by method family, and including the resolution-matched
+control row (`matched bins` / `J=32`). Superseded by the table below.
 
-p_int(τ) = (w₀ / bw) · [ (1−φ)·S(d) + φ·S(d+1) ],    S(k) = Σᵢ p_mat[i, i+k]
-Exact, O(J) per τ, and integrates to w₀ by construction. Only the 8 smooth tail regions are left to quadrature.
-```
+| variant      | method                     |                          nll |                          l2 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000       |                0.3415±0.0330 | $\underline{1.5399±0.1098}$ |
+| raw · v3a    | UWYK (x)indep K=1000       |            **0.1598±0.0243** |           **1.4097±0.1180** |
+| raw · v3b    | UWYK (x)indep K=1000       |            **0.1598±0.0243** |           **1.4097±0.1180** |
+| MALC · noanc | UWYK (x)indep K=1000       |  $\underline{0.3407±0.0331}$ |               1.5410±0.1098 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep matched bins |  $\underline{0.3426±0.0329}$ | $\underline{1.5394±0.1097}$ |
+| raw · v3a    | UWYK (x)indep J=32         |            **0.1612±0.0243** |           **1.4101±0.1178** |
+| raw · v3b    | UWYK (x)indep J=32         |            **0.1612±0.0243** |           **1.4101±0.1178** |
+| MALC · noanc | UWYK (x)indep matched bins |                0.3441±0.0332 |               1.5427±0.1097 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK Joint-2D              |                0.0103±0.0358 |               1.2964±0.1144 |
+| raw · v3a    | Joint-2D J=32              |           **-0.0504±0.0364** |           **1.2545±0.1156** |
+| raw · v3b    | Joint-2D J=32              | $\underline{-0.0017±0.0390}$ | $\underline{1.2931±0.1140}$ |
+| MALC · noanc | UWYK Joint-2D              |                0.0584±0.0332 |               1.3549±0.1142 |
 
-<!-- # CATE Density Evaluation 
+-->
 
-## IHDP   realizations=100  ~75 queries each  anc=v6a  |tau*|>3: 0.00% 
+| variant      | method               |                          nll |                          l2 |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000 |                0.3415±0.0330 |               1.5399±0.1098 |
+| raw · noanc  | UWYK Joint-2D        |  $\underline{0.0103±0.0358}$ | $\underline{1.2964±0.1144}$ |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| MALC · noanc | UWYK (x)indep K=1000 |                0.3407±0.0331 |               1.5410±0.1098 |
+| MALC · noanc | UWYK Joint-2D        |  $\underline{0.0584±0.0332}$ | $\underline{1.3549±0.1142}$ |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · v3a    | UWYK (x)indep K=1000 |                0.1598±0.0243 |               1.4097±0.1180 |
+| raw · v3a    | Joint-2D J=32        |           **-0.0504±0.0364** |           **1.2545±0.1156** |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · v3b    | UWYK (x)indep K=1000 |                0.1598±0.0243 |               1.4097±0.1180 |
+| raw · v3b    | Joint-2D J=32        | $\underline{-0.0017±0.0390}$ | $\underline{1.2931±0.1140}$ |
 
-| Method                   |                 NLL |                  L2 |              KL_fwd |               KL_rev |            Mass |
-| ------------------------ | ------------------: | ------------------: | ------------------: | -------------------: | --------------: |
-| UWYK `(x)indep` `K=1000` |     0.7224 ± 0.0428 |     1.6925 ± 0.1042 |     1.5304 ± 0.0580 |     34.2109 ± 6.9398 | 1.0000 ± 0.0000 |
-| UWYK `(x)indep` `J=32`   |     0.7202 ± 0.0429 |     1.6904 ± 0.1041 |     1.5281 ± 0.0579 |     34.4410 ± 6.9803 | 1.0000 ± 0.0000 |
-| Joint-2D `J=32`          | **0.0238 ± 0.0400** | **1.3128 ± 0.1133** | **0.8363 ± 0.0626** | **22.3580 ± 5.1948** | 1.0000 ± 0.0000 |
+## Point estimates
 
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
 
-| Comparison                                             |        ΔNLL |      ΔKL_rev |
-| ------------------------------------------------------ | ----------: | -----------: |
-| Resolution handicap: UWYK native → UWYK matched        |     -0.0023 |      +0.2301 |
-| Model gap at equal resolution: UWYK matched → Joint-2D | **-0.6964** | **-12.0830** |
+<!-- previous grouping: by method family, and including the resolution-matched
+control row (`matched bins` / `J=32`). Superseded by the table below.
 
-  (negative = joint better; expect the joint to LOSE slightly if it carries a spurious rho -- the truth here factorises)
+| variant      | mean estimator             |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000       | $\underline{6.2789±0.7908}$ |               5.1695±0.5638 |               2.7218±0.1030 |
+| raw · v3a    | UWYK (x)indep K=1000       |           **5.4806±0.7760** |           **4.3345±0.5533** |           **1.8014±0.1178** |
+| raw · v3b    | UWYK (x)indep K=1000       |           **5.4806±0.7760** |           **4.3345±0.5533** |           **1.8014±0.1178** |
+| MALC · noanc | UWYK (x)indep K=1000       |               6.2816±0.7872 | $\underline{5.1661±0.5626}$ | $\underline{2.7169±0.1032}$ |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep matched bins | $\underline{6.2802±0.7910}$ | $\underline{5.1709±0.5640}$ |               2.7221±0.1030 |
+| raw · v3a    | UWYK (x)indep J=32         |           **5.4810±0.7761** |           **4.3349±0.5534** |           **1.8014±0.1177** |
+| raw · v3b    | UWYK (x)indep J=32         |           **5.4810±0.7761** |           **4.3349±0.5534** |           **1.8014±0.1177** |
+| MALC · noanc | UWYK (x)indep matched bins |               6.3010±0.7904 |               5.1737±0.5638 | $\underline{2.6976±0.0982}$ |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK Joint-2D              |               4.5190±0.6318 |               3.4015±0.4025 | $\underline{1.2799±0.0793}$ |
+| raw · v3a    | Joint-2D J=32              |           **4.3144±0.6278** |           **3.1857±0.3999** |           **1.0791±0.0780** |
+| raw · v3b    | Joint-2D J=32              | $\underline{4.3538±0.5844}$ | $\underline{3.3551±0.3879}$ |               1.3035±0.0797 |
+| MALC · noanc | UWYK Joint-2D              |               4.5613±0.6343 |               3.4248±0.4050 |               1.2897±0.0838 |
 
-## ACIC   realizations=10  ~481 queries each  anc=v6a  |tau*|>3: 0.00% 
+-->
 
-| Method                   |                  NLL |                  L2 |              KL_fwd |              KL_rev |            Mass |
-| ------------------------ | -------------------: | ------------------: | ------------------: | ------------------: | --------------: |
-| UWYK `(x)indep` `K=1000` |     -0.0970 ± 0.1207 |     1.6815 ± 0.0529 |     1.1930 ± 0.0787 |    13.4325 ± 1.6074 | 1.0000 ± 0.0000 |
-| UWYK `(x)indep` `J=32`   |     -0.0955 ± 0.1193 |     1.6823 ± 0.0533 |     1.1945 ± 0.0781 |    13.5690 ± 1.6080 | 1.0000 ± 0.0000 |
-| Joint-2D `J=32`          | **-0.4709 ± 0.1561** | **1.3283 ± 0.1227** | **0.8172 ± 0.1242** | **5.8669 ± 1.1838** | 1.0000 ± 0.0000 |
+| variant      | mean estimator       |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000 |               6.2789±0.7908 |               5.1695±0.5638 |               2.7218±0.1030 |
+| raw · noanc  | UWYK Joint-2D        | $\underline{4.5190±0.6318}$ | $\underline{3.4015±0.4025}$ | $\underline{1.2799±0.0793}$ |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| MALC · noanc | UWYK (x)indep K=1000 |               6.2816±0.7872 |               5.1661±0.5626 |               2.7169±0.1032 |
+| MALC · noanc | UWYK Joint-2D        | $\underline{4.5613±0.6343}$ | $\underline{3.4248±0.4050}$ | $\underline{1.2897±0.0838}$ |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · v3a    | UWYK (x)indep K=1000 |               5.4806±0.7760 |               4.3345±0.5533 |               1.8014±0.1178 |
+| raw · v3a    | Joint-2D J=32        |           **4.3144±0.6278** |           **3.1857±0.3999** |           **1.0791±0.0780** |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · v3b    | UWYK (x)indep K=1000 |               5.4806±0.7760 |               4.3345±0.5533 |               1.8014±0.1178 |
+| raw · v3b    | Joint-2D J=32        | $\underline{4.3538±0.5844}$ | $\underline{3.3551±0.3879}$ | $\underline{1.3035±0.0797}$ |
 
+**Caveats:**
 
-| Comparison                                             |        ΔNLL |     ΔKL_rev |
-| ------------------------------------------------------ | ----------: | ----------: |
-| Resolution handicap: UWYK native → UWYK matched        |     +0.0015 |     +0.1365 |
-| Model gap at equal resolution: UWYK matched → Joint-2D | **-0.3754** | **-7.7021** |
-
-  (negative = joint better; expect the joint to LOSE slightly if it carries a spurious rho -- the truth here factorises)
-
---- -->
-
-<!-- ### IHDP
-
-realizations=100, ~75 queries each, anc=anc, |tau*|>3: 0.00%
-
-| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4080±0.1180 |     0.9686±0.0762 |     26.1195±5.9006 | **1.0000±0.0000** |
-| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4083±0.1178 |     0.9701±0.0763 |     26.3955±5.9555 |     0.9999±0.0000 |
-| Joint-2D J=32        | **-0.0255±0.0398** | **1.2765±0.1139** | **0.7895±0.0627** | **20.1998±4.8796** | **1.0000±0.0000** |
-
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.1852+-0.0227** | **-5.9197+-1.1456** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015+-0.0003 |     +0.2760+-0.0641 |
-
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
-
-### ACIC
-
-realizations=10, ~481 queries each, anc=anc, |tau*|>3: 0.00%
-
-| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
-| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4532±0.0673 |     0.8648±0.0813 |     7.7151±0.9422 | 1.0000±0.0000 |
-| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4671±0.0656 |     0.8753±0.0788 |     7.8500±0.9437 | 1.0000±0.0000 |
-| Joint-2D J=32        | **-0.4600±0.1597** | **1.3369±0.1326** | **0.8276±0.1268** | **5.7765±1.1925** | 1.0000±0.0000 |
-
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0347+-0.0777** | **-1.9386+-0.6032** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108+-0.0035 |     +0.1349+-0.0192 |
-
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
-
----
-
-### IHDP
-
-realizations=100, ~75 queries each, anc=v3a, |tau*|>3: 0.00%
-
-| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4080±0.1180 |     0.9686±0.0762 |     26.1195±5.9006 | **1.0000±0.0000** |
-| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4083±0.1178 |     0.9701±0.0763 |     26.3955±5.9555 |     0.9999±0.0000 |
-| Joint-2D J=32        | **-0.0504±0.0364** | **1.2536±0.1155** | **0.7623±0.0655** | **20.9813±4.9811** | **1.0000±0.0000** |
-
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2101+-0.0196** | **-5.1382+-0.9769** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015+-0.0003 |     +0.2760+-0.0641 |
-
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
-
-### ACIC
-
-realizations=10, ~481 queries each, anc=v3a, |tau*|>3: 0.00%
-
-| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
-| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4532±0.0673 |     0.8648±0.0813 |     7.7151±0.9422 | 1.0000±0.0000 |
-| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4671±0.0656 |     0.8753±0.0788 |     7.8500±0.9437 | 1.0000±0.0000 |
-| Joint-2D J=32        | **-0.4862±0.1496** | **1.3189±0.1227** | **0.8035±0.1163** | **6.0440±1.1985** | 1.0000±0.0000 |
-
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0608+-0.0680** | **-1.6711+-0.6555** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108+-0.0035 |     +0.1349+-0.0192 |
-
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+- **v3a and v3b are identical for `UWYK (x)indep K=1000`** — every nll, l2, sqrt PEHE,
+  CATE and ATE value matches to all printed digits, in both datasets (the same holds for
+  the matched-bins control, no longer shown). The anchor variant changes only the joint
+  model, so wherever those two rows win they win together and are marked alike.
+- The **resolution-matched control** (`UWYK (x)indep matched bins` in the noanc runs,
+  `UWYK (x)indep J=32` in v3a/v3b) is dropped from these tables — it is the bridge
+  contrast's control, not a model. It remains in the commented-out previous grouping above
+  each table, and in the per-run sections.
+- The joint head is printed as `UWYK Joint-2D` in the noanc runs and `Joint-2D J=32` in
+  v3a/v3b. Labels are kept exactly as each run printed them.
+- MALC exists only at noanc, so a MALC-vs-raw read is only licensed between the first two
+  blocks.
+- `Joint-2D interior mean (raw)` rows are dropped here; they appear in the `# Raw` runs
+  only, never in `# MALC`.
+- MALC rows carry mass slightly above 1.0 (1.0001-1.0006) where the raw rows sit at
+  1.0000; see the per-run density tables for the mass column.
 
 ---
 
-### IHDP
+# UWYK — ACIC, all runs
 
-realizations=100, ~75 queries each, anc=noanc, |tau*|>3: 0.00%
+The live UWYK runs on ACIC, pooled here for readability. Per-run detail — the full metric set
+(kl_fwd, kl_rev, mass), the resolution-matched control, the interior-mean rows and the
+HEADLINE/bridge contrast tables — is in the commented-out `# Raw` block and the live
+`# MALC` block below. The HTML-commented blocks for anc=anc and the earlier v3a pass are
+excluded here too; they are superseded.
 
-| method               |               nll |                l2 |            kl_fwd |             kl_rev |          mass |
-| -------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ------------: |
-| UWYK (x)indep K=1000 |     0.3415±0.0330 |     1.5382±0.1098 |     1.1500±0.0673 |     29.5653±6.3824 | 1.0000±0.0000 |
-| UWYK (x)indep J=32   |     0.3426±0.0329 |     1.5377±0.1097 |     1.1511±0.0673 |     29.8211±6.4307 | 1.0000±0.0000 |
-| Joint-2D J=32        | **0.0103±0.0358** | **1.2952±0.1144** | **0.8201±0.0656** | **24.5587±5.4782** | 1.0000±0.0000 |
+- **raw** = the `# Raw` runs, anchors noanc / v3a / v3b. **MALC** = the `# MALC` runs,
+  noanc only. So v3a and v3b have no MALC counterpart.
+- realizations=10, ~481 queries each, |tau*|>3: 0.00%. Training-residual sigma mean=0.9951, range=[0.9800, 1.0119].
 
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.3312+-0.0092** | **-5.0066+-0.9900** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0011+-0.0003 |     +0.2558+-0.0588 |
+Rows are grouped by **variant** (the blocks between rules); each block carries the two main
+models. **bold** = best in that column across the **whole table**; $\underline{underline}$
+= best within its own block. A block whose winner is also the table winner shows the bold
+only, so each column carries one bold (or a tied set) and at most one underline per block.
+Rows that tie on a value are marked alike.
 
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+## Density
 
-### ACIC
+<!-- previous grouping: by method family, and including the resolution-matched
+control row (`matched bins` / `J=32`). Superseded by the table below.
 
-realizations=10, ~481 queries each, anc=noanc, |tau*|>3: 0.00%
+| variant      | method                     |                          nll |                          l2 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000       |               -0.2536±0.1118 | $\underline{1.5791±0.0566}$ |
+| raw · v3a    | UWYK (x)indep K=1000       |           **-0.4253±0.1200** |           **1.4460±0.0673** |
+| raw · v3b    | UWYK (x)indep K=1000       |           **-0.4253±0.1200** |           **1.4460±0.0673** |
+| MALC · noanc | UWYK (x)indep K=1000       | $\underline{-0.2562±0.1079}$ |               1.5860±0.0573 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep matched bins |               -0.2478±0.1092 | $\underline{1.5843±0.0564}$ |
+| raw · v3a    | UWYK (x)indep J=32         |           **-0.4146±0.1168** |           **1.4599±0.0655** |
+| raw · v3b    | UWYK (x)indep J=32         |           **-0.4146±0.1168** |           **1.4599±0.0655** |
+| MALC · noanc | UWYK (x)indep matched bins | $\underline{-0.2495±0.1027}$ |               1.6012±0.0574 |
+| ------------ | -------------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK Joint-2D              | $\underline{-0.4638±0.1481}$ | $\underline{1.3377±0.1164}$ |
+| raw · v3a    | Joint-2D J=32              |           **-0.4862±0.1496** |           **1.3138±0.1228** |
+| raw · v3b    | Joint-2D J=32              |               -0.4574±0.1596 |               1.3392±0.1179 |
+| MALC · noanc | UWYK Joint-2D              |               -0.4391±0.1417 |               1.4091±0.1094 |
 
-| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
-| UWYK (x)indep K=1000 |     -0.2536±0.1118 |     1.5859±0.0576 |     1.0374±0.0725 |    10.7707±1.2125 | 1.0000±0.0000 |
-| UWYK (x)indep J=32   |     -0.2478±0.1092 |     1.5911±0.0574 |     1.0429±0.0708 |    10.9066±1.2150 | 1.0000±0.0000 |
-| Joint-2D J=32        | **-0.4638±0.1481** | **1.3433±0.1160** | **0.8256±0.1152** | **6.8656±1.3200** | 1.0000±0.0000 |
+-->
 
-|              | contrast                                          |                dNLL |              dKLrev |
-| ------------ | ------------------------------------------------- | ------------------: | ------------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2102+-0.0672** | **-3.9051+-0.6297** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0058+-0.0030 |     +0.1359+-0.0194 |
+| variant      | method               |                          nll |                          l2 |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000 |               -0.2536±0.1118 |               1.5791±0.0566 |
+| raw · noanc  | UWYK Joint-2D        | $\underline{-0.4638±0.1481}$ | $\underline{1.3377±0.1164}$ |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| MALC · noanc | UWYK (x)indep K=1000 |               -0.2562±0.1079 |               1.5860±0.0573 |
+| MALC · noanc | UWYK Joint-2D        | $\underline{-0.4391±0.1417}$ | $\underline{1.4091±0.1094}$ |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · v3a    | UWYK (x)indep K=1000 |               -0.4253±0.1200 |               1.4460±0.0673 |
+| raw · v3a    | Joint-2D J=32        |           **-0.4862±0.1496** |           **1.3138±0.1228** |
+| ------------ | -------------------- | ---------------------------: | --------------------------: |
+| raw · v3b    | UWYK (x)indep K=1000 |               -0.4253±0.1200 |               1.4460±0.0673 |
+| raw · v3b    | Joint-2D J=32        | $\underline{-0.4574±0.1596}$ | $\underline{1.3392±0.1179}$ |
 
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._ -->
+## Point estimates
+
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
+
+<!-- previous grouping: by method family, and including the resolution-matched
+control row (`matched bins` / `J=32`). Superseded by the table below.
+
+| variant      | mean estimator             |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000       | $\underline{3.3019±0.4730}$ | $\underline{2.5166±0.3596}$ | $\underline{1.2980±0.1865}$ |
+| raw · v3a    | UWYK (x)indep K=1000       |           **2.6996±0.4419** |           **1.9516±0.3321** |           **0.5677±0.1565** |
+| raw · v3b    | UWYK (x)indep K=1000       |           **2.6996±0.4419** |           **1.9516±0.3321** |           **0.5677±0.1565** |
+| MALC · noanc | UWYK (x)indep K=1000       |               3.3488±0.4667 |               2.5461±0.3557 |               1.3051±0.1876 |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep matched bins | $\underline{3.3022±0.4730}$ | $\underline{2.5170±0.3596}$ |               1.2984±0.1866 |
+| raw · v3a    | UWYK (x)indep J=32         |           **2.6997±0.4420** |           **1.9517±0.3322** |           **0.5672±0.1568** |
+| raw · v3b    | UWYK (x)indep J=32         |           **2.6997±0.4420** |           **1.9517±0.3322** |           **0.5672±0.1568** |
+| MALC · noanc | UWYK (x)indep matched bins |               3.3634±0.4619 |               2.5663±0.3543 | $\underline{1.2814±0.1923}$ |
+| ------------ | -------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK Joint-2D              |           **2.7751±0.5009** | $\underline{1.9218±0.3516}$ | $\underline{0.3581±0.0837}$ |
+| raw · v3a    | Joint-2D J=32              | $\underline{2.7840±0.5051}$ |           **1.9171±0.3554** |               0.4155±0.1125 |
+| raw · v3b    | Joint-2D J=32              |               2.7929±0.5463 |               1.9562±0.4014 |               0.4121±0.0852 |
+| MALC · noanc | UWYK Joint-2D              |               2.8159±0.4911 |               1.9628±0.3447 |           **0.3524±0.0836** |
+
+-->
+
+| variant      | mean estimator       |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · noanc  | UWYK (x)indep K=1000 |               3.3019±0.4730 |               2.5166±0.3596 |               1.2980±0.1865 |
+| raw · noanc  | UWYK Joint-2D        | $\underline{2.7751±0.5009}$ | $\underline{1.9218±0.3516}$ | $\underline{0.3581±0.0837}$ |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| MALC · noanc | UWYK (x)indep K=1000 |               3.3488±0.4667 |               2.5461±0.3557 |               1.3051±0.1876 |
+| MALC · noanc | UWYK Joint-2D        | $\underline{2.8159±0.4911}$ | $\underline{1.9628±0.3447}$ |           **0.3524±0.0836** |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · v3a    | UWYK (x)indep K=1000 |           **2.6996±0.4419** |               1.9516±0.3321 |               0.5677±0.1565 |
+| raw · v3a    | Joint-2D J=32        |               2.7840±0.5051 |           **1.9171±0.3554** | $\underline{0.4155±0.1125}$ |
+| ------------ | -------------------- | --------------------------: | --------------------------: | --------------------------: |
+| raw · v3b    | UWYK (x)indep K=1000 |           **2.6996±0.4419** | $\underline{1.9516±0.3321}$ |               0.5677±0.1565 |
+| raw · v3b    | Joint-2D J=32        |               2.7929±0.5463 |               1.9562±0.4014 | $\underline{0.4121±0.0852}$ |
+
+**Caveats:**
+
+- **v3a and v3b are identical for `UWYK (x)indep K=1000`** — every nll, l2, sqrt PEHE,
+  CATE and ATE value matches to all printed digits, in both datasets (the same holds for
+  the matched-bins control, no longer shown). The anchor variant changes only the joint
+  model, so wherever those two rows win they win together and are marked alike.
+- The **resolution-matched control** (`UWYK (x)indep matched bins` in the noanc runs,
+  `UWYK (x)indep J=32` in v3a/v3b) is dropped from these tables — it is the bridge
+  contrast's control, not a model. It remains in the commented-out previous grouping above
+  each table, and in the per-run sections.
+- The joint head is printed as `UWYK Joint-2D` in the noanc runs and `Joint-2D J=32` in
+  v3a/v3b. Labels are kept exactly as each run printed them.
+- MALC exists only at noanc, so a MALC-vs-raw read is only licensed between the first two
+  blocks.
+- `Joint-2D interior mean (raw)` rows are dropped here; they appear in the `# Raw` runs
+  only, never in `# MALC`.
+- MALC rows carry mass slightly above 1.0 (1.0001-1.0006) where the raw rows sit at
+  1.0000; see the per-run density tables for the mass column.
+
+---
+
+# DoPFN — IHDP, all runs
+
+The new DoPFN reproduction on IHDP, pooled here for readability. Per-run detail — the full
+metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
+tail notes — is in the commented-out per-run blocks below (`# Do-PFN Old`,
+`# Updated DoPFN Reprodcution results`, `# Dopfn MALC reproduction`).
+
+- **new (raw)** = `# Updated DoPFN Reprodcution results`, **new (MALC)** = `# Dopfn MALC
+  reproduction`. realizations=90, ~75 queries each, graph=none. Training-residual sigma
+  mean=1.0029, range=[0.9550, 1.0683]. Checkpoints:
+  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
+  `native` is the library model in both runs.
+- The **stale** run (`# Do-PFN Old`, realizations=100, ~75 queries each) is dropped from these tables — it is a different
+  query set. It is kept in the commented-out previous grouping above each table.
+
+Rows are grouped by **run** (the blocks between rules), with `repro_1d_J100` pulled out
+into its own raw-vs-MALC pair. **bold** = best in that column across the **whole table**;
+$\underline{underline}$ = best within its own block. A block whose winner is also the
+table winner shows the bold only, so each column carries one bold (or a tied set) and at
+most one underline per block. Rows that tie on a value are marked alike.
+
+## Density
+
+<!-- previous grouping: by method family, and including the stale run
+(`# Do-PFN Old`, a different query set). Superseded by the table below.
+
+| run        | method                       |                         nll |                          l2 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |           **0.1849±0.0354** |               1.4193±0.1118 |
+| new (raw)  | DoPFN (x)indep native        | $\underline{0.2115±0.0343}$ |           **1.3222±0.1080** |
+| new (MALC) | DoPFN (x)indep native        |               0.2179±0.0341 | $\underline{1.3254±0.1081}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **0.6903±0.0540** |           **1.4401±0.1024** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  | $\underline{0.6917±0.0543}$ | $\underline{1.4406±0.1024}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep | $\underline{0.1121±0.0247}$ |           **1.2533±0.1141** |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |           **0.1120±0.0246** | $\underline{1.2575±0.1140}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |               0.5781±0.0475 |               1.6428±0.1104 |
+| new (raw)  | DoPFN repro_joint2d Joint-2D | $\underline{0.4802±0.0449}$ | $\underline{1.4690±0.1099}$ |
+| new (MALC) | DoPFN repro_joint2d (x)indep |           **0.3514±0.0347** |           **1.3874±0.1122** |
+
+-->
+
+| run        | method                       |                         nll |                          l2 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN (x)indep native        | $\underline{0.2115±0.0343}$ | $\underline{1.3222±0.1080}$ |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |               0.6903±0.0540 |               1.4401±0.1024 |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |               0.4802±0.0449 |               1.4690±0.1099 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (MALC) | DoPFN (x)indep native        | $\underline{0.2179±0.0341}$ | $\underline{1.3254±0.1081}$ |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |               0.6917±0.0543 |               1.4406±0.1024 |
+| new (MALC) | DoPFN repro_joint2d (x)indep |               0.3514±0.0347 |               1.3874±0.1122 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |               0.1121±0.0247 |           **1.2533±0.1141** |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |           **0.1120±0.0246** |               1.2575±0.1140 |
+
+## Point estimates
+
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
+
+<!-- previous grouping: by method family, and including the stale run
+(`# Do-PFN Old`, a different query set). Superseded by the table below.
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |               6.6013±0.9953 |               4.4945±0.6109 |               2.4695±0.4023 |
+| new (raw)  | DoPFN (x)indep native        |           **6.0065±1.0287** |           **4.1687±0.6372** |           **2.2837±0.4223** |
+| new (MALC) | DoPFN (x)indep native        | $\underline{6.0133±1.0283}$ | $\underline{4.1739±0.6379}$ | $\underline{2.2864±0.4233}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  | $\underline{9.2522±0.6143}$ | $\underline{7.6938±0.4089}$ | $\underline{6.5640±0.3247}$ |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |           **9.2498±0.6144** |           **7.6893±0.4089** |           **6.5626±0.3252** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **4.3980±0.7484** | $\underline{3.3470±0.5329}$ | $\underline{0.8957±0.0953}$ |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{4.3993±0.7485}$ |           **3.3460±0.5324** |           **0.8914±0.0954** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |               5.7038±0.8368 |               4.4645±0.5963 |           **1.5492±0.1466** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |           **5.4772±0.8300** |           **4.3394±0.5797** | $\underline{1.8038±0.1371}$ |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{5.4801±0.8303}$ | $\underline{4.3408±0.5794}$ |               1.8041±0.1364 |
+
+-->
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN (x)indep native        |               6.0065±1.0287 | $\underline{4.1687±0.6372}$ |               2.2837±0.4223 |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |               9.2522±0.6143 |               7.6938±0.4089 |               6.5640±0.3247 |
+| new (raw)  | DoPFN repro_joint2d Joint-2D | $\underline{5.4772±0.8300}$ |               4.3394±0.5797 | $\underline{1.8038±0.1371}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (MALC) | DoPFN (x)indep native        |               6.0133±1.0283 | $\underline{4.1739±0.6379}$ |               2.2864±0.4233 |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |               9.2498±0.6144 |               7.6893±0.4089 |               6.5626±0.3252 |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{5.4801±0.8303}$ |               4.3408±0.5794 | $\underline{1.8041±0.1364}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **4.3980±0.7484** |               3.3470±0.5329 |               0.8957±0.0953 |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |               4.3993±0.7485 |           **3.3460±0.5324** |           **0.8914±0.0954** |
+
+**Caveats:**
+
+- The finite tau grid omits distant tail mass for all four methods in the new raw run (the
+  MALC section prints no tail note). NLL is at the observed tau and point errors use exact
+  full-density means; l2 (and kl/mass) are finite-grid quantities.
+- `dopfn_repro_1d_J10` has p(tau) mass ~0.816 on IHDP in both new runs (0.8158 raw, 0.8157
+  MALC) — >1% off 1.0, so the tau grid is clipping real density and its numbers should not
+  be read as calibrated. Widen `TAU_EDGES`.
+- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
+  run, as printed by each run.
+- `interior mean (raw)` rows are dropped here; they remain in the per-run blocks.
+
+---
+
+# DoPFN — ACIC, all runs
+
+The new DoPFN reproduction on ACIC, pooled here for readability. Per-run detail — the full
+metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
+tail notes — is in the commented-out per-run blocks below (`# Do-PFN Old`,
+`# Updated DoPFN Reprodcution results`, `# Dopfn MALC reproduction`).
+
+- **new (raw)** = `# Updated DoPFN Reprodcution results`, **new (MALC)** = `# Dopfn MALC
+  reproduction`. realizations=8, ~481 queries each, graph=none. Training-residual sigma
+  mean=0.9963, range=[0.9806, 1.0119]. Checkpoints:
+  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
+  `native` is the library model in both runs.
+- The **stale** run (`# Do-PFN Old`, realizations=10, ~481 queries each) is dropped from these tables — it is a different
+  query set. It is kept in the commented-out previous grouping above each table.
+
+Rows are grouped by **run** (the blocks between rules), with `repro_1d_J100` pulled out
+into its own raw-vs-MALC pair. **bold** = best in that column across the **whole table**;
+$\underline{underline}$ = best within its own block. A block whose winner is also the
+table winner shows the bold only, so each column carries one bold (or a tied set) and at
+most one underline per block. Rows that tie on a value are marked alike.
+
+## Density
+
+<!-- previous grouping: by method family, and including the stale run
+(`# Do-PFN Old`, a different query set). Superseded by the table below.
+
+| run        | method                       |                          nll |                          l2 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |               -0.0245±0.1144 |           **1.7014±0.0452** |
+| new (raw)  | DoPFN (x)indep native        |           **-0.0374±0.1436** | $\underline{1.7047±0.0549}$ |
+| new (MALC) | DoPFN (x)indep native        | $\underline{-0.0255±0.1401}$ |               1.7151±0.0584 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |  $\underline{0.1911±0.1491}$ |           **1.7408±0.0557** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |            **0.1902±0.1497** |           **1.7408±0.0558** |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **-0.0085±0.1400** |           **1.7155±0.0550** |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{-0.0032±0.1382}$ | $\underline{1.7212±0.0569}$ |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |           **-0.2285±0.2289** |           **1.5219±0.0903** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |                0.2644±0.2574 |               1.8911±0.0684 |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{-0.0454±0.1929}$ | $\underline{1.6979±0.0543}$ |
+
+-->
+
+| run        | method                       |                          nll |                          l2 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN (x)indep native        | $\underline{-0.0374±0.1436}$ | $\underline{1.7047±0.0549}$ |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |                0.1911±0.1491 |               1.7408±0.0557 |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |                0.2644±0.2574 |               1.8911±0.0684 |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (MALC) | DoPFN (x)indep native        |               -0.0255±0.1401 |               1.7151±0.0584 |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |                0.1902±0.1497 |               1.7408±0.0558 |
+| new (MALC) | DoPFN repro_joint2d (x)indep |           **-0.0454±0.1929** |           **1.6979±0.0543** |
+| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep | $\underline{-0.0085±0.1400}$ | $\underline{1.7155±0.0550}$ |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |               -0.0032±0.1382 |               1.7212±0.0569 |
+
+## Point estimates
+
+Original outcome units, from the same predictions, using full-density means; CATE L1 is
+per-query MAE, ATE error is unnormalised.
+
+<!-- previous grouping: by method family, and including the stale run
+(`# Do-PFN Old`, a different query set). Superseded by the table below.
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN (x)indep native        |           **4.1553±0.5434** |               3.3656±0.4353 |           **2.4312±0.3214** |
+| new (raw)  | DoPFN (x)indep native        | $\underline{4.1863±0.6864}$ |           **3.3368±0.5497** | $\underline{2.4508±0.3163}$ |
+| new (MALC) | DoPFN (x)indep native        |               4.1972±0.6844 | $\underline{3.3441±0.5474}$ |               2.4533±0.3157 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **4.7559±0.6123** | $\underline{3.7696±0.5274}$ |           **1.6296±0.5955** |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |           **4.7559±0.6132** |           **3.7678±0.5280** | $\underline{1.6302±0.5954}$ |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **3.8339±0.7193** |           **2.9316±0.5915** | $\underline{1.8055±0.3326}$ |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{3.8483±0.7190}$ | $\underline{2.9421±0.5909}$ |           **1.8048±0.3352** |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| stale      | DoPFN Joint-2D               |           **3.2313±0.5948** |           **2.4505±0.4441** |           **0.8903±0.1348** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D |               4.1702±0.5990 |               3.2844±0.4916 |               2.1617±0.3401 |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{4.1692±0.5992}$ | $\underline{3.2821±0.4913}$ | $\underline{2.1608±0.3397}$ |
+
+-->
+
+| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN (x)indep native        |               4.1863±0.6864 |               3.3368±0.5497 |               2.4508±0.3163 |
+| new (raw)  | DoPFN repro_1d_J10 (x)indep  |               4.7559±0.6123 |               3.7696±0.5274 |           **1.6296±0.5955** |
+| new (raw)  | DoPFN repro_joint2d Joint-2D | $\underline{4.1702±0.5990}$ | $\underline{3.2844±0.4916}$ |               2.1617±0.3401 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (MALC) | DoPFN (x)indep native        |               4.1972±0.6844 |               3.3441±0.5474 |               2.4533±0.3157 |
+| new (MALC) | DoPFN repro_1d_J10 (x)indep  |               4.7559±0.6132 |               3.7678±0.5280 | $\underline{1.6302±0.5954}$ |
+| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{4.1692±0.5992}$ | $\underline{3.2821±0.4913}$ |               2.1608±0.3397 |
+| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
+| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **3.8339±0.7193** |           **2.9316±0.5915** |               1.8055±0.3326 |
+| new (MALC) | DoPFN repro_1d_J100 (x)indep |               3.8483±0.7190 |               2.9421±0.5909 | $\underline{1.8048±0.3352}$ |
+
+**Caveats:**
+
+- The finite tau grid omits distant tail mass for all four methods in the new raw run (the
+  MALC section prints no tail note). NLL is at the observed tau and point errors use exact
+  full-density means; l2 (and kl/mass) are finite-grid quantities.
+- p(tau) mass off 1.0 by >1% on ACIC for `dopfn_repro_1d_J10` in both new runs (0.9313 in
+  each) and, in the raw run only, `dopfn_repro_joint2d` (0.9899). Under MALC the joint2d
+  mass is 0.9902, just inside the 1% threshold, so that run warns for J10 alone. Where the
+  grid clips, the numbers are not calibrated — widen `TAU_EDGES`.
+- Two exact ties on ACIC: l2 for `repro_1d_J10` is 1.7408 in each run, and its sqrt PEHE
+  is 4.7559 in each (SEs differ — ±0.6123 raw, ±0.6132 MALC). Neither wins its block under
+  this scheme, so neither carries a mark.
+- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
+  run, as printed by each run.
+- `interior mean (raw)` rows are dropped here; they remain in the per-run blocks.
+
+---
+
+# CausalPFN
+
+- `causalpfn_j32_random_2d`: /project/6105522/lukez/CFM-for-Decision-Makers/Required_checkpoints/new_checkpoints/cpfn2d_j32_random_step_50000.pt
+- `causalpfn_j32_eta0_y01_2d`: /project/6105522/lukez/CFM-for-Decision-Makers/Required_checkpoints/new_checkpoints/cpfn2d_j32_eta0_y01_step50000.pt
+- `causalpfn_j1024_headrand_1d`: /project/6105522/lukez/CFM-for-Decision-Makers/Required_checkpoints/new_checkpoints/cpfn1d_j1024_headrand_step_50000.pt
+- `causalpfn_j32_1d`: /project/6105522/lukez/CFM-for-Decision-Makers/Required_checkpoints/new_checkpoints/cpfn1d_j32_step50000.pt
+- `causalpfn_botharms_1d`: /project/6105522/lukez/CFM-for-Decision-Makers/Required_checkpoints/new_checkpoints/cpfn1d_botharms_step50000.pt
+
+### IHDP — CausalPFN
+
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0025, range=[0.9485, 1.0680].
+
+realizations=90, ~75 queries each, graph=none, |tau*|>3: 0.00%
 
 
-<!-- ### IHDP
+| method                               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| ------------------------------------ | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| CausalPFN j32_random_2d Joint-2D     |     -0.3649±0.0478 |     1.1127±0.1209 |     0.4839±0.0559 |     7.1073±2.1882 | 1.0000±0.0000 |
+| CausalPFN j32_eta0_y01_2d Joint-2D   |     -0.3511±0.0484 |     1.1281±0.1203 |     0.4965±0.0560 |     7.3102±2.2431 | 1.0000±0.0000 |
+| CausalPFN j1024_headrand_1d (x)indep |     -0.6009±0.0867 |     0.8198±0.0641 | **0.2313±0.0130** | **0.4934±0.1693** | 1.0000±0.0000 |
+| CausalPFN j32_1d (x)indep            |     -0.3847±0.0463 |     1.0816±0.1224 |     0.4558±0.0574 |     7.0317±2.1881 | 1.0000±0.0000 |
+| CausalPFN botharms_1d (x)indep       | **-0.6012±0.0880** | **0.8116±0.0627** |     0.2338±0.0127 |     0.5112±0.1979 | 1.0000±0.0000 |
 
-realizations=100, ~75 queries each, anc=v3a, |tau*|>3: 0.00%
 
-| method               |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| UWYK (x)indep K=1000 |      0.1598±0.0243 |     1.4080±0.1180 |     0.9686±0.0762 |     26.1195±5.9006 | **1.0000±0.0000** |
-| UWYK (x)indep J=32   |      0.1612±0.0243 |     1.4083±0.1178 |     0.9701±0.0763 |     26.3955±5.9555 |     0.9999±0.0000 |
-| Joint-2D J=32        | **-0.0504±0.0364** | **1.2536±0.1155** | **0.7623±0.0655** | **20.9813±4.9811** | **1.0000±0.0000** |
+| mean estimator                                         |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ------------------------------------------------------ | ----------------: | ----------------: | ----------------: |
+| CausalPFN j32_random_2d Joint-2D                       |     1.1716±0.1031 |     0.8330±0.0506 |     0.2080±0.0157 |
+| CausalPFN j32_eta0_y01_2d Joint-2D                     |     1.1525±0.0840 |     0.8314±0.0394 |     0.2309±0.0248 |
+| CausalPFN j1024_headrand_1d (x)indep                   |     0.7608±0.1236 |     0.4800±0.0442 | **0.1385±0.0209** |
+| CausalPFN j32_1d (x)indep                              |     0.7652±0.1078 |     0.5069±0.0393 |     0.2349±0.0178 |
+| CausalPFN botharms_1d (x)indep                         | **0.7192±0.1075** | **0.4732±0.0423** |     0.1929±0.0201 |
+| CausalPFN j32_random_2d Joint-2D interior mean (raw)   |     1.1718±0.1032 |     0.8332±0.0507 |     0.2079±0.0157 |
+| CausalPFN j32_eta0_y01_2d Joint-2D interior mean (raw) |     1.1527±0.0841 |     0.8315±0.0394 |     0.2308±0.0248 |
 
-Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
 
-| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ---------------------------- | ----------------: | ----------------: | ----------------: |
-| UWYK (x)indep K=1000         |     5.4806±0.7760 |     4.3345±0.5533 |     1.8014±0.1178 |
-| UWYK (x)indep J=32           |     5.4810±0.7761 |     4.3349±0.5534 |     1.8014±0.1177 |
-| Joint-2D J=32                |     4.3144±0.6278 | **3.1857±0.3999** |     1.0791±0.0780 |
-| Joint-2D interior mean (raw) | **4.3143±0.6278** | **3.1857±0.3999** | **1.0790±0.0780** |
-  uwyk_native: max |finite-grid moment - full mean| = 0.998319
-  uwyk_matched: max |finite-grid moment - full mean| = 0.99857
-  joint: max |finite-grid moment - full mean| = 7.95504e-08
+### ACIC — CausalPFN
 
-|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
-| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.2101±0.0196** | **-5.1382±0.9769** | **-1.1662±0.1629** |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0015±0.0003 |     +0.2760±0.0641 |     +0.0004±0.0002 |
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
 
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._
+realizations=10, ~481 queries each, graph=none, |tau*|>3: 0.00%
 
-### ACIC
+| method                               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| ------------------------------------ | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| CausalPFN j32_random_2d Joint-2D     |     -0.6718±0.0908 |     1.3104±0.0439 |     0.6124±0.0461 |     2.8739±0.4178 | 1.0000±0.0000 |
+| CausalPFN j32_eta0_y01_2d Joint-2D   |     -0.7026±0.0888 |     1.2883±0.0450 |     0.5834±0.0439 |     2.6312±0.3788 | 1.0000±0.0000 |
+| CausalPFN j1024_headrand_1d (x)indep |     -0.9017±0.1125 |     0.9430±0.0625 |     0.3917±0.0696 | **1.9576±0.5605** | 1.0000±0.0000 |
+| CausalPFN j32_1d (x)indep            |     -0.6323±0.0934 |     1.3444±0.0462 |     0.6536±0.0507 |     3.6875±0.7491 | 1.0000±0.0000 |
+| CausalPFN botharms_1d (x)indep       | **-0.9054±0.1191** | **0.9332±0.0653** | **0.3880±0.0750** |     1.9935±0.6799 | 1.0000±0.0000 |
 
-realizations=10, ~481 queries each, anc=v3a, |tau*|>3: 0.00%
+<!-- Finite support (causalpfn_j1024_headrand_1d): zero density at tau* in 0.00% of queries (mean over realizations); NLL retains +inf. Grid KL uses the shared numerical density floor.
 
-| method               |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
-| -------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
-| UWYK (x)indep K=1000 |     -0.4253±0.1200 |     1.4532±0.0673 |     0.8648±0.0813 |     7.7151±0.9422 | 1.0000±0.0000 |
-| UWYK (x)indep J=32   |     -0.4146±0.1168 |     1.4671±0.0656 |     0.8753±0.0788 |     7.8500±0.9437 | 1.0000±0.0000 |
-| Joint-2D J=32        | **-0.4862±0.1496** | **1.3189±0.1227** | **0.8035±0.1163** | **6.0440±1.1985** | 1.0000±0.0000 |
+Finite support (causalpfn_j32_1d): zero density at tau* in 0.00% of queries (mean over realizations); NLL retains +inf. Grid KL uses the shared numerical density floor.
 
-Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
+Finite support (causalpfn_botharms_1d): zero density at tau* in 0.00% of queries (mean over realizations); NLL retains +inf. Grid KL uses the shared numerical density floor.
 
-| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ---------------------------- | ----------------: | ----------------: | ----------------: |
-| UWYK (x)indep K=1000         | **2.6996±0.4419** |     1.9516±0.3321 |     0.5677±0.1565 |
-| UWYK (x)indep J=32           |     2.6997±0.4420 |     1.9517±0.3322 |     0.5672±0.1568 |
-| Joint-2D J=32                |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
-| Joint-2D interior mean (raw) |     2.7840±0.5051 | **1.9171±0.3554** | **0.4155±0.1125** |
-  uwyk_native: max |finite-grid moment - full mean| = 0.399156
-  uwyk_matched: max |finite-grid moment - full mean| = 0.399538
-  joint: max |finite-grid moment - full mean| = 2.77443e-08
+Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised. -->
 
-|              | contrast                                          |               dNLL |             dKLrev |              dPEHE |
-| ------------ | ------------------------------------------------- | -----------------: | -----------------: | -----------------: |
-| **HEADLINE** | model gap as run (uwyk_native -> joint)           | **-0.0608±0.0680** | **-1.6711±0.6555** |     +0.0843±0.2296 |
-| bridge       | resolution handicap (uwyk_native -> uwyk_matched) |     +0.0108±0.0035 |     +0.1349±0.0192 | **+0.0000±0.0001** |
+| mean estimator                                         |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| ------------------------------------------------------ | ----------------: | ----------------: | ----------------: |
+| CausalPFN j32_random_2d Joint-2D                       |     1.8774±0.2549 |     1.2980±0.1605 |     0.6679±0.1164 |
+| CausalPFN j32_eta0_y01_2d Joint-2D                     |     1.6544±0.2438 |     1.1225±0.1531 |     0.2375±0.0607 |
+| CausalPFN j1024_headrand_1d (x)indep                   |     1.7308±0.2771 |     1.1583±0.1703 |     0.3246±0.0758 |
+| CausalPFN j32_1d (x)indep                              | **1.5959±0.2943** | **1.0778±0.1854** | **0.1886±0.0579** |
+| CausalPFN botharms_1d (x)indep                         |     1.7295±0.3138 |     1.1484±0.1815 |     0.2479±0.0782 |
+| CausalPFN j32_random_2d Joint-2D interior mean (raw)   |     1.8748±0.2546 |     1.2975±0.1605 |     0.6674±0.1163 |
+| CausalPFN j32_eta0_y01_2d Joint-2D interior mean (raw) |     1.6533±0.2439 |     1.1223±0.1531 |     0.2371±0.0605 |
+  <!-- causalpfn_j32_random_2d: max |finite-grid moment - full mean| = 0.0926288
+  causalpfn_j32_eta0_y01_2d: max |finite-grid moment - full mean| = 0.0798311
+  causalpfn_j1024_headrand_1d: max |finite-grid moment - full mean| = 0.0178889
+  causalpfn_j32_1d: max |finite-grid moment - full mean| = 0.2561
+  causalpfn_botharms_1d: max |finite-grid moment - full mean| = 0.0723109 -->
 
-_negative = joint better; the bridge row should be ~0, which is what licenses reading the headline as a model gap and not a resolution artefact._ -->
+<!-- |        | contrast                                                                    |               dNLL |             dKLrev |              dPEHE |
+| ------ | --------------------------------------------------------------------------- | -----------------: | -----------------: | -----------------: |
+| as run | model gap as run (causalpfn_j1024_headrand_1d -> causalpfn_j32_random_2d)   |     +0.2298±0.0405 |     +0.9163±0.3176 |     +0.1467±0.1344 |
+| as run | model gap as run (causalpfn_j1024_headrand_1d -> causalpfn_j32_eta0_y01_2d) |     +0.1991±0.0411 |     +0.6736±0.2769 | **-0.0763±0.1026** |
+| as run | model gap as run (causalpfn_j32_1d -> causalpfn_j32_random_2d)              |     -0.0395±0.0281 |     -0.8136±0.5169 |     +0.2815±0.1875 |
+| as run | model gap as run (causalpfn_j32_1d -> causalpfn_j32_eta0_y01_2d)            | **-0.0703±0.0228** | **-1.0563±0.4715** |     +0.0585±0.1500 |
+| as run | model gap as run (causalpfn_botharms_1d -> causalpfn_j32_random_2d)         |     +0.2336±0.0454 |     +0.8804±0.4497 |     +0.1479±0.1644 |
+| as run | model gap as run (causalpfn_botharms_1d -> causalpfn_j32_eta0_y01_2d)       |     +0.2028±0.0467 |     +0.6377±0.4082 |     -0.0751±0.1373 | -->
 
-# Raw
+_negative = destination method has lower error._
+_CausalPFN rows differ in head resolution and in what they were trained on; these are as-run comparisons._
+
+
+
+---
+
+<!-- # Raw
 
 ### IHDP
 
@@ -529,150 +835,7 @@ Point errors in original outcome units, from the same predictions. Full-density 
 
 _negative = destination method has lower error. The UWYK bridge measures rebinning effects; DoPFN compares native bins with its joint head, without a resolution-matched control._
 
----
 
-# DoPFN — IHDP, all runs
-
-Two runs on IHDP, pooled here for readability; the per-run sections below keep the full
-metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
-tail notes.
-
-- **stale** = `# Do-PFN Old`. Raw only, realizations=100, ~75 queries each, graph=none.
-  Training-residual sigma mean=1.0023, range=[0.9485, 1.0683].
-- **new** = `# Updated DoPFN Reprodcution results` (raw) and `# Dopfn MALC reproduction` (MALC).
-  realizations=90, ~75 queries each, graph=none. Training-residual sigma mean=1.0029,
-  range=[0.9550, 1.0683]. Checkpoints:
-  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
-  `native` is the library model in both runs.
-
-Rows are grouped by method family (the blocks between rules). Within each block and each
-column, **bold** = best and $\underline{underline}$ = second best. Stale and new are not on
-the same query set (100 vs 90 realizations), so within-block comparisons across runs are indicative only.
-
-## Density
-
-| run        | method                       |                         nll |                          l2 |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: |
-| stale      | DoPFN (x)indep native        |           **0.1849±0.0354** |               1.4193±0.1118 |
-| new (raw)  | DoPFN (x)indep native        | $\underline{0.2115±0.0343}$ |           **1.3222±0.1080** |
-| new (MALC) | DoPFN (x)indep native        |               0.2179±0.0341 | $\underline{1.3254±0.1081}$ |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **0.6903±0.0540** |           **1.4401±0.1024** |
-| new (MALC) | DoPFN repro_1d_J10 (x)indep  | $\underline{0.6917±0.0543}$ | $\underline{1.4406±0.1024}$ |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J100 (x)indep | $\underline{0.1121±0.0247}$ |           **1.2533±0.1141** |
-| new (MALC) | DoPFN repro_1d_J100 (x)indep |           **0.1120±0.0246** | $\underline{1.2575±0.1140}$ |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: |
-| stale      | DoPFN Joint-2D               |               0.5781±0.0475 |               1.6428±0.1104 |
-| new (raw)  | DoPFN repro_joint2d Joint-2D | $\underline{0.4802±0.0449}$ | $\underline{1.4690±0.1099}$ |
-| new (MALC) | DoPFN repro_joint2d (x)indep |           **0.3514±0.0347** |           **1.3874±0.1122** |
-
-## Point estimates
-
-Original outcome units, from the same predictions, using full-density means; CATE L1 is
-per-query MAE, ATE error is unnormalised.
-
-| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| stale      | DoPFN (x)indep native        |               6.6013±0.9953 |               4.4945±0.6109 |               2.4695±0.4023 |
-| new (raw)  | DoPFN (x)indep native        |           **6.0065±1.0287** |           **4.1687±0.6372** |           **2.2837±0.4223** |
-| new (MALC) | DoPFN (x)indep native        | $\underline{6.0133±1.0283}$ | $\underline{4.1739±0.6379}$ | $\underline{2.2864±0.4233}$ |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J10 (x)indep  | $\underline{9.2522±0.6143}$ | $\underline{7.6938±0.4089}$ | $\underline{6.5640±0.3247}$ |
-| new (MALC) | DoPFN repro_1d_J10 (x)indep  |           **9.2498±0.6144** |           **7.6893±0.4089** |           **6.5626±0.3252** |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **4.3980±0.7484** | $\underline{3.3470±0.5329}$ | $\underline{0.8957±0.0953}$ |
-| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{4.3993±0.7485}$ |           **3.3460±0.5324** |           **0.8914±0.0954** |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| stale      | DoPFN Joint-2D               |               5.7038±0.8368 |               4.4645±0.5963 |           **1.5492±0.1466** |
-| new (raw)  | DoPFN repro_joint2d Joint-2D |           **5.4772±0.8300** |           **4.3394±0.5797** | $\underline{1.8038±0.1371}$ |
-| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{5.4801±0.8303}$ | $\underline{4.3408±0.5794}$ |               1.8041±0.1364 |
-
-**Caveats carried over from the per-run sections:**
-
-- The finite tau grid omits distant tail mass: for `dopfn_native` in the stale run, and for
-  all four methods in the new raw run (the MALC section prints no tail note). NLL is at the
-  observed tau and point errors use exact full-density means; l2 (and kl/mass) are
-  finite-grid quantities.
-- `dopfn_repro_1d_J10` has p(tau) mass ~0.816 on IHDP in both new runs (0.8158 raw, 0.8157
-  MALC) — >1% off 1.0, so the tau grid is clipping real density and its numbers should not
-  be read as calibrated. Widen `TAU_EDGES`.
-- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
-  run, as printed by each run.
-
----
-
-# DoPFN — ACIC, all runs
-
-Two runs on ACIC, pooled here for readability; the per-run sections below keep the full
-metric set (kl_fwd, kl_rev, mass), the interior-mean rows, the contrast tables and the
-tail notes.
-
-- **stale** = `# Do-PFN Old`. Raw only, realizations=10, ~481 queries each, graph=none.
-  Training-residual sigma mean=0.9951, range=[0.9800, 1.0119].
-- **new** = `# Updated DoPFN Reprodcution results` (raw) and `# Dopfn MALC reproduction` (MALC).
-  realizations=8, ~481 queries each, graph=none. Training-residual sigma mean=0.9963,
-  range=[0.9806, 1.0119]. Checkpoints:
-  `Required_checkpoints/new/dopfn_repro_{1d_J10,1d_J100,joint2d}_step150000.pt`;
-  `native` is the library model in both runs.
-
-Rows are grouped by method family (the blocks between rules). Within each block and each
-column, **bold** = best and $\underline{underline}$ = second best. Stale and new are not on
-the same query set (10 vs 8 realizations), so within-block comparisons across runs are indicative only.
-
-## Density
-
-| run        | method                       |                          nll |                          l2 |
-| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
-| stale      | DoPFN (x)indep native        |               -0.0245±0.1144 |           **1.7014±0.0452** |
-| new (raw)  | DoPFN (x)indep native        |           **-0.0374±0.1436** | $\underline{1.7047±0.0549}$ |
-| new (MALC) | DoPFN (x)indep native        | $\underline{-0.0255±0.1401}$ |               1.7151±0.0584 |
-| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J10 (x)indep  |  $\underline{0.1911±0.1491}$ |           **1.7408±0.0557** |
-| new (MALC) | DoPFN repro_1d_J10 (x)indep  |            **0.1902±0.1497** | $\underline{1.7408±0.0558}$ |
-| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **-0.0085±0.1400** |           **1.7155±0.0550** |
-| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{-0.0032±0.1382}$ | $\underline{1.7212±0.0569}$ |
-| ---------- | ---------------------------- | ---------------------------: | --------------------------: |
-| stale      | DoPFN Joint-2D               |           **-0.2285±0.2289** |           **1.5219±0.0903** |
-| new (raw)  | DoPFN repro_joint2d Joint-2D |                0.2644±0.2574 |               1.8911±0.0684 |
-| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{-0.0454±0.1929}$ | $\underline{1.6979±0.0543}$ |
-
-## Point estimates
-
-Original outcome units, from the same predictions, using full-density means; CATE L1 is
-per-query MAE, ATE error is unnormalised.
-
-| run        | mean estimator               |                   sqrt PEHE |                     CATE L1 |               ATE abs error |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| stale      | DoPFN (x)indep native        |           **4.1553±0.5434** |               3.3656±0.4353 |           **2.4312±0.3214** |
-| new (raw)  | DoPFN (x)indep native        | $\underline{4.1863±0.6864}$ |           **3.3368±0.5497** | $\underline{2.4508±0.3163}$ |
-| new (MALC) | DoPFN (x)indep native        |               4.1972±0.6844 | $\underline{3.3441±0.5474}$ |               2.4533±0.3157 |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J10 (x)indep  |           **4.7559±0.6123** | $\underline{3.7696±0.5274}$ |           **1.6296±0.5955** |
-| new (MALC) | DoPFN repro_1d_J10 (x)indep  | $\underline{4.7559±0.6132}$ |           **3.7678±0.5280** | $\underline{1.6302±0.5954}$ |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| new (raw)  | DoPFN repro_1d_J100 (x)indep |           **3.8339±0.7193** |           **2.9316±0.5915** | $\underline{1.8055±0.3326}$ |
-| new (MALC) | DoPFN repro_1d_J100 (x)indep | $\underline{3.8483±0.7190}$ | $\underline{2.9421±0.5909}$ |           **1.8048±0.3352** |
-| ---------- | ---------------------------- | --------------------------: | --------------------------: | --------------------------: |
-| stale      | DoPFN Joint-2D               |           **3.2313±0.5948** |           **2.4505±0.4441** |           **0.8903±0.1348** |
-| new (raw)  | DoPFN repro_joint2d Joint-2D |               4.1702±0.5990 |               3.2844±0.4916 |               2.1617±0.3401 |
-| new (MALC) | DoPFN repro_joint2d (x)indep | $\underline{4.1692±0.5992}$ | $\underline{3.2821±0.4913}$ | $\underline{2.1608±0.3397}$ |
-
-**Caveats carried over from the per-run sections:**
-
-- The finite tau grid omits distant tail mass: for `dopfn_native` in the stale run, and for
-  all four methods in the new raw run (the MALC section prints no tail note). NLL is at the
-  observed tau and point errors use exact full-density means; l2 (and kl/mass) are
-  finite-grid quantities.
-- p(tau) mass off 1.0 by >1% on ACIC for `dopfn_repro_1d_J10` in both new runs (0.9313 in
-  each) and, in the raw run only, `dopfn_repro_joint2d` (0.9899). Under MALC the joint2d
-  mass is 0.9902, just inside the 1% threshold, so that run warns for J10 alone. Where the
-  grid clips, the numbers are not calibrated — widen `TAU_EDGES`.
-- sqrt PEHE for `repro_1d_J10` is 4.7559 in both new runs; the bold/underline split inside
-  that block is by row order, not a real difference.
-- The joint2d row is labelled `Joint-2D` in the new raw run and `(x)indep` in the new MALC
-  run, as printed by each run.
 
 ---
 
@@ -882,4 +1045,4 @@ Point errors in original outcome units, from the same predictions. Full-density 
 | DoPFN repro_1d_J100 (x)indep | **3.8483±0.7190** | **2.9421±0.5909** |     1.8048±0.3352 |
 | DoPFN repro_joint2d (x)indep |     4.1692±0.5992 |     3.2821±0.4913 |     2.1608±0.3397 |
 
-**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES.
+**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES. -->
