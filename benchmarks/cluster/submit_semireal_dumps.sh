@@ -65,13 +65,20 @@ for r in "${ROWS[@]}"; do
     [ "$name" = uwyk_bin ] && uwyk_extra="CONFIG=$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml UWYK_T_ENCODING=binary"
     for ds in $DATASETS; do
         N=$((N+1))
+        # dopfn_bb handles these datasets NATIVELY -- eval_dopfn_bb_raw branches on
+        # `dataset in ('law_race','sales')` in three places -- so it needs the bare
+        # name. Passing the SEMIREAL_ prefix would route it down the generic path
+        # instead of its own. Same shape as the PSID_bal -> PSIDbal translation that
+        # harness already requires.
+        ds_pass="$ds"
+        [ "$name" = dopfn_bb ] && ds_pass="${ds#SEMIREAL_}"
         # array index selects the harness; %5 is unused once DATASET_OVERRIDE is set
         task=$(( idx * 5 ))
         if [ "$SUBMIT" = 1 ]; then
             printf '%-22s %-20s -> ' "$name" "$ds"
             # shellcheck disable=SC2086
             env ${envv:+$( [ "$envv" != NONE ] && echo "$envv=$ck" )} \
-                DATASET_OVERRIDE="$ds" OUT_ROOT="$SC/semireal_dumps/$name" \
+                DATASET_OVERRIDE="$ds_pass" OUT_ROOT="$SC/semireal_dumps/$name" \
                 DENSITY_DUMP=1 DOPFN_ROOT="$DOPFN_ROOT" $uwyk_extra \
                 sbatch --array="$task" --time="$TIME" --mem="$MEM" \
                        --cpus-per-task="$CPUS" \
