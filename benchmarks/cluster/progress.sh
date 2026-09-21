@@ -39,7 +39,17 @@ pct() {  # count total -> "n/total (p%)"
     if [ "$2" -le 0 ]; then printf '%-13s' "-"; return; fi
     awk -v a="$1" -v b="$2" 'BEGIN{p=100*a/b; if(p>100)p=100; printf "%3d/%-3d %3.0f%%", a, b, p}'
 }
-nf() { [ -d "$1" ] && find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' ' || echo 0; }
+# ComplexMech per-realization files share the "__-" slice suffix with RealCause
+# (raw__cmech_n5__-.npz vs raw__IHDP__-.npz), so the RealCause glob matched them and
+# reported 6/5. Every RealCause count excludes anything naming a cmech cell.
+nf() {
+    [ -d "$1" ] || { echo 0; return; }
+    find "$1" -name "$2" 2>/dev/null | grep -v '__cmech_n' | wc -l | tr -d ' '
+}
+nf_cm() {
+    [ -d "$1" ] || { echo 0; return; }
+    find "$1" -name "$2" 2>/dev/null | wc -l | tr -d ' '
+}
 # Count the point tables that exist. The stamp is metadata, not a result: files
 # written before it existed hold correct numbers, and requiring it reported 1/5 for
 # a complete set.
@@ -98,8 +108,10 @@ if [ -d "$CMECH" ]; then
     for n in $CM_NODES; do CM_CELLS=$((CM_CELLS+2)); done   # nonzero + zero
     echo
     echo "=== ComplexMech  (denominator: $CM_CELLS cells = 6 node counts x 2 subsets, N=1000)"
-    printf '%-22s %-12s %-10s %s\n' MODEL CELLS NPZ NOTE
-    printf '%.0s-' {1..62}; echo
+    CM_N=$(echo $CM_NODES | wc -w)
+    printf '%-22s %-12s %-10s %-14s %-14s %s\n' \
+      MODEL CELLS NPZ Cov-raw Cov-MALC PEHE/ATE
+    printf '%.0s-' {1..92}; echo
     for d in "$CMECH"/*; do
         [ -d "$d" ] || continue
         c=0; nz=0
@@ -110,10 +122,15 @@ if [ -d "$CMECH" ]; then
                 [ "$k" -gt 0 ] && { c=$((c+1)); nz=$((nz+k)); }
             done
         done
-        note=""; [ "$c" -lt "$CM_CELLS" ] && note="incomplete"
-        printf '%-22s %-12s %-10s %s\n' "$(basename "$d")" "$c/$CM_CELLS" "$nz" "$note"
+        m="$(basename "$d")"
+        # scoring lands in perreal under the model name, one file per node count
+        cr=$(nf_cm "$PERREAL/$m" 'raw__cmech_n*__-.npz')
+        cm=$(nf_cm "$PERREAL/$m" 'malc__cmech_n*__-.npz')
+        cp=$(find "$d" -name 'point_raw_em_CMECH_n*.md' 2>/dev/null | wc -l | tr -d ' ')
+        printf '%-22s %-12s %-10s %s %s %s\n' "$m" "$c/$CM_CELLS" "$nz" \
+          "$(pct "$cr" "$CM_N")" "$(pct "$cm" "$CM_N")" "$(pct "$cp" "$CM_N")"
     done
-    echo "  scoring not wired yet -- dumps only"
+    echo "  Cov/PEHE denominators are the $CM_N node counts; subset=total"
 fi
 
 # ── Do-PFN semi-real (sales, law_race) ──────────────────────────────────────
