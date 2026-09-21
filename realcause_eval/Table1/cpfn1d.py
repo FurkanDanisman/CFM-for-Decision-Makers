@@ -49,11 +49,21 @@ def _cmech_bench_dir():
 
 def _cmech_names():
     _cmech_bench_dir()
+    # Also advertises the Do-PFN semi-real datasets, so --dataset accepts them.
+    # The wrappers keep their OWN choices list, so patching only the inner eval
+    # scripts left argparse rejecting SEMIREAL_* before any code ran.
+    out = ()
     try:
         from uwyk_fig34_dataset import dataset_names
+        out += tuple(dataset_names())
     except ImportError:
-        return ()
-    return tuple(dataset_names())
+        pass
+    try:
+        from dopfn_semireal_dataset import dataset_names as _semireal_names
+        out += tuple(_semireal_names())
+    except ImportError:
+        pass
+    return out
 
 
 _CMECH_CASES = _cmech_names()
