@@ -135,27 +135,33 @@ def main():
             raw = load_perreal(a.perreal, label, "raw", f"{ds}__-")
             mal = load_perreal(a.perreal, label, a.malc_tag, f"{ds}__-")
             ind = load_perreal(a.perreal, label, "indep_raw", f"{ds}__-")
-            methods = sorted(set(pt) | set(raw) | set(mal) | set(ind))
+            # The indep stage produces a MALC pass too; without this it was computed
+            # and then never reported.
+            indm = load_perreal(a.perreal, label, "indep_malc", f"{ds}__-")
+            methods = sorted(set(pt) | set(raw) | set(mal) | set(ind) | set(indm))
             for meth in methods:
                 n, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
                 r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
                 m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
                 i = {k: stat(ind.get(meth, {}).get(k, [])) for k in _KEYS}
+                im = {k: stat(indm.get(meth, {}).get(k, [])) for k in _KEYS}
                 if all(v is None for v in r.values()) and n is None:
                     continue
-                rows.append((display_name(label, meth, single), n, pehe, ate, r, m, i))
+                rows.append((display_name(label, meth, single), n, pehe, ate, r, m, i, im))
         if not rows:
             continue
         emit(f"\n## RealCause — {ds}\n")
         emit("| model | n | PEHE | eps_ATE | Cov | Len | IS | Cov-MALC | Len-MALC "
-             "| IS-MALC | Cov-indep | Len-indep | IS-indep |")
-        emit("|" + "---|" * 13)
-        for nm, n, pehe, ate, r, m, i in sorted(rows, key=lambda t: t[2]):
+             "| IS-MALC | Cov-indep | Len-indep | IS-indep "
+             "| Cov-indepMALC | Len-indepMALC | IS-indepMALC |")
+        emit("|" + "---|" * 16)
+        for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
             emit(f"| {nm} | {n if n else '—'} | "
                  f"{pehe:.4f} | {ate:.4f} | "
                  f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | {fmt(r['is05'], 4)} | "
                  f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | {fmt(m['is05'], 4)} | "
-                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | {fmt(i['is05'], 4)} |")
+                 f"{fmt(i['cover'])} | {fmt(i['length'], 4)} | {fmt(i['is05'], 4)} | "
+                 f"{fmt(im['cover'])} | {fmt(im['length'], 4)} | {fmt(im['is05'], 4)} |")
 
     # ── Case study: pooled over shifts, d and cases ─────────────────────────
     rows = []
@@ -200,7 +206,9 @@ def main():
     emit("was split across jobs does not change the number. PEHE pools as an RMS")
     emit("across cells because PEHE is itself an RMSE; ATE error pools as a mean.")
     emit("RealCause reports RELATIVE eps_ATE, the case studies absolute L1_ATE.")
-    emit("Cov-indep is the forced-independent ablation: RealCause only, 2D heads only.")
+    emit("Cov-indep / Cov-indepMALC are the forced-independent ablation, raw and")
+    emit("MALC: RealCause only, and meaningful only for 2D heads -- a 1D head has no")
+    emit("joint to discard, so its indep columns just restate the raw ones.")
     emit("A dash means that stage has not been scored yet.")
 
     txt = "\n".join(L)
