@@ -103,19 +103,46 @@ class DoPFNSemiRealDataset:
         self._cache: dict = {}
 
     # ── loading ─────────────────────────────────────────────────────────────
+    # Module names that Do-PFN's own package expects to resolve to ITS copy.
+    # Unpickling a semi-real dataset imports dopfn/priors/doscm.py, whose first
+    # line is `from utils import default_device` -- and the graph-conditioned
+    # harnesses put uwyk_reproduce/src on sys.path, where a DIFFERENT `utils`
+    # package lives. Whichever was imported first wins, so uwyk1d, uwyk_bin and
+    # graph2d failed with "cannot import name 'default_device' from 'utils'"
+    # while the ten harnesses that do not add UWYK to the path succeeded.
+    _SHADOWED = ("utils", "datasets", "priors", "model", "scripts")
+
     def _load(self):
         if self._raw is not None:
             return self._raw
         root = _dopfn_root()
         cwd = os.getcwd()
-        if root not in sys.path:
-            sys.path.insert(0, root)
+        saved_path = list(sys.path)
+        # Evict anything already bound to another package's copy of these names,
+        # and restore it afterwards: the harness still needs ITS `utils` once the
+        # dataset is loaded, so this is a window, not a permanent change.
+        saved_mods = {}
+        for name in list(sys.modules):
+            if name in self._SHADOWED or any(
+                    name.startswith(p + ".") for p in self._SHADOWED):
+                saved_mods[name] = sys.modules.pop(name)
         try:
+            # Front of the path, not merely present: a later entry loses to the
+            # UWYK one that is already there.
+            sys.path.insert(0, root)
             os.chdir(root)
             from datasets import load_dataset as _dopfn_load
             self._raw = _dopfn_load(ds_name=self.ds_name)
         finally:
             os.chdir(cwd)
+            sys.path[:] = saved_path
+            # Drop whatever Do-PFN bound under these names, then put the
+            # harness's own modules back exactly as they were.
+            for name in list(sys.modules):
+                if name in self._SHADOWED or any(
+                        name.startswith(p + ".") for p in self._SHADOWED):
+                    del sys.modules[name]
+            sys.modules.update(saved_mods)
         return self._raw
 
     def _split(self, r: int):
