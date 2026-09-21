@@ -11,13 +11,25 @@ available for existing commands; the command-line flag takes precedence.
 | --- | --- | --- |
 | UWYK / g4cfm | `uwyk_native`, `uwyk_matched`, `joint` | Existing `UWYK_CKPT`, `UWYK_CFG`, `CKPT` |
 | DoPFN | `dopfn_<name>`, one per `DOPFN_MODELS` entry | `DOPFN_ROOT` and `DOPFN_MODELS` |
-| CausalPFN | `causalpfn_native`, `causalpfn_joint` | `CAUSALPFN` checkout; optional `CAUSALPFN_CKPT`, `CAUSALPFN_JOINT_CKPT` |
+| CausalPFN | `causalpfn_<name>`, one per `CAUSALPFN_MODELS` entry | `CAUSALPFN` checkout and `CAUSALPFN_MODELS` |
 
 ## CausalPFN
 
-The default checkpoints are
-`Required_checkpoints/cpfn1d_j1024_headrand_step_50000.pt` and
-`Required_checkpoints/cpfn2d_j32_random_step_50000.pt`. Run one realization:
+`CAUSALPFN_MODELS` lists the models as `name=checkpoint`, comma-separated, and
+each entry becomes the density row `causalpfn_<name>`; they all see the same
+context, the same pooled standardization and the same scoring axis. Whether an
+entry is a 1D head or a cpfn2d joint is read from the checkpoint itself, so a
+name carries no meaning beyond labelling the row. Unlike `DOPFN_MODELS` there
+is no library model, so every entry needs a file.
+
+The default list is the five `Required_checkpoints/new_checkpoints`
+checkpoints: `j32_random_2d`, `j32_eta0_y01_2d` (cpfn2d joints), and
+`j1024_headrand_1d`, `j32_1d`, `botharms_1d` (1D heads).
+`benchmarks/cluster/submit_density_tauC.sbatch` holds the list used by Slurm
+runs; keep the two in step. Setting either `CAUSALPFN_CKPT` or
+`CAUSALPFN_JOINT_CKPT` instead pins the older two-row layout
+(`causalpfn_native` + `causalpfn_joint`) from one 1D and one joint checkpoint.
+Run one realization:
 
 ```bash
 CAUSALPFN=/path/to/CausalPFN \
@@ -30,7 +42,9 @@ python -u benchmarks/eval_graph2d/eval_density_tauC.py \
 Use `--dataset ACIC`, the corresponding `OUT=.../ACIC`, and the existing
 `ACIC_CACHE_DIR` for ACIC. CausalPFN-only runs need no UWYK or DoPFN
 checkpoints. The shared harness still requires the `g4cfm` source tree.
-`CAUSALPFN_QUERY_CHUNK=512` controls batching for both CausalPFN heads.
+`CAUSALPFN_QUERY_CHUNK=512` controls batching for every CausalPFN head. Cost
+scales with the list: each joint entry pays the full `N_Y0` tail quadrature,
+which dominates, and each 1D entry costs two forwards per query chunk.
 
 ```bash
 MODEL_FAMILY=causalpfn sbatch benchmarks/cluster/submit_density_tauC.sbatch
@@ -38,33 +52,37 @@ python benchmarks/eval_graph2d/summarize_density_tauC.py \
   results_density_tauC/causalpfn --model causalpfn
 ```
 
-Both models use the shared context selection and standardized covariates,
-padded to their checkpoint feature counts (99 for these checkpoints). They
-receive no graph. Both use **pooled outcome standardization** computed from
-that context (`torch.std`, correction=1), matching the joint checkpoint's
+Every listed model uses the shared context selection and standardized
+covariates, padded to its own checkpoint feature count (99 for these
+checkpoints). They receive no graph. All use **pooled outcome standardization**
+computed from that context (`torch.std`, correction=1), matching the joint checkpoint's
 training. This differs from the per-arm default of the older point-evaluation
 scripts. `STD_MODE` does not change this density adapter. The model outcome
 axes are mapped to the shared `Y_SCALING` scoring axis after inference;
 `Y_SCALING` and `STD_TARGET` do not change the CausalPFN input transform.
 
-The 1D model uses all 1024 finite bins on its native `[-10, 10]` axis. Its
-independence convolution is analytic and preserves exact zero density outside
-its support. Such observations produce **NLL = +inf**, retained in summaries;
-`frac_zero_density_causalpfn_native` reports their frequency. Grid KL follows
-the existing scorer's density floor and is not full-support KL for this
-finite-support model. The joint model uses `Joint2D` with all 32² bins,
-nine region weights and four tail scales. Its tails are not discarded or
-renormalized. `causalpfn_joint_inner` reports the additional interior-mean
-point metrics. This is a comparison of the supplied models at their native
-resolutions; no resolution-matched CausalPFN row is added.
+A 1D model uses all of its finite bins (1024, or 32 for `j32_1d`) on its
+native `[-10, 10]` axis. Its independence convolution is analytic and preserves
+exact zero density outside its support. Such observations produce
+**NLL = +inf**, retained in summaries; `frac_zero_density_<row>` reports their
+frequency per 1D row. Grid KL follows the existing scorer's density floor and
+is not full-support KL for these finite-support models. A joint model uses
+`Joint2D` with all 32² bins, nine region weights and four tail scales. Its
+tails are not discarded or renormalized. `<row>_inner` reports the additional
+interior-mean point metrics for each joint row. These are comparisons of the
+supplied models at their native resolutions; no resolution-matched CausalPFN
+row is added. The summary pairs every 1D row with every joint row.
 
-Prediction dumps include both 1D logits, full joint logits, native and
-transformed edges, context outcome transform, checkpoint paths and feature
-counts. Reconstruct native arms with `CausalPFN1D.from_pred` using
-`causalpfn_edges1d`. Reconstruct the joint with `Joint2D.from_pred` using
-`causalpfn_edges2d_native`, then call `.affine(causalpfn_y_scale / y_scale,
-(causalpfn_y_shift - y_shift) / y_scale)` to preserve the native correlation
-and transform its tail scales. The transformed bin
+Prediction dumps are namespaced per row: `<row>_pred0` / `<row>_pred1` and
+`<row>_edges1d` for a 1D model, `<row>_logits`, `<row>_J` and
+`<row>_edges2d_native` for a joint, plus the shared context outcome transform,
+checkpoint paths and feature counts. Reconstruct native arms with
+`CausalPFN1D.from_pred` using `<row>_edges1d`. Reconstruct a joint with
+`Joint2D.from_pred` using `<row>_edges2d_native`, then call
+`.affine(causalpfn_y_scale / y_scale, (causalpfn_y_shift - y_shift) / y_scale)`
+to preserve the native correlation and transform its tail scales. (The older
+two-row layout keeps its unprefixed `causalpfn_pred0` / `causalpfn_joint_logits`
+names.) The transformed bin
 knots generally do not align with the fixed tau grid: point NLL is evaluated
 directly, while grid metrics retain integration error. Check mass and
 finite-grid mean diagnostics as with DoPFN.

@@ -1,5 +1,5 @@
 """CausalPFN numerical, checkpoint and inference contracts; no GPU required."""
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 import io
 from pathlib import Path
 import sys
@@ -13,7 +13,8 @@ import torch
 
 from density_common import (CausalPFN1D, Joint2D, causalpfn_tau_density,
                             joint_tau_density, mass)
-from density_causalpfn import CausalPFNDensityModels
+from density_causalpfn import (CausalPFNDensityModels, CausalPFNModelSet,
+                               checkpoint_kind, parse_model_list)
 from summarize_density_tauC import mean_se, point_table, render_family
 
 
@@ -130,6 +131,122 @@ class TinyJoint(torch.nn.Module):
         xt = torch.cat((self.null_t_intv.expand(1, xq.shape[1], 1), xq), dim=-1)
         p = self.backbone(torch.cat((xc, xt), dim=1).transpose(0, 1), y.transpose(0, 1))
         return p.transpose(0, 1)[..., -(self.J*self.J+13):]
+
+
+def save_tiny_checkpoints(root):
+    """The 1D and cpfn2d fakes, written under `root` -> (1d path, 2d path)."""
+    cfg = dict(ninp=4, nhid=8, nhead=2, nlayers=1, n_out=2, dropout=0.)
+    native = TinyNative(num_features=5, nbins=8, **cfg)
+    joint = TinyJoint(J=2, num_features=4, edge_lo=-10., edge_hi=10., **cfg)
+    native_sd = {'_orig_mod.model.' + k: v for k, v in native.state_dict().items()}
+    native_sd['bin_edges'] = torch.linspace(-10, 10, 9)
+    p1, p2 = Path(root) / '1d.pt', Path(root) / '2d.pt'
+    torch.save(dict(model_state_dict=native_sd, model_config={'model': cfg}), p1)
+    torch.save(dict(model_state_dict=joint.state_dict(), model_config={
+        'model': dict(cfg, J=2, num_features=4),
+        'y_scaling_mode': 'pooled_std'}), p2)
+    return p1, p2
+
+
+@contextmanager
+def patched_causalpfn_modules():
+    model_module = ModuleType('causalpfn.models.model')
+    model_module.TabDPTLongContextModel = TinyNative
+    joint_module = ModuleType('training_causalpfn2d.model_causalpfn_2d')
+    joint_module.CausalPFN2DHead = TinyJoint
+    with patch.dict(sys.modules, {
+            'causalpfn.models.model': model_module,
+            'training_causalpfn2d.model_causalpfn_2d': joint_module}):
+        yield
+
+
+class CausalPFNModelSetTest(unittest.TestCase):
+    def test_parse_model_list(self):
+        self.assertEqual(parse_model_list(' a_1=/x/a.pt,\n b = rel/b.pt,, '),
+                         [('a_1', '/x/a.pt'), ('b', 'rel/b.pt')])
+        # `native` has no meaning here: every CausalPFN row needs its own file.
+        for bad, message in (('native', 'name=checkpoint'),
+                             ('a=/x.pt,a=/y.pt', 'twice'),
+                             ('/x/a.pt', 'letters, digits'),
+                             (' ,, ', 'no models')):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, message):
+                parse_model_list(bad)
+
+    def test_head_is_read_from_the_file_not_the_name(self):
+        self.assertEqual(checkpoint_kind({'config': {}, 'edges': [0., 1.]}), 'joint')
+        self.assertEqual(checkpoint_kind({'model_config': {'model_type': 'cpfn2d'},
+                                          'model_state_dict': {}}), 'joint')
+        self.assertEqual(checkpoint_kind(
+            {'model_state_dict': {'_orig_mod.null_t_intv': 0}}), 'joint')
+        self.assertEqual(checkpoint_kind(
+            {'model_state_dict': {'bin_edges': 0, 'model.encoder.weight': 0}}), '1d')
+        with self.assertRaises(ValueError):
+            checkpoint_kind({'model_state_dict': {'something.else': 0}})
+
+    def test_listed_models_reproduce_the_fixed_pair_row_for_row(self):
+        x, xq = np.arange(12).reshape(4, 3), np.arange(15).reshape(5, 3)
+        t, y = np.array([0, 1, 0, 1]), np.array([10, 12, 18, 20])
+        with tempfile.TemporaryDirectory() as root, patched_causalpfn_modules():
+            p1, p2 = save_tiny_checkpoints(root)
+            pair = CausalPFNDensityModels(root, p1, p2, 'cpu', query_chunk=2)
+            arms, joints, pair_dump = pair.predict(x, t, y, xq, y_shift=10, y_scale=5)
+            # Listed order is kept, and the joint file is recognised from its
+            # contents even though this name says nothing about the head.
+            models = CausalPFNModelSet(
+                root, [('j32_2d', str(p2)), ('headrand_1d', str(p1))],
+                'cpu', query_chunk=2)
+            self.assertEqual(list(models.models),
+                             ['causalpfn_j32_2d', 'causalpfn_headrand_1d'])
+            self.assertEqual(models.kinds, {'causalpfn_j32_2d': 'joint',
+                                            'causalpfn_headrand_1d': '1d'})
+            self.assertEqual(models.sources['causalpfn_j32_2d'],
+                             str(Path(p2).resolve()))
+            self.assertIn('K=8', models.describe('causalpfn_headrand_1d'))
+            out, dump = models.predict(x, t, y, xq, y_shift=10, y_scale=5)
+            kind_1d, dens_1d = out['causalpfn_headrand_1d']
+            kind_joint, dens_joint = out['causalpfn_j32_2d']
+            self.assertEqual((kind_1d, kind_joint), ('1d', 'joint'))
+            self.assertEqual([len(a) for a in dens_1d], [5, 5])
+            self.assertEqual(len(dens_joint), 5)
+            for q in range(5):
+                for arm in (0, 1):
+                    self.assertAlmostEqual(dens_1d[arm][q].mean(), arms[arm][q].mean())
+                np.testing.assert_allclose(dens_joint[q].mean(), joints[q].mean())
+            # Same numbers, namespaced per row so two models never collide.
+            np.testing.assert_allclose(dump['causalpfn_headrand_1d_pred0'],
+                                       pair_dump['causalpfn_pred0'])
+            np.testing.assert_allclose(dump['causalpfn_headrand_1d_edges1d'],
+                                       pair_dump['causalpfn_edges1d'])
+            np.testing.assert_allclose(dump['causalpfn_j32_2d_logits'],
+                                       pair_dump['causalpfn_joint_logits'])
+            self.assertEqual(dump['causalpfn_y_scale'], pair_dump['causalpfn_y_scale'])
+            self.assertEqual(list(dump['causalpfn_methods']),
+                             ['causalpfn_j32_2d', 'causalpfn_headrand_1d'])
+            self.assertEqual(list(dump['causalpfn_kinds']), ['joint', '1d'])
+            with self.assertRaises(FileNotFoundError):
+                CausalPFNModelSet(root, [('gone', str(Path(root) / 'nope.pt'))], 'cpu')
+
+    def test_summary_labels_every_listed_model(self):
+        names = ['causalpfn_j32_random_2d', 'causalpfn_botharms_1d']
+        row = dict(n_queries=2, frac_tau_outside_grid=0, anc_tag='none',
+                   truth_noise_source='generator', sigma_raw=1,
+                   sigma_residual_raw=2, methods=np.asarray(names),
+                   kind_causalpfn_j32_random_2d='joint',
+                   kind_causalpfn_botharms_1d='1d',
+                   source_causalpfn_j32_random_2d='/ckpt/cpfn2d_j32_random.pt',
+                   source_causalpfn_botharms_1d='/ckpt/cpfn1d_botharms.pt')
+        for method in names:
+            for metric in ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass',
+                           'pehe', 'cate_l1', 'ate_abs_err'):
+                row[f'{metric}_{method}'] = 1.0
+        stream = io.StringIO()
+        with redirect_stdout(stream):
+            render_family('IHDP', [row, row], 'causalpfn')
+        output = stream.getvalue()
+        self.assertIn('CausalPFN j32_random_2d Joint-2D', output)
+        self.assertIn('CausalPFN botharms_1d (x)indep', output)
+        self.assertIn('/ckpt/cpfn1d_botharms.pt', output)
+        self.assertIn('causalpfn_botharms_1d -> causalpfn_j32_random_2d', output)
 
 
 class CausalPFNAdapterTest(unittest.TestCase):
