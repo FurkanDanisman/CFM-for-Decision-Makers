@@ -2,9 +2,9 @@
 #SBATCH --job-name=cm-rho99
 #SBATCH --output=logs_cmech_rho99/gen_%j.out
 #SBATCH --error=logs_cmech_rho99/gen_%j.err
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --time=3:00:00
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
 #
 # Generate a ComplexMech cell of ONLY strongly-coupled realizations: keep those
 # with arm-noise rho > RHO_MIN until TARGET_REAL are collected, N_TEST queries each.
@@ -17,6 +17,14 @@
 #
 # Resumable: re-running tops up toward TARGET_REAL and never re-consumes a source
 # realization it already accepted (tracked in the manifest).
+#
+# 3h / 4 cpus / 32G matches submit_cmech_gen.sbatch, which generated ALL SIX
+# node counts at 100 realizations x 100 queries inside that budget. This job
+# does n=5 only, so the per-batch cost is a fraction of that; the open variable
+# is how many batches the rho>0.99 acceptance rate demands. A short walltime is
+# the right trade because the job resumes: if it times out, resubmit and it
+# tops up from the manifest. Do not raise this to buy certainty -- longer
+# walltime costs queue priority and buys nothing resume does not already give.
 #
 # Optional: NODES, TARGET_REAL, N_TEST, RHO_MIN, BATCH, MAX_BATCHES, OUT_ROOT, SEED_BASE
 #
