@@ -45,7 +45,21 @@ from cate_density_metrics import METHODS          # noqa: E402
 from point_raw_em import cate_for_file, _files_in               # noqa: E402
 
 
+def display(model_dir, label):
+    """Row name: the MODEL directory, keeping the ancestry suffix that
+    distinguishes several rows from one root. Without this every cpfn1d_* root
+    printed as bare 'cpfn1d' and the four dopfn roots all printed 'dopfn_native',
+    so the rows could not be told apart. Matches final_table.display_name.
+    """
+    for suf in ("-noanc", "-v3ab", "-v3a", "-v3b"):
+        if label.endswith(suf):
+            return model_dir + suf
+    return model_dir
+
+
+_SS_CACHE = {}
 def subset_sources(data_cell):
+    if data_cell in _SS_CACHE: return _SS_CACHE[data_cell]
     """(nonzero_sources, zero_sources): source realization index per subset, in the
     order the dataset enumerates them. Mirrors UWYKFig34Dataset's skip rule."""
     files = sorted(glob.glob(os.path.join(data_cell, "r*.npz")),
@@ -62,6 +76,7 @@ def subset_sources(data_cell):
             nz.append(src)
         if (t == 0).any():
             ze.append(src)
+    _SS_CACHE[data_cell] = (nz, ze)
     return nz, ze
 
 
@@ -152,12 +167,14 @@ def main():
         cell = os.path.join(a.data, "complexmech", f"{n}node", a.regime,
                             f"hide_{a.hide}")
         nz, ze = subset_sources(cell)
+        print(f"[progress] n={n}: {len(nz)} nonzero + {len(ze)} zero "
+              f"realizations, scoring models ...", flush=True)
         rows = []
         for md in sorted(d for d in glob.glob(f"{a.dumps}/*") if os.path.isdir(d)):
             for label, subdir, tag in METHODS:
                 r = score(md, subdir, tag, cell, n, a.mode)
                 if r:
-                    r["model"] = label
+                    r["model"] = display(os.path.basename(md), label)
                     rows.append(r)
         if not rows:
             continue
