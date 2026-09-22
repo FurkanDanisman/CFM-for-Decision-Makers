@@ -65,8 +65,14 @@ def subset_sources(data_cell):
     return nz, ze
 
 
-def score(dumps_model, subdir, tag, data_cell, n, mode="raw", ate_metric="l1"):
-    """-> (n_real, pehe, pehe_se, ate, ate_se) over the query union per realization."""
+def score(dumps_model, subdir, tag, data_cell, n, mode="raw"):
+    """-> dict with PEHE and BOTH ATE errors over the query union per realization.
+
+    Both metrics come from the same per-realization tau/truth, so L1 and relative
+    are guaranteed consistent rather than produced by two separate passes. The
+    relative form floors the denominator at 0.1, matching eval_dopfn_bb_raw, so a
+    near-zero true ATE cannot turn a small absolute error into an enormous ratio.
+    """
     nz_src, ze_src = subset_sources(data_cell)
     by_src: dict[int, list[str]] = {}
     for sub, srcs in (("nonzero", nz_src), ("zero", ze_src)):
@@ -86,7 +92,7 @@ def score(dumps_model, subdir, tag, data_cell, n, mode="raw", ate_metric="l1"):
                 by_src.setdefault(srcs[k], []).append(f)
     if not by_src:
         return None
-    pehe, ate = [], []
+    pehe, ate_l1, ate_rel = [], [], []
     for src in sorted(by_src):
         taus, truths = [], []
         for f in by_src[src]:
@@ -105,17 +111,18 @@ def score(dumps_model, subdir, tag, data_cell, n, mode="raw", ate_metric="l1"):
             continue
         pehe.append(float(np.sqrt(np.mean((tau - tru) ** 2))))
         d = float(abs(tau.mean() - tru.mean()))
-        if ate_metric == "rel":
-            d /= max(abs(float(tru.mean())), 0.1)
-        ate.append(d)
+        ate_l1.append(d)
+        ate_rel.append(d / max(abs(float(tru.mean())), 0.1))
     if not pehe:
         return None
-    p = np.asarray(pehe); a = np.asarray(ate)
-    # PEHE pools as an RMS across realizations because it is itself an RMSE.
-    return (len(p), float(np.sqrt(np.mean(p ** 2))),
-            float(p.std(ddof=1) / np.sqrt(p.size)) if p.size > 1 else float("nan"),
-            float(a.mean()),
-            float(a.std(ddof=1) / np.sqrt(a.size)) if a.size > 1 else float("nan"))
+    p = np.asarray(pehe)
+    sem = lambda v: (float(v.std(ddof=1) / np.sqrt(v.size)) if v.size > 1
+                     else float("nan"))
+    # PEHE pools as an RMS across realizations because it is itself an RMSE;
+    # both ATE errors pool as plain means.
+    return dict(n=len(p), pehe=float(np.sqrt(np.mean(p ** 2))), pehe_se=sem(p),
+                l1=float(np.mean(ate_l1)), l1_se=sem(np.asarray(ate_l1)),
+                rel=float(np.mean(ate_rel)), rel_se=sem(np.asarray(ate_rel)))
 
 
 def main():
@@ -126,7 +133,7 @@ def main():
     ap.add_argument("--regime", default="path_TY")
     ap.add_argument("--hide", type=float, default=0.0)
     ap.add_argument("--mode", default="raw", choices=["raw", "em"])
-    ap.add_argument("--ate-metric", default="l1", choices=["l1", "rel"])
+
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -138,24 +145,34 @@ def main():
         rows = []
         for md in sorted(d for d in glob.glob(f"{a.dumps}/*") if os.path.isdir(d)):
             for label, subdir, tag in METHODS:
-                r = score(md, subdir, tag, cell, n, a.mode, a.ate_metric)
+                r = score(md, subdir, tag, cell, n, a.mode)
                 if r:
-                    rows.append((f"{label}", *r))
+                    r["model"] = label
+                    rows.append(r)
         if not rows:
             continue
         L += ["", f"## ComplexMech total — n={n}   "
                   f"(union of {len(nz)} nonzero + {len(ze)} zero subset entries "
                   f"over {len(set(nz) | set(ze))} realizations)", "",
-              "| model | realizations | PEHE | L1_ATE |" if a.ate_metric == "l1"
-              else "| model | realizations | PEHE | eps_ATE |",
-              "|---|---|---|---|"]
-        for nm, k, p, pse, at, ase in sorted(rows, key=lambda t: t[2]):
-            L.append(f"| {nm} | {k} | {p:.4f} ± {pse:.4f} | {at:.4f} ± {ase:.4f} |")
+              "| model | realizations | PEHE | L1_ATE | eps_ATE (relative) |",
+              "|---|---|---|---|---|"]
+        for r in sorted(rows, key=lambda d: d["pehe"]):
+            L.append(f"| {r['model']} | {r['n']} | "
+                     f"{r['pehe']:.4f} ± {r['pehe_se']:.4f} | "
+                     f"{r['l1']:.4f} ± {r['l1_se']:.4f} | "
+                     f"{r['rel']:.4f} ± {r['rel_se']:.4f} |")
     L += ["", "Queries are grouped by SOURCE realization, not by position in the",
           "cell dir: the nonzero and zero subsets enumerate DIFFERENT realization",
           "sets, so point_raw_em's positional pairing truncated to min(len) and",
           "joined unrelated realizations. Every query is counted exactly once here.",
-          "PEHE pools as an RMS across realizations; ATE error as a mean."]
+          "PEHE pools as an RMS across realizations; both ATE errors as means.",
+          "",
+          "L1_ATE is |mean(tau_hat) - mean(tau_true)|. eps_ATE divides that by",
+          "max(|mean(tau_true)|, 0.1) -- the 0.1 floor matches eval_dopfn_bb_raw and",
+          "stops a near-zero true ATE from inflating a small absolute error. On",
+          "ComplexMech many realizations have a true ATE near zero, so the relative",
+          "column is dominated by that floor for them; read L1 as primary here and",
+          "eps_ATE only for comparability with the RealCause tables."]
     txt = "\n".join(L)
     print(txt)
     if a.out:
