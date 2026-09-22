@@ -62,7 +62,13 @@ _NUM = re.compile(r"(-?\d+\.?\d*(?:[eE][-+]?\d+)?)")
 
 
 def parse_point(path):
-    """-> {method: (n, pehe, ate)} from a point_raw_em markdown table."""
+    """-> {method: (n, pehe, ate, pehe_str, ate_str)} from a point_raw_em table.
+
+    The STRINGS are kept because point_raw_em writes "0.1860 ± 0.0021" and this
+    parser used to extract only the leading float, so every table reprinted the
+    point estimate with its SEM silently discarded. Floats are still returned for
+    sorting and for the RMS pooling of PEHE.
+    """
     out = {}
     if not os.path.exists(path):
         return out
@@ -74,12 +80,13 @@ def parse_point(path):
         if method.lower() in ("method",):
             continue
         cells = [c.strip() for c in rest.split("|")]
-        nums = []
+        nums, strs = [], []
         for c in cells[:2]:                     # PEHE (raw) | eps_ATE (raw)
             f = _NUM.search(c)
             nums.append(float(f.group(1)) if f else float("nan"))
+            strs.append(c if c else "—")
         if len(nums) == 2:
-            out[method] = (n, nums[0], nums[1])
+            out[method] = (n, nums[0], nums[1], strs[0], strs[1])
     return out
 
 
@@ -233,14 +240,16 @@ def main():
             indm = load_perreal(a.perreal, label, "indep_malc", f"{ds}__-")
             methods = sorted(set(pt) | set(raw) | set(mal) | set(ind) | set(indm))
             for meth in methods:
-                n, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
+                n, pehe, ate, ps, as_ = pt.get(
+                    meth, (None, float("nan"), float("nan"), "—", "—"))
                 r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
                 m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
                 i = {k: stat(ind.get(meth, {}).get(k, [])) for k in _KEYS}
                 im = {k: stat(indm.get(meth, {}).get(k, [])) for k in _KEYS}
                 if all(v is None for v in r.values()) and n is None:
                     continue
-                rows.append((display_name(label, meth, single), n, pehe, ate, r, m, i, im))
+                rows.append((display_name(label, meth, single), n, ps, as_,
+                             r, m, i, im, pehe))
         if not rows:
             continue
         emit(f"\n## RealCause — {ds}   (eps_ATE is RELATIVE)\n")
@@ -252,10 +261,10 @@ def main():
              "| IS (indep+MALC) |")
         emit("|" + "---|" * 20)
         _sd = nsd("realcause", ds)
-        for nm, n, pehe, ate, r, m, i, im in sorted(rows, key=lambda t: t[2]):
+        for nm, n, ps, as_, r, m, i, im, _srt in sorted(rows, key=lambda t: t[8]):
             tag = " *(released)*" if nm in RELEASED else ""
             emit(f"| {nm}{tag} | {n if n else '—'} | "
-                 f"{pehe:.4f} | {ate:.4f} | "
+                 f"{ps} | {as_} | "
                  f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
                  f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
                  f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
@@ -319,7 +328,7 @@ def main():
             if dm and dm.group(1) not in keep_d:
                 continue
             case = os.path.basename(f)[len("point_raw_em_"):-3]
-            for meth, (n, pehe, ate) in parse_point(f).items():
+            for meth, (n, pehe, ate, _ps, _as) in parse_point(f).items():
                 d = pt_by_case[case][meth]
                 if np.isfinite(pehe):
                     d["pehe2"].append(pehe ** 2)
@@ -406,12 +415,14 @@ def main():
                 raw = load_perreal(a.perreal, label, "raw", f"cmech_n{n}__-")
                 mal = load_perreal(a.perreal, label, a.malc_tag, f"cmech_n{n}__-")
                 for meth in sorted(set(pt) | set(raw) | set(mal)):
-                    nn, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
+                    nn, pehe, ate, ps, as_ = pt.get(
+                        meth, (None, float("nan"), float("nan"), "—", "—"))
                     r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
                     m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
                     if all(v is None for v in r.values()) and nn is None:
                         continue
-                    rows.append((display_name(label, meth, label), nn, pehe, ate, r, m))
+                    rows.append((display_name(label, meth, label), nn, ps, as_,
+                                 r, m, pehe))
             if not rows:
                 continue
             emit(f"\n## ComplexMech — n={n} nodes, N=1000, subset=total   "
@@ -421,9 +432,9 @@ def main():
                  "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
             emit("|" + "---|" * 12)
             _sd = nsd("cmech", n)
-            for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
+            for nm, nn, ps, as_, r, m, _srt in sorted(rows, key=lambda t: t[6]):
                 tg = " *(released)*" if nm in RELEASED else ""
-                emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
+                emit(f"| {nm}{tg} | {nn if nn else '—'} | {ps} | {as_} | "
                      f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
                      f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
                      f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
@@ -442,12 +453,14 @@ def main():
                 raw = load_perreal(a.perreal, label, "raw", f"{ds}__semireal")
                 mal = load_perreal(a.perreal, label, a.malc_tag, f"{ds}__semireal")
                 for meth in sorted(set(pt) | set(raw) | set(mal)):
-                    nn, pehe, ate = pt.get(meth, (None, float("nan"), float("nan")))
+                    nn, pehe, ate, ps, as_ = pt.get(
+                        meth, (None, float("nan"), float("nan"), "—", "—"))
                     r = {k: stat(raw.get(meth, {}).get(k, [])) for k in _KEYS}
                     m = {k: stat(mal.get(meth, {}).get(k, [])) for k in _KEYS}
                     if all(v is None for v in r.values()) and nn is None:
                         continue
-                    rows.append((display_name(label, meth, label), nn, pehe, ate, r, m))
+                    rows.append((display_name(label, meth, label), nn, ps, as_,
+                                 r, m, pehe))
             if not rows:
                 continue
             emit(f"\n## Do-PFN semi-real — {ds}   "
@@ -457,9 +470,9 @@ def main():
                  "| Cov (MALC) | Len (MALC) | Len/sd(Y) (MALC) | IS (MALC) |")
             emit("|" + "---|" * 12)
             _sd = nsd("semireal", ds)
-            for nm, nn, pehe, ate, r, m in sorted(rows, key=lambda t: t[2]):
+            for nm, nn, ps, as_, r, m, _srt in sorted(rows, key=lambda t: t[6]):
                 tg = " *(released)*" if nm in RELEASED else ""
-                emit(f"| {nm}{tg} | {nn if nn else '—'} | {pehe:.4f} | {ate:.4f} | "
+                emit(f"| {nm}{tg} | {nn if nn else '—'} | {ps} | {as_} | "
                      f"{fmt(r['cover'])} | {fmt(r['length'], 4)} | "
                      f"{fmtn(r['length'], _sd)} | {fmt(r['is05'], 4)} | "
                      f"{fmt(m['cover'])} | {fmt(m['length'], 4)} | "
