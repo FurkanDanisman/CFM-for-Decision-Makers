@@ -2,7 +2,7 @@
 #SBATCH --job-name=full-report
 #SBATCH --output=logs_full_report/fr_%j.out
 #SBATCH --error=logs_full_report/fr_%j.err
-#SBATCH --time=8:00:00
+#SBATCH --time=2:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #
@@ -14,6 +14,11 @@
 #
 # Each stage is skipped if its output already exists and is non-empty, so a
 # walltime kill costs only the stage in flight. FORCE=1 redoes everything.
+#
+# 2h is measured, not padded: cs_point_total ran in 20:47 as job 22444356 on a
+# compute node (the ~2h figure was a contended LOGIN node), and the two
+# ComplexMech point stages are minutes each. Resume makes a short walltime the
+# right trade -- a timeout costs one stage, a long request costs queue priority.
 
 set -uo pipefail
 mkdir -p logs_full_report
