@@ -12,7 +12,8 @@
 #
 #   sbatch --account=def-zhijing R-PFN/benchmarks/cluster/submit_full_report.sbatch
 #
-# Each stage is skipped if its output already exists and is non-empty, so a
+# Runs final_table for both versions first (cheap), then the point stages.
+# Each POINT stage is skipped if its output already exists and is non-empty, so a
 # walltime kill costs only the stage in flight. FORCE=1 redoes everything.
 #
 # Parallel: the three point stages run concurrently, and the case-study scorer
@@ -58,6 +59,27 @@ run() {  # run <output> <label> <cmd...>
 
 FAILED=0
 NW="${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
+
+# final_table first: it produces the Cov/Len/Len-sd(Y) columns the later stages
+# read, and it is seconds (it reads perreal npz + point markdown, nothing heavy).
+# Always re-run rather than caching -- it is cheap, and a stale final_table is how
+# the SEM fix went unnoticed.
+if [ "${SKIP_FINAL_TABLE:-0}" != 1 ]; then
+    for tag in main rho99; do
+        if [ "$tag" = main ]; then
+            PR="$SCRATCH/perreal"; SCR="$SCRATCH"
+            NRM="$SCRATCH/normalizers.json"; OUT="$SCRATCH/final_table.md"
+        else
+            PR="$SCRATCH/perreal_rho99"; SCR="$SCRATCH/rho99view"
+            NRM="$SCRATCH/normalizers_rho99.json"; OUT="$SCRATCH/final_table_rho99.md"
+        fi
+        [ -d "$PR" ] || { echo "==== skip final_table ($tag): no $PR"; continue; }
+        echo "==== [$(date '+%F %T')] final_table ($tag)"
+        python -u "$B/final_table.py" --perreal "$PR" --scratch "$SCR" \
+            ${NRM:+--normalizers "$NRM"} --out "$OUT" >/dev/null \
+            || { echo "    FAILED: final_table ($tag)" >&2; FAILED=$((FAILED+1)); }
+    done
+fi
 # The three point stages touch different inputs and outputs, so they run
 # CONCURRENTLY. The case study is the long pole and additionally parallelises
 # internally over (cell, case) units, so it gets most of the cores.
