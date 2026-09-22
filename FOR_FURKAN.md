@@ -44,31 +44,45 @@ More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks
 # Summary Table
 Table 2: Density on IHDP and ACIC.
 
-Method                        | IHDP: f_Y0 + f_Y1 ↓ | IHDP: f_τ ↓    | IHDP: f_ATE ↓ | ACIC: f_Y0 + f_Y1 ↓ | ACIC: f_τ ↓    | ACIC: f_ATE ↓
-------------------------------|---------------------|----------------|---------------|---------------------|----------------|--------------
-Do-PFN                        | -0.5559±0.0616      | 0.2115±0.0343  | –             | -0.3457±0.2079      | -0.0374±0.1436 | –            
-Do-PFN 2D                     | -0.2096±0.0483      | 0.4802±0.0449  | –             | -0.1434±0.2094      | 0.2644±0.2574  | –            
-UWYK No-Anc                   | -0.7887±0.0640      | 0.3415±0.0330  | –             | -1.2416±0.1829      | -0.2536±0.1118 | –            
-UWYK No-Anc 2D                | -0.9272±0.0739      | 0.0103±0.0358  | –             | -1.2508±0.2121      | -0.4638±0.1481 | –            
-UWYK Anc (v3a)                | -1.0910±0.0494      | 0.1598±0.0243  | –             | -1.4673±0.2005      | -0.4253±0.1200 | –            
-UWYK Anc 2D (v3a)             | -1.0857±0.0736      | -0.0504±0.0364 | –             | -1.3360±0.2157      | -0.4862±0.1496 | –            
-CausalPFN-C j1024_headrand 1D | -3.9026±0.1767      | -0.6009±0.0867 | –             | -2.9809±0.2365      | -0.9017±0.1125 | –            
-CausalPFN-C j32 1D            | -1.8176±0.0693      | -0.3847±0.0463 | –             | -2.0433±0.1912      | -0.6323±0.0934 | –            
-CausalPFN-C botharms 1D       | -3.8274±0.1748      | -0.6012±0.0880 | –             | -2.9764±0.2475      | -0.9054±0.1191 | –            
-CausalPFN-C j32_random 2D     | -1.7667±0.0702      | -0.3649±0.0478 | –             | -2.0240±0.1910      | -0.6718±0.0908 | –            
-CausalPFN-C j32_eta0_y01 2D   | -1.7242±0.0742      | -0.3511±0.0484 | –             | -2.0666±0.1799      | -0.7026±0.0888 | –
+Method                        | IHDP: f_Y0 + f_Y1 ↓ | IHDP: f_τ ↓    | IHDP: f_ATE ↓  | ACIC: f_Y0 + f_Y1 ↓ | ACIC: f_τ ↓    | ACIC: f_ATE ↓ 
+------------------------------|---------------------|----------------|----------------|---------------------|----------------|---------------
+Do-PFN                        | -0.5559±0.0616      | 0.2115±0.0343  | -0.1132±0.0337 | -0.3457±0.2079      | -0.0374±0.1436 | -0.2118±0.1145
+Do-PFN 2D                     | -0.2096±0.0483      | 0.4802±0.0449  | -0.1847±0.0602 | -0.1434±0.2094      | 0.2644±0.2574  | -0.1540±0.1882
+UWYK No-Anc                   | -0.7887±0.0640      | 0.3415±0.0330  | 0.0775±0.0431  | -1.2416±0.1829      | -0.2536±0.1118 | -0.5013±0.0944
+UWYK No-Anc 2D                | -0.9272±0.0739      | 0.0103±0.0358  | -0.3798±0.0290 | -1.2508±0.2121      | -0.4638±0.1481 | -0.9971±0.1901
+UWYK Anc (v3a)                | -1.0910±0.0494      | 0.1598±0.0243  | -0.1829±0.0325 | -1.4673±0.2005      | -0.4253±0.1200 | -0.6910±0.1024
+UWYK Anc 2D (v3a)             | -1.0857±0.0736      | -0.0504±0.0364 | -0.5157±0.0289 | -1.3360±0.2157      | -0.4862±0.1496 | -1.0176±0.1882
+CausalPFN-C j1024_headrand 1D | -3.9026±0.1767      | -0.6009±0.0867 | -1.5770±0.0833 | -2.9809±0.2365      | -0.9017±0.1125 | -1.3009±0.1298
+CausalPFN-C j32 1D            | -1.8176±0.0693      | -0.3847±0.0463 | -0.5767±0.0352 | -2.0433±0.1912      | -0.6323±0.0934 | -0.7541±0.0892
+CausalPFN-C botharms 1D       | -3.8274±0.1748      | -0.6012±0.0880 | -1.5630±0.0835 | -2.9764±0.2475      | -0.9054±0.1191 | -1.3118±0.1405
+CausalPFN-C j32_random 2D     | -1.7667±0.0702      | -0.3649±0.0478 | -0.6624±0.0281 | -2.0240±0.1910      | -0.6718±0.0908 | -0.8598±0.0813
+CausalPFN-C j32_eta0_y01 2D   | -1.7242±0.0742      | -0.3511±0.0484 | -0.6476±0.0287 | -2.0666±0.1799      | -0.7026±0.0888 | -0.8750±0.0809
 
 `f_X` is the NLL of density `X`, in nats, mean ± SE over realizations; lower is
-better. `f_Y0 + f_Y1` is the summed arm NLL, formed **per realization** and only
-then averaged — the two arms are scored on the same realizations and are
-positively correlated, so adding their SEs in quadrature would understate the
-spread. `f_τ` is the NLL of p(τ | x) at the observed τ*; `f_Y0 + f_Y1` is taken
-at the true conditional means μ_t (the dumps carry no sampled y0*/y1*).
+better. All three tiers are scored on the **scaled** axis, so the columns are
+directly comparable (a raw-unit density is 1/y_scale times this one, which
+shifts every NLL by log y_scale).
 
-`f_ATE` is not filled: it needs the W2-barycenter ATE density, which has to be
-built from per-query p(τ | x) — roughly 128k query-densities at ~0.2 s each.
-Nothing else is blocking it. Swap NLL for L2 by pointing `summarize_table2.py`
-at the `l2*` keys; both tiers store nll, l2, kl_fwd, kl_rev and mass.
+- `f_Y0 + f_Y1` — summed arm NLL, formed **per realization** and only then
+  averaged. The two arms are scored on the same realizations and are positively
+  correlated, so adding their per-arm SEs in quadrature would understate the
+  spread. Taken at the true conditional means μ_t (the dumps carry no sampled
+  y0*/y1*).
+- `f_τ` — NLL of p(τ | x) at the observed τ*.
+- `f_ATE` — NLL of the W2-barycenter ATE density at ATE_true = mean_q(μ1 − μ0).
+  `eval_density_ate.py` rebuilds the per-query p(τ | x) with the same exact
+  routines and the same `TAU_CENTERS` grid the τ tier used, so `f_ATE` and `f_τ`
+  sit on identical densities — the 2D heads go through `joint_tau_density`'s
+  full-mixture tail quadrature, not an anti-diagonal sum or a grid convolution.
+  The eval stores the metric under both truth conventions (`_bary`, the W2
+  barycenter of the true per-query densities, and `_mix`, their arithmetic
+  mean); for NLL they are identical to the last bit across all 1332
+  method-cells, since −log p_est(ATE_true) reads only the estimate. The
+  distinction matters for `l2` and `kl_*`, which are stored too. Estimate mass
+  is 1.00000 everywhere; no inf or nan.
+
+Swap NLL for L2 by pointing `summarize_table2.py` at the `l2*` keys; every tier
+stores nll, l2, kl_fwd, kl_rev and mass.
 
 CausalPFN-C is broken out into all five checkpoints rather than one 1D + one 2D
 row, since no representative pair was nominated. Row provenance is as in
@@ -189,6 +203,69 @@ here, since the per-run tables push it into their commented-out blocks.
 `repro_joint2d`, both from the **new (raw)** run — not the stale one. "UWYK Anc"
 is the **v3a** anchor. Realization counts differ by row (IHDP 90 vs 100, ACIC 8
 vs 10), so cross-row gaps are as-run comparisons, not matched-sample ones.
+
+
+## ATE density — p_ATE(τ)
+
+Third tier: the W2 barycenter over queries of the model's own p(τ | x_q).
+`eval_density_ate.py` rebuilds those per-query densities with the **same exact
+routines and the same `TAU_CENTERS` grid** the CATE tier uses — the 2D heads go
+through `joint_tau_density`'s full-mixture tail quadrature at the dump's own
+n_y0, not an anti-diagonal sum of the interior and not a grid convolution of the
+marginals — so `f_ATE` and `f_τ` rest on identical densities.
+
+- `nll` = −log p_est(ATE_true), ATE_true = mean_q(μ1 − μ0) on the scaled axis.
+- `ate_err` = |E[p_est] − ATE_true|. `mass` = ∫p_est dτ (1.00000 throughout).
+- `n` = realizations; mean ± SE across them.
+
+**Two truth conventions, and they are not the same object.** `truth_bary` is the
+W2 barycenter of the *true* per-query densities — the same operator as the
+estimate, so it is the apples-to-apples comparison and the default shown here.
+`truth_mix` is their arithmetic mean, the convention named in
+`realcause_eval/eval_ate_density_metrics.py`. For N(μ_q, 2σ²) the mixture has
+width ≈ √(2σ² + var(μ_q)) while the barycenter has width √2·σ, so they coincide
+only under a homogeneous CATE.
+
+This matters: `nll` and `ate_err` are **identical** under both (they read only
+the estimate — verified equal to the last bit across all 1332 method-cells), but
+`l2` and `kl_rev` move a lot. IHDP Do-PFN `kl_rev` is 168.2 against `bary` and
+2.31 against `mix`; its `l2` is 1.23 against `bary` and 0.46 against `mix`. The
+large `kl_rev` under `bary` is the expected blow-up of KL(est ‖ truth) where the
+narrow barycenter truth is near zero — read it as a shape-mismatch diagnostic,
+not as a score to rank on. Pass `--truth mix` to
+`summarize_density_ate.py` for the other convention.
+
+### IHDP — ATE density
+
+| method | n | nll | l2 | kl_rev | mass | ate_err |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Do-PFN | 90 | -0.1132±0.0337 | 1.2284±0.1087 | 168.1795±17.7938 | 1.0000±0.0000 | 0.1454±0.0109 |
+| Do-PFN 2D | 90 | -0.1847±0.0602 | 1.3153±0.1078 | 143.5165±16.3346 | 1.0000±0.0000 | 0.1572±0.0128 |
+| UWYK No-Anc | 100 | 0.0775±0.0431 | 1.4713±0.1044 | 230.1013±14.0457 | 1.0000±0.0000 | 0.2529±0.0146 |
+| UWYK No-Anc 2D | 100 | -0.3798±0.0290 | 1.1799±0.1175 | 182.2747±15.8101 | 1.0000±0.0000 | 0.1281±0.0103 |
+| UWYK Anc (v3a) | 100 | -0.1829±0.0325 | 1.3105±0.1127 | 180.7021±15.8714 | 1.0000±0.0000 | 0.1384±0.0071 |
+| UWYK Anc 2D (v3a) | 100 | -0.5157±0.0289 | 1.0988±0.1190 | 155.7422±15.5828 | 1.0000±0.0000 | 0.1028±0.0088 |
+| CausalPFN-C j1024_headrand 1D | 90 | -1.5770±0.0833 | 0.5334±0.0497 | 2.3321±1.0790 | 1.0000±0.0000 | 0.0097±0.0010 |
+| CausalPFN-C j32 1D | 90 | -0.5767±0.0352 | 1.0585±0.1232 | 98.3948±16.3433 | 1.0000±0.0000 | 0.0258±0.0029 |
+| CausalPFN-C botharms 1D | 90 | -1.5630±0.0835 | 0.5525±0.0500 | 2.4236±1.1611 | 1.0000±0.0000 | 0.0179±0.0021 |
+| CausalPFN-C j32_random 2D | 90 | -0.6624±0.0281 | 0.9934±0.1271 | 93.6539±16.4672 | 1.0000±0.0000 | 0.0195±0.0019 |
+| CausalPFN-C j32_eta0_y01 2D | 90 | -0.6476±0.0287 | 0.9988±0.1275 | 95.1433±16.6849 | 1.0000±0.0000 | 0.0172±0.0017 |
+
+### ACIC — ATE density
+
+| method | n | nll | l2 | kl_rev | mass | ate_err |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Do-PFN | 8 | -0.2118±0.1145 | 1.6614±0.0593 | 310.2159±17.3429 | 1.0000±0.0000 | 0.1193±0.0213 |
+| Do-PFN 2D | 8 | -0.1540±0.1882 | 1.9286±0.0750 | 169.9473±28.4340 | 1.0000±0.0000 | 0.1192±0.0239 |
+| UWYK No-Anc | 10 | -0.5013±0.0944 | 1.4813±0.0643 | 222.4741±19.1474 | 1.0000±0.0000 | 0.0649±0.0109 |
+| UWYK No-Anc 2D | 10 | -0.9971±0.1901 | 1.0539±0.1521 | 131.0416±29.3798 | 1.0000±0.0000 | 0.0181±0.0046 |
+| UWYK Anc (v3a) | 10 | -0.6910±0.1024 | 1.3363±0.0710 | 172.1913±18.2576 | 1.0000±0.0000 | 0.0284±0.0083 |
+| UWYK Anc 2D (v3a) | 10 | -1.0176±0.1882 | 1.0228±0.1626 | 117.0352±26.7298 | 1.0000±0.0000 | 0.0195±0.0052 |
+| CausalPFN-C j1024_headrand 1D | 10 | -1.3009±0.1298 | 0.7308±0.0999 | 36.1852±10.5732 | 1.0000±0.0000 | 0.0164±0.0048 |
+| CausalPFN-C j32 1D | 10 | -0.7541±0.0892 | 1.3019±0.0489 | 134.8748±14.3535 | 1.0000±0.0000 | 0.0085±0.0023 |
+| CausalPFN-C botharms 1D | 10 | -1.3118±0.1405 | 0.7047±0.1039 | 35.8029±11.8692 | 1.0000±0.0000 | 0.0127±0.0049 |
+| CausalPFN-C j32_random 2D | 10 | -0.8598±0.0813 | 1.2292±0.0524 | 103.0231±11.4622 | 1.0000±0.0000 | 0.0325±0.0067 |
+| CausalPFN-C j32_eta0_y01 2D | 10 | -0.8750±0.0809 | 1.2036±0.0524 | 97.7151±10.1792 | 1.0000±0.0000 | 0.0115±0.0031 |
 
 
 # UWYK — IHDP, all runs
