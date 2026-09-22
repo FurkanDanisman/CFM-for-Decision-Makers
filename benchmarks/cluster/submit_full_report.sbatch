@@ -3,7 +3,7 @@
 #SBATCH --output=logs_full_report/fr_%j.out
 #SBATCH --error=logs_full_report/fr_%j.err
 #SBATCH --time=2:00:00
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
 #
 # The WHOLE report chain in one job: ComplexMech point (both versions),
@@ -14,6 +14,10 @@
 #
 # Each stage is skipped if its output already exists and is non-empty, so a
 # walltime kill costs only the stage in flight. FORCE=1 redoes everything.
+#
+# Parallel: the three point stages run concurrently, and the case-study scorer
+# splits its (cell, case) units across workers (--workers, default
+# $SLURM_CPUS_PER_TASK - 2 so the two cmech stages keep a core each).
 #
 # 2h is measured, not padded: cs_point_total ran in 20:47 as job 22444356 on a
 # compute node (the ~2h figure was a contended LOGIN node), and the two
@@ -53,17 +57,36 @@ run() {  # run <output> <label> <cmd...>
 }
 
 FAILED=0
+NW="${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
+# The three point stages touch different inputs and outputs, so they run
+# CONCURRENTLY. The case study is the long pole and additionally parallelises
+# internally over (cell, case) units, so it gets most of the cores.
+CS_W="${CS_WORKERS:-$(( NW > 2 ? NW - 2 : 1 ))}"
+echo "==== [$(date '+%F %T')] 3 point stages in parallel  (case-study workers=$CS_W)"
+
 run "$SCRATCH/cmech_point_total_main.md" "ComplexMech point (main)" \
     python -u "$B/cmech_point_total.py" --dumps "$SCRATCH/cmech_dumps" \
     --data "$SCRATCH/cmech_data_v2" --out "$SCRATCH/cmech_point_total_main.md" \
-    || FAILED=$((FAILED+1))
+    >"$SCRATCH/.fr_main.log" 2>&1 &
+P1=$!
 run "$SCRATCH/cmech_point_total_rho99.md" "ComplexMech point (rho>0.99)" \
     python -u "$B/cmech_point_total.py" --dumps "$SCRATCH/cmech_dumps_rho99" \
     --data "$SCRATCH/cmech_data_rho99" --out "$SCRATCH/cmech_point_total_rho99.md" \
-    || FAILED=$((FAILED+1))
-run "$SCRATCH/cs_point_total.md" "case-study point (slow stage)" \
-    python -u "$B/cs_point_total.py" --out "$SCRATCH/cs_point_total.md" \
-    || FAILED=$((FAILED+1))
+    >"$SCRATCH/.fr_rho99.log" 2>&1 &
+P2=$!
+run "$SCRATCH/cs_point_total.md" "case-study point (long pole)" \
+    python -u "$B/cs_point_total.py" --workers "$CS_W" \
+    --out "$SCRATCH/cs_point_total.md" &
+P3=$!
+
+wait $P1 || FAILED=$((FAILED+1))
+wait $P2 || FAILED=$((FAILED+1))
+wait $P3 || FAILED=$((FAILED+1))
+# The two backgrounded cmech logs went to files so their output does not
+# interleave with the case study's progress; replay them now.
+for f in "$SCRATCH/.fr_main.log" "$SCRATCH/.fr_rho99.log"; do
+    [ -s "$f" ] && { echo "---- $(basename "$f")"; grep -E '^====|^\[|FAILED' "$f" | tail -5; }
+done
 
 # The last two are seconds and depend on the three above, so they always re-run.
 echo "==== [$(date '+%F %T')] ComplexMech both versions"

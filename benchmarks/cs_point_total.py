@@ -20,6 +20,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
@@ -61,6 +62,20 @@ def score_cell(cell, subdir, tag, case, mode="raw"):
     return out
 
 
+def _one_cell(task):
+    """(label, single, cell, case, mode) -> [(case, display_name, pehe, l1, rel)].
+
+    One (cell, case) is the work unit: independent of every other, and big enough
+    (16 method entries x ~100 realizations) that process overhead is negligible.
+    """
+    label, single, cell, case, mode = task
+    out = []
+    for meth, subdir, tag in METHODS:
+        for pehe, l1, rel in score_cell(cell, subdir, tag, case, mode):
+            out.append((case, display_name(label, meth, single), pehe, l1, rel))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scratch", default=os.environ.get("SCRATCH", ""))
@@ -68,6 +83,9 @@ def main():
     ap.add_argument("--cases", nargs="+", default=list(CASES))
     ap.add_argument("--mode", default="raw", choices=["raw", "em"])
     ap.add_argument("--out", default=None)
+    ap.add_argument("--workers", type=int,
+                    default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1") or 1),
+                    help="parallel worker processes (default: $SLURM_CPUS_PER_TASK)")
     a = ap.parse_args()
     SC = a.scratch
     keep_d = {str(x) for x in a.cs_d}
@@ -75,6 +93,7 @@ def main():
     # (case, model) -> lists over (cell x realization)
     acc = defaultdict(lambda: defaultdict(
         lambda: {"pehe2": [], "l1": [], "rel": [], "cells": 0, "reals": 0}))
+    tasks = []
     for label, rc, cs, single in ROOTS:
         root = os.path.join(SC, cs)
         if not os.path.isdir(root):
@@ -84,21 +103,41 @@ def main():
                  if (m := re.search(r"/d(\d+)/", c)) and m.group(1) in keep_d]
         if not cells:
             continue
-        print(f"[progress] {label}: {len(cells)} cell(s)", flush=True)
+        print(f"[plan] {label}: {len(cells)} cell(s)", flush=True)
         for cell in cells:
             for case in a.cases:
-                for meth, subdir, tag in METHODS:
-                    rows = score_cell(cell, subdir, tag, case, a.mode)
-                    if not rows:
-                        continue
-                    nm = display_name(label, meth, single)
-                    d = acc[case][nm]
-                    d["cells"] += 1
-                    d["reals"] += len(rows)
-                    for pehe, l1, rel in rows:
-                        d["pehe2"].append(pehe ** 2)
-                        d["l1"].append(l1)
-                        d["rel"].append(rel)
+                tasks.append((label, single, cell, case, a.mode))
+
+    nw = max(1, int(a.workers))
+    print(f"[plan] {len(tasks)} (cell, case) units on {nw} worker(s)", flush=True)
+
+    def absorb(rows, seen):
+        """One returned unit -> accumulator. `cells` counts (cell, case, model)
+        units contributing, matching the previous sequential meaning."""
+        for case, nm, pehe, l1, rel in rows:
+            d = acc[case][nm]
+            if (case, nm) not in seen:
+                d["cells"] += 1
+                seen.add((case, nm))
+            d["reals"] += 1
+            d["pehe2"].append(pehe ** 2)
+            d["l1"].append(l1)
+            d["rel"].append(rel)
+
+    done = 0
+    if nw == 1:
+        for t in tasks:
+            absorb(_one_cell(t), set())
+            done += 1
+            if done % 20 == 0:
+                print(f"[progress] {done}/{len(tasks)}", flush=True)
+    else:
+        with ProcessPoolExecutor(max_workers=nw) as ex:
+            for rows in ex.map(_one_cell, tasks, chunksize=1):
+                absorb(rows, set())
+                done += 1
+                if done % 20 == 0:
+                    print(f"[progress] {done}/{len(tasks)}", flush=True)
 
     L = []
     for case in a.cases:
