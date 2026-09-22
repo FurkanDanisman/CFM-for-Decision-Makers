@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.join(_REPO, "UWYK_Fig3_4"))
 sys.path.insert(0, os.path.join(_REPO, "realcause_eval"))
 sys.path.insert(0, os.path.join(_REPO, "realcause_eval", "Table1"))
 
-from cate_density_metrics import METHODS, _resolve_dir          # noqa: E402
+from cate_density_metrics import METHODS          # noqa: E402
 from point_raw_em import cate_for_file, _files_in               # noqa: E402
 
 
@@ -76,11 +76,21 @@ def score(dumps_model, subdir, tag, data_cell, n, mode="raw"):
     nz_src, ze_src = subset_sources(data_cell)
     by_src: dict[int, list[str]] = {}
     for sub, srcs in (("nonzero", nz_src), ("zero", ze_src)):
-        d = _resolve_dir(os.path.join(dumps_model, "N1000"), subdir,
-                         f"CMECH_n{n}_{sub}")
-        if not d:
+        # Recursive: the cell dir's depth under the model root varies by harness,
+        # so an assumed "N1000/<subdir>/<cell>" path found nothing and every model
+        # scored zero. Match <subdir>/<cell> at ANY depth, as the progress tracker
+        # does.
+        dirs = [d for d in glob.glob(
+                    os.path.join(dumps_model, "**", subdir, f"CMECH_n{n}_{sub}"),
+                    recursive=True) if os.path.isdir(d)]
+        if not dirs:
+            continue                       # this model simply is not that method
+        fs = []
+        for d in dirs:
+            fs += _files_in(d)
+        fs = sorted(fs, key=lambda q: os.path.basename(q))
+        if not fs:
             continue
-        fs = _files_in(d)
         if len(fs) != len(srcs):
             # Loud, not silent: the mapping is only valid if the dump count matches
             # what the data says the subset contains.
