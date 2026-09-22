@@ -143,9 +143,13 @@ def score(dumps_model, subdir, tag, data_cell, n, mode="raw"):
     p = np.asarray(pehe)
     sem = lambda v: (float(v.std(ddof=1) / np.sqrt(v.size)) if v.size > 1
                      else float("nan"))
-    # PEHE pools as an RMS across realizations because it is itself an RMSE;
-    # both ATE errors pool as plain means.
-    return dict(n=len(p), pehe=float(np.sqrt(np.mean(p ** 2))), pehe_se=sem(p),
+    # MEAN is primary: point_raw_em reports mean-of-per-realization PEHE, so every
+    # previously published number uses that convention and switching to RMS here
+    # would make the tables silently incomparable. RMS is kept alongside because it
+    # is the correct pooling if you treat all queries as one set -- it is always >=
+    # the mean, and the gap tells you how skewed the per-realization PEHEs are.
+    return dict(n=len(p), pehe=float(np.mean(p)), pehe_se=sem(p),
+                pehe_rms=float(np.sqrt(np.mean(p ** 2))),
                 l1=float(np.mean(ate_l1)), l1_se=sem(np.asarray(ate_l1)),
                 rel=float(np.mean(ate_rel)), rel_se=sem(np.asarray(ate_rel)))
 
@@ -192,7 +196,7 @@ def main():
           "cell dir: the nonzero and zero subsets enumerate DIFFERENT realization",
           "sets, so point_raw_em's positional pairing truncated to min(len) and",
           "joined unrelated realizations. Every query is counted exactly once here.",
-          "PEHE pools as an RMS across realizations; both ATE errors as means.",
+          "All three are means +- SEM over realizations, matching the convention\npoint_raw_em uses for every other table (mode=raw throughout; EM is never\ncomputed).",
           "",
           "L1_ATE is |mean(tau_hat) - mean(tau_true)|. eps_ATE divides that by",
           "max(|mean(tau_true)|, 0.1) -- the 0.1 floor matches eval_dopfn_bb_raw and",

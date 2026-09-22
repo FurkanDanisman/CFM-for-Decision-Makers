@@ -106,24 +106,31 @@ def main():
             continue
         L += ["", f"## Case study — {case}   (pooled over shifts 0/+2/-2 and "
                   f"d in {{{', '.join(sorted(keep_d, key=int))}}})", "",
-              "| model | cells | realizations | PEHE (rms) | L1_ATE "
-              "| eps_ATE (relative) |", "|---|---|---|---|---|---|"]
+              "| model | cells | realizations | PEHE | L1_ATE "
+              "| eps_ATE (relative) |",
+              "|---|---|---|---|---|---|"]
         rows = []
         for nm, d in acc[case].items():
             if not d["pehe2"]:
                 continue
-            p = np.sqrt(np.mean(d["pehe2"]))
             sem = lambda v: (float(np.std(v, ddof=1) / np.sqrt(len(v)))
                              if len(v) > 1 else float("nan"))
-            rows.append((nm, d["cells"], d["reals"], float(p),
+            # MEAN is primary: point_raw_em (and therefore every previously
+            # published case-study number) reports the mean of per-realization
+            # PEHE. RMS is kept beside it, not instead of it.
+            per = np.sqrt(np.asarray(d["pehe2"]))
+            rows.append((nm, d["cells"], d["reals"],
+                         float(per.mean()), sem(per),
+                         float(np.sqrt(np.mean(d["pehe2"]))),
                          float(np.mean(d["l1"])), sem(d["l1"]),
                          float(np.mean(d["rel"])), sem(d["rel"])))
-        for nm, nc, nr, p, l1, l1e, rel, rele in sorted(rows, key=lambda t: t[3]):
+        for (nm, nc, nr, pm, pse, prms, l1, l1e, rel,
+             rele) in sorted(rows, key=lambda t: t[3]):
             tg = " *(released)*" if nm in RELEASED else ""
-            L.append(f"| {nm}{tg} | {nc} | {nr} | {p:.4f} | "
+            L.append(f"| {nm}{tg} | {nc} | {nr} | {pm:.4f} ± {pse:.4f} | "
                      f"{l1:.4f} ± {l1e:.4f} | {rel:.4f} ± {rele:.4f} |")
     L += ["",
-          "PEHE pools as an RMS across (cell, realization); both ATE errors as means.",
+          "All three are means +- SEM over (cell, realization), matching the\nconvention point_raw_em uses elsewhere (mode=raw throughout; EM is never\ncomputed).",
           "eps_ATE = L1 / max(|true ATE|, 0.1). The 0.1 floor matches",
           "eval_dopfn_bb_raw, so a near-zero true ATE cannot turn a small absolute",
           "error into an enormous ratio -- but it also means that wherever the true",
