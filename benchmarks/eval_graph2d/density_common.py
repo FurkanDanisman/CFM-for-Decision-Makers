@@ -96,6 +96,16 @@ Y_EDGES = np.linspace(-1.5, 1.5, 101)
 Y_CENTERS = 0.5 * (Y_EDGES[:-1] + Y_EDGES[1:])
 Y_BIN = float(Y_CENTERS[1] - Y_CENTERS[0])
 
+# Marginal ("Tier A") grid. Separate from Y_CENTERS above, which several
+# benchmarks/empirical_tests scripts still read on its 100-bin convention.
+# Same step as TAU_STEP and anchored at 0, so it carries every model knot
+# exactly (UWYK 0.002 -> 4, joint J=32 0.0625 -> 125, DoPFN J=10 0.2 -> 400,
+# DoPFN J=100 0.02 -> 40). Widened to +-2: UWYK's half-Gaussian tail scales
+# run ~0.43-0.49, so [-1.5, 1.5] sheds ~4.5e-4 of the mass.
+Y_MARG_MIN, Y_MARG_MAX, Y_MARG_STEP = -2.0, 2.0, TAU_STEP
+Y_MARG = np.linspace(Y_MARG_MIN, Y_MARG_MAX,
+                     int(round((Y_MARG_MAX - Y_MARG_MIN) / Y_MARG_STEP)) + 1)
+
 
 def knots_aligned(step=None, bin_widths=(0.002, 0.0625), tol=1e-9) -> bool:
     """True when every model bin width is an integer multiple of the tau step,
@@ -756,12 +766,92 @@ class CausalPFN1D:
     def mean(self):
         return float(self.p @ (0.5 * (self.edges[:-1] + self.edges[1:])))
 
+    def density(self, y) -> np.ndarray:
+        """Histogram density on the scoring axis; exactly 0 off the support."""
+        y = np.asarray(y, dtype=np.float64)
+        out = np.zeros(y.shape, dtype=np.float64)
+        inside = (y >= self.edges[0]) & (y <= self.edges[-1])
+        if inside.any():
+            k = np.clip(np.searchsorted(self.edges[1:-1], y[inside],
+                                        side='right'), 0, self.p.size - 1)
+            out[inside] = self.p[k] / self.bw
+        return out
+
 
 def causalpfn_tau_density(f0: CausalPFN1D, f1: CausalPFN1D, tau_points):
     """Exact independence convolution of two finite CausalPFN histograms."""
     if f0.edges.shape != f1.edges.shape or not np.allclose(f0.edges, f1.edges):
         raise ValueError('CausalPFN arms must share an outcome grid')
     return _interior_tau(_diag_sums_product(f0.p, f1.p), tau_points, f0.bw, 1.0)
+
+
+def joint_marginals(jt: Joint2D, y):
+    """Exact (p_y0, p_y1) of a Joint2D, evaluated on `y`.
+
+    The model's OWN marginals: the same 9-region mixture `Joint2D.density`
+    evaluates, integrated over the other arm in closed form. Nothing here is
+    derived from p(tau) -- tau is downstream of this object, not upstream.
+
+    Region k integrates to a closed form because every piece factorises:
+      - interior x interior -> the bar row/column sum,
+      - half-Gaussian x boundary-conditional -> the half-Gaussian integrates
+        to 1 and the conditional sums to 1,
+      - corner bivariate normal -> Z1 | Z0 ~ N(rho z0, 1 - rho^2), so the
+        quadrant integral is phi(z0) * Phi(+-rho z0 / sqrt(1 - rho^2)).
+    Verified against brute-force 2D quadrature: the gap falls 4x per 4x
+    refinement of the quadrature grid, i.e. this form is the exact limit.
+    """
+    from scipy.special import ndtr                    # standard normal CDF
+
+    y = np.asarray(y, dtype=np.float64)
+    J = jt.p_mat.shape[0]
+    lo, hi, bw = jt.lo, jt.hi, jt.bw
+    w, rho = jt.w, jt.rho
+    r2 = math.sqrt(max(1.0 - rho * rho, 1e-8))
+    asin = math.asin(rho)
+    n_same = 0.25 + asin / (2 * math.pi)
+    n_opp = max(0.25 - asin / (2 * math.pi), 1e-300)
+
+    jj = np.clip(np.searchsorted(jt.edges[1:-1], y, side='right'), 0, J - 1)
+    inside = (y >= lo) & (y <= hi)
+    L, R = y < lo, y > hi
+
+    row_lo, row_hi = jt.p_mat[0, :], jt.p_mat[J - 1, :]
+    col_lo, col_hi = jt.p_mat[:, 0], jt.p_mat[:, J - 1]
+    s_lo, s_hi = max(row_lo.sum(), 1e-300), max(row_hi.sum(), 1e-300)
+    c_lo, c_hi = max(col_lo.sum(), 1e-300), max(col_hi.sum(), 1e-300)
+    rowsum, colsum = jt.p_mat.sum(axis=1), jt.p_mat.sum(axis=0)
+    phi = lambda z: np.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi)
+
+    p0 = np.zeros(y.shape, dtype=np.float64)
+    p1 = np.zeros(y.shape, dtype=np.float64)
+
+    # p(y0): interior bars (region 0) plus the two y1-outside slabs (3, 4).
+    p0[inside] = (w[0] * rowsum[jj[inside]]
+                  + w[3] * col_lo[jj[inside]] / c_lo
+                  + w[4] * col_hi[jj[inside]] / c_hi) / bw
+    z = (y[L] - lo) / jt.sL0
+    p0[L] = (w[1] * _half_gauss(y[L], lo, jt.sL0)
+             + w[5] / n_same * phi(z) / jt.sL0 * ndtr(-rho * z / r2)
+             + w[6] / n_opp * phi(z) / jt.sL0 * ndtr(rho * z / r2))
+    z = (y[R] - hi) / jt.sR0
+    p0[R] = (w[2] * _half_gauss(y[R], hi, jt.sR0)
+             + w[7] / n_opp * phi(z) / jt.sR0 * ndtr(-rho * z / r2)
+             + w[8] / n_same * phi(z) / jt.sR0 * ndtr(rho * z / r2))
+
+    # p(y1): mirror image -- columns instead of rows, (1, 2) instead of (3, 4).
+    p1[inside] = (w[0] * colsum[jj[inside]]
+                  + w[1] * row_lo[jj[inside]] / s_lo
+                  + w[2] * row_hi[jj[inside]] / s_hi) / bw
+    z = (y[L] - lo) / jt.sL1
+    p1[L] = (w[3] * _half_gauss(y[L], lo, jt.sL1)
+             + w[5] / n_same * phi(z) / jt.sL1 * ndtr(-rho * z / r2)
+             + w[7] / n_opp * phi(z) / jt.sL1 * ndtr(rho * z / r2))
+    z = (y[R] - hi) / jt.sR1
+    p1[R] = (w[4] * _half_gauss(y[R], hi, jt.sR1)
+             + w[6] / n_opp * phi(z) / jt.sR1 * ndtr(-rho * z / r2)
+             + w[8] / n_same * phi(z) / jt.sR1 * ndtr(rho * z / r2))
+    return p0, p1
 
 
 # ---------------------------------------------------------------------------
