@@ -1757,3 +1757,5 @@ wrote /scratch/furkanbd/arm_noise.md
        60277429 furkanbd def-rgrosse_       uwyk-abl  PD 2-12:00:00     1   32 gres/gpu:h    128G  (ReqNodeNotAvail, UnavailableNodes:fc[10615,10713,10715]) 
 
 
+
+for t in D C; do echo -n "$t: "; grep -o "Step *[0-9]*/50000" ~/$t.log | tail -1; done

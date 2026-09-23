@@ -17,8 +17,17 @@
 #
 #   sbatch --account=def-zhijing R-PFN/benchmarks/cluster/submit_ate_calib.sbatch
 #
+# One job per model (recommended -- the all-models loop timed out at 6h):
+#   for m in $SCRATCH/cmech_dumps/*/; do
+#     ONLY=$(basename $m) SKIP_AGG=1 sbatch --account=def-zhijing \
+#       R-PFN/benchmarks/cluster/submit_ate_calib.sbatch
+#   done
+#   # then once, to build the table:
+#   SKIP_SCORE=1 sbatch --account=def-zhijing R-PFN/.../submit_ate_calib.sbatch
+#
 # Optional: CMECH_DUMPS, CMECH_DATA, CM_NODES, CTX, MALC_B, MALC_K, N_TAU,
-#           SKIP_MALC=1, SKIP_SCORE=1 (aggregate only), OUT
+#           ONLY=<model>, SKIP_MALC=1, SKIP_SCORE=1 (aggregate only),
+#           SKIP_AGG=1 (score only), OUT
 
 set -uo pipefail
 mkdir -p logs_ate_calib
@@ -51,6 +60,9 @@ FAILED=0
 if [ "${SKIP_SCORE:-0}" != 1 ]; then
   for md in "$DUMPS"/*; do
     [ -d "$md" ] || continue
+    # ONLY=<model> restricts this job to one model so the 13 can be fanned out as
+    # 13 jobs. The single-job loop timed out at 6h having finished ~2/3.
+    [ -n "${ONLY:-}" ] && [ "$(basename "$md")" != "$ONLY" ] && continue
     for n in $NODES; do
       o_raw="$md/N$CTX/calib_cmech_n${n}_raw_ate.md"
       if [ -s "$o_raw" ]; then echo "skip (done): $(basename "$md") n=$n raw"
@@ -77,8 +89,13 @@ if [ "${SKIP_SCORE:-0}" != 1 ]; then
   done
 fi
 
+if [ "${SKIP_AGG:-0}" = 1 ]; then
+    echo "[$(date '+%F %T')] scoring done (SKIP_AGG=1)  failures=$FAILED"
+    exit $FAILED
+fi
+
 echo
-echo "==== [$(date '+%F %T')] aggregating case study + ComplexMech"
+echo "==== [$(date '+%F %T')] aggregating RealCause + case study + ComplexMech"
 python -u "$REPO/benchmarks/ate_calib_tables.py" \
     --scratch "$SCRATCH" --cmech-dumps "$DUMPS" --nodes $NODES \
     --context "$CTX" --out "$OUT" || FAILED=$((FAILED+1))
