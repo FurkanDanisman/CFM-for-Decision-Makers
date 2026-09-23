@@ -42,3 +42,11 @@ share/*.png
 # provenance of each regeneration survives even though the arrays do not.
 case_study/data/**/*.npz
 case_study/data_shift*/**/*.npz
+Required_checkpoints/**/*
+results_density_ate/*
+results_density_marginals/*
+results_density_tauC/*
+results_density_tauC_malc/*
+Do-PFN/
+g4cfm/
+results_independence/
