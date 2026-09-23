@@ -80,7 +80,7 @@ def subset_sources(data_cell):
     return nz, ze
 
 
-def score(dumps_model, subdir, tag, data_cell, n, mode="raw"):
+def score(dumps_model, subdir, tag, data_cell, n, mode="raw", ctx=1000):
     """-> dict with PEHE and BOTH ATE errors over the query union per realization.
 
     Both metrics come from the same per-realization tau/truth, so L1 and relative
@@ -95,8 +95,12 @@ def score(dumps_model, subdir, tag, data_cell, n, mode="raw"):
         # so an assumed "N1000/<subdir>/<cell>" path found nothing and every model
         # scored zero. Match <subdir>/<cell> at ANY depth, as the progress tracker
         # does.
+        # Scoped to N<ctx>: an unscoped recursive glob matches EVERY context
+        # directory at once, so a multi-context dump tree would pool N50 with
+        # N1000 and report a number belonging to neither.
         dirs = [d for d in glob.glob(
-                    os.path.join(dumps_model, "**", subdir, f"CMECH_n{n}_{sub}"),
+                    os.path.join(dumps_model, f"N{ctx}", "**", subdir,
+                                 f"CMECH_n{n}_{sub}"),
                     recursive=True) if os.path.isdir(d)]
         if not dirs:
             continue                       # this model simply is not that method
@@ -163,26 +167,32 @@ def main():
     ap.add_argument("--hide", type=float, default=0.0)
     ap.add_argument("--mode", default="raw", choices=["raw", "em"])
 
+    ap.add_argument("--contexts", type=int, nargs="+", default=[1000],
+                    help="context sizes to report, one block per (n, context)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--csv", default=None,
+                    help="also write tidy long-form rows for plotting")
     a = ap.parse_args()
 
-    L = []
-    for n in a.nodes:
+    L, csv_rows = [], []
+    for ctx in a.contexts:
+      for n in a.nodes:
         cell = os.path.join(a.data, "complexmech", f"{n}node", a.regime,
                             f"hide_{a.hide}")
         nz, ze = subset_sources(cell)
-        print(f"[progress] n={n}: {len(nz)} nonzero + {len(ze)} zero "
+        print(f"[progress] N={ctx} n={n}: {len(nz)} nonzero + {len(ze)} zero "
               f"realizations, scoring models ...", flush=True)
         rows = []
         for md in sorted(d for d in glob.glob(f"{a.dumps}/*") if os.path.isdir(d)):
             for label, subdir, tag in METHODS:
-                r = score(md, subdir, tag, cell, n, a.mode)
+                r = score(md, subdir, tag, cell, n, a.mode, ctx)
                 if r:
                     r["model"] = display(os.path.basename(md), label)
-                    rows.append(r)
+                    r["nodes"], r["context"] = n, ctx
+                    rows.append(r); csv_rows.append(r)
         if not rows:
             continue
-        L += ["", f"## ComplexMech total — n={n}   "
+        L += ["", f"## ComplexMech total — n={n}, N={ctx}   "
                   f"(union of {len(nz)} nonzero + {len(ze)} zero subset entries "
                   f"over {len(set(nz) | set(ze))} realizations)", "",
               "| model | realizations | PEHE | L1_ATE | eps_ATE (relative) |",
@@ -204,6 +214,20 @@ def main():
           "ComplexMech many realizations have a true ATE near zero, so the relative",
           "column is dominated by that floor for them; read L1 as primary here and",
           "eps_ATE only for comparability with the RealCause tables."]
+    if a.csv:
+        import csv as _csv
+        os.makedirs(os.path.dirname(os.path.abspath(a.csv)) or ".", exist_ok=True)
+        with open(a.csv, "w", newline="") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["nodes", "context", "model", "n_real", "pehe", "pehe_sem",
+                        "l1_ate", "l1_sem", "eps_ate", "eps_sem"])
+            for r in csv_rows:
+                w.writerow([r["nodes"], r["context"], r["model"], r["n"],
+                            f"{r['pehe']:.6f}", f"{r['pehe_se']:.6f}",
+                            f"{r['l1']:.6f}", f"{r['l1_se']:.6f}",
+                            f"{r['rel']:.6f}", f"{r['rel_se']:.6f}"])
+        print(f"wrote {a.csv} ({len(csv_rows)} rows)", file=sys.stderr)
+
     txt = "\n".join(L)
     print(txt)
     if a.out:
