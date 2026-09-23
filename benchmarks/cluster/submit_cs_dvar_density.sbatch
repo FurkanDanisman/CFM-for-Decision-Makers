@@ -80,8 +80,12 @@ else
            Frontdoor_Criterion)
 fi
 
-MODEL="${MODELS[$(( SLURM_ARRAY_TASK_ID / 8 ))]}"
-D="${DS[$(( SLURM_ARRAY_TASK_ID % 8 ))]}"
+# MODEL and D normally come from the array index. Both are overridable so a
+# SINGLE cell can be run without an array -- e.g. the fixed-query coverage cell,
+# which has no shift/d sweep. MODEL_OVERRIDE also lets one model be rerun alone.
+_ATID="${SLURM_ARRAY_TASK_ID:-0}"
+MODEL="${MODEL_OVERRIDE:-${MODELS[$(( _ATID / 8 ))]}}"
+D="${D:-${DS[$(( _ATID % 8 ))]}}"
 
 # Point the case-study loader at this (shift, d) cell.
 #
