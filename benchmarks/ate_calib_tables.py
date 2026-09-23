@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""ATE-interval calibration for the case studies and ComplexMech.
+"""ATE-interval calibration for RealCause, the case studies and ComplexMech.
 
 A DIFFERENT claim from CATE coverage: one interval for the average effect per
 realization, not one per query. The scorer already writes these for the case
@@ -28,7 +28,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.dirname(_HERE))
 
-from final_table import ROOTS, CS_D_DEFAULT, display_name, RELEASED, parse_calib  # noqa: E402
+from final_table import (ROOTS, RC_DS, CS_D_DEFAULT, display_name, RELEASED,  # noqa: E402
+                         parse_calib)
 
 CASES = ("Observed_Confounder", "Backdoor_Criterion", "Observed_Mediator",
          "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
@@ -50,6 +51,32 @@ def _pool(entries):
         out.append(float(np.sum(v[ok] * w[ok]) / np.sum(w[ok])) if ok.any()
                    else float("nan"))
     return tuple(out)
+
+
+def realcause(SC):
+    """-> {dataset: {model: {'raw': tuple, 'malc': tuple}}}
+
+    RealCause's ATE calibration is the one final_table DID read, so this exists
+    only to put all three benchmarks in one place; the numbers are the same ones
+    the RealCause ATE-interval sections show.
+    """
+    acc: dict = {}
+    for ds in RC_DS:
+        for label, rc, cs, single in ROOTS:
+            R = os.path.join(SC, rc)
+            raw = parse_calib(os.path.join(R, f"calib_{ds}_raw_ate.md"))
+            mal = {}
+            for cand in sorted(glob.glob(os.path.join(R, f"calib_{ds}_T_*_ate.md"))):
+                mal = parse_calib(cand)
+            for meth in sorted(set(raw) | set(mal)):
+                nm = display_name(label, meth, single)
+                d = acc.setdefault(ds, {}).setdefault(nm, {"raw": [], "malc": []})
+                if meth in raw:
+                    d["raw"].append(raw[meth])
+                if meth in mal:
+                    d["malc"].append(mal[meth])
+    return {ds: {nm: {k: _pool(v[k]) for k in ("raw", "malc")}
+                 for nm, v in models.items()} for ds, models in acc.items()}
 
 
 def case_study(SC, keep_d, cases, malc_tag):
@@ -136,10 +163,19 @@ def main():
     SC = a.scratch
     keep_d = {str(x) for x in a.cs_d}
 
-    L = ["# ATE-interval calibration — case studies and ComplexMech", "",
+    L = ["# ATE-interval calibration — RealCause, case studies, ComplexMech", "",
          "One interval for the AVERAGE effect per realization, not one per query —",
          "a different claim from the CATE coverage in the main tables. Cells are",
          "pooled weighted by the number of realizations each contributed.", ""]
+
+    rc = realcause(SC)
+    if rc:
+        L += ["", "---", "", "# RealCause", ""]
+        for ds in RC_DS:
+            if ds in rc:
+                _emit(L, f"RealCause — {ds}", rc[ds])
+    else:
+        print(f"note: no RealCause calib_*_ate.md under {SC}", file=sys.stderr)
 
     cs = case_study(SC, keep_d, a.cases, a.malc_tag)
     if cs:
