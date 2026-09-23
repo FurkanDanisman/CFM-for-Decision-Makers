@@ -71,7 +71,13 @@ if _REPO_ROOT not in sys.path:
 
 from training_dopfn_repro.prior import DOPFN_SRC  # noqa: E402
 
-VARIANTS = ("dopfn_1d", "joint_2d")
+VARIANTS = ("dopfn_1d", "dopfn_1d_botharms", "joint_2d")
+
+#: Variants driving Do-PFN's own 1-D bar head. They share the head, the loss and
+#: the fitted borders exactly; they differ only in which arms of each query unit
+#: batch.py emits, so anything keyed on "is this a 1-D model" must test
+#: membership here rather than equality with "dopfn_1d".
+VARIANTS_1D = ("dopfn_1d", "dopfn_1d_botharms")
 
 # BarDistribution2D emits J^2 inner logits + 9 region weights + 4 tail scales.
 N_REGIONS_2D = 9
@@ -175,8 +181,13 @@ def build_backbone_init(seed: int, out_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def is_1d(variant: str) -> bool:
+    """True for the variants wearing the 1-D bar head."""
+    return variant in VARIANTS_1D
+
+
 def head_output_dim(variant: str, num_buckets: int = 100, j_2d: int = 10) -> int:
-    if variant == "dopfn_1d":
+    if is_1d(variant):
         return num_buckets
     if variant == "joint_2d":
         return j_2d * j_2d + N_REGIONS_2D + N_TAIL_PARAMS_2D

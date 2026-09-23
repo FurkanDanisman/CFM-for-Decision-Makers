@@ -242,7 +242,8 @@ class DoPFNModelSet(_DoPFNRuntime):
 
     A checkpoint's kind is read from the file, never from its list name:
       native       DoPFNRegressor from DOPFN_ROOT, 1D arms
-      repro_1d     training_dopfn_repro dopfn_1d: FullSupportBarDistribution arms
+      repro_1d     training_dopfn_repro dopfn_1d / dopfn_1d_botharms:
+                   FullSupportBarDistribution arms
       repro_joint  training_dopfn_repro joint_2d: J x J BarDistribution2D joint
       bb_joint     training_dopfn_base DoPFNBackboneWith2DHead joint (dopfn_bb_*)
 
@@ -320,9 +321,16 @@ class DoPFNModelSet(_DoPFNRuntime):
         net.to(self.device).eval()
 
         variant = prov.get('variant')
-        if variant == 'dopfn_1d':
+        # dopfn_1d and dopfn_1d_botharms are the SAME model at inference: one
+        # FullSupportBarDistribution head over one set of borders, queried once
+        # per arm. They differ only in how the training query block was built
+        # (coin-flipped single arm vs both arms of every unit), which leaves no
+        # trace in the checkpoint beyond this name. So they load identically --
+        # and p(tau) still comes from the independence convolution either way,
+        # because a 1-D head emits marginals, not a joint.
+        if variant in ('dopfn_1d', 'dopfn_1d_botharms'):
             if 'criterion.borders' not in criterion:
-                raise ValueError(f'{path}: dopfn_1d checkpoint has no criterion.borders')
+                raise ValueError(f'{path}: {variant} checkpoint has no criterion.borders')
             borders = _numpy(criterion['criterion.borders'])
             if borders.shape != (n_out + 1,) or np.any(np.diff(borders) <= 0):
                 raise ValueError(f'{path}: {n_out} logits need {n_out + 1} increasing borders, '

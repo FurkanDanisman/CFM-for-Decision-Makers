@@ -194,6 +194,65 @@ def make_1d_batch(
     }
 
 
+def make_1d_botharms_batch(
+    rec: dict[str, Any],
+    sep: int,
+    cfg: BatchConfig | None = None,
+) -> dict[str, torch.Tensor]:
+    """1-D head, both arms of every query unit: the joint's target, factored.
+
+    ``make_1d_batch`` shows the head one arm per query unit, picked by the
+    prior's coin flip, so a run sees ``S - sep`` outcomes per SCM against the
+    joint head's ``2 (S - sep)``. This builder removes that asymmetry: every
+    query unit appears twice, once with column 0 = 0 targeting ``y_do0`` and
+    once with column 0 = 1 targeting ``y_do1``. Both arms come out of the same
+    ``_propagate_arm`` pass, so they are the same shared-noise counterfactual
+    pair the joint head is trained on -- the 1-D head just never sees the two
+    halves inside one query row, which is what keeps it 1-D.
+
+    The estimand does not move. Column 0 is part of the query, so both builders
+    fit the same conditional p(y | do(t), x, context); the coin flip only
+    decides which arm of each unit gets sampled. What changes is coverage --
+    every unit now contributes both arms rather than one -- and that the query
+    pattern now matches inference, where the Tier-C eval queries the same head
+    twice with column 0 flipped.
+
+    Doubling the query block IS those two forward passes, not an approximation:
+
+      * query rows attend to context rows only. Keys and values are
+        ``src_[:single_eval_pos]`` in both
+        ``PerFeatureEncoderLayer.attn_between_items`` and
+        ``TransformerEncoderLayer``, so neither arm can see the other.
+      * every encoder statistic is computed over the context alone
+        (``normalize_on_train_only`` is True in the released config), so the
+        extra rows cannot shift the other arm's normalisation.
+      * the row axis carries no positional embedding -- the per-feature
+        transformer embeds FEATURE position, not row position.
+
+    Load-bearing enough to check rather than assert:
+    ``check_botharms_equivalence.py`` runs it against the real backbone.
+    """
+    cfg = cfg or BatchConfig()
+
+    x_arm0 = rec["x_obs"][sep:].clone()
+    x_arm1 = x_arm0.clone()
+    x_arm0[:, :, 0] = 0.0
+    x_arm1[:, :, 0] = 1.0
+
+    y_ctx, (y0, y1), logjac = _apply_y_space(
+        rec["y_obs"][:sep], [rec["y_do0"][sep:], rec["y_do1"][sep:]], cfg.y_space
+    )
+    return {
+        "train_x": rec["x_obs"][:sep].clone(),
+        "train_y": y_ctx,                              # (sep, B)
+        "test_x": torch.cat([x_arm0, x_arm1], dim=0),  # (2*(S-sep), B, F+1)
+        "target": torch.cat([y0, y1], dim=0),          # (2*(S-sep), B)
+        "logjac": logjac,                              # (1, B); covers both arms
+        "n_query": x_arm0.shape[0],                    # rows per arm, arm 0 first
+        "single_eval_pos": sep,
+    }
+
+
 def make_joint_batch(
     rec: dict[str, Any],
     sep: int,

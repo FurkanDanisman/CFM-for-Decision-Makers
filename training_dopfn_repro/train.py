@@ -1,12 +1,21 @@
 """Training loop for both tasks.
 
-    task 1   --variant dopfn_1d    the faithful Do-PFN reproduction
-    task 2   --variant joint_2d    the joint version of task 1
+    task 1   --variant dopfn_1d           the faithful Do-PFN reproduction
+    task 1b  --variant dopfn_1d_botharms  task 1, both arms of every query unit
+    task 2   --variant joint_2d           the joint version of task 1
 
 Everything outside the head is held identical between them: prior, SCM draw
 order, optimiser, schedule, backbone initialisation, target space, and the
-context/query split. That is the whole point -- the head is the only thing that
+context rows. That is the whole point -- the head is the only thing that
 moves, so any difference is attributable to it.
+
+``dopfn_1d_botharms`` is the one deliberate exception. It shares the 1-D head,
+the loss and the fitted borders with ``dopfn_1d`` exactly, and differs only in
+the query block: both arms of every query unit instead of the prior's
+coin-flipped one. Same estimand -- column 0 is part of the query, so both fit
+p(y | do(t), x, context) -- but it puts the same outcome values in front of the
+1-D head that the joint head already sees. Without it, a 1-D/joint gap is
+confounded with the joint having had twice the outcomes per SCM draw.
 
 The optimiser is not tuned. It is read off the released checkpoint's
 ``optimizer_state.param_groups``: Adam, lr 8.4853e-5, betas (0.9, 0.999),
@@ -21,8 +30,9 @@ other.
 
 Usage
 -----
-    python training_dopfn_repro/train.py --variant dopfn_1d  --steps 150000
-    python training_dopfn_repro/train.py --variant joint_2d  --steps 150000
+    python training_dopfn_repro/train.py --variant dopfn_1d          --steps 150000
+    python training_dopfn_repro/train.py --variant dopfn_1d_botharms --steps 150000
+    python training_dopfn_repro/train.py --variant joint_2d          --steps 150000
 
 Needs torch 2.1 / python 3.10 -- Do-PFN's model/layer.py does
 ``from torch.nn.modules.transformer import Optional``, which no longer resolves.
@@ -48,6 +58,7 @@ if _REPO_ROOT not in sys.path:
 from training_dopfn_repro.batch import (  # noqa: E402
     BatchConfig,
     make_1d_batch,
+    make_1d_botharms_batch,
     make_joint_batch,
     sample_single_eval_pos,
 )
@@ -62,6 +73,7 @@ from training_dopfn_repro.model import (  # noqa: E402
     _in_dopfn_root,
     build_backbone_init,
     build_model,
+    is_1d,
     loss_1d,
     loss_joint_2d,
 )
@@ -74,6 +86,13 @@ ADAM_EPS = 1e-08
 ADAM_WEIGHT_DECAY = 0.0
 WARMUP_FRACTION = 256 / 2048          # config: warmup_epochs / epochs
 BAR_DIST_INIT_BATCHES = 100           # config: bar_dist_init_batches
+
+#: Which builder each 1-D variant uses. Both feed the identical head and loss;
+#: only the query block differs. See batch.make_1d_botharms_batch.
+_1D_BUILDERS = {
+    "dopfn_1d": make_1d_batch,
+    "dopfn_1d_botharms": make_1d_botharms_batch,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -103,8 +122,8 @@ class PriorStream(torch.utils.data.Dataset):
         seed = self.seed_base + int(index)
         rec = sample_batch(seed, self.prior_cfg)
         sep = sample_single_eval_pos(seed, self.prior_cfg.seq_len, self.batch_cfg)
-        if self.variant == "dopfn_1d":
-            out = make_1d_batch(rec, sep, self.batch_cfg)
+        if is_1d(self.variant):
+            out = _1D_BUILDERS[self.variant](rec, sep, self.batch_cfg)
             keep = ("train_x", "train_y", "test_x", "target")
         else:
             out = make_joint_batch(rec, sep, self.batch_cfg)
@@ -158,6 +177,10 @@ def install_criterion(model, variant, spec, prior_cfg, batch_cfg, n_batches, dev
 
     Both heads are fitted from the same draws and the same target space; they
     differ only in how resolution is allocated, which the 2-D loss forces.
+
+    ``collect_targets`` pools BOTH arms for every variant, so the 1-D borders do
+    not move between ``dopfn_1d`` and ``dopfn_1d_botharms``: at a fixed seed the
+    two runs start from a byte-identical head over a byte-identical support.
     """
     print(f"fitting target support from {n_batches} prior batches ...")
     targets = collect_targets(
@@ -165,7 +188,7 @@ def install_criterion(model, variant, spec, prior_cfg, batch_cfg, n_batches, dev
     )
     pooled = torch.cat([targets["context"], targets["query"]])
 
-    if variant == "dopfn_1d":
+    if is_1d(variant):
         borders = fit_bar_borders_1d(pooled, spec.num_buckets)
         with _in_dopfn_root():
             from model.bar_distribution import FullSupportBarDistribution
@@ -200,7 +223,9 @@ def compute_loss(model, batch, variant, spec, edges, device):
 
     logits = model(train_x, train_y, test_x, only_return_standard_out=True)
 
-    if variant == "dopfn_1d":
+    if is_1d(variant):
+        # botharms stacks arm 0 then arm 1 along the row axis, so this mean is
+        # still nats per outcome -- the same units as the halved joint loss.
         return loss_1d(model.criterion, logits, batch["target"].to(device))
     return loss_joint_2d(
         logits,

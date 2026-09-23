@@ -24,12 +24,17 @@ producing a batch; see REPAIR A/B/C in [`prior.py`](prior.py).
 
 ## Layout
 
-Two deliverables, one shared pipeline:
+Three deliverables, one shared pipeline:
 
 ```bash
-python training_dopfn_repro/train.py --variant dopfn_1d --steps 150000   # task 1
-python training_dopfn_repro/train.py --variant joint_2d --steps 150000   # task 2
+python training_dopfn_repro/train.py --variant dopfn_1d          --steps 150000  # task 1
+python training_dopfn_repro/train.py --variant dopfn_1d_botharms --steps 150000  # task 1b
+python training_dopfn_repro/train.py --variant joint_2d          --steps 150000  # task 2
 ```
+
+`dopfn_1d_botharms` is task 1 with both arms of every query unit instead of the
+prior's coin-flipped one — see [One prior stream, three
+models](#one-prior-stream-three-models).
 
 | File | What it does |
 |---|---|
@@ -39,9 +44,104 @@ python training_dopfn_repro/train.py --variant joint_2d --steps 150000   # task 
 | [`borders.py`](borders.py) | Bucket/grid fitting, and what the grid costs |
 | [`train.py`](train.py) | Training loop for both variants |
 | [`parity.py`](parity.py) | Validates the reconstruction against the released weights |
+| [`check_botharms_equivalence.py`](check_botharms_equivalence.py) | Asserts `dopfn_1d_botharms`' doubled query block == two forwards |
 
-Cluster submission is deliberately out of scope — `train.py` takes `--steps`
-and friends and is yours to wrap.
+`train.py` is the only entry point; [`cluster/`](cluster/) holds thin Slurm
+wrappers around it, one per variant. See [Running a training
+job](#running-a-training-job).
+
+## Running a training job
+
+`train.py` is plain Python — no Slurm, no launcher, no distributed setup. One
+process, one GPU.
+
+**0. Check the one structural assumption** (only for `dopfn_1d_botharms`, and
+only once per checkout). Seconds, CPU-only, no GPU needed:
+
+```bash
+export DOPFN_SRC=/path/to/Do-PFN          # the checkout holding artifacts/
+python training_dopfn_repro/check_botharms_equivalence.py
+```
+
+It must print `OK:`. If it prints `FAIL:`, something in the checkout lets query
+rows influence each other and the variant would train on a task the eval cannot
+reproduce — stop there.
+
+**1. Train.** The bare command, on any machine with a GPU:
+
+```bash
+export DOPFN_SRC=/path/to/Do-PFN
+python training_dopfn_repro/train.py \
+    --variant dopfn_1d_botharms \
+    --steps 150000 \
+    --out /path/to/checkpoints_dopfn_repro \
+    --resume
+```
+
+`--resume` is a no-op on a fresh run and picks up `latest.pt` on a restart, so
+it is safe to pass unconditionally. Swap `--variant` for `dopfn_1d` or
+`joint_2d`; nothing else changes.
+
+Useful flags: `--batch-size` (4; drop it first if you OOM), `--workers` (6
+DataLoader processes running the SCM prior), `--amp fp16|bf16|off`,
+`--ckpt-every` (5000), `--log-every` (50), `--seq-len` (2200).
+
+**Keep `--out` and `--backbone-seed` the same across variants.** The canonical
+backbone init lives at `<out>/backbone_init_s<backbone_seed>.pt`, is derived on
+first use and reused afterwards, and is what makes the variants share a
+byte-identical backbone. A different `--out` silently derives a second init and
+the comparison stops being paired.
+
+**2. Under Slurm**, the wrappers in [`cluster/`](cluster/) add requeue-on-wall-
+clock and a preflight, and take everything by environment variable:
+
+```bash
+DEPLOY_ROOT=/path/to/deploy \
+REPO=/path/to/CFM-for-Decision-Makers \
+VENV=/path/to/venv \
+DOPFN_SRC=/path/to/Do-PFN \
+OUT=/path/to/checkpoints_dopfn_repro \
+STEPS=150000 \
+EXTRA="--batch-size 2" \
+sbatch --account=<your-account> \
+    training_dopfn_repro/cluster/submit_train_dopfn_1d_botharms.sbatch
+```
+
+`REPO`, `VENV`, `OUT` and `DOPFN_SRC` each default to a path under
+`DEPLOY_ROOT`, which itself defaults to `$SCRATCH/rpfn_bench_kit` — so setting
+`DEPLOY_ROOT` (or all four) is enough on a cluster with no `$SCRATCH`. The
+`#SBATCH` lines are Fir-shaped (`--gres=gpu:h100:1`, no `--partition`); edit
+them for another site. `EXTRA` is appended verbatim to `train.py`.
+
+**3. What lands.** Under `<out>/<variant>/`:
+
+| File | What |
+|---|---|
+| `step_<N>.pt` | every `--ckpt-every` steps |
+| `latest.pt` | overwritten each time; what `--resume` reads |
+| `step_<N>_final.pt` | written once, at the end |
+| `provenance.json` | variant, specs, optimiser, seeds, backbone hash |
+
+Each checkpoint carries `model`, `optimizer`, `scheduler`, `scaler`, `edges`
+(joint only) and `provenance`. The density eval reads `provenance` to decide how
+to load it, so checkpoints are self-describing — nothing downstream needs to be
+told which variant a file is.
+
+**4. Then evaluate.** Add the finished checkpoint to `DOPFN_MODEL_LIST` in
+[`benchmarks/cluster/submit_density_tauC.sbatch`](../benchmarks/cluster/submit_density_tauC.sbatch),
+or override the whole list for one submission:
+
+```bash
+MODEL_FAMILY=dopfn \
+DOPFN_ROOT=/path/to/Do-PFN \
+DOPFN_MODELS="botharms=/path/to/step_150000_final.pt" \
+OUT_ROOT=/path/to/results_density_tauC/botharms \
+sbatch benchmarks/cluster/submit_density_tauC.sbatch
+```
+
+**Use a fresh `OUT_ROOT`.** That eval skips any realization whose shard already
+exists, and it trusts the shard rather than the config that produced it — reuse
+a directory after changing the model list and stale rows are silently kept.
 
 ## Environment
 
@@ -113,7 +213,7 @@ densities are likely sharper still, since `noise_std` averages 0.05, so treat
 it as a lower bound on the cost. `--j-2d` is a one-line change if it turns out
 to matter.
 
-## One prior stream, both models
+## One prior stream, three models
 
 The 1-D target is a strict subset of the joint target. In the prior, `t_int` is
 a per-row coin flip and `y_int` is propagated under `do(t_int)` sharing the
@@ -123,8 +223,59 @@ pure arms is identical to propagating the mixed treatment vector in one pass
 (verified exactly, not approximately).
 
 `sample_batch` therefore emits one superset record and each trainer takes what
-it needs. Both models see the same SCMs in the same order, which makes the
+it needs. All three models see the same SCMs in the same order, which makes the
 comparison paired rather than merely matched.
+
+### Why `dopfn_1d_botharms` exists
+
+Shared noise is a property of the **prior**, not of the joint head: `y_do0` and
+`y_do1` come out of the same `_propagate_arm` pass reusing every observational
+exogenous draw, and Do-PFN's per-node additive noise is materialised once at SCM
+construction (`MakeStructuralEquations.py:195`) and never resampled when
+`exogenous_vars` is passed (`scm.py:167-173`). Both arms are therefore genuine
+counterfactuals for the same unit — for every variant.
+
+What differed was only how much of that pair each head was shown. `dopfn_1d`
+takes `y_int`, one arm per query unit; `joint_2d` takes both. So the joint head
+saw **twice the outcomes per SCM draw**, and a 1-D/joint gap could be read
+either as the head mattering or as the data budget mattering.
+`dopfn_1d_botharms` closes that: every query unit appears twice, once per arm.
+
+```
+                       query rows      outcomes seen per SCM
+dopfn_1d               S - sep         S - sep      (coin-flipped arm)
+dopfn_1d_botharms      2 (S - sep)     2 (S - sep)  (both arms, shared noise)
+joint_2d               S - sep         2 (S - sep)  (both arms, one row)
+```
+
+Three things this does **not** change:
+
+- **The estimand.** Column 0 is part of the query, so `dopfn_1d` and
+  `dopfn_1d_botharms` both fit p(y | do(t), x, context). The coin flip only
+  decides which arm of each unit gets sampled; it is independent of everything
+  else, so it biases nothing. This is a coverage and variance change, not a
+  different target.
+- **The head.** Identical 100-bucket `FullSupportBarDistribution`, and
+  identical borders: `collect_targets` already pools *both* arms via
+  `make_joint_batch` for every variant, so at a fixed seed the two runs start
+  byte-identical.
+- **What a 1-D head can express.** It still emits marginals, so p(τ) still comes
+  from the independence convolution at eval time. Training on both arms buys
+  better-calibrated arm marginals; it does **not** buy a joint, and it cannot
+  recover the y0–y1 dependence that `joint_2d` models directly.
+
+Doubling the query block is exactly the two arm-flipped forward passes the
+Tier-C eval already performs, not an approximation of them: query rows attend to
+context rows only (keys and values are `src_[:single_eval_pos]` in
+`PerFeatureEncoderLayer.attn_between_items`), every encoder statistic is
+computed over the context alone (`normalize_on_train_only=True` in the released
+config), and the row axis carries no positional embedding. That is a read of the
+source, and the whole variant rests on it, so
+[`check_botharms_equivalence.py`](check_botharms_equivalence.py) asserts it
+against the real backbone — run it once before spending an allocation.
+
+Cost: total rows go from a flat 2200 to `4400 - sep`, ~3300 on average and 4390
+worst-case. Activation memory tracks total rows, so budget for 2x, not 1.5x.
 
 ```
 x_obs (S,B,F+1)   col 0 = observational treatment

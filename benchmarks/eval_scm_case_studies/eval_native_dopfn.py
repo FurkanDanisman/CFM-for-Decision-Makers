@@ -248,9 +248,11 @@ if _DOPFN_CKPT:
     # scaling with a --y-scaling flag, and its grid is min-max [-1,1] while the
     # repro's edges span [-2.4865, +3.7314]: the data then lands in ~3 of 10
     # bins.
-    if _variant not in (None, 'dopfn_1d', 'joint_2d'):
+    # dopfn_1d_botharms is dopfn_1d at inference -- same head, same borders,
+    # queried once per arm; only its training query block differed.
+    if _variant not in (None, 'dopfn_1d', 'dopfn_1d_botharms', 'joint_2d'):
         raise SystemExit(f'DOPFN_CKPT variant is {_variant!r}; this path handles '
-                         f'dopfn_1d and joint_2d')
+                         f'dopfn_1d, dopfn_1d_botharms and joint_2d')
     _IS_2D = (_variant == 'joint_2d')
     _CKPT_EDGES = None
     if _IS_2D:

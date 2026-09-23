@@ -593,6 +593,14 @@ class DoPFNModelListTest(unittest.TestCase):
                                         ck['model']['decoder_dict.standard.2.weight']))
             self.assertFalse(e.net.training)
 
+            # dopfn_1d_botharms differs from dopfn_1d only in its training
+            # query block, so the loader must treat it as the same 1-D head.
+            botharms = loader._load_repro(
+                self._repro_checkpoint('dopfn_1d_botharms', 10), 'botharms.pt')
+            self.assertEqual(botharms.kind, 'repro_1d')
+            np.testing.assert_allclose(botharms.borders, np.linspace(-3, 3, 11),
+                                       atol=1e-6)
+
             e = loader._load_repro(self._repro_checkpoint('joint_2d', 17), 'joint.pt')
             self.assertEqual((e.kind, e.J), ('repro_joint', 2))
             self.assertTrue(np.isnan(e.query_fill))
