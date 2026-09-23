@@ -60,18 +60,29 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", required=True)
     ap.add_argument("--kind", required=True, choices=["cmech", "case"])
-    ap.add_argument("--metric", default="pehe",
-                    choices=["pehe", "l1_ate", "eps_ate"])
+    ap.add_argument("--metric", nargs="+", default=["pehe"],
+                    choices=["pehe", "l1_ate", "eps_ate"],
+                    help="one figure PER metric -- they are different measures "
+                         "on different scales and never share an axis")
     ap.add_argument("--models", nargs="*", default=None,
                     help="restrict and order the bars; default all, sorted")
     ap.add_argument("--free-x", action="store_true")
-    ap.add_argument("--out", required=True, help="output png")
+    ap.add_argument("--out", required=True,
+                    help="png path for a single metric, or a prefix when several "
+                         "are given (writes <prefix>_<metric>.png)")
     a = ap.parse_args()
 
     row_key, col_key = ("nodes", "context") if a.kind == "cmech" else ("case", "d")
     rows = load(a.csv, row_key, col_key)
+    rc = 0
+    for _metric in a.metric:
+        rc |= draw(a, rows, row_key, col_key, _metric)
+    return rc
+
+
+def draw(a, rows, row_key, col_key, metric):
     sem_key = {"pehe": "pehe_sem", "l1_ate": "l1_sem",
-               "eps_ate": "eps_sem"}[a.metric]
+               "eps_ate": "eps_sem"}[metric]
 
     def _ord(v):
         try:
@@ -86,7 +97,7 @@ def main():
     for r in rows:
         try:
             cell[(r[row_key], r[col_key])][r["model"]] = (
-                float(r[a.metric]), float(r[sem_key]))
+                float(r[metric]), float(r[sem_key]))
         except (ValueError, KeyError):
             continue
 
@@ -121,7 +132,7 @@ def main():
                 ax.text(0.5, 0.5, "no data", transform=ax.transAxes,
                         ha="center", va="center", fontsize=7, color="#888")
     lab = {"pehe": "PEHE", "l1_ate": "L1 ATE error",
-           "eps_ate": "relative ATE error"}[a.metric]
+           "eps_ate": "relative ATE error"}[metric]
     for j in range(nc):
         axes[-1][j].set_xlabel(lab, fontsize=7)
     fig.legend(handles=[plt.Rectangle((0, 0), 1, 1, color=C_1D),
@@ -131,9 +142,15 @@ def main():
     fig.suptitle(f"{'ComplexMech' if a.kind == 'cmech' else 'Case study'} — {lab}",
                  fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
-    fig.savefig(a.out, dpi=180, bbox_inches="tight")
-    print(f"wrote {a.out}  ({nr}x{nc} grid, {len(models)} models)")
+    # One file per metric: a bare path is used as-is for a single metric, but
+    # several metrics would otherwise overwrite each other.
+    out = a.out
+    if len(a.metric) > 1 or not out.endswith(".png"):
+        out = f"{out[:-4] if out.endswith('.png') else out}_{metric}.png"
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    fig.savefig(out, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out}  ({nr}x{nc} grid, {len(models)} models)")
     empty = sum(1 for rv in rvals for cv in cvals if not cell.get((rv, cv)))
     if empty:
         print(f"  NOTE: {empty} of {nr*nc} cells had no data (drawn as 'no data')")
