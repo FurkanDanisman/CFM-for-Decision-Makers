@@ -426,7 +426,15 @@ def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned")
         # write an inconsistent file, so they carry no field and pass through.
         if "density_scale_r2" in z.files:
             _r2 = float(np.asarray(z["density_scale_r2"]).reshape(-1)[0])
-            if not (_r2 >= _MIN_DENSITY_R2):
+            # NaN means the check could not be COMPUTED, not that it failed: the
+            # R^2 regresses the dumped density mean on cate_pred across queries,
+            # so a single-query realization (SCM_N_QUERY=1, e.g. the fixed-query
+            # coverage cell) yields NaN. Rejecting it would be wrong, and because
+            # every comparison with NaN is False no threshold could let it
+            # through. Keep it, but count it so it is visible rather than silent.
+            if not np.isfinite(_r2):
+                _R2_NOT_COMPUTABLE.append(os.path.basename(path))
+            elif not (_r2 >= _MIN_DENSITY_R2):
                 _REJECTED.append((os.path.basename(path), _r2))
                 return None
         y_true = y_true.reshape(-1)
@@ -644,6 +652,8 @@ def _resolve_dir(root, subdir, leaf):
 # scoring. Realizations below this R^2 are excluded and counted.
 _MIN_DENSITY_R2 = float(os.environ.get("MIN_DENSITY_R2", "0.99"))
 _REJECTED: list = []
+# Realizations whose density_scale_r2 is NaN, i.e. not computable (one query).
+_R2_NOT_COMPUTABLE: list = []
 
 _LAST_J: dict = {}
 
@@ -929,9 +939,12 @@ def build_table(args):
         print(f" {len(acc)} queries from {n_files} file(s)"
               + (f"   [{len(_REJECTED)} realization(s) REJECTED: density "
                  f"inconsistent with the point estimate, min R^2 "
-                 f"{min(r for _, r in _REJECTED):.3f}]" if _REJECTED else ""),
+                 f"{min(r for _, r in _REJECTED):.3f}]" if _REJECTED else "")
+              + (f"   [{len(_R2_NOT_COMPUTABLE)} with R^2 NOT COMPUTABLE (single "
+                 f"query) -- kept]" if _R2_NOT_COMPUTABLE else ""),
               flush=True)
         _REJECTED.clear()
+        _R2_NOT_COMPUTABLE.clear()
         if not acc:
             print(f"[skip] {label}: no density dumps for "
                   f"{'/'.join(x for x in subsets if x) or (plain or '?')} "
