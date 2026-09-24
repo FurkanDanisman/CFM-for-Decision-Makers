@@ -17,6 +17,22 @@
 set -uo pipefail
 KIT="${KIT:-$PWD}"; REPO="${REPO:-$KIT/R-PFN}"
 SC="${SCRATCH:?SCRATCH must be set}"
+# Activate the venv if it is not already: this is a plain script, so it gets run
+# from whatever shell is handy and dies on 'No module named numpy' otherwise.
+if ! python -c "import numpy" >/dev/null 2>&1; then
+    D="$KIT"
+    for _ in 1 2 3; do
+        [ -f "$D/venv/bin/activate" ] && break
+        D="$(cd "$D/.." && pwd)"
+    done
+    if [ -f "$D/venv/bin/activate" ]; then
+        # shellcheck disable=SC1091
+        source "$D/venv/bin/activate"
+        echo "(activated $D/venv)"
+    else
+        echo "FATAL: no numpy and no venv found from $KIT" >&2; exit 1
+    fi
+fi
 DUMPS="${DUMPS:?DUMPS required (e.g. \$SCRATCH/fq4_dumps/Observed_Confounder_shift0_d5_r0)}"
 CASE="${CASE:-Observed_Confounder}"
 CTX="${CTX:-1000}"

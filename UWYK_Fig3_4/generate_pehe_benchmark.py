@@ -361,6 +361,12 @@ def generate_realization(
     max_ate_sd_ratio: float = float("inf"),
     sat_eps: float = 1e-3,
     n_test_override: int | None = None,
+    # Repeated observational samples for ONE accepted realization: same SCM, same
+    # queries, same potential outcomes, a fresh training set each time. Returns a
+    # LIST when > 1 and the single record when 1, so existing callers are untouched.
+    # This is what makes frequentist coverage measurable here -- the truth has to be
+    # one fixed number while only the sample varies.
+    n_train_draws: int = 1,
 ) -> dict[str, Any]:
     """Sample one SCM and return a PEHE-ready realization.
 
@@ -579,93 +585,141 @@ def generate_realization(
     # two separate calls would scale the arms differently and PEHE would be
     # meaningless. It also forces shuffle_samples=False internally, so the
     # row-pairing between the halves survives.
-    def _col(x):
-        return x.reshape(-1, 1).float()
+    def _finalize(obs0_raw):
+        """Train sample -> processed splits -> one realization record.
 
-    train_ds = {k: _col(v) for k, v in obs0_raw.items()}
-    test_ds = {}
-    for v in obs0_raw:
-        if v == t_node:
-            test_ds[v] = torch.cat([
-                torch.full((n_test, 1), t0_value), torch.full((n_test, 1), t1_value)
-            ], dim=0)
-        elif v == y_node:
-            test_ds[v] = torch.cat([_col(res0[v]), _col(res1[v])], dim=0)
-        else:
-            tiled = _col(obs_test[v])
-            test_ds[v] = torch.cat([tiled, tiled], dim=0)
+        Nested so n_train_draws can call it repeatedly with fresh training
+        samples while the SCM, the queries and their potential outcomes stay
+        exactly as accepted. Duplicating it in a separate script instead would
+        let the two copies drift, and a silent divergence here changes what the
+        benchmark IS.
+        """
+        def _col(x):
+            return x.reshape(-1, 1).float()
 
-    processor = BasicProcessing(
-        n_features=max_features, max_n_features=max_features,
-        n_train_samples=n_train, max_n_train_samples=n_train,
-        n_test_samples=2 * n_test, max_n_test_samples=2 * n_test,
-        dropout_prob=_val(pp, "dropout_prob", 0.0) or 0.0,
-        target_feature=y_node,           # D5: pin the outcome we regime-checked
-        intervened_feature=t_node,
-        random_seed=seed,
-        test_feature_mask_fraction=test_feature_mask_fraction,   # D4
-        feature_standardize=_val(pp, "feature_standardize", True),
-        feature_negative_one_one_scaling=_val(pp, "feature_negative_one_one_scaling", False),
-        target_negative_one_one_scaling=_val(pp, "target_negative_one_one_scaling", True),
-        yeo_johnson=_val(pp, "yeo_johnson", False),
-        remove_outliers=_val(pp, "remove_outliers", True),
-        outlier_quantile=_val(pp, "outlier_quantile", 0.99),
-        shuffle_samples=False,           # keep do(t0)/do(t1) rows aligned
-        shuffle_features=True,
-        eps=1e-8,
-    )
-    X_tr, T_tr, Y_tr, X_te, T_te, Y_te = processor.process_from_splits(
-        train_dataset=train_ds, test_dataset=test_ds, mode="fast",
-    )
+        train_ds = {k: _col(v) for k, v in obs0_raw.items()}
+        test_ds = {}
+        for v in obs0_raw:
+            if v == t_node:
+                test_ds[v] = torch.cat([
+                    torch.full((n_test, 1), t0_value), torch.full((n_test, 1), t1_value)
+                ], dim=0)
+            elif v == y_node:
+                test_ds[v] = torch.cat([_col(res0[v]), _col(res1[v])], dim=0)
+            else:
+                tiled = _col(obs_test[v])
+                test_ds[v] = torch.cat([tiled, tiled], dim=0)
 
-    X_test = X_te[:n_test]
-    Y_do0 = Y_te[:n_test].reshape(-1)
-    Y_do1 = Y_te[n_test:].reshape(-1)
-    # X is tiled, so the two halves must be identical after processing.
-    assert torch.allclose(X_te[:n_test], X_te[n_test:]), "arm X mismatch"
+        processor = BasicProcessing(
+            n_features=max_features, max_n_features=max_features,
+            n_train_samples=n_train, max_n_train_samples=n_train,
+            n_test_samples=2 * n_test, max_n_test_samples=2 * n_test,
+            dropout_prob=_val(pp, "dropout_prob", 0.0) or 0.0,
+            target_feature=y_node,           # D5: pin the outcome we regime-checked
+            intervened_feature=t_node,
+            random_seed=seed,
+            test_feature_mask_fraction=test_feature_mask_fraction,   # D4
+            feature_standardize=_val(pp, "feature_standardize", True),
+            feature_negative_one_one_scaling=_val(pp, "feature_negative_one_one_scaling", False),
+            target_negative_one_one_scaling=_val(pp, "target_negative_one_one_scaling", True),
+            yeo_johnson=_val(pp, "yeo_johnson", False),
+            remove_outliers=_val(pp, "remove_outliers", True),
+            outlier_quantile=_val(pp, "outlier_quantile", 0.99),
+            shuffle_samples=False,           # keep do(t0)/do(t1) rows aligned
+            shuffle_features=True,
+            eps=1e-8,
+        )
+        X_tr, T_tr, Y_tr, X_te, T_te, Y_te = processor.process_from_splits(
+            train_dataset=train_ds, test_dataset=test_ds, mode="fast",
+        )
 
-    # --- graph matrices, aligned to the processed column order ---------------
-    kept = processor.kept_feature_indices
-    ordered_nodes = [t_node, y_node] + list(kept)
-    adj_raw = org_scm.get_adjacency_matrix(node_order=ordered_nodes)
-    anc = 2.0 * adjacency_to_ancestor_matrix(adj_raw).float() - 1.0
+        X_test = X_te[:n_test]
+        Y_do0 = Y_te[:n_test].reshape(-1)
+        Y_do1 = Y_te[n_test:].reshape(-1)
+        # X is tiled, so the two halves must be identical after processing.
+        assert torch.allclose(X_te[:n_test], X_te[n_test:]), "arm X mismatch"
 
-    real_n = 2 + len(kept)
-    if hide_fraction > 0.0:
-        hide_rng = torch.Generator()
-        hide_rng.manual_seed(seed + 424242)
-        mask = torch.rand(real_n, real_n, generator=hide_rng) < hide_fraction
-        anc[:real_n, :real_n][mask] = 0.0
-    anc = propagate_ancestor_knowledge(anc)
+        # --- graph matrices, aligned to the processed column order ---------------
+        kept = processor.kept_feature_indices
+        ordered_nodes = [t_node, y_node] + list(kept)
+        adj_raw = org_scm.get_adjacency_matrix(node_order=ordered_nodes)
+        anc = 2.0 * adjacency_to_ancestor_matrix(adj_raw).float() - 1.0
 
-    target_size = max_features + 2
-    if anc.shape[0] < target_size:
-        padded = torch.full((target_size, target_size), -1.0)
-        padded[:anc.shape[0], :anc.shape[1]] = anc
-        anc = padded
+        real_n = 2 + len(kept)
+        if hide_fraction > 0.0:
+            hide_rng = torch.Generator()
+            hide_rng.manual_seed(seed + 424242)
+            mask = torch.rand(real_n, real_n, generator=hide_rng) < hide_fraction
+            anc[:real_n, :real_n][mask] = 0.0
+        anc = propagate_ancestor_knowledge(anc)
 
-    return {
-        "X_train": X_tr.numpy(),
-        # Remapped to {0,1}; the raw levels are kept as t0_value / t1_value.
-        "T_train": _to_binary(T_tr.reshape(-1).numpy(), t0_value, t1_value),
-        "Y_train": Y_tr.reshape(-1).numpy(),
-        "X_test": X_test.numpy(),
-        "T_test_do0": _to_binary(T_te[:n_test].reshape(-1).numpy(), t0_value, t1_value),
-        "T_test_do1": _to_binary(T_te[n_test:].reshape(-1).numpy(), t0_value, t1_value),
-        "Y_do0": Y_do0.numpy(), "Y_do1": Y_do1.numpy(),
-        "true_cate": (Y_do1 - Y_do0).numpy(),
-        "anc_matrix": anc.numpy(), "adj_matrix": adj_raw.numpy(),
-        "regime": regime,
-        "hide_fraction": np.float32(hide_fraction),
-        "n_nodes": np.int32(len(all_nodes)),
-        "n_real_features": np.int32(len(kept)),
-        # D3 diagnostic: 0 means this realization is exactly faithful to UWYK's
-        # covariate construction (no descendant of T among the features).
-        "n_descendant_features": np.int32(n_descendant_features),
-        "test_feature_mask_fraction": np.float32(test_feature_mask_fraction),
-        "t0_value": np.float32(t0_value), "t1_value": np.float32(t1_value),
-        "seed": np.int64(seed),
-    }
+        target_size = max_features + 2
+        if anc.shape[0] < target_size:
+            padded = torch.full((target_size, target_size), -1.0)
+            padded[:anc.shape[0], :anc.shape[1]] = anc
+            anc = padded
+
+        _y0r = res0[y_node].reshape(-1).numpy().astype(np.float64)
+        _y1r = res1[y_node].reshape(-1).numpy().astype(np.float64)
+        _yp = np.concatenate([Y_do0.numpy().astype(np.float64),
+                              Y_do1.numpy().astype(np.float64)])
+        _yr = np.concatenate([_y0r, _y1r])
+        _A = np.stack([np.ones_like(_yr), _yr], axis=1)
+        _aff_a, _aff_b = np.linalg.lstsq(_A, _yp, rcond=None)[0]
+        _aff_res = float(np.abs(_yp - (_aff_a + _aff_b * _yr)).max())
+
+        return {
+            "X_train": X_tr.numpy(),
+            # Remapped to {0,1}; the raw levels are kept as t0_value / t1_value.
+            "T_train": _to_binary(T_tr.reshape(-1).numpy(), t0_value, t1_value),
+            "Y_train": Y_tr.reshape(-1).numpy(),
+            "X_test": X_test.numpy(),
+            "T_test_do0": _to_binary(T_te[:n_test].reshape(-1).numpy(), t0_value, t1_value),
+            "T_test_do1": _to_binary(T_te[n_test:].reshape(-1).numpy(), t0_value, t1_value),
+            "Y_do0": Y_do0.numpy(), "Y_do1": Y_do1.numpy(),
+            "true_cate": (Y_do1 - Y_do0).numpy(),
+            "anc_matrix": anc.numpy(), "adj_matrix": adj_raw.numpy(),
+            "regime": regime,
+            "hide_fraction": np.float32(hide_fraction),
+            "n_nodes": np.int32(len(all_nodes)),
+            "n_real_features": np.int32(len(kept)),
+            # D3 diagnostic: 0 means this realization is exactly faithful to UWYK's
+            # covariate construction (no descendant of T among the features).
+            "n_descendant_features": np.int32(n_descendant_features),
+            "test_feature_mask_fraction": np.float32(test_feature_mask_fraction),
+            "t0_value": np.float32(t0_value), "t1_value": np.float32(t1_value),
+            "seed": np.int64(seed),
+            # --- unprocessed truth, for repeated-sample coverage -------------
+            # true_cate above is in PROCESSED units, and the processor refits its
+            # target scaling on whatever training sample it is handed, so that
+            # number MOVES between draws of the same realization. These do not:
+            # they are the SCM's own units, identical across every n_train_draws
+            # replicate, and a fixed-estimand coverage statement can only be made
+            # about a quantity that does not move.
+            "Y_do0_raw": _y0r, "Y_do1_raw": _y1r,
+            "true_cate_raw": (_y1r - _y0r),
+            # processed = a + b * raw, recovered by least squares over both arms,
+            # with the worst residual so a caller can tell when it does NOT hold:
+            # outlier clipping is not affine, and silently rescaling by a bad b
+            # would corrupt every interval instead of failing.
+            "target_affine_a": np.float32(_aff_a),
+            "target_affine_b": np.float32(_aff_b),
+            "target_affine_resid": np.float32(_aff_res),
+        }
+
+    # n_train_draws > 1: the same estimand under repeated observational samples.
+    # The redraw happens HERE, after the test pass and the paired do() passes have
+    # already been drawn and stored, so those tensors cannot move -- a redraw before
+    # them would advance the single RNG stream and change the queries too.
+    recs = [_finalize(obs0_raw)]
+    for _ in range(1, max(1, int(n_train_draws))):
+        scm.sample_exogenous(num_samples=n_train)
+        scm._fixed_endogenous_vec = None
+        scm.sample_endogenous(num_samples=n_train)
+        _ob = {k: v.clone().detach()
+               for k, v in scm.propagate(num_samples=n_train).items()}
+        recs.append(_finalize(_ob))
+    return recs[0] if int(n_train_draws) <= 1 else recs
 
 
 # ── Sweep driver ──────────────────────────────────────────────────────────────
