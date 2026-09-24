@@ -193,6 +193,33 @@ def main():
     with open(os.path.join(cell, "manifest_fq.json"), "w") as fh:
         json.dump(man, fh, indent=2)
 
+    # manifest_complexmech.json at the ROOT, which the dump harness requires: its
+    # absence means the OLD unfiltered benchmark, where ~13% of realizations have tau
+    # constant across units and per-realization coverage is 0 or 1 by construction,
+    # and the harness refuses rather than score that silently. This root IS filtered
+    # -- rho >= rho_min and the tau-het band below -- so it must say so. Writing it
+    # is the fix; CMECH_ALLOW_UNFILTERED=1 would only silence the check.
+    root_man = {
+        "prior": a.prior, "nodes": [a.nodes], "regimes": [a.regime],
+        "hide_fractions": [a.hide], "n_realizations": len(kept) * a.draws,
+        "test_feature_mask_fraction": 0.0,
+        "uwyk_root": os.environ.get("UWYK_ROOT", ""),
+        "min_tau_het": a.min_tau_het, "max_tau_het": a.max_tau_het,
+        "rho_min": a.rho_min,
+        "fixed_query": True,
+        "draws_per_realization": a.draws,
+        "queries": a.queries,
+        "cells": [{"nodes": a.nodes, "regime": a.regime, "hide": a.hide,
+                   "n_ok": len(kept) * a.draws}],
+        "note": "FIXED-QUERY root: each source realization appears as `draws` "
+                "replicate files sharing its queries and their true effects. "
+                "true_cate is in per-replicate processed units and MOVES between "
+                "them; true_cate_raw does not. Score coverage with per-file truth.",
+    }
+    with open(os.path.join(a.out_root, f"manifest_{a.prior}.json"), "w") as fh:
+        json.dump(root_man, fh, indent=2)
+    print(f"wrote {os.path.join(a.out_root, f'manifest_{a.prior}.json')}")
+
     print(f"\nkept {len(kept)}/{a.target_real} in {attempt} attempts; "
           f"rejected {rejected}")
     print(f"wrote {len(kept) * a.draws} npz to {cell}")
