@@ -113,10 +113,14 @@ if [ -e "$UWYK_CFG_J32" ]; then
     # PARSE it, do not grep it. A sed that leaves "num_bars: 32# comment" greps
     # fine but is invalid YAML: '#' only opens a comment after whitespace, so the
     # value swallows the comment and the file dies several lines later.
+    # This is a wandb-style config: num_bars is a KEY whose value is a nested
+    # {value: N} mapping, not a scalar. Unwrap it, or the check reports
+    # "num_bars={'value': 32}" and blocks a perfectly good file -- which it did,
+    # taking the other model's submission down with it.
     _nb=$(python -c "
 import sys,yaml
 try: c=yaml.safe_load(open('$UWYK_CFG_J32'))
-except Exception as e: print('PARSE_ERROR'); sys.exit()
+except Exception: print('PARSE_ERROR'); sys.exit()
 def find(d):
     if isinstance(d,dict):
         for k,v in d.items():
@@ -124,7 +128,9 @@ def find(d):
             r=find(v)
             if r is not None: return r
     return None
-print(find(c))
+v=find(c)
+if isinstance(v,dict): v=v.get('value')
+print(v)
 " 2>/dev/null)
     case "$_nb" in
         32) ;;
