@@ -132,7 +132,7 @@ def main():
     L = [f"## Per-arm predictive spread — {a.dataset}, "
          f"realization {a.realization}, query {a.query}", "",
          "| model | mean(Y0) | sd(Y0) | mean(Y1) | sd(Y1) | sd(tau) head "
-         "| sd(tau) indep | rho implied |", "|" + "---|" * 8]
+         "| sd(tau) indep | rho implied | v(x) | from |", "|" + "---|" * 10]
     seen, rows_out = 0, []
 
     def _rootname(root):
@@ -179,8 +179,14 @@ def main():
         rho = ((s0 ** 2 + s1 ** 2 - st ** 2) / (2 * s0 * s1)
                if np.isfinite(st) and s0 > 0 and s1 > 0 else float("nan"))
         f = lambda v: "—" if not np.isfinite(v) else f"{v:.4f}"
+        # v(x) = Var(Y^do(1) - Y^do(0) | X = x) = s1^2 + s0^2 - 2 rho s1 s0.
+        # A 2D head supplies rho through its joint; a 1D head has none, so rho = 0
+        # and v collapses to s0^2 + s1^2. The `from` column says which was used,
+        # because the two are not the same estimand-under-assumption.
+        vx, src = ((st ** 2, "joint") if np.isfinite(st)
+                   else (si ** 2, "rho=0"))
         L.append(f"| {name} | {f(m0)} | {f(s0)} | {f(m1)} | {f(s1)} | "
-                 f"{f(st)} | {f(si)} | {f(rho)} |")
+                 f"{f(st)} | {f(si)} | {f(rho)} | {f(vx)} | {src} |")
         seen += 1
     L += ["",
           "sd is of the model's PREDICTIVE distribution for that arm, in raw",
@@ -188,7 +194,16 @@ def main():
           "'sd(tau) indep' is sqrt(s0^2 + s1^2), the rho = 0 value. rho implied",
           "inverts Var(tau) = s0^2 + s1^2 - 2 rho s0 s1, so it is the correlation",
           "the head is using. A 1D head dumps no joint: its sd(tau) head and rho",
-          "are blank, and independence is the only tau it can form."]
+          "are blank, and independence is the only tau it can form.", "",
+          "v(x) = Var(Y^do(1) - Y^do(0) | X = x) = s1^2 + s0^2 - 2 rho s1 s0,",
+          "taken from the head's joint where there is one and from rho = 0",
+          "otherwise -- the `from` column records which, since a 1D head's v(x) is",
+          "a value under an ASSUMPTION, not an estimate of the dependence.",
+          "",
+          "On the CASE STUDIES the true v(x) is 0: the generator adds one shared",
+          "noise draw to both arms, so Y^do(1) - Y^do(0) = mu_1 - mu_0 exactly and",
+          "tau carries no noise at all. Every positive v(x) below is therefore",
+          "predicted spread that does not exist in the data-generating process."]
     txt = "\n".join(L)
     print(txt)
     if not seen:
