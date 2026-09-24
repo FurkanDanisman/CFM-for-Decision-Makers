@@ -220,11 +220,16 @@ def main():
         print(f"  true tau across queries:     min {t[0].min():+.4f}  "
               f"max {t[0].max():+.4f}  sd {t[0].std():.4f}")
     print(f"  spread across replicates:    {spread:.3e}   (must be ~0)")
-    if src_tau is not None and t.size:
+    if src_tau is not None and t.size and int(a.query) in set(int(v) for v in qidx):
         # The whole point of --from-npz is that the estimand is the SOURCE
         # realization's. If it is not, the 1000 draws describe a different
         # number and the exercise is void, so fail loudly.
-        dev = abs(float(t[0][0]) - src_tau)
+        # --random-queries / --query-list need not include --query, and the frozen
+        # rows are reordered to 0..K-1, so the source tau must be compared against
+        # the position --query LANDED at -- not blindly against t[0][0], which
+        # reports MISMATCH on a perfectly good cell.
+        pos = int(np.where(np.asarray(qidx) == int(a.query))[0][0])
+        dev = abs(float(t[0][pos]) - src_tau)
         print(f"  source tau:                  {src_tau:.10f}")
         print(f"  |ours - source|:             {dev:.3e}   "
               f"{'OK' if dev < 1e-6 else 'MISMATCH -- not the same estimand'}")

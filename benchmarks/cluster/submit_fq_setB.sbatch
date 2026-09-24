@@ -140,7 +140,13 @@ PYVER
 
 # ---- 4. the 13 dumps --------------------------------------------------------
 cd "$(dirname "$REPO")"
+# ACCOUNT is exported rather than written as ${ACCT:+ACCOUNT=...} in the assignment
+# prefix: bash only treats an assignment as an assignment when it is LITERAL at
+# parse time, so from an expansion "ACCOUNT=def-rgrosse" becomes the command name
+# and the submit dies with "command not found" -- which is exactly how set B
+# generated 1000 datasets and then silently submitted no dumps at all.
+[ -n "$ACCT" ] && export ACCOUNT="$ACCT"
 DATA="$ROOT_B" CASE="$CASE" CTX="$CTX" NQ=1 OUT_PARENT="$OUT_B" \
-    TIME="$TIME_DUMP" GRES="$GRES" ${ACCT:+ACCOUNT="$ACCT"} \
+    TIME="$TIME_DUMP" GRES="$GRES" \
     bash "$REPO/benchmarks/cluster/submit_cs_fixedq_all.sh" --submit
 echo "[$(date '+%F %T')] set B submitted"

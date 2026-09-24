@@ -123,7 +123,12 @@ PYVER
 # NQ=QUERIES: the generator moves the frozen rows to positions 0..K-1, and the
 # loader takes X_test = X[:n_q], so this evaluates exactly them.
 cd "$(dirname "$REPO")"
+# ACCOUNT is exported rather than written as ${ACCT:+ACCOUNT=...} in the assignment
+# prefix: bash only treats an assignment as an assignment when it is LITERAL at
+# parse time, so from an expansion "ACCOUNT=def-rgrosse" becomes the command name
+# and the submit dies with "command not found".
+[ -n "$ACCT" ] && export ACCOUNT="$ACCT"
 DATA="$ROOT" CASE="$CASE" CTX="$CTX" NQ="$QUERIES" OUT_PARENT="$DUMPS" \
-    TIME="$TIME_DUMP" GRES="$GRES" ${ACCT:+ACCOUNT="$ACCT"} \
+    TIME="$TIME_DUMP" GRES="$GRES" \
     bash "$REPO/benchmarks/cluster/submit_cs_fixedq_all.sh" --submit
 echo "[$(date '+%F %T')] $TAG submitted"
