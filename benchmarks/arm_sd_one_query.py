@@ -95,12 +95,33 @@ def _moments(p, centers):
     return m, float(np.sqrt(max(v, 0.0)))
 
 
-def arms_for(path, q):
-    """-> (m0, s0, m1, s1, sd_tau_head) in raw units, or None."""
+def arms_for(path, q, tag=None):
+    """-> (m0, s0, m1, s1, sd_tau_head, cate_pred, cate_key), or None.
+
+    `tag` selects a per-mode density, matching cate_density_metrics: a uwyk1d or
+    graph2d npz holds p_y0_scaled_noanc alongside p_y0_scaled_v3a, and the un-suffixed
+    key is only ONE of the modes. Reading it for both produced two identical rows for
+    uwyk1d-noanc / uwyk1d-v3a and for graph2d-noanc / graph2d-v3a -- the anc variant
+    silently ignored while cate_density_metrics reported them correctly, so the same
+    model disagreed with itself across columns of one table.
+
+    No fallback when a tag is requested and its key is absent: scoring the wrong mode
+    is worse than reporting nothing. Shared metadata -- edges, y_scale, the truth --
+    is not per-mode and still resolves unsuffixed.
+    """
     with np.load(path, allow_pickle=True) as z:
         keys = set(z.files)
-        if "p_joint_scaled" in keys:
-            J_ = np.asarray(z["p_joint_scaled"], dtype=np.float64)
+
+        def k(base):
+            if tag and f"{base}_{tag}" in keys:
+                return f"{base}_{tag}"
+            if tag:
+                return None          # requested a mode this file does not carry
+            return base if base in keys else None
+
+        kj, k0, k1 = k("p_joint_scaled"), k("p_y0_scaled"), k("p_y1_scaled")
+        if kj is not None:
+            J_ = np.asarray(z[kj], dtype=np.float64)
             if J_.ndim != 3 or q >= J_.shape[0]:
                 return None
             joint = J_[q]
@@ -119,9 +140,9 @@ def arms_for(path, q):
             cp, ck = _dumped_cate(z, q)
             return (m0s * b0 + a0, s0s * b0, m1s * b0 + a0, s1s * b0,
                     st * b0, cp, ck)
-        if "p_y0_scaled" in keys and "p_y1_scaled" in keys:
-            P0 = np.asarray(z["p_y0_scaled"], dtype=np.float64)
-            P1 = np.asarray(z["p_y1_scaled"], dtype=np.float64)
+        if k0 is not None and k1 is not None:
+            P0 = np.asarray(z[k0], dtype=np.float64)
+            P1 = np.asarray(z[k1], dtype=np.float64)
             if P0.ndim != 2 or q >= P0.shape[0]:
                 return None
             J = P0.shape[-1]

@@ -92,8 +92,8 @@ def _one_file(args):
     cost is thousands of small reads off shared storage -- latency-bound, which is
     exactly what parallel workers fix.
     """
-    path, q, per_file_truth = args
-    got = arms_for(path, q)
+    path, q, per_file_truth, tag = args
+    got = arms_for(path, q, tag)
     if got is None:
         return None
     m0, s0, m1, s1, st, cp, _ck = got
@@ -194,20 +194,23 @@ def main():
 
     nw = max(1, int(a.workers))
     ex = ProcessPoolExecutor(max_workers=nw) if nw > 1 else None
-    def read_all(files, q):
-        arg = [(f, q, a.per_file_truth) for f in files]
+    def read_all(files, q, tg=None):
+        arg = [(f, q, a.per_file_truth, tg) for f in files]
         it = (ex.map(_one_file, arg, chunksize=8) if ex else map(_one_file, arg))
         return [r for r in it if r is not None]
 
     rows = []
     detail = {}
     for root in a.root:
-        found = [(lab, sd, d) for lab, sd, _t in METHODS
+        # The third METHODS field is the anc MODE, selected by a key suffix inside the
+        # npz rather than by directory -- so it must be carried to arms_for. Dropping it
+        # made uwyk1d-noanc and uwyk1d-v3a read the same array and report identical rows.
+        found = [(lab, sd, d, t) for lab, sd, t in METHODS
                  for d in [_resolve_dir(root, sd, a.dataset)]
                  if d and os.path.isdir(d)]
-        use_root = len({sd for _, sd, _ in found}) == 1
+        use_root = len({sd for _, sd, _, _ in found}) == 1
         rname = _rootname(root)
-        for label, subdir, d in found:
+        for label, subdir, d, mtag in found:
             fs = _files_in(d)
             if a.max_replicates:
                 fs = fs[: int(a.max_replicates)]
@@ -225,7 +228,7 @@ def main():
             # which silently changes the estimand whenever a dump is short.
             QC_O, QC_1, QW_O, QW_1, QN = ([] for _ in range(5))
             for q in a.query:
-                got = read_all(fs, q)
+                got = read_all(fs, q, mtag)
                 if not got:
                     continue
                 eq = np.asarray([g[0] for g in got])
