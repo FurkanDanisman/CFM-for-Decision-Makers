@@ -77,5 +77,6 @@ for f in logs_fq/fq4reap_*.out; do
     printf '%s: %s\n' "$(basename "$f")" "$(grep -E '^\[.*pass ' "$f" | tail -1)"
 done
 echo
-echo "A cell is only scored once ALL 13 models have it, so the slowest model gates"
-echo "every score. Run fq4_aggregate.py on \$OUT_DIR for the table at any point."
+echo "With MIN_MODELS<13 a cell is scored as soon as that many models have it, and"
+echo "re-scored when more arrive; it is only DELETED at 13. Run fq4_aggregate.py on"
+echo "\$OUT_DIR for the table at any point -- partial cells included, with n_models."

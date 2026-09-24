@@ -64,7 +64,9 @@ PASSES="${PASSES:-48}"
 SLEEP="${SLEEP:-900}"
 mkdir -p "$OUT_DIR"
 
-echo "[$(date '+%F %T')] reaper: R=$DRAWS, $NMODELS models, scores -> $OUT_DIR"
+echo "[$(date '+%F %T')] reaper: R=$DRAWS, score at >=$MIN_MODELS of $NMODELS models"
+echo "  dumps: $OUT4"
+echo "  scores: $OUT_DIR"
 echo "  ${KEEP:+KEEP=1 -- scoring only, nothing deleted}"
 
 # MODE=cmech watches the ComplexMech cells instead. Their tag and their data-cell
@@ -74,7 +76,10 @@ MODE="${MODE:-cs}"
 TAGS=(); CELLS=(); DATAS=()
 if [ "$MODE" = cmech ]; then
   CMFQ="${CMFQ:-$SC/cmech_fq}"
-  OUT4="${OUT4:-$SC/cmech_fq_dumps}"
+  # UNCONDITIONAL: OUT4 was already defaulted to the case-study dumps above, so
+  # ${OUT4:-...} here never fired and the cmech reaper searched fq4_dumps for CMECH_*
+  # tags, found none, and reported every cell pending forever.
+  OUT4="${CMFQ_DUMPS:-$SC/cmech_fq_dumps}"
   REGIME="${REGIME:-path_TY}"; HIDE="${HIDE:-0.0}"; SUBSET="${SUBSET:-nonzero}"
   for n in "${DSA[@]}"; do
     for (( r=0; r<REALS; r++ )); do
