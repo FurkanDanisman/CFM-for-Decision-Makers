@@ -146,7 +146,12 @@ go() {   # go <jobname> <array> <sbatch> <env...>
 
 for row in "${ROWS[@]}"; do
     IFS='|' read -r name harness hidx extra <<<"$row"
-    [ -n "$ONLY" ] && [ "$name" != "$ONLY" ] && continue
+    # ONLY accepts a LIST (space- or comma-separated), so a subset of models can
+    # be sent to one cluster in a single invocation and the MAXCONC arithmetic
+    # stays correct. Two invocations would each see only their own array count.
+    if [ -n "$ONLY" ]; then
+        case " ${ONLY//,/ } " in *" $name "*) ;; *) continue ;; esac
+    fi
     say "--- $name  (harness=$harness) ---"
 
     # RealCause: MODELS[ID/5], SETS[ID%5]. No MODEL_OVERRIDE, so the harness is
