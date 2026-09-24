@@ -33,20 +33,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# (display label, csv model key) — 1D then its 2D partner, four pairs.
+# (display label, candidate csv model keys) — 1D then its 2D partner.
+#
+# Several keys per slot because the two CSV producers name models differently:
+# dsweep_report writes uwyk_noanc / cpfn1d_perarm, while cs_point_total writes
+# uwyk1d-noanc / cpfn1d. The first key present in the CSV wins, so one PAIRS table
+# serves both instead of the figure silently losing rows on the other's output.
+#
+# Do-PFN 2D is dopfn_repro_joint2d, NOT dopfn_bb: the reported comparison is
+# native-vs-joint2d, and dopfn_bb is a different checkpoint.
 PAIRS = [
-    ("Do-PFN",         "dopfn_native"),
-    ("Do-PFN 2D",      "dopfn_bb"),
-    ("UWYK No-Anc",    "uwyk_noanc"),
-    ("UWYK No-Anc 2D", "graph2d_noanc"),
-    ("UWYK Anc",       "uwyk_v3a"),
-    ("UWYK Anc 2D",    "graph2d_v3a"),
-    # v3b exists in the ComplexMech runs but not in the case-study sweep, so
-    # these rows are simply absent (blank) for case-study CSVs.
-    ("UWYK Anc-b",     "uwyk_v3b"),
-    ("UWYK Anc-b 2D",  "graph2d_v3b"),
-    ("CausalPFN-C",    "cpfn1d_perarm"),
-    ("CausalPFN-C 2D", "cpfn2d_pooled"),
+    ("Do-PFN",         ("dopfn_native",)),
+    ("Do-PFN 2D",      ("dopfn_repro_joint2d", "dopfn_bb")),
+    ("UWYK No-Anc",    ("uwyk1d-noanc", "uwyk_noanc")),
+    ("UWYK No-Anc 2D", ("graph2d-noanc", "graph2d_noanc")),
+    ("UWYK Anc",       ("uwyk1d-v3a", "uwyk_v3a")),
+    ("UWYK Anc 2D",    ("graph2d-v3a", "graph2d_v3a")),
+    ("CausalPFN-C",    ("cpfn1d_j1024", "cpfn1d", "cpfn1d_perarm")),
+    ("CausalPFN-C 2D", ("cpfn2d_eta0", "cpfn2d_pooled", "cpfn2d")),
 ]
 # Drop pairs that no row supplies, so a case-study CSV keeps its 8 bars and a
 # cmech CSV gets 10, without either carrying empty slots.
@@ -63,6 +67,37 @@ _CASES = [
     ("Backdoor_Criterion", "Back-Door\nCriterion"),
 ]
 _METRICS = [("PEHE", "pehe"), ("L1-ATE", "l1")]
+
+
+def _metric_col(df, mkey):
+    """The metric column, with or without the readout suffix.
+
+    dsweep_report writes pehe_raw / pehe_em; cs_point_total writes a bare pehe. Trying
+    the suffixed name first and falling back keeps one script working on both, instead
+    of a KeyError that looks like a missing metric.
+    """
+    # The two producers disagree on the metric names too: dsweep_report writes
+    # l1_raw / eps_raw, cs_point_total writes l1_ate / eps_ate. Try the suffixed form,
+    # the bare form, then the known aliases, before giving up.
+    alias = {"l1": ("l1_ate",), "eps": ("eps_ate",), "pehe": ()}
+    for cand in (f"{mkey}_{ARGS.readout}", mkey, *alias.get(mkey, ())):
+        if cand in df.columns:
+            return cand
+    raise SystemExit(f"FATAL: {ARGS.csv} has no column for metric {mkey!r} "
+                     f"(tried {mkey}_{ARGS.readout}, {mkey}"
+                     + "".join(f", {a}" for a in alias.get(mkey, ()))
+                     + f"); columns are {list(df.columns)}")
+
+
+def _sem_col(df, col):
+    # l1_ate's SEM column is l1_sem, not l1_ate_sem -- the producer drops the _ate.
+    cands = [f"{col}_sem",
+             col.replace("_raw", "").replace("_em", "") + "_sem",
+             col.replace("_ate", "") + "_sem"]
+    for c in cands:
+        if c in df.columns:
+            return c
+    return None
 
 
 def _bar_ypos(n_pairs):
@@ -98,7 +133,7 @@ def _pool_over_d(sub, col):
     row's (mean, SEM, n). Equivalent to pooling every realization: n-weighted
     grand mean; total variance = within + between (ANOVA identity)."""
     m = sub[col].to_numpy(float)
-    sem = sub[col + "_sem"].to_numpy(float)
+    sem = sub[_sem_col(sub, col) or (col + "_sem")].to_numpy(float)
     n = sub["n"].to_numpy(float)
     ok = np.isfinite(m) & np.isfinite(n) & (n > 0)
     m, sem, n = m[ok], sem[ok], n[ok]
@@ -112,11 +147,16 @@ def _pool_over_d(sub, col):
 
 
 def _grid(getter_for, cases, logx, title):
+    # DF, not a parameter: _grid's signature is fixed by its callers and the metric
+    # column now has to be looked up against the CSV's actual headers. Set in main()
+    # alongside ARGS, which this module already threads the same way.
+    df = DF
     nC = len(cases)
     fig, axes = plt.subplots(len(_METRICS), nC, figsize=(2.7 * nC, 6.2),
                              squeeze=False, sharey=True)
     for ri, (mlabel, mkey) in enumerate(_METRICS):
-        col = f"{mkey}_{ARGS.readout}"
+        col = _metric_col(df, mkey)
+        _SEM = _sem_col(df, col)
         for ci, (ckey, clab) in enumerate(cases):
             ax = axes[ri][ci]
             _draw(ax, getter_for(ckey, col), logx)
@@ -137,7 +177,8 @@ def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
     show the d-split, it is cleaner to give each metric its own figure and
     spend the rows on d.
     """
-    col = f"{mkey}_{ARGS.readout}"
+    col = _metric_col(df, mkey)
+    _SEM = _sem_col(df, col)
     nC, nD = len(cases), len(dvals)
     fig, axes = plt.subplots(nD, nC, figsize=(2.7 * nC, 1.55 * nD + 0.9),
                              squeeze=False, sharey=True)
@@ -146,7 +187,8 @@ def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
             ax = axes[ri][ci]
             sub = df[(df["case"] == ckey) & (df["d"] == d)].set_index("model")
             getter = (lambda key, _s=sub: (
-                (float(_s.at[key, col]), float(_s.at[key, col + "_sem"]))
+                (float(_s.at[key, col]),
+                 float(_s.at[key, _SEM]) if _SEM else float("nan"))
                 if key in _s.index else (np.nan, np.nan)))
             _draw(ax, getter, logx)
             if ri == 0:
@@ -179,8 +221,18 @@ def main():
     ap.add_argument("--out", default="fig3", help="output path prefix (no extension).")
     ARGS = ap.parse_args()
 
-    df = pd.read_csv(ARGS.csv)
-    df = df[(df["shift"] == ARGS.shift) & (df["N"] == ARGS.n) & (df["case"] != "ALL")]
+    global DF
+    df = DF = pd.read_csv(ARGS.csv)
+    # Filter only on the columns this CSV actually has. dsweep_report emits shift and
+    # N columns plus an "ALL" pooled case; cs_point_total emits a CSV that is ALREADY
+    # pooled over the three shifts at one N, so demanding those columns turned a
+    # perfectly good input into a KeyError.
+    if "shift" in df.columns:
+        df = df[df["shift"] == ARGS.shift]
+    if "N" in df.columns:
+        df = df[df["N"] == ARGS.n]
+    if "case" in df.columns:
+        df = df[df["case"] != "ALL"]
     if df.empty:
         raise SystemExit(f"no rows for shift={ARGS.shift} N={ARGS.n} in {ARGS.csv}")
     if ARGS.d_values:
@@ -188,7 +240,15 @@ def main():
     dvals = sorted(int(x) for x in df["d"].unique())
     global PAIRS
     have = set(df["model"])
-    PAIRS = [(lab, key) for lab, key in _PAIRS_ALL if key in have] or _PAIRS_ALL
+    # Resolve each slot to the first candidate key the CSV actually supplies, and drop
+    # slots it supplies none for -- so a CSV from either producer keeps its eight bars
+    # rather than silently rendering blanks.
+    resolved = []
+    for lab, keys in _PAIRS_ALL:
+        k = next((k for k in keys if k in have), None)
+        if k is not None:
+            resolved.append((lab, k))
+    PAIRS = resolved or [(lab, keys[0]) for lab, keys in _PAIRS_ALL]
     present = set(df["case"])
     cases = [(k, lab) for k, lab in _CASES if k in present]
     # Anything not in the hardcoded case-study list (e.g. the "N=1000" columns
@@ -209,7 +269,8 @@ def main():
         for d in dvals:
             def gf(ckey, col, _d=d):
                 sub = df[(df["case"] == ckey) & (df["d"] == _d)].set_index("model")
-                return lambda key: ((float(sub.at[key, col]), float(sub.at[key, col + "_sem"]))
+                return lambda key: ((float(sub.at[key, col]),
+                                     float(sub.at[key, _SEM]) if _SEM else float("nan"))
                                     if key in sub.index else (np.nan, np.nan))
             f = _grid(gf, cases, ARGS.logx, f"{ARGS.shift}  N={ARGS.n}  d={d}  ({ARGS.readout})")
             p = f"{ARGS.out}_d{d}.png"; f.savefig(p, dpi=150); plt.close(f); made.append(p)
