@@ -373,8 +373,17 @@ class DoPFNRegressor(Base):
                                 dict(causalpfn_joint_logits=logits,
                                      causalpfn_edges2d=edges))
 
-                    causalpfn = (SimpleNamespace(predict=predict_causalpfn)
-                                 if family in ('causalpfn', 'all') else None)
+                    # `sources` as well as `predict`: evaluate() reads
+                    # owner.sources[method] for every model it scored, and the
+                    # dopfn fake below has carried that since the model-list
+                    # migration. Those two attributes are the COMPLETE surface
+                    # evaluate() touches on a model set -- .models / .describe
+                    # are used by main(), which this test does not call.
+                    causalpfn = (SimpleNamespace(
+                        predict=predict_causalpfn,
+                        sources={'causalpfn_native': '/fake/cpfn_native.pt',
+                                 'causalpfn_joint': '/fake/cpfn_joint.pt'})
+                        if family in ('causalpfn', 'all') else None)
                     bd = SimpleNamespace(edges=torch.tensor(edges), widths=torch.tensor(np.diff(edges)),
                                          base_s_left=1, base_s_right=1)
                     uwyk = (SimpleNamespace(bar_distribution=bd, device='cpu',
