@@ -166,10 +166,15 @@ PYN
         # Only delete once the JSON exists on disk. A scorer that ran but failed to
         # write -- the inode failure -- must not take the dumps with it.
         if [ -f "$OUT_DIR/${TAG}_four.json" ]; then
-            if [ "${KEEP:-0}" = 1 ] || [ "$nm" -lt "$NMODELS" ]; then
+            # Never delete a cell whose MALC was skipped. MALC recomputes from the
+            # densities, so deleting them makes those two columns permanently
+            # unavailable for that cell -- and SKIP_MALC=1 with deletion still on is
+            # exactly how 14 cells lost theirs.
+            if [ "${KEEP:-0}" = 1 ] || [ "$nm" -lt "$NMODELS" ] \
+               || [ "$_skip_malc" = 1 ]; then
                 # Partial cells are never deleted: the slow models still have to dump
                 # them, and MALC cannot be recomputed once the densities are gone.
-                echo "  $TAG scored with $nm/$NMODELS models (kept)"
+                echo "  $TAG scored with $nm/$NMODELS models, malc=$([ "$_skip_malc" = 1 ] && echo no || echo yes) (kept)"
             else
                 rm -rf "$DUMPS" "$DATA" "${DATA}_root"
                 echo "  $TAG scored and reaped"
