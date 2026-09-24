@@ -27,8 +27,9 @@ ACCT="${ACCOUNT:-def-rgrosse}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
 # to hang before printing anything. Check known locations directly; if a search
 # is needed, bound it to the repo and stop at the first hit with -print -quit.
 if [ -z "${DATA_CS:-}" ]; then
-    for _c in "$REPO/case_study/d_variation" "$KIT/case_study/d_variation" \
-              "$SC/case_study/d_variation" "$SC/cs_dvar_data"; do
+    for _c in "$KIT/case_study_data/d_variation" "$SC/case_study_data/d_variation" \
+              "$REPO/case_study/d_variation" "$KIT/case_study/d_variation" \
+              "$SC/cs_dvar_data"; do
         if [ -d "$_c/shift0" ]; then DATA_CS="$_c"; break; fi
     done
 fi
@@ -100,6 +101,14 @@ if [ "$problems" -gt 0 ]; then
     say "$problems path(s) missing. Candidates on disk:"
     ls -d "$SC"/*cs_dvar* "$SC"/*shift* "$SC"/cmech_data* 2>/dev/null | sed 's/^/     /'
     say "Set DATA_CS=... CMECH_DATA=... and re-run."
+fi
+# Refuse to submit against paths that do not exist. FORCE=1 overrides, e.g. to
+# queue behind a generation job that will create the root before these start.
+if [ "$problems" -gt 0 ] && [ "$SUBMIT" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
+    say ""
+    say "REFUSING TO SUBMIT: $problems path(s) missing. Every job touching them"
+    say "would fail on arrival. Fix the paths, or set FORCE=1 if deliberate."
+    exit 1
 fi
 say ""
 
