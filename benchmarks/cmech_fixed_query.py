@@ -41,7 +41,6 @@ import os
 import sys
 
 import numpy as np
-import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
@@ -156,53 +155,29 @@ def main():
         attempt += 1
         sampler = SCMSampler(cfg["scm_config"], seed=seed * 31 + 17)
 
-        def build(n_draws):
-            # torch.manual_seed HERE, every call. SCMSampler draws from torch's GLOBAL
-            # RNG, so calling it a second time in one process samples a DIFFERENT SCM:
-            # the probe and the full build came out as different realizations, with rho
-            # 0.99 vs 0.51 and sometimes opposite signs. Re-seeding makes both calls
-            # reproduce the same realization, which is what the probe assumes.
-            torch.manual_seed(seed)
-            return generate_realization(
-                cfg, SCMSampler(cfg["scm_config"], seed=seed * 31 + 17), uwyk,
-                a.regime, seed=seed, hide_fraction=a.hide,
+        # ONE build, rho checked after. A single-draw probe was tried to skip the
+        # ~2/3 of candidates that fail rho >= 0.99 without paying for all DRAWS, and it
+        # did not work: re-seeding torch was not enough to make two calls in one
+        # process sample the same SCM, and 21 of 21 accepted probes disagreed with
+        # their full build -- rho 0.99 vs 0.45, some sign-flipped. It also bought
+        # nothing: the n5 log shows a full build costs about a second, so the rejected
+        # two thirds are cheap. Generation is not the bottleneck; the dumps are.
+        try:
+            recs = generate_realization(
+                cfg, sampler, uwyk, a.regime, seed=seed, hide_fraction=a.hide,
                 test_feature_mask_fraction=0.0, n_test_override=a.n_test,
                 min_tau_het=a.min_tau_het, max_tau_het=a.max_tau_het,
-                n_train_draws=n_draws)
-
-        # PROBE FIRST with a single draw. rho depends only on the test-side potential
-        # outcomes, which are identical for any n_train_draws, and about two thirds of
-        # attempts are rejected at rho >= 0.99 -- generating 100 replicates before
-        # finding that out wasted roughly two thirds of the generation budget.
-        try:
-            probe = build(1)
-        except Exception as exc:                                  # noqa: BLE001
-            rejected["error"] += 1
-            print(f"  seed {seed}: {type(exc).__name__}: {exc}", flush=True)
-            continue
-        if isinstance(probe, list):
-            probe = probe[0]
-        rho = rho_of_rec(probe)
-        if not np.isfinite(rho) or rho < a.rho_min:
-            rejected["rho"] += 1
-            continue
-
-        try:
-            recs = build(a.draws) if a.draws > 1 else [probe]
+                n_train_draws=a.draws)
         except Exception as exc:                                  # noqa: BLE001
             rejected["error"] += 1
             print(f"  seed {seed}: {type(exc).__name__}: {exc}", flush=True)
             continue
         if not isinstance(recs, list):
             recs = [recs]
-        # The full build must reproduce the probe's estimand, or the probe told us
-        # nothing about what we just wrote. Kept even though the re-seed above should
-        # guarantee it: this caught the global-RNG bug, and a probe that silently
-        # diverges would write cells labelled rho>0.99 whose real rho is 0.5.
-        if abs(rho_of_rec(recs[0]) - rho) > 1e-9:
-            rejected["error"] += 1
-            print(f"  seed {seed}: probe rho {rho:.6f} != full build "
-                  f"{rho_of_rec(recs[0]):.6f} -- not the same realization", flush=True)
+
+        rho = rho_of_rec(recs[0])
+        if not np.isfinite(rho) or rho < a.rho_min:
+            rejected["rho"] += 1
             continue
         resid = max(float(r["target_affine_resid"]) for r in recs)
         if resid > a.max_affine_resid:
