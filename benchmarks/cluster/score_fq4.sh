@@ -71,7 +71,15 @@ if [ -n "$PFT" ]; then
 else
     for m in "$DUMPS"/*/shift0/d0/"ctx$CTX"; do [ -d "$m" ] && ROOTS+=("$m"); done
 fi
-[ "${#ROOTS[@]}" -gt 0 ] || { echo "no cells under $DUMPS (looked for ${PFT:+N$CTX}${PFT:-shift0/d0/ctx$CTX})"; exit 1; }
+if [ "${#ROOTS[@]}" = 0 ]; then
+    if [ -n "$PFT" ]; then echo "no N$CTX cells under $DUMPS"
+    else echo "no shift0/d0/ctx$CTX cells under $DUMPS"; fi
+    exit 1
+fi
+# The dataset directory the scorer resolves under each root. Set explicitly rather
+# than with ${PFT:-...}, which expands to PFT itself when PFT is non-empty and yielded
+# the dataset name "CMECH_n20_nonzero--per-file-truth".
+if [ -n "$PFT" ]; then DSET="CMECH_n${NODES}_${SUBSET:-nonzero}"; else DSET="$CASE"; fi
 # Only the case study needs a data cell: under --per-file-truth the truth is read from
 # each dump, so ComplexMech does not consult one at all.
 if [ -z "$PFT" ] && [ ! -d "$CELL" ]; then
@@ -81,7 +89,7 @@ echo "== $TAG: ${#ROOTS[@]} model root(s), queries $QLIST"
 
 # ---- 1. the two moment-based columns (one pass, all models, all queries) -----
 python "$REPO/benchmarks/fixedq_ci_coverage.py" \
-    --root "${ROOTS[@]}" --dataset "${PFT:+CMECH_n${NODES}_${SUBSET:-nonzero}}${PFT:-$CASE}" --query $QLIST \
+    --root "${ROOTS[@]}" --dataset "$DSET" --query $QLIST \
     ${PFT:-} ${PFT:+ } $([ -z "$PFT" ] && echo "--data-cell $CELL") \
     --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
     --json-out "$OUT_DIR/${TAG}_vx.json" \
