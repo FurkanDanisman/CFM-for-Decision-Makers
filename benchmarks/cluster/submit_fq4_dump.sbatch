@@ -78,16 +78,35 @@ PYDEV
 fi
 echo "  cases=$CASES shifts=$SHIFTS d=${DSA[*]} reals=$REALS"
 cd "$DEPLOY_ROOT"
-ok=0; skip=0; fail=0
+# Build the cell list first so REVERSE=1 can walk it backwards. That lets a second job
+# on different hardware race the same models from the far end: each skips cells the
+# other has finished, so they converge in the middle and never write the same cell.
+# Without it, two jobs on one model start at cell 0 together and interleave writes into
+# the same output directory.
+CELL_TAGS=()
 for case in $CASES; do
  for sh in $SHIFTS; do
   for D in "${DSA[@]}"; do
    for (( REAL=0; REAL<REALS; REAL++ )); do
+     CELL_TAGS+=("${case}|${sh}|${D}|${REAL}")
+   done
+  done
+ done
+done
+if [ "${REVERSE:-0}" = 1 ]; then
+    _rev=(); for (( i=${#CELL_TAGS[@]}-1; i>=0; i-- )); do _rev+=("${CELL_TAGS[$i]}"); done
+    CELL_TAGS=("${_rev[@]}")
+    echo "  REVERSE=1: walking ${#CELL_TAGS[@]} cells from the far end"
+fi
+
+ok=0; skip=0; fail=0
+for spec in "${CELL_TAGS[@]}"; do
+    IFS='|' read -r case sh D REAL <<<"$spec"
     TAG="${case}_shift${sh}_d${D}_r${REAL}"
     ROOT="$FQ4/${TAG}_root"
     OUT="$OUT4/$TAG/$MODEL"
     if [ ! -d "$ROOT/shift0/d0/$case/N$CTX" ]; then
-        echo "  $TAG: cell not generated -- SKIP"; fail=$((fail+1)); continue
+    echo "  $TAG: cell not generated -- SKIP"; fail=$((fail+1)); continue
     fi
     HAVE=$(find "$OUT" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
     if [ "$HAVE" -ge "$DRAWS" ]; then skip=$((skip+1)); continue; fi
@@ -103,17 +122,14 @@ for case in $CASES; do
     if [ "${CPU_ONLY:-1}" = 1 ]; then _cvd=(CUDA_VISIBLE_DEVICES=); else _cvd=(); fi
     # shellcheck disable=SC2086
     if env $extra "${_cvd[@]}" MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
-           MAX_REAL="$DRAWS" \
-           CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$case" \
-           OUT_ROOT="$OUT" SLURM_ARRAY_TASK_ID=0 \
-           bash "$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch" \
-           >>"logs_fq/fq4dump_${MODEL}_cells.log" 2>&1; then
-        ok=$((ok+1)); echo "  $TAG ok ($(date '+%H:%M:%S'))"
+       MAX_REAL="$DRAWS" \
+       CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$case" \
+       OUT_ROOT="$OUT" SLURM_ARRAY_TASK_ID=0 \
+       bash "$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch" \
+       >>"logs_fq/fq4dump_${MODEL}_cells.log" 2>&1; then
+    ok=$((ok+1)); echo "  $TAG ok ($(date '+%H:%M:%S'))"
     else
-        fail=$((fail+1)); echo "  $TAG FAILED -- see logs_fq/fq4dump_${MODEL}_cells.log"
+    fail=$((fail+1)); echo "  $TAG FAILED -- see logs_fq/fq4dump_${MODEL}_cells.log"
     fi
-   done
-  done
- done
 done
 echo "[$(date '+%F %T')] dump $MODEL done: $ok new, $skip already there, $fail failed"
