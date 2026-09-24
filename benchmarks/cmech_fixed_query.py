@@ -41,6 +41,7 @@ import os
 import sys
 
 import numpy as np
+import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
@@ -156,9 +157,12 @@ def main():
         sampler = SCMSampler(cfg["scm_config"], seed=seed * 31 + 17)
 
         def build(n_draws):
-            # Same seed -> same SCM, same queries, same potential outcomes; only the
-            # number of training samples drawn differs. That is what makes the cheap
-            # probe below valid as a stand-in for the full generation.
+            # torch.manual_seed HERE, every call. SCMSampler draws from torch's GLOBAL
+            # RNG, so calling it a second time in one process samples a DIFFERENT SCM:
+            # the probe and the full build came out as different realizations, with rho
+            # 0.99 vs 0.51 and sometimes opposite signs. Re-seeding makes both calls
+            # reproduce the same realization, which is what the probe assumes.
+            torch.manual_seed(seed)
             return generate_realization(
                 cfg, SCMSampler(cfg["scm_config"], seed=seed * 31 + 17), uwyk,
                 a.regime, seed=seed, hide_fraction=a.hide,
@@ -192,7 +196,9 @@ def main():
         if not isinstance(recs, list):
             recs = [recs]
         # The full build must reproduce the probe's estimand, or the probe told us
-        # nothing about what we just wrote.
+        # nothing about what we just wrote. Kept even though the re-seed above should
+        # guarantee it: this caught the global-RNG bug, and a probe that silently
+        # diverges would write cells labelled rho>0.99 whose real rho is 0.5.
         if abs(rho_of_rec(recs[0]) - rho) > 1e-9:
             rejected["error"] += 1
             print(f"  seed {seed}: probe rho {rho:.6f} != full build "
