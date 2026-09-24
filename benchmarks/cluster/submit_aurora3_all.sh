@@ -20,19 +20,28 @@ AUR="${AUR:-$KIT/from_aurora}"
 OUT_PARENT="${OUT_PARENT:-$SC/aurora3}"
 CTX="${CTX:-1000}"
 ACCT="${ACCOUNT:-def-rgrosse}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
-# Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>. If not given,
-# locate it by that layout instead of guessing a name -- an earlier `find` at
-# -maxdepth 4 missed a root one level deeper and looked like the data was gone.
+# Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>.
+#
+# Do NOT walk $SCRATCH looking for this. `find -maxdepth 7` over a scratch
+# filesystem holding this many dump trees does not finish -- the script appears
+# to hang before printing anything. Check known locations directly; if a search
+# is needed, bound it to the repo and stop at the first hit with -print -quit.
 if [ -z "${DATA_CS:-}" ]; then
-    _hit=$(find "$SC" "$KIT" -maxdepth 7 -type d \
-             -path '*/shift*/d*/Observed_Confounder' 2>/dev/null | head -1)
-    if [ -n "$_hit" ]; then
-        DATA_CS=$(dirname "$(dirname "$(dirname "$_hit")")")
-        say_cs="  auto-detected DATA_CS=$DATA_CS  (from $_hit)"
-    else
-        DATA_CS="$SC/cs_dvar_data"
-        say_cs="  no */shift*/d*/Observed_Confounder found under $SC or $KIT"
-    fi
+    for _c in "$REPO/case_study/d_variation" "$KIT/case_study/d_variation" \
+              "$SC/case_study/d_variation" "$SC/cs_dvar_data"; do
+        if [ -d "$_c/shift0" ]; then DATA_CS="$_c"; break; fi
+    done
+fi
+if [ -z "${DATA_CS:-}" ]; then
+    _hit=$(find "$REPO" -maxdepth 5 -type d \
+             -path '*/shift0/d*/Observed_Confounder' -print -quit 2>/dev/null)
+    [ -n "$_hit" ] && DATA_CS=$(dirname "$(dirname "$(dirname "$_hit")")")
+fi
+if [ -z "${DATA_CS:-}" ]; then
+    DATA_CS="$SC/cs_dvar_data"
+    say_cs="  DATA_CS NOT FOUND -- pass DATA_CS=<root holding shift0/d2/...>"
+else
+    say_cs="  DATA_CS=$DATA_CS"
 fi
 # All three dump sbatches hardcode '#SBATCH --gres=gpu:1', which nibi rejects
 # ("submitted a GPU job without specifying a GPU type"). CUDA_VISIBLE_DEVICES=
