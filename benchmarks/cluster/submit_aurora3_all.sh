@@ -60,6 +60,10 @@ fi
 # (number of submissions) x PAR. At the default PAR=1 that is 18 running tasks,
 # with the remaining 249 queued behind them.
 PAR="${PAR:-1}"
+# MAXCONC caps (submissions x PAR). Slurm has no per-user running cap we can set
+# from sbatch, so the only lever is how many arrays we submit and each array's %n.
+# Refuse rather than silently exceed it.
+MAXCONC="${MAXCONC:-0}"
 GRES="${GRES:-none}"
 CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-24:00:00}"
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
@@ -179,6 +183,13 @@ done
 
 say "=== $N_SB sbatch submissions, $N_TASK array tasks total ==="
 say "    AT MOST $(( N_SB * PAR )) tasks running at once (PAR=$PAR per array); the rest queue"
+if [ "$MAXCONC" -gt 0 ] && [ $(( N_SB * PAR )) -gt "$MAXCONC" ]; then
+    say ""
+    say "OVER BUDGET: $(( N_SB * PAR )) concurrent > MAXCONC=$MAXCONC."
+    say "  Lower PAR, or narrow BENCH/ONLY so fewer arrays are submitted."
+    say "  Arrays per BENCH: rc=1, cs=3, cm=2 per model."
+    [ "$SUBMIT" = 1 ] && exit 1
+fi
 say "    gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}"
 say "out: $OUT_PARENT/{rc,cs,cm_rho99}/<model>/"
 [ "$SUBMIT" = 1 ] || say "DRY RUN -- add --submit"
