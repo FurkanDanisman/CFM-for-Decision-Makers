@@ -36,10 +36,10 @@ CK="${CK:-$REPO/Required_checkpoints}"
 source "$REPO/benchmarks/cluster/cmech_models.sh"
 
 read -r -a NL <<<"${NODES_LIST:-5 10 20 30 40 50}"
-REALS="${REALS:-10}"
+REALS="${REALS:-5}"
 REGIME="${REGIME:-path_TY}"
 HIDE="${HIDE:-0.0}"
-DRAWS="${DRAWS:-100}"
+DRAWS="${DRAWS:-30}"
 SUBSET="${SUBSET:-nonzero}"
 CTX="${CTX:-1000}"
 CMFQ="${CMFQ:-$SC/cmech_fq}"
@@ -80,7 +80,10 @@ for n in "${NL[@]}"; do
   # CMECH_NODES pinned to this root's single node count: the inner index is
   # model_idx*(n_nodes*n_contexts)+..., so with one node and one context it reduces
   # to model_idx and the dispatch picks the right harness.
+  # MAX_REAL caps the harness at R replicates where it is honoured; the scorer caps
+  # again, since eval_dopfn_bb_raw ignores it.
   if env MODEL_NAME="$name" MODEL_IDX="$idx" CKPT_ENV="$envv" CKPT_PATH="$ck" \
+         MAX_REAL="$DRAWS" \
          EXTRA_ENV="$extra" OUT_ROOT="$OUTR" UWYK_FIG34_DATA="$ROOT" \
          CMECH_NODES="$n" SUBSETS="$SUBSET" CMECH_CONTEXTS="$CTX" CPU_ONLY=1 \
          bash "$INNER" >>"logs_fq/cmfq_dump_${MODEL}_cells.log" 2>&1; then
