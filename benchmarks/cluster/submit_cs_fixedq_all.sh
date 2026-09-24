@@ -22,6 +22,10 @@ CASE="${CASE:-Observed_Confounder}"
 CTX="${CTX:-1000}"; NQ="${NQ:-1}"
 OUT_PARENT="${OUT_PARENT:-$SC/cs_fixedq_all}"
 ACCT="${ACCOUNT:-}"; ONLY="${ONLY:-}"
+# CPU by default, but the CPU partition is often the slower queue. GRES=gpu:h100:1
+# switches to a GPU (nibi demands a TYPE, never a bare gpu:N) and CUDA_VISIBLE_DEVICES
+# is then left alone so the harness actually uses it.
+GRES="${GRES:-none}"; CPUS="${CPUS:-8}"; MEM="${MEM:-32G}"
 SB="$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
 
 # name | harness | extra env (space-separated VAR=VAL)
@@ -60,15 +64,17 @@ for row in "${ROWS[@]}"; do
     N=$((N+1))
     if [ "$SUBMIT" = 1 ]; then
         printf '%-22s harness=%-14s -> ' "$name" "$harness"
-        env $extra MODEL_OVERRIDE="$harness" D=0 SHIFT=0 CTX="$CTX" NQ="$NQ" \
-            DATA="$DATA" CASES_OVERRIDE="$CASE" \
-            OUT_ROOT="$OUT_PARENT/$name" CUDA_VISIBLE_DEVICES= \
-            sbatch --array=0 --gres=none --cpus-per-task=8 --mem=32G \
+        if [ "$GRES" = none ]; then _cvd=(CUDA_VISIBLE_DEVICES=); else _cvd=(); fi
+        env $extra "${_cvd[@]}" MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
+            CTX="$CTX" NQ="$NQ" DATA="$DATA" CASES_OVERRIDE="$CASE" \
+            OUT_ROOT="$OUT_PARENT/$name" \
+            sbatch --array=0 --gres="$GRES" --cpus-per-task="$CPUS" --mem="$MEM" \
                    ${ACCT:+--account=$ACCT} --job-name="fq-$name" "$SB"
     else
         printf '%-22s harness=%-14s %s\n' "$name" "$harness" "${extra:-<defaults>}"
     fi
 done
 echo
-echo "jobs: $N   out: $OUT_PARENT/<model>/shift0/d0/ctx$CTX/<harness>/$CASE"
+echo "jobs: $N   gres=$GRES cpus=$CPUS mem=$MEM"
+echo "out:  $OUT_PARENT/<model>/shift0/d0/ctx$CTX/<harness>/$CASE"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"
