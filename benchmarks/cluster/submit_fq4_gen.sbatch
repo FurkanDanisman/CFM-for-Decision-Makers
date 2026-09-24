@@ -1,16 +1,20 @@
 #!/bin/bash
 #SBATCH --job-name=fq4-gen
-#SBATCH --output=logs_fq/fq4gen_%A_%a.out
-#SBATCH --error=logs_fq/fq4gen_%A_%a.err
-#SBATCH --time=02:00:00
+#SBATCH --output=logs_fq/fq4gen_%j.out
+#SBATCH --error=logs_fq/fq4gen_%j.err
+#SBATCH --time=06:00:00
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
 #
-# Generate the fq4 cells for ONE (case, shift): an array over d x realization.
-# Task id decodes as  d = DS[id / REALS],  real = id % REALS.
+# Generate every fq4 cell for ONE (case, shift): loops d x realization in one job.
 #
-# Generation only -- submit_fq4_dump.sbatch does the models, gated on this with
-# afterok so no dump can read a half-written cell.
+# One job, not an array. Generation is ~1-2 min per cell, so 60 of them is about an
+# hour of sequential work -- an array turns that into 60 scheduler entries and 60
+# python startups for no gain, and array tasks count against the account's submit
+# limit, which is what got the rest of the sweep rejected.
+#
+# Resumable: a cell that already has DRAWS npz is skipped, so hitting the wall and
+# resubmitting continues instead of restarting.
 #
 # Env: CASE, SHIFT, DS, REALS, QUERIES, DRAWS, QSEED, FQ4, CTX
 set -uo pipefail
@@ -38,32 +42,36 @@ DRAWS="${DRAWS:-100}"
 QSEED="${QSEED:-12345}"
 FQ4="${FQ4:-$SC/fq4}"
 
-ID="${SLURM_ARRAY_TASK_ID:-0}"
-D="${DSA[$(( ID / REALS ))]}"
-REAL=$(( ID % REALS ))
-TAG="${CASE}_shift${SHIFT}_d${D}_r${REAL}"
-SRC="$DEPLOY_ROOT/case_study_data/d_variation/shift$SHIFT/d$D/$CASE/N$CTX/${CASE}_${REAL}.npz"
-GEN_OUT="$FQ4/$TAG"
-CELL="$GEN_OUT/$CASE/N$CTX"
-
-echo "[$(date '+%F %T')] task $ID -> $TAG"
-[ -f "$SRC" ] || { echo "FATAL: no source npz $SRC" >&2; exit 1; }
-
-HAVE=$(find "$CELL" -name "${CASE}_*.npz" 2>/dev/null | wc -l)
-if [ "$HAVE" -ge "$DRAWS" ]; then
-    echo "  SKIP ($HAVE >= $DRAWS already)"
-else
-    # --query-seed varies with the cell so different realizations do not all freeze
-    # the same row numbers -- with one seed for all of them the sweep would probe a
-    # single fixed position in every realization rather than a sample of queries.
-    python "$REPO/case_study/gen_fixed_query.py" \
-        --from-npz "$SRC" --d "$D" \
-        --random-queries "$QUERIES" --query-seed "$(( QSEED + 1000 * ID ))" \
-        --n-draws "$DRAWS" --out "$GEN_OUT" || exit 1
-fi
-
-mkdir -p "$FQ4/${TAG}_root/shift0/d0"
-ln -sfn "$GEN_OUT/$CASE" "$FQ4/${TAG}_root/shift0/d0/$CASE"
-[ -d "$FQ4/${TAG}_root/shift0/d0/$CASE/N$CTX" ] || {
-    echo "FATAL: symlink did not resolve" >&2; exit 1; }
-echo "[$(date '+%F %T')] $TAG ready"
+echo "[$(date '+%F %T')] gen $CASE shift$SHIFT: d=${DSA[*]} reals=$REALS draws=$DRAWS"
+ok=0; skip=0; fail=0; i=-1
+for D in "${DSA[@]}"; do
+  for (( REAL=0; REAL<REALS; REAL++ )); do
+    i=$((i+1))
+    TAG="${CASE}_shift${SHIFT}_d${D}_r${REAL}"
+    SRC="$DEPLOY_ROOT/case_study_data/d_variation/shift$SHIFT/d$D/$CASE/N$CTX/${CASE}_${REAL}.npz"
+    GEN_OUT="$FQ4/$TAG"; CELL="$GEN_OUT/$CASE/N$CTX"
+    if [ ! -f "$SRC" ]; then
+        echo "  $TAG: no source npz -- SKIP"; fail=$((fail+1)); continue
+    fi
+    HAVE=$(find "$CELL" -name "${CASE}_*.npz" 2>/dev/null | wc -l)
+    if [ "$HAVE" -ge "$DRAWS" ]; then
+        skip=$((skip+1))
+    else
+        # --query-seed varies per cell: one seed for all of them would freeze the
+        # same row NUMBERS in every realization, probing a fixed position rather
+        # than a sample of queries.
+        if python "$REPO/case_study/gen_fixed_query.py" \
+              --from-npz "$SRC" --d "$D" \
+              --random-queries "$QUERIES" --query-seed "$(( QSEED + 1000 * i ))" \
+              --n-draws "$DRAWS" --out "$GEN_OUT" >/dev/null 2>&1; then
+            ok=$((ok+1))
+        else
+            echo "  $TAG: generation FAILED"; fail=$((fail+1)); continue
+        fi
+    fi
+    mkdir -p "$FQ4/${TAG}_root/shift0/d0"
+    ln -sfn "$GEN_OUT/$CASE" "$FQ4/${TAG}_root/shift0/d0/$CASE"
+  done
+done
+echo "[$(date '+%F %T')] gen $CASE shift$SHIFT done: $ok new, $skip already there, $fail failed"
+[ "$fail" = 0 ] || exit 1

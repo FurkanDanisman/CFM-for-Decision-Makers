@@ -1,26 +1,27 @@
 #!/bin/bash
 #SBATCH --job-name=fq4-dump
-#SBATCH --output=logs_fq/fq4dump_%A_%a.out
-#SBATCH --error=logs_fq/fq4dump_%A_%a.err
-#SBATCH --time=04:00:00
+#SBATCH --output=logs_fq/fq4dump_%j.out
+#SBATCH --error=logs_fq/fq4dump_%j.err
+#SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #
-# Dump one model on one fq4 cell, as an array over d x realization x model for ONE
-# (case, shift). 6 d x 10 reals x 13 models = 780 tasks.
+# Dump ONE model across every fq4 cell: loops case x shift x d x realization.
 #
-# An array rather than 780 sbatch calls: the full sweep is 108 cells x 13 models =
-# 14,040 units, and submitting those one at a time is scheduler abuse and unkillable
-# in practice. One array per (case, shift) keeps every array under the 1000-task
-# limit and lets the sweep be submitted, watched and cancelled in 18 pieces.
+# One job per model, not an array over cells. The model is loaded once and then
+# reused for every cell, which is most of the per-cell cost at these sizes -- the
+# smoke run spent ~2 min on 2 datasets, nearly all of it startup. An array paid that
+# startup 780 times and burned 780 entries against the account's submit limit.
 #
-# Task id decodes as  d = DS[id / (REALS*NM)],  real = (id / NM) % REALS,
-# model = id % NM -- model varies fastest, so a truncated array still covers whole
-# cells rather than leaving every cell missing the same models.
+# Resumable, and it must be: 60 cells x ~15 min is around 15h, close enough to the
+# wall that being killed mid-sweep is expected. A cell whose output already has
+# DRAWS npz is skipped, so resubmitting continues where it stopped.
 #
-# Env: CASE, SHIFT, DS, REALS, QUERIES, CTX, FQ4, OUT4
+# Required: MODEL (a name from fq_models.sh)
+# Env: CASES, SHIFTS, DS, REALS, QUERIES, DRAWS, CTX, FQ4, OUT4
 set -uo pipefail
 mkdir -p logs_fq
+: "${MODEL:?MODEL required, e.g. MODEL=dopfn_native}"
 
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
 if [ ! -f "$DEPLOY_ROOT/venv/bin/activate" ]; then
@@ -36,29 +37,26 @@ UWYKD="${UWYK_CKPT_DIR:-$DEPLOY_ROOT/external/uwyk_reproduce/experiments/checkpo
 # shellcheck disable=SC1091
 source "$REPO/benchmarks/cluster/fq_models.sh"
 
-CASE="${CASE:-Observed_Confounder}"
-SHIFT="${SHIFT:-0}"
+CASES="${CASES:-Observed_Confounder}"
+SHIFTS="${SHIFTS:-0 +2 -2}"
 CTX="${CTX:-1000}"
 read -r -a DSA <<<"${DS:-5 10 20 30 40 50}"
 REALS="${REALS:-10}"
 QUERIES="${QUERIES:-10}"
+DRAWS="${DRAWS:-100}"
 FQ4="${FQ4:-$SC/fq4}"
 OUT4="${OUT4:-$SC/fq4_dumps}"
-NM="${#ROWS[@]}"
 
-ID="${SLURM_ARRAY_TASK_ID:-0}"
-MI=$(( ID % NM ))
-REAL=$(( (ID / NM) % REALS ))
-D="${DSA[$(( ID / (REALS * NM) ))]}"
-IFS='|' read -r name harness extra <<<"${ROWS[$MI]}"
-TAG="${CASE}_shift${SHIFT}_d${D}_r${REAL}"
-ROOT="$FQ4/${TAG}_root"
+row=""
+for r in "${ROWS[@]}"; do
+    IFS='|' read -r name _h _e <<<"$r"
+    [ "$name" = "$MODEL" ] && { row="$r"; break; }
+done
+[ -n "$row" ] || { echo "FATAL: no model '$MODEL' in fq_models.sh" >&2; exit 1; }
+IFS='|' read -r name harness extra <<<"$row"
 
-echo "[$(date '+%F %T')] task $ID -> $TAG model=$name harness=$harness"
-[ -d "$ROOT/shift0/d0/$CASE/N$CTX" ] || {
-    echo "FATAL: cell not generated: $ROOT" >&2; exit 1; }
-
-# A git-lfs POINTER is a few hundred bytes and dies as 'invalid load key'.
+# A git-lfs POINTER is a few hundred bytes and dies as 'invalid load key' -- checked
+# once, before spending a 24h allocation on it.
 for kv in $extra; do
     case "$kv" in *=*.pt)
         f="${kv#*=}"
@@ -68,10 +66,34 @@ for kv in $extra; do
     esac
 done
 
+echo "[$(date '+%F %T')] dump $MODEL (harness=$harness)"
+echo "  cases=$CASES shifts=$SHIFTS d=${DSA[*]} reals=$REALS"
 cd "$DEPLOY_ROOT"
-# shellcheck disable=SC2086
-env $extra CUDA_VISIBLE_DEVICES= MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
-    CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$CASE" \
-    OUT_ROOT="$OUT4/$TAG/$name" SLURM_ARRAY_TASK_ID=0 \
-    bash "$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
-echo "[$(date '+%F %T')] done $TAG $name"
+ok=0; skip=0; fail=0
+for case in $CASES; do
+ for sh in $SHIFTS; do
+  for D in "${DSA[@]}"; do
+   for (( REAL=0; REAL<REALS; REAL++ )); do
+    TAG="${case}_shift${sh}_d${D}_r${REAL}"
+    ROOT="$FQ4/${TAG}_root"
+    OUT="$OUT4/$TAG/$MODEL"
+    if [ ! -d "$ROOT/shift0/d0/$case/N$CTX" ]; then
+        echo "  $TAG: cell not generated -- SKIP"; fail=$((fail+1)); continue
+    fi
+    HAVE=$(find "$OUT" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
+    if [ "$HAVE" -ge "$DRAWS" ]; then skip=$((skip+1)); continue; fi
+    # shellcheck disable=SC2086
+    if env $extra CUDA_VISIBLE_DEVICES= MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
+           CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$case" \
+           OUT_ROOT="$OUT" SLURM_ARRAY_TASK_ID=0 \
+           bash "$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch" \
+           >>"logs_fq/fq4dump_${MODEL}_cells.log" 2>&1; then
+        ok=$((ok+1)); echo "  $TAG ok ($(date '+%H:%M:%S'))"
+    else
+        fail=$((fail+1)); echo "  $TAG FAILED -- see logs_fq/fq4dump_${MODEL}_cells.log"
+    fi
+   done
+  done
+ done
+done
+echo "[$(date '+%F %T')] dump $MODEL done: $ok new, $skip already there, $fail failed"
