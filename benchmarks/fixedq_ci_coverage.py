@@ -29,6 +29,7 @@ import glob
 import os
 import re
 import sys
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
@@ -40,6 +41,26 @@ from cate_density_metrics import METHODS, _resolve_dir              # noqa: E402
 from arm_sd_one_query import arms_for, _files_in                    # noqa: E402
 
 Z = 1.959963984540054          # exact two-sided 95% normal quantile
+
+
+def _one_file(args):
+    """(est, v_own, v_rho1) for one replicate, or None.
+
+    Module level and tuple-argument so ProcessPoolExecutor can pickle it. The work
+    is one np.load per replicate and there are ~1000 per model x 13 models, so the
+    cost is thousands of small reads off shared storage -- latency-bound, which is
+    exactly what parallel workers fix.
+    """
+    path, q = args
+    got = arms_for(path, q)
+    if got is None:
+        return None
+    m0, s0, m1, s1, st, _cp, _ck = got
+    if not all(np.isfinite(x) for x in (m0, s0, m1, s1)):
+        return None
+    return (m1 - m0,
+            st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2,
+            (s1 - s0) ** 2)
 
 
 def true_tau_from(data_cell, q):
@@ -63,6 +84,9 @@ def main():
                     help="read the true tau from this cell instead of --true-tau")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--workers", type=int,
+                    default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1") or 1),
+                    help="parallel worker processes (default: $SLURM_CPUS_PER_TASK)")
     a = ap.parse_args()
 
     tt = a.true_tau
@@ -80,6 +104,13 @@ def main():
             return p
         return os.path.basename(root)
 
+    nw = max(1, int(a.workers))
+    ex = ProcessPoolExecutor(max_workers=nw) if nw > 1 else None
+    def read_all(files):
+        it = (ex.map(_one_file, [(f, a.query) for f in files], chunksize=8) if ex
+              else map(_one_file, [(f, a.query) for f in files]))
+        return [r for r in it if r is not None]
+
     rows = []
     for root in a.root:
         found = [(lab, sd, d) for lab, sd, _t in METHODS
@@ -88,20 +119,15 @@ def main():
         use_root = len({sd for _, sd, _ in found}) == 1
         rname = _rootname(root)
         for label, subdir, d in found:
-            est, v_own, v_rho1 = [], [], []
-            for f in _files_in(d):
-                got = arms_for(f, a.query)
-                if got is None:
-                    continue
-                m0, s0, m1, s1, st, _cp, _ck = got
-                if not all(np.isfinite(x) for x in (m0, s0, m1, s1)):
-                    continue
-                est.append(m1 - m0)
-                v_own.append(st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2)
-                v_rho1.append((s1 - s0) ** 2)
-            if not est:
+            fs = _files_in(d)
+            print(f"[{_rootname(root)}/{label}] {len(fs)} replicate(s)",
+                  file=sys.stderr, flush=True)
+            got = read_all(fs)
+            if not got:
                 continue
-            e = np.asarray(est); vo = np.asarray(v_own); v1 = np.asarray(v_rho1)
+            e = np.asarray([g[0] for g in got])
+            vo = np.asarray([g[1] for g in got])
+            v1 = np.asarray([g[2] for g in got])
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
             name = (rname + suf) if use_root else label
@@ -137,6 +163,8 @@ def main():
           "while sqrt(v) is what the model claims; a calibrated head would have",
           "them comparable, and width << sd(est) means the head understates its",
           "own sampling variability."]
+    if ex is not None:
+        ex.shutdown()
     txt = "\n".join(L)
     print(txt)
     if not rows:

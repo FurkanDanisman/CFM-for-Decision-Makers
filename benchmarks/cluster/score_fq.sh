@@ -11,8 +11,11 @@
 # never a hardcoded constant: set A and set B must share the estimand, and reading
 # it from the data is what makes a mismatch visible rather than silent.
 #
-#   bash R-PFN/benchmarks/cluster/score_fq.sh
-# Env: ROOT_A/ROOT_B (data roots), A/B (dump parents), CASE, CTX, QUERY, OUT_DIR
+# Reading ~6000 replicate npz files is thousands of small latency-bound reads off
+# shared storage, which is slow serially and rude on a login node. Run it as a job:
+#   sbatch --account=def-zhijing R-PFN/benchmarks/cluster/submit_score_fq.sbatch
+# Env: ROOT_A/ROOT_B (data roots), A/B (dump parents), CASE, CTX, QUERY, OUT_DIR,
+#      WORKERS (default $SLURM_CPUS_PER_TASK)
 set -uo pipefail
 KIT="${KIT:-$PWD}"; REPO="${REPO:-$KIT/R-PFN}"
 SC="${SCRATCH:?SCRATCH must be set}"
@@ -21,6 +24,7 @@ ROOT_B="${ROOT_B:-$SC/cs_fq1000_f100_root}";  B="${B:-$SC/cs_fq1000_f100_dumps}"
 CASE="${CASE:-Observed_Confounder}"
 CTX="${CTX:-1000}"; QUERY="${QUERY:-0}"
 OUT_DIR="${OUT_DIR:-$SC}"
+WORKERS="${WORKERS:-${SLURM_CPUS_PER_TASK:-1}}"
 
 score() {   # score <tag> <data root> <dump parent> <description>
     local tag="$1" droot="$2" dumps="$3" desc="$4"
@@ -35,10 +39,10 @@ score() {   # score <tag> <data root> <dump parent> <description>
     local roots=()
     for m in "$dumps"/*/shift0/d0/"ctx$CTX"; do [ -d "$m" ] && roots+=("$m"); done
     if [ "${#roots[@]}" = 0 ]; then echo "  $dumps exists but holds no ctx$CTX cells yet"; return; fi
-    echo "  ${#roots[@]} model root(s)"
+    echo "  ${#roots[@]} model root(s), $WORKERS worker(s)"
     python "$REPO/benchmarks/fixedq_ci_coverage.py" \
         --root "${roots[@]}" --dataset "$CASE" --query "$QUERY" \
-        --data-cell "$cell" --label "$desc" \
+        --data-cell "$cell" --label "$desc" --workers "$WORKERS" \
         --out "$OUT_DIR/fq_${tag}_coverage.md"
 }
 
