@@ -45,6 +45,11 @@ fi
 # that dies at the 3 h wall leaves a half-written dump tree behind.
 #
 # On killarney instead: GRES=gpu:l40s:1 CPUS=4 MEM=32G TIME=03:00:00.
+# Slurm runs a whole array at once unless told otherwise. PAR caps how many
+# tasks of EACH array are in flight via the %n suffix, so total concurrency is
+# (number of submissions) x PAR. At the default PAR=1 that is 18 running tasks,
+# with the remaining 249 queued behind them.
+PAR="${PAR:-1}"
 GRES="${GRES:-none}"
 CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-24:00:00}"
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
@@ -95,13 +100,13 @@ go() {   # go <jobname> <array> <sbatch> <env...>
     local lo=${arr%-*} hi=${arr#*-}; local n=$(( hi - lo + 1 ))
     N_SB=$((N_SB+1)); N_TASK=$((N_TASK+n))
     if [ "$SUBMIT" = 1 ]; then
-        printf '  %-42s array=%-8s tasks=%-3s -> ' "$jn" "$arr" "$n"
-        env "$@" sbatch --array="$arr" --gres="$GRES" \
+        printf '  %-42s array=%-11s tasks=%-3s -> ' "$jn" "$arr%$PAR" "$n"
+        env "$@" sbatch --array="$arr%$PAR" --gres="$GRES" \
             --cpus-per-task="$CPUS" --mem="$MEM" \
             ${TIME:+--time=$TIME} ${ACCT:+--account=$ACCT} \
             --job-name="$jn" "$REPO/benchmarks/cluster/$sb"
     else
-        printf '  %-42s array=%-8s tasks=%-3s %s\n' "$jn" "$arr" "$n" "$sb"
+        printf '  %-42s array=%-11s tasks=%-3s %s\n' "$jn" "$arr%$PAR" "$n" "$sb"
     fi
 }
 
@@ -143,6 +148,7 @@ for row in "${ROWS[@]}"; do
 done
 
 say "=== $N_SB sbatch submissions, $N_TASK array tasks total ==="
+say "    AT MOST $(( N_SB * PAR )) tasks running at once (PAR=$PAR per array); the rest queue"
 say "    gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}"
 say "out: $OUT_PARENT/{rc,cs,cm_rho99}/<model>/"
 [ "$SUBMIT" = 1 ] || say "DRY RUN -- add --submit"
