@@ -20,6 +20,10 @@ AUR="${AUR:-$KIT/from_aurora}"
 OUT_PARENT="${OUT_PARENT:-$SC/aurora3}"
 CTX="${CTX:-1000}"
 ACCT="${ACCOUNT:-def-rgrosse}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
+# CS_LO/CS_HI and CM_LO/CM_HI narrow the cell range, for picking up where an
+# earlier (array-based) run stopped. Case-study cells are ordered shift-major:
+# 0-7 = shift0, 8-15 = shift+2, 16-23 = shift-2, each over DS=(2 3 5 10 20 30 40 50).
+# ComplexMech: 0-29 = nonzero, 30-59 = zero.
 # Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>.
 #
 # Do NOT walk $SCRATCH looking for this. `find -maxdepth 7` over a scratch
@@ -200,7 +204,7 @@ for row in "${ROWS[@]}"; do
     # Case study: MODEL_OVERRIDE is supported; SHIFT is an env, not an array
     # dimension, so the three pooled shifts are three submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cs ]; then
-        go "a3-cs-$name" "0-23" submit_cs_dvar_density.sbatch BENCH=cs \
+        go "a3-cs-$name" "${CS_LO:-0}-${CS_HI:-23}" submit_cs_dvar_density.sbatch BENCH=cs \
            $extra $CVD DENSITY_DUMP=1 SHIFTS_IN_ARRAY=1 \
            MODEL_OVERRIDE="$harness" CTX="$CTX" DATA="$DATA_CS" \
            ANC_MODE=case_family OUT_ROOT="$OUT_PARENT/cs/$name"
@@ -209,7 +213,7 @@ for row in "${ROWS[@]}"; do
     # ComplexMech rho>0.99: PER_MODEL=30 (NODES x CONTEXTS). --subset total at
     # scoring needs BOTH nonzero and zero dumped, so two submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cm ]; then
-        go "a3-cm-$name" "0-59" submit_cmech_pehe_1d_vs_2d.sbatch BENCH=cm \
+        go "a3-cm-$name" "${CM_LO:-0}-${CM_HI:-59}" submit_cmech_pehe_1d_vs_2d.sbatch BENCH=cm \
            $extra $CVD DENSITY_DUMP=1 SUBSETS_IN_ARRAY=1 \
            MODEL_OVERRIDE="$harness" UWYK_FIG34_DATA="$CMECH_DATA" \
            OUT_ROOT="$OUT_PARENT/cm_rho99/$name"
