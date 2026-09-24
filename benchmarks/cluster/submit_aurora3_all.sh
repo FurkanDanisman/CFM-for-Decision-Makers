@@ -70,12 +70,20 @@ CMECH_DATA="${CMECH_DATA:-$SC/cmech_data_rho99}"
 # only one we have; if uwyk_D (J=32) disagrees it fails on a state_dict shape
 # mismatch, which is loud, not silent.
 UWYK_CFG="$AUR/best_model_config.yaml"
+# uwyk_D is J=32, so it needs its OWN config: the loader reads model_cfg.num_bars
+# and builds output_dim = num_bars + 4 (GraphConditionedInterventionalPFN_sklearn.py
+# :278-279). Against the J=1000 config it built regression_head [1004, 256] while
+# the checkpoint carries [36, 256] and load_state_dict(strict=True) aborted.
+# Create it with:
+#   sed 's/num_bars: *[0-9]*/num_bars: 32/' $AUR/best_model_config.yaml \
+#     > $AUR/uwyk_D_j32_config.yaml
+UWYK_CFG_J32="$AUR/uwyk_D_j32_config.yaml"
 
 # name | harness | harness index | extra env
 ROWS=(
   "dopfn_1d_botharms|dopfn_native|0|DOPFN_CKPT=$AUR/dopfn_1d_botharms_step150000.pt"
   "uwyk_C_botharms|uwyk1d|2|CKPT=$AUR/uwyk_C_botharms_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=binary"
-  "uwyk_D_j32_nobin|uwyk1d|2|CKPT=$AUR/uwyk_D_j32_nobin_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=target"
+  "uwyk_D_j32_nobin|uwyk1d|2|CKPT=$AUR/uwyk_D_j32_nobin_step50000.pt CONFIG=$UWYK_CFG_J32 UWYK_T_ENCODING=target"
 )
 
 if [ "$GRES" = none ]; then CVD="CUDA_VISIBLE_DEVICES="; else CVD="DUMMY_UNUSED=1"; fi
@@ -92,6 +100,10 @@ for row in "${ROWS[@]}"; do
 done
 chk "$DATA_CS"
 chk "$CMECH_DATA"
+if [ -e "$UWYK_CFG_J32" ]; then
+    _nb=$(grep -oE 'num_bars: *[0-9]+' "$UWYK_CFG_J32" | grep -oE '[0-9]+' | head -1)
+    [ "$_nb" = 32 ] || { say "  WRONG: $UWYK_CFG_J32 has num_bars=$_nb, uwyk_D needs 32"; problems=$((problems+1)); }
+fi
 if [ ! -e "$UWYK_CFG" ]; then
     say "  -> no config beside the .pt files. Copy the J=1000 one:"
     say "     cp \$REPO/Required_checkpoints/uwyk_USED_IN_RESULTS_best_model_config.yaml $UWYK_CFG"
