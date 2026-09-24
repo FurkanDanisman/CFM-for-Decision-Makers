@@ -117,7 +117,11 @@ def arms_for(path, q):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True, help="dir holding <model>/<dataset>")
+    ap.add_argument("--root", nargs="+", required=True,
+                    help="one or more dirs holding <harness>/<dataset>. Several "
+                         "because the 13 checkpoints reuse 6 harness names and so "
+                         "must live in separate roots; the row is named after the "
+                         "root when it disambiguates.")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--realization", type=int, default=0)
     ap.add_argument("--query", type=int, default=0)
@@ -128,23 +132,33 @@ def main():
          f"realization {a.realization}, query {a.query}", "",
          "| model | mean(Y0) | sd(Y0) | mean(Y1) | sd(Y1) | sd(tau) head "
          "| sd(tau) indep | rho implied |", "|" + "---|" * 8]
-    seen = 0
-    for label, subdir, tag in METHODS:
-        d = _resolve_dir(a.root, subdir, a.dataset)
-        if not d or not os.path.isdir(d):
-            continue
-        fs = _files_in(d)
-        if a.realization >= len(fs):
-            continue
-        got = arms_for(fs[a.realization], a.query)
-        if got is None:
-            continue
-        m0, s0, m1, s1, st = got
+    seen, rows_out = 0, []
+    multi = len(a.root) > 1
+    for root in a.root:
+        # <parent>/<model>/shift0/d0/ctx1000 -> the model name is 4 levels up
+        parts = os.path.normpath(root).split(os.sep)
+        rootname = parts[-4] if len(parts) >= 4 else os.path.basename(root)
+        for label, subdir, tag in METHODS:
+            d = _resolve_dir(root, subdir, a.dataset)
+            if not d or not os.path.isdir(d):
+                continue
+            fs = _files_in(d)
+            if a.realization >= len(fs):
+                continue
+            got = arms_for(fs[a.realization], a.query)
+            if got is None:
+                continue
+            # Keep the ancestry suffix (-noanc/-v3a): one root can yield two rows.
+            suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
+                        if label.endswith(x)), "")
+            name = (rootname + suf) if multi else label
+            rows_out.append((name, *got))
+    for name, m0, s0, m1, s1, st in rows_out:
         si = float(np.sqrt(s0 ** 2 + s1 ** 2))          # rho = 0
         rho = ((s0 ** 2 + s1 ** 2 - st ** 2) / (2 * s0 * s1)
                if np.isfinite(st) and s0 > 0 and s1 > 0 else float("nan"))
         f = lambda v: "—" if not np.isfinite(v) else f"{v:.4f}"
-        L.append(f"| {label} | {f(m0)} | {f(s0)} | {f(m1)} | {f(s1)} | "
+        L.append(f"| {name} | {f(m0)} | {f(s0)} | {f(m1)} | {f(s1)} | "
                  f"{f(st)} | {f(si)} | {f(rho)} |")
         seen += 1
     L += ["",
