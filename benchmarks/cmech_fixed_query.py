@@ -121,14 +121,31 @@ def main():
     cfg, cfg_path, synth = resolve_config(a.prior, a.nodes, a.regime, a.hide)
     uwyk = _import_uwyk()
     SCMSampler = uwyk[0]
-    cell = os.path.join(a.out_root, a.prior, f"{a.nodes}node", a.regime,
-                        f"hide_{a.hide}")
-    os.makedirs(cell, exist_ok=True)
+    # ONE ROOT PER SOURCE REALIZATION, with its replicates named r0..r{draws-1}.
+    #
+    # uwyk_fig34_dataset globs r*.npz and parses the index as int(name[1:-4]), so
+    # "r0_d0.npz" raises ValueError and every dump job dies in 14 seconds. Encoding
+    # (realization, replicate) in the filename is not available.
+    #
+    # Separate roots rather than one flat cell of realization x replicate files: the
+    # query units differ BETWEEN source realizations, so query index q only names the
+    # same unit within one of them. A flat cell would let any scorer pool q across
+    # realizations and silently average unrelated estimands. One root per realization
+    # makes each an ordinary ComplexMech cell whose replicates all share its queries,
+    # which is exactly the case-study layout.
+    def real_root(ri):
+        return os.path.join(a.out_root, f"r{ri}")
+
+    def real_cell(ri):
+        return os.path.join(real_root(ri), a.prior, f"{a.nodes}node", a.regime,
+                            f"hide_{a.hide}")
+
+    os.makedirs(a.out_root, exist_ok=True)
     print(f"[cmech-fq] nodes={a.nodes} regime={a.regime} hide={a.hide}"
           f"{' (synth cfg)' if synth else ''}")
     print(f"  target {a.target_real} realizations x {a.draws} samples, "
           f"{a.queries} of {a.n_test} queries, rho >= {a.rho_min}")
-    print(f"  out: {cell}")
+    print(f"  out: {a.out_root}/r<i>/{a.prior}/{a.nodes}node/{a.regime}/hide_{a.hide}")
 
     qrng = np.random.default_rng(a.query_seed)
     kept, rejected = [], {"rho": 0, "affine": 0, "error": 0, "moving_truth": 0}
@@ -172,9 +189,36 @@ def main():
         qidx = np.sort(qrng.choice(a.n_test, size=min(a.queries, a.n_test),
                                    replace=False))
         ri = len(kept)
+        cell = real_cell(ri)
+        os.makedirs(cell, exist_ok=True)
         for d, rec in enumerate(recs):
-            _save(reorder(rec, qidx), os.path.join(cell, f"r{ri}_d{d}.npz"))
+            _save(reorder(rec, qidx), os.path.join(cell, f"r{d}.npz"))
         b = float(recs[0]["target_affine_b"])
+        # Both manifests go in THIS realization's root: manifest_complexmech.json is
+        # what the dump harness requires (its absence means the old unfiltered
+        # benchmark, which it refuses to score silently), and manifest_fq.json records
+        # which rows are frozen and their fixed true effects.
+        rman = {"prior": a.prior, "nodes": [a.nodes], "regimes": [a.regime],
+                "hide_fractions": [a.hide], "n_realizations": len(recs),
+                "test_feature_mask_fraction": 0.0,
+                "uwyk_root": os.environ.get("UWYK_ROOT", ""),
+                "min_tau_het": a.min_tau_het, "max_tau_het": a.max_tau_het,
+                "rho_min": a.rho_min, "fixed_query": True,
+                "source_seed": int(seed), "rho": rho, "affine_b": b,
+                "affine_resid": resid,
+                "query_index": [int(v) for v in qidx],
+                "true_cate_raw": [float(v) for v in t[0][qidx]],
+                "cells": [{"nodes": a.nodes, "regime": a.regime, "hide": a.hide,
+                           "n_ok": len(recs)}],
+                "note": "FIXED-QUERY cell: every r*.npz is the SAME SCM and the same "
+                        "query units under a fresh observational sample. true_cate is "
+                        "in per-replicate processed units and MOVES between files; "
+                        "true_cate_raw does not. Score coverage with "
+                        "--per-file-truth."}
+        with open(os.path.join(real_root(ri), f"manifest_{a.prior}.json"), "w") as fh:
+            json.dump(rman, fh, indent=2)
+        with open(os.path.join(cell, "manifest_fq.json"), "w") as fh:
+            json.dump(rman, fh, indent=2)
         kept.append({"realization": ri, "seed": int(seed), "rho": rho,
                      "affine_resid": resid, "affine_b": b,
                      "query_index": [int(v) for v in qidx],
@@ -190,35 +234,16 @@ def main():
            "accepted": kept,
            "note": "coverage must be scored in RAW units: true_cate_raw is fixed "
                    "across the d0..d{draws-1} replicates, true_cate is NOT."}
-    with open(os.path.join(cell, "manifest_fq.json"), "w") as fh:
+    with open(os.path.join(a.out_root, "manifest_fixed_query.json"), "w") as fh:
         json.dump(man, fh, indent=2)
 
-    # manifest_complexmech.json at the ROOT, which the dump harness requires: its
-    # absence means the OLD unfiltered benchmark, where ~13% of realizations have tau
-    # constant across units and per-realization coverage is 0 or 1 by construction,
-    # and the harness refuses rather than score that silently. This root IS filtered
-    # -- rho >= rho_min and the tau-het band below -- so it must say so. Writing it
-    # is the fix; CMECH_ALLOW_UNFILTERED=1 would only silence the check.
-    root_man = {
-        "prior": a.prior, "nodes": [a.nodes], "regimes": [a.regime],
-        "hide_fractions": [a.hide], "n_realizations": len(kept) * a.draws,
-        "test_feature_mask_fraction": 0.0,
-        "uwyk_root": os.environ.get("UWYK_ROOT", ""),
-        "min_tau_het": a.min_tau_het, "max_tau_het": a.max_tau_het,
-        "rho_min": a.rho_min,
-        "fixed_query": True,
-        "draws_per_realization": a.draws,
-        "queries": a.queries,
-        "cells": [{"nodes": a.nodes, "regime": a.regime, "hide": a.hide,
-                   "n_ok": len(kept) * a.draws}],
-        "note": "FIXED-QUERY root: each source realization appears as `draws` "
-                "replicate files sharing its queries and their true effects. "
-                "true_cate is in per-replicate processed units and MOVES between "
-                "them; true_cate_raw does not. Score coverage with per-file truth.",
-    }
-    with open(os.path.join(a.out_root, f"manifest_{a.prior}.json"), "w") as fh:
-        json.dump(root_man, fh, indent=2)
-    print(f"wrote {os.path.join(a.out_root, f'manifest_{a.prior}.json')}")
+    # An INDEX of the per-realization roots, deliberately not named
+    # manifest_complexmech.json: this directory is a COLLECTION of cells, not a
+    # cell, and giving it that name would let a dump job be pointed here, find no
+    # r*.npz, and fail confusingly. Each r<i>/ subdirectory carries its own.
+    print(f"wrote {len(kept)} cell root(s) under {a.out_root}")
+    for k in kept:
+        print(f"  r{k['realization']}: {a.out_root}/r{k['realization']}")
 
     print(f"\nkept {len(kept)}/{a.target_real} in {attempt} attempts; "
           f"rejected {rejected}")
