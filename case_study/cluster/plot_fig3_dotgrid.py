@@ -66,7 +66,11 @@ _CASES = [
     ("Frontdoor_Criterion", "Front-Door\nCriterion"),
     ("Backdoor_Criterion", "Back-Door\nCriterion"),
 ]
-_METRICS = [("PEHE", "pehe"), ("L1-ATE", "l1")]
+# label, key. eps is the RELATIVE ATE error |ATE_hat - ATE_true| / |ATE_true|, which
+# is scale-free and therefore the one that pools across cases and d; l1 is the absolute
+# error in the outcome's units. Selectable with --metrics.
+_ALL_METRICS = [("PEHE", "pehe"), ("L1-ATE", "l1"), ("Relative ATE error", "eps")]
+_METRICS = list(_ALL_METRICS[:2])
 
 
 def _metric_col(df, mkey):
@@ -217,9 +221,15 @@ def main():
                     help="by-d: one figure PER METRIC with d on the rows "
                          "(appendix layout).")
     ap.add_argument("--d-values", nargs="*", type=int, default=None)
+    ap.add_argument("--metrics", nargs="+", default=["pehe", "l1"],
+                    choices=[k for _, k in _ALL_METRICS],
+                    help="which metrics to draw. In by-d mode each gets its own "
+                         "figure; in the 2xN modes they are the rows.")
     ap.add_argument("--logx", action="store_true", help="log-scale the metric axis.")
     ap.add_argument("--out", default="fig3", help="output path prefix (no extension).")
     ARGS = ap.parse_args()
+    global _METRICS
+    _METRICS = [(lab, k) for lab, k in _ALL_METRICS if k in ARGS.metrics]
 
     global DF
     df = DF = pd.read_csv(ARGS.csv)
