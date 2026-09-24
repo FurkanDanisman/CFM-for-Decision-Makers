@@ -154,22 +154,49 @@ def main():
         seed = a.seed_base + 1_000_000 * attempt
         attempt += 1
         sampler = SCMSampler(cfg["scm_config"], seed=seed * 31 + 17)
-        try:
-            recs = generate_realization(
-                cfg, sampler, uwyk, a.regime, seed=seed, hide_fraction=a.hide,
+
+        def build(n_draws):
+            # Same seed -> same SCM, same queries, same potential outcomes; only the
+            # number of training samples drawn differs. That is what makes the cheap
+            # probe below valid as a stand-in for the full generation.
+            return generate_realization(
+                cfg, SCMSampler(cfg["scm_config"], seed=seed * 31 + 17), uwyk,
+                a.regime, seed=seed, hide_fraction=a.hide,
                 test_feature_mask_fraction=0.0, n_test_override=a.n_test,
                 min_tau_het=a.min_tau_het, max_tau_het=a.max_tau_het,
-                n_train_draws=a.draws)
+                n_train_draws=n_draws)
+
+        # PROBE FIRST with a single draw. rho depends only on the test-side potential
+        # outcomes, which are identical for any n_train_draws, and about two thirds of
+        # attempts are rejected at rho >= 0.99 -- generating 100 replicates before
+        # finding that out wasted roughly two thirds of the generation budget.
+        try:
+            probe = build(1)
+        except Exception as exc:                                  # noqa: BLE001
+            rejected["error"] += 1
+            print(f"  seed {seed}: {type(exc).__name__}: {exc}", flush=True)
+            continue
+        if isinstance(probe, list):
+            probe = probe[0]
+        rho = rho_of_rec(probe)
+        if not np.isfinite(rho) or rho < a.rho_min:
+            rejected["rho"] += 1
+            continue
+
+        try:
+            recs = build(a.draws) if a.draws > 1 else [probe]
         except Exception as exc:                                  # noqa: BLE001
             rejected["error"] += 1
             print(f"  seed {seed}: {type(exc).__name__}: {exc}", flush=True)
             continue
         if not isinstance(recs, list):
             recs = [recs]
-
-        rho = rho_of_rec(recs[0])
-        if not np.isfinite(rho) or rho < a.rho_min:
-            rejected["rho"] += 1
+        # The full build must reproduce the probe's estimand, or the probe told us
+        # nothing about what we just wrote.
+        if abs(rho_of_rec(recs[0]) - rho) > 1e-9:
+            rejected["error"] += 1
+            print(f"  seed {seed}: probe rho {rho:.6f} != full build "
+                  f"{rho_of_rec(recs[0]):.6f} -- not the same realization", flush=True)
             continue
         resid = max(float(r["target_affine_resid"]) for r in recs)
         if resid > a.max_affine_resid:
