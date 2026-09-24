@@ -1,56 +1,32 @@
 #!/bin/bash
-# Finish the tau-C MALC-T run: re-dump Do-PFN from scratch, then smooth
-# everything that is still missing.
+# Submit exactly what is still missing from the tau-C MALC-T run.
 #
 #     bash benchmarks/cluster/submit_density_tauC_chain.sh
 #
-# ── WHERE THINGS STAND (checked 2026-09-23) ───────────────────────────────
+# STATE-DRIVEN, not phase-driven. Earlier versions of this script hardcoded
+# "run the repair, then the MALC arms" and had to be rewritten every time the
+# state moved. This one counts what is on disk and submits the gaps, so it is
+# safe to run repeatedly and does nothing when everything is complete.
 #
-#   shard                  raw dumps      MALC-T
-#   5312882  UWYK v3a      100/10         DONE
-#   5312884  UWYK noanc    100/10         DONE
-#   5571187  CausalPFN     100/10 *       missing
-#   60508900 Do-PFN        90/8           missing
+# For each shard it checks two things:
+#   raw dumps   <shard>/<DS>/predictions/*.npz      100 IHDP, 10 ACIC
+#   MALC-T      results_density_tauC_malcT/<shard>/<DS>/*.npz
+# and submits the raw array tasks that are missing, then a MALC-T job gated on
+# them (afterok) when it had to submit any, ungated when it did not.
 #
-#   * repaired by submit_density_tauC_repair.sbatch on 2026-09-22; its probe
-#     passed and IHDP r000-r009 were back-filled.
-#
-# ── WHY DO-PFN IS A FRESH RUN AND NOT A REPAIR ────────────────────────────
-# The repair's reproduction probe REFUSED to back-fill Do-PFN, correctly.
-# Measured on job 5629355, recomputing IHDP r000 and ACIC r002:
-#
-#     dopfn_pred0                9.07e-04   FAIL     <- pretrained library model
-#     dopfn_pred1                7.53e-04   FAIL     <- pretrained library model
-#     dopfn_repro_1d_J10_pred0   7.77e-07   ok
-#     dopfn_repro_1d_J100_pred0  1.07e-06   ok
-#     dopfn_repro_joint2d_logits 9.76e-07   ok
-#
-# The three checkpoints we own reproduce at ~1e-6, i.e. hardware noise. Only
-# `native` -- the Do-PFN LIBRARY model, recorded as dopfn_sources[0]=='library'
-# with no version or hash to pin -- drifted, by ~1e-3. That is far below a
-# different model (O(1)) and far above the noise floor: the package moved.
-#
-# Back-filling would have put two library builds inside one row. So the whole
-# family is re-dumped into a fresh OUT_ROOT instead, and every Do-PFN
-# realization comes from one environment. The old 60508900 shard is left
-# untouched for comparison.
-#
-# ── WHAT GETS SUBMITTED ───────────────────────────────────────────────────
-#   1. raw Do-PFN    array 0-11, 100 IHDP + 10 ACIC, into $DOPFN_FRESH.
-#                    Needs checkpoints, the Do-PFN package and the datasets.
-#   2. malcT Do-PFN  --dependency=afterok on (1)
-#   3. malcT CausalPFN   no dependency -- its dumps are already complete
-#
-# The dependency is per-job, not per-array-task. That mattered last time: the
-# repair array was gated as a whole, so Do-PFN's failing tasks blocked
-# CausalPFN's MALC-T even though CausalPFN's own repair had succeeded. Here
-# CausalPFN is simply not gated on Do-PFN at all.
+# ── THE TASK-0 TRAP, WHICH HAS COST TEN REALIZATIONS TWICE ────────────────
+# The raw array maps task t -> IHDP realizations [10t, 10t+10) for t < 10, and
+# tasks 10-11 -> ACIC in blocks of 5. Task 0 ALSO runs the validation gates,
+# and until this was fixed three of the four gates had no error handling, so
+# under `set -euo pipefail` a gate failure killed task 0 silently -- no message,
+# no eval, and exactly r000-r009 missing while the other 11 tasks succeeded.
+# That is why the original CausalPFN shard and the first Do-PFN refresh both
+# came back 90/100. submit_density_tauC.sbatch now names the failing gate and
+# offers SKIP_GATES=1; this script maps missing realizations back to array task
+# ids so the recovery is one submission rather than a guess.
 #
 # DRY RUN -- print what would be submitted, submit nothing:
 #     CHAIN_DRY_RUN=1 bash benchmarks/cluster/submit_density_tauC_chain.sh
-#
-# Overrides work as for the individual jobs, e.g.
-#     MALC_B=100 bash benchmarks/cluster/submit_density_tauC_chain.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -65,32 +41,46 @@ RAW="$REPO/benchmarks/cluster/submit_density_tauC.sbatch"
 MALCT="$REPO/benchmarks/cluster/submit_density_tauC_malcT.sbatch"
 RESULTS="${RESULTS:-$REPO/results_density_tauC}"
 MALCT_OUT="${MALCT_OUT:-$REPO/results_density_tauC_malcT}"
-
-# Fresh Do-PFN destination. A FIXED name, not the array job id the raw sbatch
-# would otherwise pick, because the dependent MALC job has to be told where to
-# look at submission time -- before that job id exists.
-DOPFN_FRESH="${DOPFN_FRESH:-$RESULTS/dopfn_refresh}"
-CPFN_SHARD="${CPFN_SHARD:-$RESULTS/5571187}"
-
 DRY="${CHAIN_DRY_RUN:-0}"
 
-for f in "$RAW" "$MALCT"; do
-    [ -f "$f" ] || { echo "FATAL: missing $f" >&2; exit 1; }
-done
-[ -d "$CPFN_SHARD/IHDP/predictions" ] || {
-    echo "FATAL: no CausalPFN dumps at $CPFN_SHARD" >&2; exit 1; }
+# shard : model family for the raw job (or '-' when its raw dumps are final and
+# must never be regenerated -- the UWYK and CausalPFN shards predate this
+# script and their raw runs are not reproducible from here).
+SHARDS=(
+    "5312882:-"
+    "5312884:-"
+    "5571187:-"
+    "dopfn_refresh:dopfn"
+)
 
-# A fresh run must start empty. eval_density_tauC.py skips realizations whose
-# shard exists, so a leftover directory from an aborted attempt would be
-# silently kept -- which is the exact failure this re-run exists to avoid.
-if [ -e "$DOPFN_FRESH" ] && [ "${DOPFN_FRESH_REUSE:-0}" != "1" ]; then
-    echo "FATAL: $DOPFN_FRESH already exists." >&2
-    echo "  A fresh Do-PFN run must start from an empty directory, or the" >&2
-    echo "  resume logic keeps whatever is in there." >&2
-    echo "  Remove it, set DOPFN_FRESH to another path, or pass" >&2
-    echo "  DOPFN_FRESH_REUSE=1 to deliberately resume an interrupted run." >&2
-    exit 1
-fi
+# Pure-bash count, no pipeline. `ls dir/*.npz | wc -l` looks equivalent and is
+# not: under `set -o pipefail` a directory that does not exist yet makes ls exit
+# non-zero, which takes the whole script down through `set -e` before it can
+# report that the shard has no MALC-T output. Which is exactly the case this
+# script exists to detect.
+count() {
+    local n=0 f
+    for f in "$1"/*.npz; do [ -f "$f" ] && n=$((n+1)); done
+    echo "$n"
+}
+
+# Realizations present -> the array task ids that would recompute the rest.
+# Task t covers IHDP [10t, 10t+10) for t in 0..9; ACIC [5(t-10), 5(t-10)+5) for
+# t in 10..11. A task is resubmitted if ANY of its realizations is absent; the
+# eval skips the ones already there, so an over-broad task is free.
+missing_tasks() {
+    local shard="$1" out=""
+    local t lo hi ds n r f
+    for t in $(seq 0 11); do
+        if [ "$t" -lt 10 ]; then ds=IHDP; lo=$((t*10)); hi=$((t*10+10))
+        else ds=ACIC; lo=$(((t-10)*5)); hi=$(((t-10)*5+5)); fi
+        for r in $(seq "$lo" $((hi-1))); do
+            f=$(printf '%s/%s/%s/predictions/%s_r%03d.npz' "$RESULTS" "$shard" "$ds" "$ds" "$r")
+            [ -f "$f" ] || { out="$out,$t"; break; }
+        done
+    done
+    echo "${out#,}"
+}
 
 submit() {   # submit <description> <args...>
     local desc="$1"; shift
@@ -103,42 +93,71 @@ submit() {   # submit <description> <args...>
     fi
 }
 
-echo "Do-PFN fresh dumps -> $DOPFN_FRESH"
-echo
+printf '%-16s %-14s %-14s %s\n' SHARD "RAW(IHDP/ACIC)" "MALCT(I/A)" ACTION
+any=0
+for entry in "${SHARDS[@]}"; do
+    shard="${entry%%:*}"; family="${entry#*:}"
+    ri=$(count "$RESULTS/$shard/IHDP/predictions")
+    ra=$(count "$RESULTS/$shard/ACIC/predictions")
+    mi=$(count "$MALCT_OUT/$shard/IHDP")
+    ma=$(count "$MALCT_OUT/$shard/ACIC")
 
-RAW_ID=$(MODEL_FAMILY=dopfn OUT_ROOT="$DOPFN_FRESH" \
-         DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN:-$REPO/Do-PFN}}" \
-         submit "raw Do-PFN, array 0-11" "$RAW")
-echo "raw   dopfn_refresh   $RAW_ID   (array 0-11, needs GPU-tier data + checkpoints)"
+    raw_id=""; action=""
+    if [ "$ri" -lt 100 ] || [ "$ra" -lt 10 ]; then
+        if [ "$family" = "-" ]; then
+            action="RAW INCOMPLETE - not regenerable from here, skipping"
+        else
+            tasks=$(missing_tasks "$shard")
+            action="raw --array=$tasks"
+        fi
+    fi
+    if [ "$mi" -lt 100 ] || [ "$ma" -lt 10 ]; then
+        action="${action:+$action + }malcT"
+    fi
+    [ -n "$action" ] || action="complete, nothing to do"
+    printf '%-16s %-14s %-14s %s\n' "$shard" "$ri/$ra" "$mi/$ma" "$action"
 
-MALC_DOPFN=$(DUMPS_ROOT="$DOPFN_FRESH" OUT_ROOT="$MALCT_OUT/dopfn_refresh" \
-             submit "malcT Do-PFN" --dependency=afterok:"$RAW_ID" "$MALCT")
-echo "malcT dopfn_refresh   $MALC_DOPFN   after raw $RAW_ID"
+    case "$action" in complete*|RAW\ INCOMPLETE*) continue;; esac
+    any=1
 
-MALC_CPFN=$(DUMPS_ROOT="$CPFN_SHARD" OUT_ROOT="$MALCT_OUT/$(basename "$CPFN_SHARD")" \
-            submit "malcT CausalPFN" "$MALCT")
-echo "malcT $(basename "$CPFN_SHARD")        $MALC_CPFN   (no dependency)"
+    if [ -n "${tasks:-}" ] && [ "$family" != "-" ] && { [ "$ri" -lt 100 ] || [ "$ra" -lt 10 ]; }; then
+        raw_id=$(MODEL_FAMILY="$family" OUT_ROOT="$RESULTS/$shard" \
+                 DOPFN_ROOT="${DOPFN_ROOT:-${DOPFN:-$REPO/Do-PFN}}" \
+                 SKIP_GATES="${SKIP_GATES:-0}" \
+                 submit "raw $shard tasks $tasks" --array="$tasks" "$RAW")
+        echo "    raw   $shard  $raw_id  (array $tasks)"
+    fi
+    if [ "$mi" -lt 100 ] || [ "$ma" -lt 10 ]; then
+        if [ -n "$raw_id" ]; then
+            id=$(DUMPS_ROOT="$RESULTS/$shard" OUT_ROOT="$MALCT_OUT/$shard" \
+                 submit "malcT $shard" --dependency=afterok:"$raw_id" "$MALCT")
+            echo "    malcT $shard  $id  after raw $raw_id"
+        else
+            id=$(DUMPS_ROOT="$RESULTS/$shard" OUT_ROOT="$MALCT_OUT/$shard" \
+                 submit "malcT $shard" "$MALCT")
+            echo "    malcT $shard  $id  (no dependency)"
+        fi
+    fi
+    unset tasks
+done
 
-if [ "$DRY" = "1" ]; then
-    echo; echo "CHAIN_DRY_RUN=1 -- nothing submitted."; exit 0
+if [ "$any" = "0" ]; then
+    echo; echo "Everything is complete. Nothing submitted."
+    exit 0
 fi
 
-cat <<EOF
+if [ "$DRY" = "1" ]; then echo; echo "CHAIN_DRY_RUN=1 -- nothing submitted."; exit 0; fi
 
-Submitted. Watch with:  squeue -u \$USER
+cat <<'EOF'
 
-The raw Do-PFN job is the long pole: its ACIC tasks are 5 realizations x ~481
-queries against a 3h cap, and Do-PFN pays per model (4 of them). If a task hits
-the wall clock it is resumable -- re-submit the same array with
-DOPFN_FRESH_REUSE=1 and it picks up where it stopped. WIDEN THE ARRAY rather
-than raising --time: on this cluster --time routes the partition, and >3h lands
-in a slower bucket.
+Watch with:  squeue -u $USER
 
-If the raw job fails, the gated MALC job stays in DependencyNeverSatisfied:
-  scancel $MALC_DOPFN
+IF A RAW TASK 0 FAILS, read its log before anything else -- it now names the
+gate that failed. Re-run with SKIP_GATES=1 only once you have read that failure
+and decided it does not invalidate the numbers. Tasks 1-11 never run the gates,
+so skipping them on a task-0 re-run leaves the shard internally uniform.
 
-When everything finishes, all four families are smoothed at 100/10:
-  for S in dopfn_refresh $(basename "$CPFN_SHARD") 5312882 5312884; do
-    python benchmarks/eval_graph2d/summarize_density_tauC.py $MALCT_OUT/\$S
-  done
+Rsync the RAW job's logs too -- logs_density_tauC/ -- not just the MALC ones.
+The last two investigations were blind because only logs_density_tauC_malcT/
+and logs_density_tauC_repair/ came back.
 EOF

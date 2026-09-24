@@ -275,14 +275,45 @@ echo "[$(date '+%F %T')] tauC density  dataset=$DATASET  r=[$REAL_START,$REAL_EN
 
 # The model-free validation gates are cheap (~2 min) and every number below is
 # meaningless if they fail. Run them once, on the first task only.
-if [ "$T" -eq 0 ]; then
+#
+# TASK 0 IS ALSO THE TASK THAT COMPUTES IHDP REALIZATIONS 0-9, and that coupling
+# has silently cost ten realizations twice now -- the original CausalPFN shard
+# (5571187) and the Do-PFN refresh both came back 90/100, missing exactly
+# r000-r009. The cause is this block plus the `set -euo pipefail` at the top:
+# only the FIRST gate below had a `|| { echo FATAL; exit; }`, so the three
+# unittest lines killed the task through `set -e` with NO message at all. The
+# eval never ran, the other 11 tasks succeeded, and the array looked merely
+# incomplete rather than broken.
+#
+# Two changes, both deliberate:
+#   * every gate now reports which one failed before exiting. A gate failure is
+#     still FATAL -- the gates exist because the numbers are meaningless
+#     without them -- but it is no longer silent.
+#   * SKIP_GATES=1 runs the eval without them. Use it ONLY to recover the ten
+#     realizations after a gate failure you have already read and understood.
+#     Note that tasks 1-11 never run the gates either, so a task-0 re-run with
+#     SKIP_GATES=1 leaves the shard internally uniform: every realization in it
+#     was computed under the same (ungated) conditions.
+if [ "$T" -eq 0 ] && [ "${SKIP_GATES:-0}" != "1" ]; then
     echo "--- validation gates ---"
-    python -u "$REPO/benchmarks/eval_graph2d/test_density_common.py" \
-        || { echo "FATAL: density gates failed; not running the eval." >&2; exit 3; }
-    python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_dopfn.py'
-    python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_causalpfn.py'
-    python -m unittest discover -s "$REPO/benchmarks/methods" -p 'test_dopfn_compat.py'
+    gate() {   # gate <label> <command...>
+        local label="$1"; shift
+        "$@" || { echo "FATAL: gate '$label' failed; not running the eval." \
+                       "Re-run with SKIP_GATES=1 only if you have read the" \
+                       "failure above and decided it does not invalidate the" \
+                       "numbers." >&2; exit 3; }
+    }
+    gate density_common \
+        python -u "$REPO/benchmarks/eval_graph2d/test_density_common.py"
+    gate density_dopfn \
+        python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_dopfn.py'
+    gate density_causalpfn \
+        python -m unittest discover -s "$REPO/benchmarks/eval_graph2d" -p 'test_density_causalpfn.py'
+    gate dopfn_compat \
+        python -m unittest discover -s "$REPO/benchmarks/methods" -p 'test_dopfn_compat.py'
     echo "--- gates passed ---"
+elif [ "$T" -eq 0 ]; then
+    echo "--- validation gates SKIPPED (SKIP_GATES=1) ---"
 fi
 
 python -u "$REPO/benchmarks/eval_graph2d/eval_density_tauC.py"
