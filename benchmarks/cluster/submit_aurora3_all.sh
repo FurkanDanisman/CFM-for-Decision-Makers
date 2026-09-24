@@ -22,6 +22,17 @@ CTX="${CTX:-1000}"
 ACCT="${ACCOUNT:-}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
 # Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>.
 DATA_CS="${DATA_CS:-$SC/cs_dvar_data}"
+# All three dump sbatches hardcode '#SBATCH --gres=gpu:1', which nibi rejects
+# ("submitted a GPU job without specifying a GPU type"). CUDA_VISIBLE_DEVICES=
+# does not help: the directive is inside the file, so the type must be supplied
+# on the sbatch COMMAND LINE.
+#
+# These are the same dumps the original 13-model results came from, and those
+# ran on GPU. On CPU uwyk1d measures ~320 s/dataset, so 100 realizations x 5
+# datasets is ~9 h against the sbatch's 3 h limit -- it would time out. Hence
+# GPU by default. GRES=none TIME=24:00:00 switches to CPU if a GPU is scarce.
+GRES="${GRES:-gpu:h100:1}"
+CPUS="${CPUS:-4}"; MEM="${MEM:-32G}"; TIME="${TIME:-}"
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
 CMECH_DATA="${CMECH_DATA:-$SC/cmech_data_rho99}"
 
@@ -37,6 +48,8 @@ ROWS=(
   "uwyk_C_botharms|uwyk1d|2|CKPT=$AUR/uwyk_C_botharms_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=binary"
   "uwyk_D_j32_nobin|uwyk1d|2|CKPT=$AUR/uwyk_D_j32_nobin_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=target"
 )
+
+if [ "$GRES" = none ]; then CVD="CUDA_VISIBLE_DEVICES="; else CVD="DUMMY_UNUSED=1"; fi
 
 problems=0
 say() { printf '%s\n' "$*"; }
@@ -68,7 +81,9 @@ go() {   # go <jobname> <array> <sbatch> <env...>
     N_SB=$((N_SB+1)); N_TASK=$((N_TASK+n))
     if [ "$SUBMIT" = 1 ]; then
         printf '  %-42s array=%-8s tasks=%-3s -> ' "$jn" "$arr" "$n"
-        env "$@" sbatch --array="$arr" ${ACCT:+--account=$ACCT} \
+        env "$@" sbatch --array="$arr" --gres="$GRES" \
+            --cpus-per-task="$CPUS" --mem="$MEM" \
+            ${TIME:+--time=$TIME} ${ACCT:+--account=$ACCT} \
             --job-name="$jn" "$REPO/benchmarks/cluster/$sb"
     else
         printf '  %-42s array=%-8s tasks=%-3s %s\n' "$jn" "$arr" "$n" "$sb"
@@ -84,7 +99,7 @@ for row in "${ROWS[@]}"; do
     # selected by array range instead.
     if [ "$BENCH" = all ] || [ "$BENCH" = rc ]; then
         go "a3-rc-$name" "$(( hidx*5 ))-$(( hidx*5+4 ))" submit_realcause_density_unified.sbatch \
-           $extra CUDA_VISIBLE_DEVICES= DENSITY_DUMP=1 \
+           $extra $CVD DENSITY_DUMP=1 \
            OUT_ROOT="$OUT_PARENT/rc/$name"
     fi
 
@@ -93,7 +108,7 @@ for row in "${ROWS[@]}"; do
     if [ "$BENCH" = all ] || [ "$BENCH" = cs ]; then
         for SH in 0 +2 -2; do
             go "a3-cs$SH-$name" "0-7" submit_cs_dvar_density.sbatch \
-               $extra CUDA_VISIBLE_DEVICES= DENSITY_DUMP=1 \
+               $extra $CVD DENSITY_DUMP=1 \
                MODEL_OVERRIDE="$harness" SHIFT="$SH" CTX="$CTX" DATA="$DATA_CS" \
                ANC_MODE=case_family OUT_ROOT="$OUT_PARENT/cs/$name"
         done
@@ -104,7 +119,7 @@ for row in "${ROWS[@]}"; do
     if [ "$BENCH" = all ] || [ "$BENCH" = cm ]; then
         for SS in nonzero zero; do
             go "a3-cm-$SS-$name" "$(( hidx*30 ))-$(( hidx*30+29 ))" submit_cmech_pehe_1d_vs_2d.sbatch \
-               $extra CUDA_VISIBLE_DEVICES= DENSITY_DUMP=1 \
+               $extra $CVD DENSITY_DUMP=1 \
                SUBSET="$SS" UWYK_FIG34_DATA="$CMECH_DATA" \
                OUT_ROOT="$OUT_PARENT/cm_rho99/$name"
         done
@@ -112,6 +127,7 @@ for row in "${ROWS[@]}"; do
     say ""
 done
 
-say "=== $N_SB sbatch submissions, $N_TASK array tasks total (all CPU) ==="
+say "=== $N_SB sbatch submissions, $N_TASK array tasks total ==="
+say "    gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}"
 say "out: $OUT_PARENT/{rc,cs,cm_rho99}/<model>/"
 [ "$SUBMIT" = 1 ] || say "DRY RUN -- add --submit"
