@@ -22,7 +22,9 @@
 # to 1e-9. Nothing else guarantees the two sets share an estimand, and if they do
 # not, every number the comparison produces is meaningless.
 #
-#   sbatch --account=def-zhijing R-PFN/benchmarks/cluster/submit_fq_setB.sbatch
+#   bash R-PFN/benchmarks/cluster/fq_submit.sh setB
+# NOT plain sbatch: logs_fq must exist BEFORE Slurm opens --output, or the
+# job dies at launch with no log and no squeue entry. fq_submit.sh mkdirs it.
 #
 # Env: ROOT_A / ROOT_B (data roots), OUT_B (dump parent), DRAWS, NFROZEN,
 #      CASE, CTX, ACCOUNT, TIME_DUMP, GRES, FROM_NPZ + SRC_D (if set A used them)

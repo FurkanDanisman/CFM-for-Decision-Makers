@@ -13,7 +13,9 @@
 # 16 workers it is a few minutes. Safe to rerun while the dumps are still going;
 # each model's replicate count is reported so partial reads as partial.
 #
-#   sbatch --account=def-zhijing R-PFN/benchmarks/cluster/submit_score_fq.sbatch
+#   bash R-PFN/benchmarks/cluster/fq_submit.sh score
+# NOT plain sbatch: logs_fq must exist BEFORE Slurm opens --output, or the
+# job dies at launch with no log and no squeue entry. fq_submit.sh mkdirs it.
 #
 # Env: same as score_fq.sh (ROOT_A/ROOT_B, A/B, CASE, CTX, QUERY, OUT_DIR)
 

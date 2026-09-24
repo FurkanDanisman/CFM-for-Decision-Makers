@@ -55,12 +55,13 @@ def _one_file(args):
     got = arms_for(path, q)
     if got is None:
         return None
-    m0, s0, m1, s1, st, _cp, _ck = got
+    m0, s0, m1, s1, st, cp, _ck = got
     if not all(np.isfinite(x) for x in (m0, s0, m1, s1)):
         return None
     return (m1 - m0,
             st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2,
-            (s1 - s0) ** 2)
+            (s1 - s0) ** 2,
+            cp)
 
 
 def true_tau_from(data_cell, q):
@@ -128,6 +129,17 @@ def main():
             e = np.asarray([g[0] for g in got])
             vo = np.asarray([g[1] for g in got])
             v1 = np.asarray([g[2] for g in got])
+            # The harness also dumps its OWN point estimate. mean(Y1)-mean(Y0)
+            # under the dumped density should reproduce it; where it does not, the
+            # density (or this reader's un-scaling of it) is wrong and every
+            # interval built from it is meaningless. The main pipeline gates on
+            # exactly this via density_scale_r2, but that gate is a regression
+            # ACROSS queries and is NaN at SCM_N_QUERY=1 -- i.e. unavailable for
+            # every fixed-query run -- so check it directly, per replicate.
+            cp = np.asarray([g[3] for g in got])
+            ok = np.isfinite(cp)
+            dmax = float(np.abs(e[ok] - cp[ok]).max()) if ok.any() else float("nan")
+            cpm = float(cp[ok].mean()) if ok.any() else float("nan")
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
             name = (rname + suf) if use_root else label
@@ -138,17 +150,21 @@ def main():
             c_1, w_1 = cov(v1)
             rows.append((name, e.size, float(e.mean()), float(e.mean() - tt),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
-                         c_o, w_o, c_1, w_1))
+                         c_o, w_o, c_1, w_1, cpm, dmax))
 
     ttl = f"  ({a.label})" if a.label else ""
     L = [f"## Fixed-query CI coverage — {a.dataset}, query {a.query}{ttl}", "",
          f"true tau = {tt:.10f}", "",
          "| model | datasets | mean est | bias | sd(est) | cover v(x) | mean width "
-         "| cover rho=1 | mean width rho=1 |", "|" + "---|" * 9]
-    for nm, n, m, b, sdv, co, wo, c1, w1 in sorted(rows, key=lambda r: abs(r[3])):
+         "| cover rho=1 | mean width rho=1 | dumped est | max|density-dumped| |",
+         "|" + "---|" * 11]
+    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, dmax in sorted(rows,
+                                                              key=lambda r: abs(r[3])):
         L.append(f"| {nm} | {n} | {m:+.4f} | {b:+.4f} | "
                  + (f"{sdv:.4f}" if np.isfinite(sdv) else "—")
-                 + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} |")
+                 + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} | "
+                 + (f"{cpm:+.4f}" if np.isfinite(cpm) else "—") + " | "
+                 + (f"{dmax:.2e}" if np.isfinite(dmax) else "—") + " |")
     L += ["",
           "Coverage is over RESAMPLED OBSERVATIONAL DATASETS with the query unit",
           "held fixed, so it is the frequentist coverage of one estimand, not an",
@@ -158,6 +174,15 @@ def main():
           "point estimate across datasets. A model can miss by being mis-centred",
           "(large |bias|) or too narrow (width small relative to sd(est)), and the",
           "coverage column alone does not distinguish them.",
+          "",
+          "dumped est is the harness's OWN point estimate, and",
+          "max|density-dumped| is the largest per-replicate disagreement with",
+          "mean(Y1)-mean(Y0) read off the dumped density. Near zero means the",
+          "density faithfully represents the model, so a large bias is the MODEL's;",
+          "large means the density or its un-scaling is broken and every interval",
+          "here is void. This is the density_scale_r2 check done per replicate,",
+          "because that gate is a regression across queries and is NaN whenever",
+          "SCM_N_QUERY=1 -- which is every fixed-query run.",
           "",
           "CI = est +- 1.96*sqrt(v). Note sd(est) is the ACTUAL sampling spread,",
           "while sqrt(v) is what the model claims; a calibrated head would have",
