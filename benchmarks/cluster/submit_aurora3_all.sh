@@ -66,6 +66,7 @@ PAR="${PAR:-1}"
 MAXCONC="${MAXCONC:-0}"
 GRES="${GRES:-none}"
 CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-24:00:00}"
+mkdir -p logs_a3
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
 CMECH_DATA="${CMECH_DATA:-$SC/cmech_data_rho99}"
 
@@ -156,24 +157,21 @@ LAST_JID=""
 # NO JOB DEPENDENCIES. One array per (model, benchmark); shift and subset ride
 # the array index (SHIFTS_IN_ARRAY / SUBSETS_IN_ARRAY), so concurrency is
 # submissions x PAR with nothing waiting on anything else.
-go() {   # go <jobname> <array> <sbatch> <env...>
+go() {   # go <jobname> <lo-hi> <inner sbatch> <env...>
     local jn="$1" arr="$2" sb="$3"; shift 3
     local lo=${arr%-*} hi=${arr#*-}; local n=$(( hi - lo + 1 ))
     N_SB=$((N_SB+1)); N_TASK=$((N_TASK+n))
     if [ "$SUBMIT" = 1 ]; then
-        printf '  %-42s array=%-11s tasks=%-3s -> ' "$jn" "$arr%$PAR" "$n"
-        local out
-        out=$(env "$@" sbatch --parsable --array="$arr%$PAR" --gres="$GRES" \
-            --cpus-per-task="$CPUS" --mem="$MEM" \
+        printf '  %-42s cells=%-8s (%s in ONE job) -> ' "$jn" "$lo-$hi" "$n"
+        env "$@" REPO="$REPO" INNER="$sb" IDX_LO="$lo" IDX_HI="$hi" \
+            sbatch --gres="$GRES" --cpus-per-task="$CPUS" --mem="$MEM" \
             ${TIME:+--time=$TIME} ${ACCT:+--account=$ACCT} \
-            --job-name="$jn" "$REPO/benchmarks/cluster/$sb" 2>&1)
-        LAST_JID=$(printf '%s' "$out" | grep -oE '^[0-9]+' | head -1)
-        printf '%s\n' "${LAST_JID:-FAILED: $out}"
+            --job-name="$jn" "$REPO/benchmarks/cluster/submit_aurora3_one.sbatch"
     else
-        printf '  %-42s array=%-11s tasks=%-3s %s\n' "$jn" "$arr%$PAR" "$n" "$sb"
-        LAST_JID="<prev>"
+        printf '  %-42s cells=%-8s (%s in ONE job) %s\n' "$jn" "$lo-$hi" "$n" "$sb"
     fi
 }
+
 
 for row in "${ROWS[@]}"; do
     IFS='|' read -r name harness hidx extra <<<"$row"
@@ -188,7 +186,7 @@ for row in "${ROWS[@]}"; do
     # RealCause: MODELS[ID/5], SETS[ID%5]. No MODEL_OVERRIDE, so the harness is
     # selected by array range instead.
     if [ "$BENCH" = all ] || [ "$BENCH" = rc ]; then
-        go "a3-rc-$name" "$(( hidx*5 ))-$(( hidx*5+4 ))" submit_realcause_density_unified.sbatch \
+        go "a3-rc-$name" "$(( hidx*5 ))-$(( hidx*5+4 ))" submit_realcause_density_unified.sbatch BENCH=rc \
            $extra $CVD DENSITY_DUMP=1 \
            OUT_ROOT="$OUT_PARENT/rc/$name"
     fi
@@ -196,7 +194,7 @@ for row in "${ROWS[@]}"; do
     # Case study: MODEL_OVERRIDE is supported; SHIFT is an env, not an array
     # dimension, so the three pooled shifts are three submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cs ]; then
-        go "a3-cs-$name" "0-23" submit_cs_dvar_density.sbatch \
+        go "a3-cs-$name" "0-23" submit_cs_dvar_density.sbatch BENCH=cs \
            $extra $CVD DENSITY_DUMP=1 SHIFTS_IN_ARRAY=1 \
            MODEL_OVERRIDE="$harness" CTX="$CTX" DATA="$DATA_CS" \
            ANC_MODE=case_family OUT_ROOT="$OUT_PARENT/cs/$name"
@@ -205,7 +203,7 @@ for row in "${ROWS[@]}"; do
     # ComplexMech rho>0.99: PER_MODEL=30 (NODES x CONTEXTS). --subset total at
     # scoring needs BOTH nonzero and zero dumped, so two submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cm ]; then
-        go "a3-cm-$name" "0-59" submit_cmech_pehe_1d_vs_2d.sbatch \
+        go "a3-cm-$name" "0-59" submit_cmech_pehe_1d_vs_2d.sbatch BENCH=cm \
            $extra $CVD DENSITY_DUMP=1 SUBSETS_IN_ARRAY=1 \
            MODEL_OVERRIDE="$harness" UWYK_FIG34_DATA="$CMECH_DATA" \
            OUT_ROOT="$OUT_PARENT/cm_rho99/$name"
@@ -214,7 +212,7 @@ for row in "${ROWS[@]}"; do
 done
 
 say "=== $N_SB sbatch submissions, $N_TASK array tasks total ==="
-say "    $N_SB job(s) x PAR=$PAR => AT MOST $(( N_SB * PAR )) tasks running at once, no dependencies"
+say "    $N_SB JOB(S) TOTAL -- every cell runs inside its job, no arrays, no dependencies"
 say "    (case-study shifts and ComplexMech subsets ride the array index)"
 if [ "$MAXCONC" -gt 0 ] && [ $(( N_SB * PAR )) -gt "$MAXCONC" ]; then
     say ""
