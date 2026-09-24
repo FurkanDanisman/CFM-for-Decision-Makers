@@ -19,22 +19,30 @@ NCM=$(( $(echo "$NODES_LIST" | wc -w) * REALS ))
 NM=${#ROWS[@]}
 
 bar() { # bar <have> <total>
-    local h="$1" t="$2" f i s=""
+    local h="${1:-0}" t="$2" f i s=""
+    [ -n "$h" ] || h=0
     [ "$t" -gt 0 ] || t=1
     f=$(( h * 24 / t )); [ "$f" -gt 24 ] && f=24
     i=0; while [ $i -lt 24 ]; do [ $i -lt $f ] && s="$s#" || s="$s."; i=$((i+1)); done
     printf '%s %3d%% (%s/%s)' "$s" $(( h * 100 / t )) "$h" "$t"
 }
-cntp() { ls "$OUT_DIR"/$1 2>/dev/null | grep -c "$2" || true; }
+# cntp <glob> <cs|cm>: ComplexMech parts are the ones whose tag starts with CMECH, so
+# the two benchmarks are split on that rather than by directory. Written as two branches
+# because passing "-v -e CMECH" as one argument made grep treat "-v" as the pattern and
+# the case-study counts came out empty.
+cntp() {
+    if [ "$2" = cm ]; then ls "$OUT_DIR"/$1 2>/dev/null | grep -c CMECH || true
+    else ls "$OUT_DIR"/$1 2>/dev/null | grep -vc CMECH || true; fi
+}
 
 echo "===== SCORING (what produces the table) ====="
 # A part is one (cell, model). Counted rather than inferred: these files ARE the result.
-printf '  %-16s %s\n' "vx case"    "$(bar "$(cntp '.*_vx_*.md' -v -e CMECH)" $((NCS*NM)))"
-printf '  %-16s %s\n' "vx cmech"   "$(bar "$(cntp '.*_vx_*.md' CMECH)"       $((NCM*NM)))"
-printf '  %-16s %s\n' "raw case"   "$(bar "$(cntp '.*_none_*.md.r' -v -e CMECH)" $((NCS*NM)))"
-printf '  %-16s %s\n' "raw cmech"  "$(bar "$(cntp '.*_none_*.md.r' CMECH)"       $((NCM*NM)))"
-printf '  %-16s %s\n' "SCORED case"  "$(bar "$(cntp '*_four.json' -v -e CMECH)" "$NCS")"
-printf '  %-16s %s\n' "SCORED cmech" "$(bar "$(cntp '*_four.json' CMECH)"       "$NCM")"
+printf '  %-16s %s\n' "vx case"    "$(bar "$(cntp '.*_vx_*.md' cs)" $((NCS*NM)))"
+printf '  %-16s %s\n' "vx cmech"   "$(bar "$(cntp '.*_vx_*.md' cm)"       $((NCM*NM)))"
+printf '  %-16s %s\n' "raw case"   "$(bar "$(cntp '.*_none_*.md.r' cs)" $((NCS*NM)))"
+printf '  %-16s %s\n' "raw cmech"  "$(bar "$(cntp '.*_none_*.md.r' cm)"       $((NCM*NM)))"
+printf '  %-16s %s\n' "SCORED case"  "$(bar "$(cntp '*_four.json' cs)" "$NCS")"
+printf '  %-16s %s\n' "SCORED cmech" "$(bar "$(cntp '*_four.json' cm)"       "$NCM")"
 
 echo
 echo "===== DUMPS (the three slow models; the other ten are done) ====="
