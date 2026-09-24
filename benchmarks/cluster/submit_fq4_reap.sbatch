@@ -133,14 +133,26 @@ PYN
             done_n=$((done_n+1)); continue          # scored, nothing new yet
         fi
         echo "  $TAG: $HAVE_N -> $nm models, re-scoring"
+        # Re-score only when it BUYS something: more models, or the MALC columns that
+        # the partial pass deliberately skipped.
     fi
     [ "$nm" -ge "$MIN_MODELS" ] || { pend=$((pend+1)); continue; }
 
-    echo "[$(date '+%F %T')] scoring $TAG ($nm models)"
+    # MALC only on the FINAL pass. A partial cell is going to be re-scored when the
+    # slow models finish it, so paying ~11 min of bootstrap on a table that is about to
+    # be thrown away doubles the expensive half of the work for nothing. The cheap
+    # columns land early; MALC is computed once, on the complete cell.
+    if [ "${SKIP_MALC:-0}" = 1 ] || [ "$nm" -lt "$NMODELS" ]; then
+        _skip_malc=1
+    else
+        _skip_malc=0
+    fi
+
+    echo "[$(date '+%F %T')] scoring $TAG ($nm/$NMODELS models, malc=$([ "$_skip_malc" = 1 ] && echo no || echo yes))"
     if DUMPS="$DUMPS" QUERIES="$QUERIES" DRAWS="$DRAWS" CTX="$CTX" \
        OUT_DIR="$OUT_DIR" CELL_OVERRIDE="$CELL" MALC_B="$MALC_B" \
        CASE_OVERRIDE="${CASE_FOR_SCORER:-}" N_MODELS="$nm" \
-       SKIP_MALC="${SKIP_MALC:-0}" \
+       SKIP_MALC="$_skip_malc" \
        WORKERS="${SLURM_CPUS_PER_TASK:-8}" \
        bash "$REPO/benchmarks/cluster/score_fq4.sh" >>"$CELLLOG" 2>&1
     then
