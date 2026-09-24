@@ -19,9 +19,21 @@ SC="${SCRATCH:?SCRATCH must be set}"
 AUR="${AUR:-$KIT/from_aurora}"
 OUT_PARENT="${OUT_PARENT:-$SC/aurora3}"
 CTX="${CTX:-1000}"
-ACCT="${ACCOUNT:-}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
-# Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>.
-DATA_CS="${DATA_CS:-$SC/cs_dvar_data}"
+ACCT="${ACCOUNT:-def-rgrosse}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
+# Case-study dvar root: $DATA_CS/shift<S>/d<D>/<case>/N<ctx>. If not given,
+# locate it by that layout instead of guessing a name -- an earlier `find` at
+# -maxdepth 4 missed a root one level deeper and looked like the data was gone.
+if [ -z "${DATA_CS:-}" ]; then
+    _hit=$(find "$SC" "$KIT" -maxdepth 7 -type d \
+             -path '*/shift*/d*/Observed_Confounder' 2>/dev/null | head -1)
+    if [ -n "$_hit" ]; then
+        DATA_CS=$(dirname "$(dirname "$(dirname "$_hit")")")
+        say_cs="  auto-detected DATA_CS=$DATA_CS  (from $_hit)"
+    else
+        DATA_CS="$SC/cs_dvar_data"
+        say_cs="  no */shift*/d*/Observed_Confounder found under $SC or $KIT"
+    fi
+fi
 # All three dump sbatches hardcode '#SBATCH --gres=gpu:1', which nibi rejects
 # ("submitted a GPU job without specifying a GPU type"). CUDA_VISIBLE_DEVICES=
 # does not help: the directive is inside the file, so the gres must be overridden
@@ -58,6 +70,7 @@ say() { printf '%s\n' "$*"; }
 chk() { [ -e "$1" ] || { say "  MISSING: $1"; problems=$((problems+1)); }; }
 
 say "=== preflight ==="
+[ -n "${say_cs:-}" ] && say "$say_cs"
 for row in "${ROWS[@]}"; do
     IFS='|' read -r name harness hidx extra <<<"$row"
     for kv in $extra; do case "$kv" in *=*.pt|*=*.yaml) chk "${kv#*=}";; esac; done
