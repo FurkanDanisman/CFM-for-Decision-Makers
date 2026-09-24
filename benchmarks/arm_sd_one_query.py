@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 
 import numpy as np
@@ -135,9 +136,21 @@ def main():
     seen, rows_out = 0, []
     multi = len(a.root) > 1
     for root in a.root:
-        # <parent>/<model>/shift0/d0/ctx1000 -> the model name is 4 levels up
-        parts = os.path.normpath(root).split(os.sep)
-        rootname = parts[-4] if len(parts) >= 4 else os.path.basename(root)
+        # Name the row after the first ancestor that is not a layout component.
+        # Fixed depth does not work: the roots differ in shape --
+        #   <parent>/<model>/shift0/d0/ctx1000            (fixed-query cell)
+        #   $SCRATCH/cs_dvar_dens/shift0/d5/ctx1000       (main sweep)
+        #   $SCRATCH/dumps_all/<model>/cs/shift0/d5/ctx1000
+        # so counting 4 levels up labels the last of those "cs".
+        _LAYOUT = ("cs", "rc")
+        parts = [p for p in os.path.normpath(root).split(os.sep) if p]
+        rootname = os.path.basename(root)
+        for p_ in reversed(parts):
+            if (p_.startswith(("shift", "ctx")) or p_ in _LAYOUT
+                    or re.fullmatch(r"d\d+", p_)):
+                continue
+            rootname = p_
+            break
         for label, subdir, tag in METHODS:
             d = _resolve_dir(root, subdir, a.dataset)
             if not d or not os.path.isdir(d):
