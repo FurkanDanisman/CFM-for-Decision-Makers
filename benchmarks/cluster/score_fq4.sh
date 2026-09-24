@@ -58,15 +58,30 @@ WORKERS="${WORKERS:-${SLURM_CPUS_PER_TASK:-1}}"
 mkdir -p "$OUT_DIR"
 
 QLIST=$(seq 0 $((QUERIES-1)) | tr '\n' ' ')
-ROOTS=()
-for m in "$DUMPS"/*/shift0/d0/"ctx$CTX"; do [ -d "$m" ] && ROOTS+=("$m"); done
-[ "${#ROOTS[@]}" -gt 0 ] || { echo "no ctx$CTX cells under $DUMPS"; exit 1; }
-[ -d "$CELL" ] || { echo "no data cell at $CELL -- cannot read the true taus"; exit 1; }
+# The two benchmarks nest their dumps differently:
+#   case study  <dumps>/<model>/shift0/d0/ctx<N>/<harness>/<case>
+#   ComplexMech <dumps>/<model>/N<N>/<harness>/CMECH_n<d>_<subset>
+# fixedq_ci_coverage resolves <harness>/<dataset> under whatever root it is given, so
+# only the prefix differs -- but it has to be the right prefix, or every cell reports
+# "no cells" and the reaper sees nothing to do.
+ROOTS=(); NODES=""
+if [ -n "$PFT" ]; then
+    NODES=$(echo "$TAG" | sed -E 's/^CMECH_n([0-9]+)_.*/\1/')
+    for m in "$DUMPS"/*/"N$CTX"; do [ -d "$m" ] && ROOTS+=("$m"); done
+else
+    for m in "$DUMPS"/*/shift0/d0/"ctx$CTX"; do [ -d "$m" ] && ROOTS+=("$m"); done
+fi
+[ "${#ROOTS[@]}" -gt 0 ] || { echo "no cells under $DUMPS (looked for ${PFT:+N$CTX}${PFT:-shift0/d0/ctx$CTX})"; exit 1; }
+# Only the case study needs a data cell: under --per-file-truth the truth is read from
+# each dump, so ComplexMech does not consult one at all.
+if [ -z "$PFT" ] && [ ! -d "$CELL" ]; then
+    echo "no data cell at $CELL -- cannot read the true taus"; exit 1
+fi
 echo "== $TAG: ${#ROOTS[@]} model root(s), queries $QLIST"
 
 # ---- 1. the two moment-based columns (one pass, all models, all queries) -----
 python "$REPO/benchmarks/fixedq_ci_coverage.py" \
-    --root "${ROOTS[@]}" --dataset "$CASE" --query $QLIST \
+    --root "${ROOTS[@]}" --dataset "${PFT:+CMECH_n${NODES}_${SUBSET:-nonzero}}${PFT:-$CASE}" --query $QLIST \
     ${PFT:-} ${PFT:+ } $([ -z "$PFT" ] && echo "--data-cell $CELL") \
     --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
     --json-out "$OUT_DIR/${TAG}_vx.json" \
@@ -78,15 +93,23 @@ echo "  vx    -> $OUT_DIR/${TAG}_vx.md"
 run_dens() {   # run_dens <smoother> <outfile>
     local sm="$1" out="$2" parts=()
     for r in "${ROOTS[@]}"; do
-        local model part
-        model=$(basename "$(dirname "$(dirname "$(dirname "$r")")")")
+        local model part sel=()
+        if [ -n "$PFT" ]; then
+            # cmech: root is <dumps>/<model>/N<ctx>, and the scorer wants the model dir
+            # plus the node count and subset rather than a dataset name.
+            model=$(basename "$(dirname "$r")")
+            sel=(--root "$(dirname "$r")" --nodes "$NODES"
+                 --subset "${SUBSET:-nonzero}" --context "$CTX")
+        else
+            model=$(basename "$(dirname "$(dirname "$(dirname "$r")")")")
+            sel=(--root "$r" --dataset "$CASE" --context "$CTX")
+        fi
         part="$OUT_DIR/.${TAG}_${sm}_${model}.md"
         local extra=()
         [ "$sm" = malc ] && extra=(--malc-B "$MALC_B" --malc-K "$MALC_K"
                                    --malc-workers "$WORKERS")
         python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
-            --root "$r" --dataset "$CASE" --context "$CTX" \
-            --max-real "$DRAWS" \
+            "${sel[@]}" --max-real "$DRAWS" \
             --tau-smoother "$sm" "${extra[@]}" \
             --out "$part" >/dev/null 2>&1 || {
                 echo "  [$sm] $model FAILED" >&2; continue; }
