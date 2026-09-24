@@ -109,8 +109,27 @@ done
 chk "$DATA_CS"
 chk "$CMECH_DATA"
 if [ -e "$UWYK_CFG_J32" ]; then
-    _nb=$(grep -oE 'num_bars: *[0-9]+' "$UWYK_CFG_J32" | grep -oE '[0-9]+' | head -1)
-    [ "$_nb" = 32 ] || { say "  WRONG: $UWYK_CFG_J32 has num_bars=$_nb, uwyk_D needs 32"; problems=$((problems+1)); }
+    # PARSE it, do not grep it. A sed that leaves "num_bars: 32# comment" greps
+    # fine but is invalid YAML: '#' only opens a comment after whitespace, so the
+    # value swallows the comment and the file dies several lines later.
+    _nb=$(python -c "
+import sys,yaml
+try: c=yaml.safe_load(open('$UWYK_CFG_J32'))
+except Exception as e: print('PARSE_ERROR'); sys.exit()
+def find(d):
+    if isinstance(d,dict):
+        for k,v in d.items():
+            if k=='num_bars': return v
+            r=find(v)
+            if r is not None: return r
+    return None
+print(find(c))
+" 2>/dev/null)
+    case "$_nb" in
+        32) ;;
+        PARSE_ERROR) say "  BROKEN YAML: $UWYK_CFG_J32 does not parse"; problems=$((problems+1)) ;;
+        *)  say "  WRONG: $UWYK_CFG_J32 has num_bars=$_nb, uwyk_D needs 32"; problems=$((problems+1)) ;;
+    esac
 fi
 if [ ! -e "$UWYK_CFG" ]; then
     say "  -> no config beside the .pt files. Copy the J=1000 one:"
