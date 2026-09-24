@@ -35,10 +35,59 @@ import numpy as np
 # parse from the right rather than splitting on "_".
 _TAG = re.compile(r"^(?P<case>.+)_shift(?P<shift>[+-]?\d+)_d(?P<d>\d+)_r(?P<r>\d+)$")
 
-_COLS = [("cover_vx", "v(x)"), ("len_vx", "len"),
-         ("cover_rho1", "v(x) rho=1"), ("len_rho1", "len"),
-         ("bayesian", "bayesian"), ("len_bayesian", "len"),
-         ("bayesian_malc", "bayesian MALC"), ("len_bayesian_malc", "len")]
+_COVER = [("cover_vx", "v(x)"), ("cover_rho1", "v(x) rho=1"),
+          ("bayesian", "bayesian"), ("bayesian_malc", "bayesian MALC")]
+_LEN = [("len_vx", "v(x)"), ("len_rho1", "v(x) rho=1"),
+        ("len_bayesian", "bayesian"), ("len_bayesian_malc", "bayesian MALC")]
+_COLS = _COVER + _LEN
+
+# t_{0.975, df}. Hardcoded rather than pulled from scipy, which is not a dependency
+# here. With S = 10 SCMs, df = 9 and t = 2.262 -- using 1.96 instead would understate
+# the interval by 15%, which matters precisely when S is small.
+_T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+         8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160,
+         14: 2.145, 15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093,
+         20: 2.086, 21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+         26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042}
+
+
+def _t975(df):
+    if df <= 0:
+        return float("nan")
+    return _T975.get(df, 1.960)          # df > 30: the normal value is within 1%
+
+
+def _summarise(vals):
+    """mean, SE across SCMs, t-based 95% CI, and the observed range.
+
+    The SCM is the independent unit, so each is collapsed to ONE coverage and the
+    spread of those S numbers carries both real between-SCM variation and the
+    leftover Monte Carlo noise from finite R. Within-SCM SEs are not pooled in --
+    they are already inside this spread.
+    """
+    v = np.asarray([x for x in vals if x is not None and np.isfinite(x)], float)
+    S = v.size
+    if S == 0:
+        return None
+    mean = float(v.mean())
+    if S == 1:
+        return {"S": 1, "mean": mean, "se": float("nan"), "lo": float("nan"),
+                "hi": float("nan"), "min": mean, "max": mean}
+    sd = float(v.std(ddof=1))
+    se = sd / np.sqrt(S)
+    t = _t975(S - 1)
+    return {"S": S, "mean": mean, "se": se, "lo": mean - t * se,
+            "hi": mean + t * se, "min": float(v.min()), "max": float(v.max())}
+
+
+def _fmt(d, prec=3):
+    if d is None:
+        return "—"
+    if d["S"] == 1:
+        return f"{d['mean']:.{prec}f} (S=1)"
+    return (f"{d['mean']:.{prec}f} ± {d['se']:.{prec}f} "
+            f"[{d['lo']:.{prec}f}, {d['hi']:.{prec}f}] "
+            f"({d['min']:.{prec}f}–{d['max']:.{prec}f})")
 
 
 def main():
@@ -88,37 +137,46 @@ def main():
                     ndata[g][model].append(int(v["datasets"]))
 
     ttl = f"  ({a.label})" if a.label else ""
-    hdr = (["| " + " | ".join(keys + ["model", "cells", "min datasets"]
-                              + [n for _, n in _COLS]) + " |"]
-           if keys else
-           ["| " + " | ".join(["model", "cells", "min datasets"]
-                              + [n for _, n in _COLS]) + " |"])
-    ncol = hdr[0].count("|") - 1
-    L = [f"## fq4 final — average over realizations{ttl}", "",
-         f"{len(files)} cell table(s) under {a.scores}", ""] + hdr + \
-        ["|" + "---|" * ncol]
+    L = [f"## fq4 final — across SCMs{ttl}", "",
+         f"{len(files)} cell table(s) under {a.scores}", "",
+         "Each entry is  mean ± SE [95% CI] (min–max across SCMs).", ""]
 
-    for g in sorted(acc):
-        for model in sorted(acc[g]):
-            cells = [*g] if keys else []
-            nd = ndata[g][model]
-            out = cells + [model, str(ncell[g][model]),
-                           str(min(nd)) if nd else "—"]
-            for col, _ in _COLS:
-                vals = acc[g][model][col]
-                out.append(f"{np.mean(vals):.4f}" if vals else "—")
-            L.append("| " + " | ".join(out) + " |")
+    def _table(cols, title, prec):
+        rows_out = ["### " + title, "",
+                    "| " + " | ".join(keys + ["model", "S", "min datasets"]
+                                      + [n for _, n in cols]) + " |"]
+        rows_out.append("|" + "---|" * (rows_out[-1].count("|") - 1))
+        for g in sorted(acc):
+            for model in sorted(acc[g]):
+                nd = ndata[g][model]
+                summ = {c: _summarise(acc[g][model][c]) for c, _ in cols}
+                any_s = next((d["S"] for d in summ.values() if d), 0)
+                out = ([*g] if keys else []) + [model, str(any_s),
+                                                str(min(nd)) if nd else "—"]
+                out += [_fmt(summ[c], prec) for c, _ in cols]
+                rows_out.append("| " + " | ".join(out) + " |")
+        return rows_out + [""]
+
+    L += _table(_COVER, "Coverage (nominal 0.95)", 3)
+    L += _table(_LEN, "Mean interval length", 4)
 
     L += ["",
-          "Every value is the unweighted mean over REALIZATIONS of that",
-          "realization's own average over its queries, each of which is a coverage",
-          "over resampled observational datasets. Unweighted at each level, so a",
-          "realization with 3 completed replicates counts as much as one with 100 --",
-          "read `cells` and `min datasets` before trusting a row.",
+          "THE SCM IS THE INDEPENDENT UNIT. Each SCM is collapsed to one coverage --",
+          "its own average over datasets and queries -- and the mean, SE and CI are",
+          "taken across those S numbers. The spread of them already carries both real",
+          "between-SCM variation and the leftover Monte Carlo noise from finite R, so",
+          "within-SCM SEs are not pooled in.",
           "",
-          "v(x) and v(x) rho=1 are normal-approximation intervals from the density's",
-          "moments; bayesian is the central 95% of the predictive tau density, raw",
-          "and after MALC. A dash means no cell reported that column."]
+          "SE = s_C/sqrt(S); the CI uses t_{0.975, S-1}, NOT 1.96 -- at S=10 that is",
+          "2.262, and using 1.96 would understate the interval by 15%. The range is",
+          "the observed spread of per-SCM coverages: a CI below 0.95 says the method",
+          "under-covers on average, and a wide range says it is not uniform.",
+          "",
+          "Within one SCM, coverage is per-query over resampled observational datasets,",
+          "averaged over queries -- unweighted, so read `min datasets` before trusting",
+          "a row. v(x) and v(x) rho=1 are normal-approximation intervals from the",
+          "density's moments; bayesian is the central 95% of the predictive tau",
+          "density, raw and after MALC. A dash means no cell reported that column."]
     if skipped:
         L += ["", f"Unparsed filenames ({len(skipped)}): " + ", ".join(skipped[:8])
               + (" ..." if len(skipped) > 8 else "")]
