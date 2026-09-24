@@ -95,32 +95,41 @@ echo "  A true tau[0] = $A_TAU"
 # record it. Probe for it with 1-draw generations (seconds each) rather than asking:
 # row 0's exogenous draws depend only on (case, seed, n_context), not on how many
 # rows are frozen, so a 1-draw probe settles it exactly.
+# Searched over d as well as seed: plain seeds 0..9 do NOT reproduce set A, which
+# means A came from a d_variation DAG -- build_dag_d(case, d), a different graph
+# from build_dag(case). Neither d nor the seed is recorded in the replicate files,
+# so both are probed. "" in D_CANDIDATES means the plain DAG.
 if [ -z "$SEED" ] && [ -z "${FROM_NPZ:-}" ]; then
     PROBE="${PROBE_DIR:-$SC/.fq_seed_probe}"
-    for cand in ${SEED_CANDIDATES:-0 1 2 3 4 5 6 7 8 9}; do
-        rm -rf "$PROBE"
-        python "$REPO/case_study/gen_fixed_query.py" \
-            --case "$CASE" --seed "$cand" --n-context "$CTX" \
-            --query 0 --n-queries 1 --n-draws 1 \
-            --out "$PROBE/shift0/d0" >/dev/null 2>&1 || continue
-        got=$(tau_of "$PROBE/shift0/d0/$CASE/N$CTX" 2>/dev/null) || continue
-        same=$(python -c "import sys;print(int(abs(float(sys.argv[1])-float(sys.argv[2]))<1e-9))" "$got" "$A_TAU")
-        if [ "$same" = 1 ]; then
-            echo "    seed $cand -> tau $got   <-- MATCH"
-            SEED="$cand"; break
-        fi
-        echo "    seed $cand -> tau $got"
+    for dcand in ${D_CANDIDATES:-none 5 10 20 30 40 50}; do
+        [ -n "$SEED" ] && break
+        if [ "$dcand" = none ]; then DARG=(); else DARG=(--d "$dcand"); fi
+        for cand in ${SEED_CANDIDATES:-0 1 2 3 4 5 6 7 8 9}; do
+            rm -rf "$PROBE"
+            python "$REPO/case_study/gen_fixed_query.py" \
+                --case "$CASE" --seed "$cand" --n-context "$CTX" \
+                --query 0 --n-queries 1 --n-draws 1 "${DARG[@]}" \
+                --out "$PROBE/shift0/d0" >/dev/null 2>&1 || continue
+            got=$(tau_of "$PROBE/shift0/d0/$CASE/N$CTX" 2>/dev/null) || continue
+            same=$(python -c "import sys;print(int(abs(float(sys.argv[1])-float(sys.argv[2]))<1e-9))" "$got" "$A_TAU")
+            if [ "$same" = 1 ]; then
+                echo "    d=$dcand seed=$cand -> tau $got   <-- MATCH"
+                SEED="$cand"; MATCH_D="$dcand"; break
+            fi
+            echo "    d=$dcand seed=$cand -> tau $got"
+        done
     done
     rm -rf "$PROBE"
 fi
 if [ -z "$SEED" ] && [ -z "${FROM_NPZ:-}" ]; then
-    echo "FATAL: no candidate seed reproduces A's tau ($A_TAU)." >&2
-    echo "       Set A was probably built with --from-npz from a d_variation cell," >&2
-    echo "       whose DAG is build_dag_d(case, d), not build_dag(case). Resubmit" >&2
-    echo "       with FROM_NPZ=<source npz> SRC_D=<d>, or SEED=<n> if you know it." >&2
+    echo "FATAL: no (d, seed) in the probe grid reproduces A's tau ($A_TAU)." >&2
+    echo "       Widen it with D_CANDIDATES / SEED_CANDIDATES, or pass the source" >&2
+    echo "       directly: FROM_NPZ=<d_variation npz> SRC_D=<d>." >&2
     exit 1
 fi
-echo "  seed: ${SEED:-<from FROM_NPZ>}"
+MATCH_D="${MATCH_D:-none}"
+[ "$MATCH_D" = none ] || SRC_D="${SRC_D:-$MATCH_D}"
+echo "  seed: ${SEED:-<from FROM_NPZ>}   d: $MATCH_D"
 
 # ---- 2. generate, unless the root is already complete ------------------------
 HAVE=$(find "$CELL_B" -name "${CASE}_*.npz" 2>/dev/null | wc -l)
@@ -130,7 +139,7 @@ else
     echo "  generation: $HAVE/$DRAWS present -- running gen_fixed_query"
     EXTRA=()
     [ -n "${FROM_NPZ:-}" ] && EXTRA+=(--from-npz "$FROM_NPZ")
-    [ -n "${SRC_D:-}" ]    && EXTRA+=(--d "$SRC_D")
+    [ -n "${SRC_D:-}" ]    && EXTRA+=(--d "$SRC_D")   # set from the probe match
     [ -n "$SEED" ]         && EXTRA+=(--seed "$SEED")
     python "$REPO/case_study/gen_fixed_query.py" \
         --case "$CASE" --n-context "$CTX" \

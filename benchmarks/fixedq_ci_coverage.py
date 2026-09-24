@@ -163,14 +163,15 @@ def main():
             cp = np.asarray([g[3] for g in got])
             ta = np.asarray([g[4] for g in got])
             ok = np.isfinite(cp)
-            # Only trust ate_pred as a per-query estimate where the dump's own
-            # true_ate IS the estimand under test -- that is what proves the mean
-            # is over one query. Where true_ate is absent (nan) the value came
-            # from a real per-query cate vector and needs no such check.
-            chk = np.isfinite(ta)
-            ok &= ~chk | (np.abs(ta - tt) < 1e-3)
             dmax = float(np.abs(e[ok] - cp[ok]).max()) if ok.any() else float("nan")
             cpm = float(cp[ok].mean()) if ok.any() else float("nan")
+            # The dump's OWN true effect. It should BE the estimand under test; if
+            # it is not, the harness scored a different target (or averaged over
+            # more than one query) and its point estimate cannot be compared here.
+            # Reported rather than used to blank the row: a blank says nothing,
+            # while a wrong number names the problem.
+            okt = np.isfinite(ta)
+            tam = float(ta[okt].mean()) if okt.any() else float("nan")
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
             name = (rname + suf) if use_root else label
@@ -181,20 +182,21 @@ def main():
             c_1, w_1 = cov(v1)
             rows.append((name, e.size, float(e.mean()), float(e.mean() - tt),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
-                         c_o, w_o, c_1, w_1, cpm, dmax))
+                         c_o, w_o, c_1, w_1, cpm, tam, dmax))
 
     ttl = f"  ({a.label})" if a.label else ""
     L = [f"## Fixed-query CI coverage — {a.dataset}, query {a.query}{ttl}", "",
          f"true tau = {tt:.10f}", "",
          "| model | datasets | mean est | bias | sd(est) | cover v(x) | mean width "
-         "| cover rho=1 | mean width rho=1 | dumped est | max|density-dumped| |",
-         "|" + "---|" * 11]
-    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, dmax in sorted(rows,
-                                                              key=lambda r: abs(r[3])):
+         "| cover rho=1 | mean width rho=1 | dumped est | dumped true "
+         "| max|density-dumped| |", "|" + "---|" * 12]
+    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, tam, dmax in sorted(
+            rows, key=lambda r: abs(r[3])):
         L.append(f"| {nm} | {n} | {m:+.4f} | {b:+.4f} | "
                  + (f"{sdv:.4f}" if np.isfinite(sdv) else "—")
                  + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} | "
                  + (f"{cpm:+.4f}" if np.isfinite(cpm) else "—") + " | "
+                 + (f"{tam:+.4f}" if np.isfinite(tam) else "—") + " | "
                  + (f"{dmax:.2e}" if np.isfinite(dmax) else "—") + " |")
     L += ["",
           "Coverage is over RESAMPLED OBSERVATIONAL DATASETS with the query unit",
@@ -205,6 +207,12 @@ def main():
           "point estimate across datasets. A model can miss by being mis-centred",
           "(large |bias|) or too narrow (width small relative to sd(est)), and the",
           "coverage column alone does not distinguish them.",
+          "",
+          "dumped true is the harness's own true effect for what it scored. It",
+          "should equal the true tau above; where it does not, that harness scored",
+          "a different target (or averaged over more than one query) and its rows",
+          "are not comparable. A dash means the dump carries neither a per-query",
+          "cate vector nor ate_pred/true_ate at all.",
           "",
           "dumped est is the harness's OWN point estimate, and",
           "max|density-dumped| is the largest per-replicate disagreement with",

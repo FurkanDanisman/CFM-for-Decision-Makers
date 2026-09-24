@@ -72,10 +72,16 @@ def main():
                          "seed / n_context / cate_shift so the estimand matches "
                          "that file's query exactly")
     ap.add_argument("--d", type=int, default=None,
-                    help="covariate count; required with --from-npz because the "
-                         "d_variation DAG depends on it")
+                    help="covariate count. Required with --from-npz; on its own "
+                         "it selects the d_variation DAG instead of the plain one, "
+                         "which is how a (d, seed) pair can be searched for")
     ap.add_argument("--query", type=int, default=0,
-                    help="which row of the source realization is the fixed query")
+                    help="first row of the source realization to freeze")
+    ap.add_argument("--n-queries", type=int, default=1,
+                    help="freeze this many CONSECUTIVE rows from --query, all as "
+                         "fixed estimands. K queries x D datasets then costs D "
+                         "realizations, not K*D: the rows not frozen still "
+                         "resample, so one replicate serves every query at once.")
     ap.add_argument("--n-context", type=int, default=1000)
     ap.add_argument("--n-draws", type=int, default=100)
     ap.add_argument("--out", required=True)
@@ -103,6 +109,14 @@ def main():
         print(f"[source] {a.from_npz}\n  case={a.case} d={a.d} seed={a.seed} "
               f"n_context={a.n_context} cate_shift={shift}\n"
               f"  true tau at query {a.query} = {src_tau:.10f}")
+    elif a.d is not None:
+        # --d alone: the d_variation DAG without a source npz. Needed to SEARCH for
+        # the (d, seed) that produced an existing set of replicates, since those
+        # files record neither. build_dag_d(case, d) is a different DAG from
+        # build_dag(case), so the two cannot be substituted for one another.
+        if build_dag_d is None:
+            sys.exit("generation_d unavailable; cannot build a d_variation DAG")
+        nodes = build_dag_d(a.case, a.d)
     else:
         nodes = build_dag(a.case)
 
@@ -117,10 +131,14 @@ def main():
     scm.forward()
     thr = scm._t_threshold
 
-    qi = a.query
-    frozen = {"i": qi,
-              "root": {k: float(v[qi]) for k, v in scm._root.items()},
-              "noise": {k: float(v[qi]) for k, v in scm._noise.items()}}
+    K = max(1, int(a.n_queries))
+    qidx = np.arange(a.query, min(a.query + K, N))
+    K = qidx.size
+    if K >= N:
+        sys.exit(f"--n-queries {K} leaves no rows to resample (n_context={N})")
+    frozen = {"i": qidx,
+              "root": {k: np.asarray(v)[qidx].copy() for k, v in scm._root.items()},
+              "noise": {k: np.asarray(v)[qidx].copy() for k, v in scm._noise.items()}}
 
     cell = os.path.join(a.out, a.case, f"N{a.n_context}")
     os.makedirs(cell, exist_ok=True)
@@ -144,15 +162,14 @@ def main():
             print(f"  draw {r}: non-finite, skipped", file=sys.stderr)
             continue
 
-        # Move the frozen query to row 0. The loader takes X_test = X[:n_q], so
-        # with SCM_N_QUERY=1 it evaluates row 0 -- leaving the query at index qi
-        # would silently score a DIFFERENT unit, one that is resampled every
-        # replicate and therefore has no fixed estimand at all.
-        if qi != 0:
-            order = np.r_[qi, np.delete(np.arange(N), qi)]
-            X, T, Y = X[order], T[order], Y[order]
-            cate, mu_0, mu_1 = cate[order], mu_0[order], mu_1[order]
-        truths.append(float(cate[0]))
+        # Move the frozen rows to positions 0..K-1. The loader takes
+        # X_test = X[:n_q], so SCM_N_QUERY=K evaluates exactly those; leaving them
+        # at their original indices would score units that are resampled every
+        # replicate and therefore have no fixed estimand at all.
+        order = np.r_[qidx, np.delete(np.arange(N), qidx)]
+        X, T, Y = X[order], T[order], Y[order]
+        cate, mu_0, mu_1 = cate[order], mu_0[order], mu_1[order]
+        truths.append(np.asarray(cate[:K], dtype=np.float64).copy())
         if qx is None:
             qx, qt, qy = X[0].copy(), float(T[0]), float(Y[0])
 
@@ -164,25 +181,32 @@ def main():
             feature_names=np.array(feats), exo_std=np.float32(scm.exo_std),
             noise_std=np.float32(scm.noise_std), cate_shift=np.float32(0.0))
 
-    t = np.asarray(truths)
+    t = np.asarray(truths)   # (draws, K)
     # The whole design rests on the estimand being identical across replicates;
     # assert it rather than trust it.
-    spread = float(t.max() - t.min()) if t.size else float("nan")
-    print(f"\ncase={a.case} seed={a.seed} draws={t.size} n_context={a.n_context}")
-    print(f"  true tau at the fixed query: {t[0]:.10f}")
+    # Per query, the spread ACROSS replicates must be zero; the spread across
+    # queries is the thing we want to be large.
+    spread = float(np.abs(t - t[0]).max()) if t.size else float("nan")
+    print(f"\ncase={a.case} seed={a.seed} draws={t.shape[0]} "
+          f"queries={t.shape[1] if t.ndim > 1 else 1} n_context={a.n_context}")
+    print(f"  true tau, query 0:           {t[0][0]:.10f}")
+    if t.ndim > 1 and t.shape[1] > 1:
+        print(f"  true tau across queries:     min {t[0].min():+.4f}  "
+              f"max {t[0].max():+.4f}  sd {t[0].std():.4f}")
     print(f"  spread across replicates:    {spread:.3e}   (must be ~0)")
     if src_tau is not None and t.size:
         # The whole point of --from-npz is that the estimand is the SOURCE
         # realization's. If it is not, the 1000 draws describe a different
         # number and the exercise is void, so fail loudly.
-        dev = abs(float(t[0]) - src_tau)
+        dev = abs(float(t[0][0]) - src_tau)
         print(f"  source tau:                  {src_tau:.10f}")
         print(f"  |ours - source|:             {dev:.3e}   "
               f"{'OK' if dev < 1e-6 else 'MISMATCH -- not the same estimand'}")
     ok = t.size > 1 and spread < 1e-6
     print(f"  FIXED ESTIMAND: {'OK' if ok else 'NO -- design violated'}")
     man = {"case": a.case, "seed": a.seed, "n_context": a.n_context,
-           "n_draws": int(t.size), "true_tau": float(t[0]) if t.size else None,
+           "n_draws": int(t.shape[0]), "n_queries": int(t.shape[1]),
+           "true_tau": [float(v) for v in t[0]] if t.size else None,
            "tau_spread": spread, "t_threshold": thr,
            "query_T": qt, "query_Y": qy,
            "query_X": [float(v) for v in (qx if qx is not None else [])]}
