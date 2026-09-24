@@ -360,8 +360,18 @@ class DoPFNRegressor(Base):
                         native_edges = edges * (0.01 if dataset == 'ACIC' else 1)
                         f = common.CausalPFN1D.from_pred([0, 1], native_edges)
                         jt = common.Joint2D.from_pred(logits[0], J, edges)
-                        return [[f, f], [f, f]], [jt, jt], dict(
-                            causalpfn_joint_logits=logits, causalpfn_edges2d=edges)
+                        # {method: (kind, dens)}, dump -- the CAUSALPFN_MODELS
+                        # layout CausalPFNModelSet.predict actually returns.
+                        # This fixture used to return (arms, joints, dump), the
+                        # pre-list two-row API, and the evaluator unpacks two
+                        # values -- so every causalpfn/all case here died with
+                        # "too many values to unpack (expected 2)". The DoPFN
+                        # half of this test was migrated to the model list and
+                        # this half was not.
+                        return ({'causalpfn_native': ('1d', [[f, f], [f, f]]),
+                                 'causalpfn_joint': ('joint', [jt, jt])},
+                                dict(causalpfn_joint_logits=logits,
+                                     causalpfn_edges2d=edges))
 
                     causalpfn = (SimpleNamespace(predict=predict_causalpfn)
                                  if family in ('causalpfn', 'all') else None)

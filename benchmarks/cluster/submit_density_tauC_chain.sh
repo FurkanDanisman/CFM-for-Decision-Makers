@@ -95,6 +95,7 @@ submit() {   # submit <description> <args...>
 
 printf '%-16s %-14s %-14s %s\n' SHARD "RAW(IHDP/ACIC)" "MALCT(I/A)" ACTION
 any=0
+GATED=()
 for entry in "${SHARDS[@]}"; do
     shard="${entry%%:*}"; family="${entry#*:}"
     ri=$(count "$RESULTS/$shard/IHDP/predictions")
@@ -131,6 +132,7 @@ for entry in "${SHARDS[@]}"; do
         if [ -n "$raw_id" ]; then
             id=$(DUMPS_ROOT="$RESULTS/$shard" OUT_ROOT="$MALCT_OUT/$shard" \
                  submit "malcT $shard" --dependency=afterok:"$raw_id" "$MALCT")
+            GATED+=("$id")
             echo "    malcT $shard  $id  after raw $raw_id"
         else
             id=$(DUMPS_ROOT="$RESULTS/$shard" OUT_ROOT="$MALCT_OUT/$shard" \
@@ -148,14 +150,23 @@ fi
 
 if [ "$DRY" = "1" ]; then echo; echo "CHAIN_DRY_RUN=1 -- nothing submitted."; exit 0; fi
 
+echo
+echo "Watch with:  squeue -u \$USER"
+if [ "${SKIP_GATES:-0}" != "1" ] && [ ${#GATED[@]} -gt 0 ]; then
+    cat <<EOF
+
+EXPECT TASK 0 TO FAIL AGAIN unless the gate failure has been resolved. This run
+has the gates ON, so it will name the failing gate and exit 3 -- which is the
+point: the last two runs died there with no message. When it does:
+
+  1. read the named gate in logs_density_tauC/eval_<jobid>_0.err
+  2. scancel ${GATED[*]}          # the MALC job, stuck DependencyNeverSatisfied
+  3. re-run with SKIP_GATES=1 once you have decided the failure does not
+     invalidate the numbers. Tasks 1-11 never run the gates either, so the
+     shard stays internally uniform.
+EOF
+fi
 cat <<'EOF'
-
-Watch with:  squeue -u $USER
-
-IF A RAW TASK 0 FAILS, read its log before anything else -- it now names the
-gate that failed. Re-run with SKIP_GATES=1 only once you have read that failure
-and decided it does not invalidate the numbers. Tasks 1-11 never run the gates,
-so skipping them on a task-0 re-run leaves the shard internally uniform.
 
 Rsync the RAW job's logs too -- logs_density_tauC/ -- not just the MALC ones.
 The last two investigations were blind because only logs_density_tauC_malcT/
