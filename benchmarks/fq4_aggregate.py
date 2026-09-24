@@ -124,6 +124,7 @@ def main():
         g = tuple(m.group(k) for k in keys)
         with open(f) as fh:
             blob = json.load(fh)
+        sdy = (blob.get("sd_Y") or {}).get("sd")
         for model, v in blob.get("models", {}).items():
             got = False
             for col, _ in _COLS:
@@ -131,6 +132,14 @@ def main():
                 if x is not None and np.isfinite(float(x)):
                     acc[g][model][col].append(float(x))
                     got = True
+                    # len/sd(Y): lengths are in the outcome's units, so a d=50 cell and
+                    # a d=5 cell are not on one ruler. Dividing by this cell's own
+                    # sd(Y) is what lets the length columns be compared or pooled
+                    # across d values and benchmarks.
+                    if col.startswith("len_") and sdy:
+                        acc[g][model][col + "_n"].append(float(x) / float(sdy))
+            if sdy:
+                acc[g][model]["sd_Y"].append(float(sdy))
             if got:
                 ncell[g][model] += 1
                 if v.get("datasets") is not None:
@@ -157,8 +166,11 @@ def main():
                 rows_out.append("| " + " | ".join(out) + " |")
         return rows_out + [""]
 
+    _LEN_N = [(c + "_n", n) for c, n in _LEN]
     L += _table(_COVER, "Coverage (nominal 0.95)", 3)
-    L += _table(_LEN, "Mean interval length", 4)
+    L += _table(_LEN, "Mean interval length (outcome units)", 4)
+    L += _table(_LEN_N, "Mean interval length / sd(Y)", 4)
+    L += _table([("sd_Y", "sd(Y)")], "Outcome scale of the cells", 4)
 
     L += ["",
           "THE SCM IS THE INDEPENDENT UNIT. Each SCM is collapsed to one coverage --",
@@ -171,6 +183,15 @@ def main():
           "2.262, and using 1.96 would understate the interval by 15%. The range is",
           "the observed spread of per-SCM coverages: a CI below 0.95 says the method",
           "under-covers on average, and a wide range says it is not uniform.",
+          "",
+          "len/sd(Y) divides each cell's length by that cell's own outcome SD, so",
+          "lengths are comparable across d values and across benchmarks -- raw lengths",
+          "are in the outcome's units and are not. sd(Y) is the SD of the pooled",
+          "potential outcomes per replicate averaged over replicates, the same recipe",
+          "length_normalizers.py uses. It is recorded when the cell is scored because",
+          "it can only be computed from the generated data, which is deleted after.",
+          "sd(Y) not sd(tau): the case-study generator adds the same eps to both arms,",
+          "so tau is noiseless and many realizations have sd(tau) < 1e-6.",
           "",
           "Within one SCM, coverage is per-query over resampled observational datasets,",
           "averaged over queries -- unweighted, so read `min datasets` before trusting",

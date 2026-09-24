@@ -145,9 +145,19 @@ else
     MALC_ARG=(--malc "$OUT_DIR/${TAG}_malc.md")
 fi
 
+# ---- 2b. sd(Y) for this cell ------------------------------------------------
+# Recorded now because it is computable ONLY from the generated data, which the
+# reaper deletes once this cell is scored. Interval lengths are in the outcome's
+# units, so without it they cannot be compared across d values or benchmarks.
+python "$REPO/benchmarks/fq4_cell_sdy.py" --cell "$CELL" \
+    --max-files "$DRAWS" --out "$OUT_DIR/${TAG}_sdy.json" >/dev/null 2>&1 \
+    && echo "  sd(Y) -> $OUT_DIR/${TAG}_sdy.json" \
+    || echo "  sd(Y): FAILED (lengths will not be normalisable for this cell)"
+
 # ---- 3. merge ---------------------------------------------------------------
 python "$REPO/benchmarks/fq4_table.py" \
     --vx "$OUT_DIR/${TAG}_vx.md" \
     --bayes "$OUT_DIR/${TAG}_raw.md" "${MALC_ARG[@]}" \
     --label "$TAG" --out "$OUT_DIR/${TAG}_four.md" \
+    --sdy "$OUT_DIR/${TAG}_sdy.json" \
     --json-out "$OUT_DIR/${TAG}_four.json"

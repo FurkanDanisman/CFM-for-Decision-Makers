@@ -87,6 +87,10 @@ def main():
                     help="cate_density_metrics.py markdown, --tau-smoother none")
     ap.add_argument("--malc", default=None,
                     help="cate_density_metrics.py markdown, --tau-smoother malc")
+    ap.add_argument("--sdy", default=None,
+                    help="this cell's sd(Y) json from fq4_cell_sdy.py. Carried into "
+                         "the output so lengths stay comparable across datasets of "
+                         "different scale after the raw cell is deleted.")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
     ap.add_argument("--json-out", default=None,
@@ -159,10 +163,17 @@ def main():
           "held fixed, pooled over those rows. Each is its own fixed estimand, so",
           "this is a mean of single-estimand coverages, NOT coverage averaged over",
           "random queries as the main tables report."]
+    sdy = None
+    if a.sdy and os.path.exists(a.sdy):
+        import json as _j
+        try:
+            sdy = _j.load(open(a.sdy))
+        except Exception:
+            sdy = None
     if a.json_out:
         import json
         with open(a.json_out, "w") as fh:
-            json.dump({"label": a.label,
+            json.dump({"label": a.label, "sd_Y": sdy,
                        "models": {m: {"datasets": nd.get(m), "sd_y0": s0.get(m),
                                       "sd_y1": s1.get(m),
                                       "cover_vx": vx.get(m), "len_vx": wvx.get(m),
