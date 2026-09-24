@@ -44,21 +44,33 @@ from compute_ate_density_w2_cell import (                      # noqa: E402
 
 C_1D, C_2D = "#D97706", "#8C2F39"
 
-# (column label, 1D model dir, 1D tag, 2D model dir, 2D tag)
-# The anc mode is a KEY SUFFIX inside the npz, not a directory: one uwyk1d dump
-# carries p_y0_scaled_noanc and p_y0_scaled_v3a. graph2d is the same.
+# (column label, 1D model dirs, 1D tag, 2D model dirs, 2D tag)
+#
+# The anc mode is a KEY SUFFIX inside the npz, not a directory: one uwyk1d dump carries
+# p_y0_scaled_noanc beside p_y0_scaled_v3a, and graph2d is the same.
+#
+# Several directory candidates per slot because the dump driver names a directory after
+# its harness, not after the checkpoint: Do-PFN 2D is dopfn_repro_joint2d, but running
+# it through submit_rc_density puts it under whichever slot carried the checkpoint. The
+# first directory present wins, so the figure does not depend on that accident.
 PAIRS = [
-    ("Do-PFN",      "dopfn_native", None,    "dopfn_bb",  None),
-    ("UWYK No-Anc", "uwyk1d",       "noanc", "graph2d",   "noanc"),
-    ("UWYK Anc",    "uwyk1d",       "v3a",   "graph2d",   "v3a"),
-    ("CausalPFN-C", "cpfn1d",       None,    "cpfn2d",    None),
+    ("Do-PFN",      ("dopfn_native",), None,
+     ("dopfn_repro_joint2d", "dopfn_joint2d", "dopfn_bb"), None),
+    ("UWYK No-Anc", ("uwyk1d",), "noanc", ("graph2d",), "noanc"),
+    ("UWYK Anc",    ("uwyk1d",), "v3a",   ("graph2d",), "v3a"),
+    ("CausalPFN-C", ("cpfn1d_j1024", "cpfn1d"), None,
+     ("cpfn2d_eta0", "cpfn2d"), None),
 ]
 
 
-def _find(root, model, dataset, r):
-    """The realization-r density npz under <root>/<model>/<dataset>/."""
-    d = os.path.join(root, model, dataset)
-    if not os.path.isdir(d):
+def _find(root, models, dataset, r):
+    """The realization-r density npz under <root>/<model>/<dataset>/.
+
+    `models` is a tuple of candidate directory names; the first that exists wins.
+    """
+    d = next((os.path.join(root, m, dataset) for m in models
+              if os.path.isdir(os.path.join(root, m, dataset))), None)
+    if d is None:
         return None
     for pat in (f"*r{r:03d}*.npz", f"*r{r}.npz", "*.npz"):
         hits = sorted(f for f in glob.glob(os.path.join(d, pat))
