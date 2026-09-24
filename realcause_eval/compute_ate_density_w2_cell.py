@@ -111,13 +111,29 @@ def _is_uniform(centers, rtol=1e-4):
     return bool(np.max(np.abs(d - d.mean())) < rtol * abs(d.mean()) + 1e-12)
 
 
-def _load_ptau_raw(density_path, source, malc_path=None):
+def _load_ptau_raw(density_path, source, malc_path=None, tag=None):
     """Return (p_tau_raw, tau_raw, true_cate_per_query, y_scale, y_shift).
 
     p_tau_raw shape (N_q, T)  — density in raw Y units, ∫ p_τ dτ ≈ 1 per query.
     tau_raw   shape (T,)      — uniformly spaced τ grid in raw Y units.
+
+    `tag` selects an anc mode. uwyk1d and graph2d write one npz carrying
+    p_y0_scaled_noanc beside p_y0_scaled_v3a, and the un-suffixed key is only one of
+    the modes -- so reading it for both produces two identical curves under different
+    labels. There is deliberately NO fallback when a tag is asked for and missing:
+    plotting the wrong mode under the right name is worse than plotting nothing.
+    Shared metadata (edges, y_scale, the truth) is not per-mode and resolves plain.
     """
     z_den = np.load(density_path, allow_pickle=True)
+
+    def _k(base):
+        if tag:
+            t = f"{base}_{tag}"
+            if t not in z_den.files:
+                raise KeyError(f"{density_path} has no {t!r} "
+                               f"(tag={tag!r}); keys: {sorted(z_den.files)}")
+            return t
+        return base
     y_scale = float(z_den['y_scale'])
     y_shift = float(z_den['y_shift'])
     true_cate = np.asarray(z_den['true_cate_per_query'], dtype=np.float64)
@@ -132,7 +148,7 @@ def _load_ptau_raw(density_path, source, malc_path=None):
         p_tau_raw = p_tau_scaled / max(y_scale, 1e-12)
         tau_raw   = tau_scaled * y_scale
     elif source == 'joint':
-        p_joint = np.asarray(z_den['p_joint_scaled'], dtype=np.float64)
+        p_joint = np.asarray(z_den[_k('p_joint_scaled')], dtype=np.float64)
         # Normalize per query (defensive against fp32 drift).
         s = p_joint.sum(axis=(1, 2), keepdims=True)
         p_joint = p_joint / np.where(s > 0, s, 1.0)
@@ -146,8 +162,8 @@ def _load_ptau_raw(density_path, source, malc_path=None):
         # Mass → density: divide by bin width (raw units).
         p_tau_raw = mass_tau / max(dtau_raw, 1e-12)
     elif source == 'marginals':
-        p_y0 = np.asarray(z_den['p_y0_scaled'], dtype=np.float64)
-        p_y1 = np.asarray(z_den['p_y1_scaled'], dtype=np.float64)
+        p_y0 = np.asarray(z_den[_k('p_y0_scaled')], dtype=np.float64)
+        p_y1 = np.asarray(z_den[_k('p_y1_scaled')], dtype=np.float64)
         p_y0 = p_y0 / p_y0.sum(axis=-1, keepdims=True).clip(min=1e-12)
         p_y1 = p_y1 / p_y1.sum(axis=-1, keepdims=True).clip(min=1e-12)
         K = p_y0.shape[1]
