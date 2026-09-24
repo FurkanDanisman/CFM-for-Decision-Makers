@@ -84,8 +84,21 @@ fi
 # SINGLE cell can be run without an array -- e.g. the fixed-query coverage cell,
 # which has no shift/d sweep. MODEL_OVERRIDE also lets one model be rerun alone.
 _ATID="${SLURM_ARRAY_TASK_ID:-0}"
+# SHIFTS_IN_ARRAY=1 folds the three pooled shifts into ONE array (0-23) instead
+# of three submissions: idx/8 picks the shift, idx%8 the d. Requires
+# MODEL_OVERRIDE, since the model no longer comes from the index. This is what
+# makes "one job per (model, benchmark)" possible -- SHIFT is otherwise an env,
+# so the shifts needed separate jobs.
+if [ "${SHIFTS_IN_ARRAY:-0}" = 1 ]; then
+    : "${MODEL_OVERRIDE:?SHIFTS_IN_ARRAY=1 requires MODEL_OVERRIDE}"
+    SHIFT_LIST=(0 +2 -2)
+    SHIFT="${SHIFT_LIST[$(( _ATID / 8 ))]}"
+    MODEL="$MODEL_OVERRIDE"
+    D="${DS[$(( _ATID % 8 ))]}"
+else
 MODEL="${MODEL_OVERRIDE:-${MODELS[$(( _ATID / 8 ))]}}"
 D="${D:-${DS[$(( _ATID % 8 ))]}}"
+fi
 
 # Point the case-study loader at this (shift, d) cell.
 #

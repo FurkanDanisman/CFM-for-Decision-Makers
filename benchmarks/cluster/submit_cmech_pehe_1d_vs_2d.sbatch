@@ -118,12 +118,22 @@ SUBSET="${SUBSET:-nonzero}"
 
 N_NODES=${#NODES[@]}; N_CTX=${#CONTEXTS[@]}
 PER_MODEL=$(( N_NODES * N_CTX ))
-MODEL_IDX=$(( SLURM_ARRAY_TASK_ID / PER_MODEL ))
-REM=$(( SLURM_ARRAY_TASK_ID % PER_MODEL ))
+# SUBSETS_IN_ARRAY=1 folds nonzero+zero into ONE array (0 .. 2*PER_MODEL-1)
+# instead of two submissions: idx/PER_MODEL picks the subset. Requires
+# MODEL_OVERRIDE, since the model no longer comes from the index.
+if [ "${SUBSETS_IN_ARRAY:-0}" = 1 ]; then
+    : "${MODEL_OVERRIDE:?SUBSETS_IN_ARRAY=1 requires MODEL_OVERRIDE}"
+    _SS_LIST=(nonzero zero)
+    SUBSET="${_SS_LIST[$(( SLURM_ARRAY_TASK_ID / PER_MODEL ))]}"
+    REM=$(( SLURM_ARRAY_TASK_ID % PER_MODEL ))
+    MODEL="$MODEL_OVERRIDE"
+else
+    MODEL_IDX=$(( SLURM_ARRAY_TASK_ID / PER_MODEL ))
+    REM=$(( SLURM_ARRAY_TASK_ID % PER_MODEL ))
+    MODEL="${MODEL_OVERRIDE:-${MODELS[$MODEL_IDX]}}"
+fi
 NODE_IDX=$(( REM / N_CTX ))
 CTX_IDX=$(( REM % N_CTX ))
-
-MODEL="${MODELS[$MODEL_IDX]}"
 NODE="${NODES[$NODE_IDX]}"
 CTX="${CONTEXTS[$CTX_IDX]}"
 DATASET="CMECH_n${NODE}_${SUBSET}"

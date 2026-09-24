@@ -151,32 +151,26 @@ if [ "$problems" -gt 0 ] && [ "$SUBMIT" = 1 ] && [ "${FORCE:-0}" != 1 ]; then
 fi
 say ""
 
-N_SB=0; N_TASK=0; N_CHAIN=0
+N_SB=0; N_TASK=0
 LAST_JID=""
-# DEP_ON: when set, this submission waits for that job id. Used to CHAIN the
-# case-study shifts and the ComplexMech subsets so a (model, benchmark) group
-# never has more than one job running -- "6 things at once" for 2 models x 3
-# benchmarks, rather than 12 because cs is 3 shifts and cm is 2 subsets.
-# afterany, not afterok: a shift that fails should not strand the other two.
+# NO JOB DEPENDENCIES. One array per (model, benchmark); shift and subset ride
+# the array index (SHIFTS_IN_ARRAY / SUBSETS_IN_ARRAY), so concurrency is
+# submissions x PAR with nothing waiting on anything else.
 go() {   # go <jobname> <array> <sbatch> <env...>
     local jn="$1" arr="$2" sb="$3"; shift 3
     local lo=${arr%-*} hi=${arr#*-}; local n=$(( hi - lo + 1 ))
     N_SB=$((N_SB+1)); N_TASK=$((N_TASK+n))
-    local dep=""
-    if [ -n "${DEP_ON:-}" ]; then dep="--dependency=afterany:$DEP_ON"; else N_CHAIN=$((N_CHAIN+1)); fi
     if [ "$SUBMIT" = 1 ]; then
-        printf '  %-42s array=%-11s tasks=%-3s%s -> ' "$jn" "$arr%$PAR" "$n" \
-               "${DEP_ON:+ after:$DEP_ON}"
+        printf '  %-42s array=%-11s tasks=%-3s -> ' "$jn" "$arr%$PAR" "$n"
         local out
         out=$(env "$@" sbatch --parsable --array="$arr%$PAR" --gres="$GRES" \
-            --cpus-per-task="$CPUS" --mem="$MEM" $dep \
+            --cpus-per-task="$CPUS" --mem="$MEM" \
             ${TIME:+--time=$TIME} ${ACCT:+--account=$ACCT} \
             --job-name="$jn" "$REPO/benchmarks/cluster/$sb" 2>&1)
         LAST_JID=$(printf '%s' "$out" | grep -oE '^[0-9]+' | head -1)
         printf '%s\n' "${LAST_JID:-FAILED: $out}"
     else
-        printf '  %-42s array=%-11s tasks=%-3s%s %s\n' "$jn" "$arr%$PAR" "$n" \
-               "${DEP_ON:+ after:prev}" "$sb"
+        printf '  %-42s array=%-11s tasks=%-3s %s\n' "$jn" "$arr%$PAR" "$n" "$sb"
         LAST_JID="<prev>"
     fi
 }
@@ -202,39 +196,29 @@ for row in "${ROWS[@]}"; do
     # Case study: MODEL_OVERRIDE is supported; SHIFT is an env, not an array
     # dimension, so the three pooled shifts are three submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cs ]; then
-        DEP_ON=""
-        for SH in 0 +2 -2; do
-            go "a3-cs$SH-$name" "0-7" submit_cs_dvar_density.sbatch \
-               $extra $CVD DENSITY_DUMP=1 \
-               MODEL_OVERRIDE="$harness" SHIFT="$SH" CTX="$CTX" DATA="$DATA_CS" \
-               ANC_MODE=case_family OUT_ROOT="$OUT_PARENT/cs/$name"
-            DEP_ON="$LAST_JID"
-        done
-        DEP_ON=""
+        go "a3-cs-$name" "0-23" submit_cs_dvar_density.sbatch \
+           $extra $CVD DENSITY_DUMP=1 SHIFTS_IN_ARRAY=1 \
+           MODEL_OVERRIDE="$harness" CTX="$CTX" DATA="$DATA_CS" \
+           ANC_MODE=case_family OUT_ROOT="$OUT_PARENT/cs/$name"
     fi
 
     # ComplexMech rho>0.99: PER_MODEL=30 (NODES x CONTEXTS). --subset total at
     # scoring needs BOTH nonzero and zero dumped, so two submissions.
     if [ "$BENCH" = all ] || [ "$BENCH" = cm ]; then
-        DEP_ON=""
-        for SS in nonzero zero; do
-            go "a3-cm-$SS-$name" "$(( hidx*30 ))-$(( hidx*30+29 ))" submit_cmech_pehe_1d_vs_2d.sbatch \
-               $extra $CVD DENSITY_DUMP=1 \
-               SUBSET="$SS" UWYK_FIG34_DATA="$CMECH_DATA" \
-               OUT_ROOT="$OUT_PARENT/cm_rho99/$name"
-            DEP_ON="$LAST_JID"
-        done
-        DEP_ON=""
+        go "a3-cm-$name" "0-59" submit_cmech_pehe_1d_vs_2d.sbatch \
+           $extra $CVD DENSITY_DUMP=1 SUBSETS_IN_ARRAY=1 \
+           MODEL_OVERRIDE="$harness" UWYK_FIG34_DATA="$CMECH_DATA" \
+           OUT_ROOT="$OUT_PARENT/cm_rho99/$name"
     fi
     say ""
 done
 
 say "=== $N_SB sbatch submissions, $N_TASK array tasks total ==="
-say "    $N_CHAIN independent chain(s) x PAR=$PAR => AT MOST $(( N_CHAIN * PAR )) tasks running at once"
-say "    (case-study shifts and ComplexMech subsets are chained, not parallel)"
-if [ "$MAXCONC" -gt 0 ] && [ $(( N_CHAIN * PAR )) -gt "$MAXCONC" ]; then
+say "    $N_SB job(s) x PAR=$PAR => AT MOST $(( N_SB * PAR )) tasks running at once, no dependencies"
+say "    (case-study shifts and ComplexMech subsets ride the array index)"
+if [ "$MAXCONC" -gt 0 ] && [ $(( N_SB * PAR )) -gt "$MAXCONC" ]; then
     say ""
-    say "OVER BUDGET: $(( N_CHAIN * PAR )) concurrent > MAXCONC=$MAXCONC."
+    say "OVER BUDGET: $(( N_SB * PAR )) concurrent > MAXCONC=$MAXCONC."
     say "  Lower PAR, or narrow BENCH/ONLY so fewer arrays are submitted."
     say "  Arrays per BENCH: rc=1, cs=3, cm=2 per model."
     [ "$SUBMIT" = 1 ] && exit 1
