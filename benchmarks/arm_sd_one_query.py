@@ -33,7 +33,16 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
-from cate_density_metrics import METHODS, _resolve_dir, _bin_width, _files_in  # noqa: E402
+from cate_density_metrics import METHODS, _resolve_dir, _bin_width  # noqa: E402
+
+
+def _files_in(cell_dir):
+    """*.npz minus summary.npz, sorted. Local rather than imported from
+    point_raw_em: that module pulls in the EM machinery, which this does not
+    need and which is slow to import."""
+    import glob
+    return [f for f in sorted(glob.glob(os.path.join(cell_dir, '*.npz')))
+            if os.path.basename(f) != 'summary.npz']
 
 
 def _centers_scaled(z, J):
