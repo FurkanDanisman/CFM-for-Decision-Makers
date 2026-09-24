@@ -155,8 +155,8 @@ def main():
 
     L = [f"## Per-arm predictive spread — {a.dataset}, "
          f"realization {a.realization}, query {a.query}", "",
-         "| model | CATE estimate | sd(Y0) | sd(Y1) | v(x) | v(x) rho=1 |",
-         "|" + "---|" * 6]
+         "| model | CATE estimate | sd(Y0) | sd(Y1) | v(x) | 95% CI "
+         "| v(x) rho=1 | 95% CI rho=1 |", "|" + "---|" * 8]
     seen, rows_out = 0, []
 
     def _rootname(root):
@@ -212,12 +212,19 @@ def main():
         # 2D head, rho = 0 for a 1D head (it has no dependence to use).
         vx = st ** 2 if np.isfinite(st) else si ** 2
         v1_ = (s1 - s0) ** 2                    # every model forced to rho = 1
-        g = lambda v: "—" if not np.isfinite(v) else f"{v:.6f}"
+        # 6 significant digits, not 6 decimals: v|rho=1 is a difference of nearly
+        # equal sds, so a fixed 6-dp format prints 9e-08 as 0.000000 and the
+        # column cannot be re-derived from what is shown.
+        g = lambda v: "—" if not np.isfinite(v) else f"{v:.6g}"
+        # The intervals, so nobody has to recompute them from rounded output.
+        ci = lambda m, v: ("—" if not np.isfinite(v)
+                           else f"[{m - 1.96 * v ** 0.5:+.4f}, "
+                                f"{m + 1.96 * v ** 0.5:+.4f}]")
         tau = m1 - m0
         if np.isfinite(cp) and abs(cp - tau) > 1e-3 * max(1.0, abs(cp)):
             mismatch.append((name, tau, cp, ck))
         L.append(f"| {name} | {f(tau)} | {f(s0)} | {f(s1)} | "
-                 f"{g(vx)} | {g(v1_)} |")
+                 f"{g(vx)} | {ci(tau, vx)} | {g(v1_)} | {ci(tau, v1_)} |")
         seen += 1
     L += ["",
           "CATE estimate = mean(Y1) - mean(Y0) under the model's own predictive",
@@ -228,7 +235,12 @@ def main():
           "evaluated the way each head can actually form it: a 2D head uses its",
           "joint's own coupling, a 1D head has none so rho = 0.",
           "v(x) rho=1 forces rho = 1 for EVERY model, giving (s1 - s0)^2 -- the",
-          "same marginals under perfect positive dependence.",
+          "same marginals under perfect positive dependence. It is a DIFFERENCE",
+          "of nearly equal sds, so it is printed to 6 significant digits and",
+          "cannot be recomputed from the 4-dp sd columns: 0.2383 - 0.2380 keeps",
+          "one significant digit and squaring it keeps none.",
+          "",
+          "95% CI = CATE estimate +- 1.96 * sqrt(v), given for both v columns.",
           "",
           "On the CASE STUDIES the true v(x) is 0: the generator adds one shared",
           "noise draw to both arms, so Y^do(1) - Y^do(0) = mu_1 - mu_0 exactly.",
