@@ -9,6 +9,7 @@
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh setB    # generate set B + 13 dumps
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh score   # score A and B
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh both
+#   bash R-PFN/benchmarks/cluster/fq_submit.sh fq4cs   # four-column, one cell
 # Env: ACCOUNT (default def-rgrosse), plus whatever the target job reads.
 set -uo pipefail
 WHAT="${1:-both}"
@@ -20,6 +21,11 @@ case "$WHAT" in
   setB|both)  echo "-- set B (generate, verify, submit 13 dumps)"
               ACCOUNT="$ACCT" sbatch --account="$ACCT" \
                   "$REPO/benchmarks/cluster/submit_fq_setB.sbatch" ;;
+esac
+case "$WHAT" in
+  fq4cs)      echo "-- fq4 case-study cell (generate, verify, submit 13 dumps)"
+              ACCOUNT="$ACCT" sbatch --account="$ACCT" \
+                  "$REPO/benchmarks/cluster/submit_fq4_cs.sbatch" ;;
 esac
 case "$WHAT" in
   score|both) echo "-- score A and B"

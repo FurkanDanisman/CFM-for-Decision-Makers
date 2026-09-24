@@ -82,6 +82,15 @@ def main():
                          "fixed estimands. K queries x D datasets then costs D "
                          "realizations, not K*D: the rows not frozen still "
                          "resample, so one replicate serves every query at once.")
+    ap.add_argument("--query-list", default=None,
+                    help="comma-separated row indices to freeze, e.g. 3,17,204. "
+                         "Overrides --query/--n-queries")
+    ap.add_argument("--random-queries", type=int, default=None,
+                    help="freeze this many rows chosen uniformly at random "
+                         "(see --query-seed). Overrides --query/--n-queries")
+    ap.add_argument("--query-seed", type=int, default=12345,
+                    help="seed for --random-queries; independent of the SCM seed "
+                         "so the same SCM can be re-probed at different queries")
     ap.add_argument("--n-context", type=int, default=1000)
     ap.add_argument("--n-draws", type=int, default=100)
     ap.add_argument("--out", required=True)
@@ -131,11 +140,28 @@ def main():
     scm.forward()
     thr = scm._t_threshold
 
-    K = max(1, int(a.n_queries))
-    qidx = np.arange(a.query, min(a.query + K, N))
+    # Which rows keep their identity across every replicate. Three ways to say it:
+    # an explicit list, a random sample, or (the original) a consecutive run from
+    # --query. Random matters because consecutive rows of one realization are not a
+    # sample of its queries -- they are whatever the generator happened to emit
+    # first, and their taus can be atypically clustered.
+    if a.query_list:
+        qidx = np.unique(np.asarray([int(v) for v in a.query_list.split(",")],
+                                    dtype=np.int64))
+        if qidx.min() < 0 or qidx.max() >= N:
+            sys.exit(f"--query-list has an index outside [0, {N})")
+    elif a.random_queries:
+        K = int(a.random_queries)
+        if K >= N:
+            sys.exit(f"--random-queries {K} leaves no rows to resample (N={N})")
+        qidx = np.sort(np.random.default_rng(a.query_seed).choice(
+            N, size=K, replace=False))
+    else:
+        K = max(1, int(a.n_queries))
+        qidx = np.arange(a.query, min(a.query + K, N))
     K = qidx.size
     if K >= N:
-        sys.exit(f"--n-queries {K} leaves no rows to resample (n_context={N})")
+        sys.exit(f"{K} frozen rows leaves none to resample (n_context={N})")
     frozen = {"i": qidx,
               "root": {k: np.asarray(v)[qidx].copy() for k, v in scm._root.items()},
               "noise": {k: np.asarray(v)[qidx].copy() for k, v in scm._noise.items()}}
@@ -205,6 +231,7 @@ def main():
     ok = t.size > 1 and spread < 1e-6
     print(f"  FIXED ESTIMAND: {'OK' if ok else 'NO -- design violated'}")
     man = {"case": a.case, "seed": a.seed, "n_context": a.n_context,
+           "query_index": [int(v) for v in qidx],
            "n_draws": int(t.shape[0]), "n_queries": int(t.shape[1]),
            "true_tau": [float(v) for v in t[0]] if t.size else None,
            "tau_spread": spread, "t_threshold": thr,

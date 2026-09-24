@@ -103,8 +103,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", nargs="+", required=True)
     ap.add_argument("--dataset", required=True)
-    ap.add_argument("--query", type=int, default=0)
-    ap.add_argument("--true-tau", type=float, default=None)
+    ap.add_argument("--query", type=int, nargs="+", default=[0],
+                    help="one or more frozen rows. Each has its OWN true tau and "
+                         "its own coverage; the reported figure pools them, which "
+                         "is the mean of several single-estimand coverages and not "
+                         "the same thing as coverage averaged over random queries")
+    ap.add_argument("--true-tau", type=float, default=None,
+                    help="only valid with a single --query; otherwise the truths "
+                         "come from --data-cell")
     ap.add_argument("--data-cell", default=None,
                     help="read the true tau from this cell instead of --true-tau")
     ap.add_argument("--label", default="")
@@ -114,11 +120,18 @@ def main():
                     help="parallel worker processes (default: $SLURM_CPUS_PER_TASK)")
     a = ap.parse_args()
 
-    tt = a.true_tau
-    if tt is None and a.data_cell:
-        tt = true_tau_from(a.data_cell, a.query)
-    if tt is None or not np.isfinite(tt):
+    if a.true_tau is not None and len(a.query) > 1:
+        sys.exit("--true-tau takes one value; use --data-cell for several queries")
+    if a.true_tau is not None:
+        truths = {a.query[0]: float(a.true_tau)}
+    elif a.data_cell:
+        truths = {q: true_tau_from(a.data_cell, q) for q in a.query}
+    else:
         sys.exit("need --true-tau or a --data-cell containing it")
+    bad = [q for q, v in truths.items() if v is None or not np.isfinite(v)]
+    if bad:
+        sys.exit(f"no true tau for quer{'y' if len(bad) == 1 else 'ies'} {bad}")
+    tt = truths[a.query[0]]      # for the header when there is only one
 
     def _rootname(root):
         _LAYOUT = ("cs", "rc")
@@ -131,9 +144,9 @@ def main():
 
     nw = max(1, int(a.workers))
     ex = ProcessPoolExecutor(max_workers=nw) if nw > 1 else None
-    def read_all(files):
-        it = (ex.map(_one_file, [(f, a.query) for f in files], chunksize=8) if ex
-              else map(_one_file, [(f, a.query) for f in files]))
+    def read_all(files, q):
+        it = (ex.map(_one_file, [(f, q) for f in files], chunksize=8) if ex
+              else map(_one_file, [(f, q) for f in files]))
         return [r for r in it if r is not None]
 
     rows = []
@@ -145,14 +158,37 @@ def main():
         rname = _rootname(root)
         for label, subdir, d in found:
             fs = _files_in(d)
-            print(f"[{_rootname(root)}/{label}] {len(fs)} replicate(s)",
+            print(f"[{_rootname(root)}/{label}] {len(fs)} replicate(s) x "
+                  f"{len(a.query)} quer{'y' if len(a.query) == 1 else 'ies'}",
                   file=sys.stderr, flush=True)
-            got = read_all(fs)
-            if not got:
+            # Every query is its own fixed estimand with its own truth, so each is
+            # scored separately and the indicators are concatenated. Pooling the
+            # ESTIMATES instead would average unrelated numbers.
+            E, RAW, VO, V1, CP, TA = ([] for _ in range(6))
+            HIT_O, HIT_1, W_O, W_1 = ([] for _ in range(4))
+            for q in a.query:
+                got = read_all(fs, q)
+                if not got:
+                    continue
+                eq = np.asarray([g[0] for g in got])
+                voq = np.asarray([g[1] for g in got])
+                v1q = np.asarray([g[2] for g in got])
+                tq = truths[q]
+                for v, hit, wid in ((voq, HIT_O, W_O), (v1q, HIT_1, W_1)):
+                    h = Z * np.sqrt(np.maximum(v, 0.0))
+                    hit.append((eq - h <= tq) & (tq <= eq + h))
+                    wid.append(2 * h)
+                E.append(eq - tq)          # centred, so several queries pool
+                RAW.append(eq)             # uncentred, for the density check
+                VO.append(voq); V1.append(v1q)
+                CP.append(np.asarray([g[3] for g in got]))
+                TA.append(np.asarray([g[4] for g in got]))
+            if not E:
                 continue
-            e = np.asarray([g[0] for g in got])
-            vo = np.asarray([g[1] for g in got])
-            v1 = np.asarray([g[2] for g in got])
+            e = np.concatenate(E)          # now a BIAS series, not an estimate
+            eraw = np.concatenate(RAW)     # the estimates themselves
+            vo = np.concatenate(VO); v1 = np.concatenate(V1)
+            cp = np.concatenate(CP); ta = np.concatenate(TA)
             # The harness also dumps its OWN point estimate. mean(Y1)-mean(Y0)
             # under the dumped density should reproduce it; where it does not, the
             # density (or this reader's un-scaling of it) is wrong and every
@@ -160,10 +196,9 @@ def main():
             # exactly this via density_scale_r2, but that gate is a regression
             # ACROSS queries and is NaN at SCM_N_QUERY=1 -- i.e. unavailable for
             # every fixed-query run -- so check it directly, per replicate.
-            cp = np.asarray([g[3] for g in got])
-            ta = np.asarray([g[4] for g in got])
             ok = np.isfinite(cp)
-            dmax = float(np.abs(e[ok] - cp[ok]).max()) if ok.any() else float("nan")
+            dmax = (float(np.abs(eraw[ok] - cp[ok]).max()) if ok.any()
+                    else float("nan"))
             cpm = float(cp[ok].mean()) if ok.any() else float("nan")
             # The dump's OWN true effect. It should BE the estimand under test; if
             # it is not, the harness scored a different target (or averaged over
@@ -175,18 +210,26 @@ def main():
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
             name = (rname + suf) if use_root else label
-            def cov(v):
-                h = Z * np.sqrt(np.maximum(v, 0.0))
-                return float(np.mean((e - h <= tt) & (tt <= e + h))), float(np.mean(2 * h))
-            c_o, w_o = cov(vo)
-            c_1, w_1 = cov(v1)
-            rows.append((name, e.size, float(e.mean()), float(e.mean() - tt),
+            c_o = float(np.concatenate(HIT_O).mean())
+            w_o = float(np.concatenate(W_O).mean())
+            c_1 = float(np.concatenate(HIT_1).mean())
+            w_1 = float(np.concatenate(W_1).mean())
+            rows.append((name, e.size, float(e.mean() + tt), float(e.mean()),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
                          c_o, w_o, c_1, w_1, cpm, tam, dmax))
 
     ttl = f"  ({a.label})" if a.label else ""
-    L = [f"## Fixed-query CI coverage — {a.dataset}, query {a.query}{ttl}", "",
-         f"true tau = {tt:.10f}", "",
+    qs = ",".join(str(q) for q in a.query)
+    if len(a.query) == 1:
+        tline = f"true tau = {tt:.10f}"
+    else:
+        vals = ", ".join(f"{q}:{truths[q]:+.4f}" for q in a.query)
+        tline = (f"{len(a.query)} frozen queries, each its own estimand — {vals}."
+                 f" 'mean est' and 'bias' are relative to each query's own truth,"
+                 f" so only bias is meaningful across queries.")
+    L = [f"## Fixed-query CI coverage — {a.dataset}, quer"
+         f"{'y' if len(a.query) == 1 else 'ies'} {qs}{ttl}", "",
+         tline, "",
          "| model | datasets | mean est | bias | sd(est) | cover v(x) | mean width "
          "| cover rho=1 | mean width rho=1 | dumped est | dumped true "
          "| max|density-dumped| |", "|" + "---|" * 12]
