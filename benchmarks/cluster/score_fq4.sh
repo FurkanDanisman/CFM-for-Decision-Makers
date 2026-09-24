@@ -87,15 +87,64 @@ if [ -z "$PFT" ] && [ ! -d "$CELL" ]; then
 fi
 echo "== $TAG: ${#ROOTS[@]} model root(s), queries $QLIST"
 
-# ---- 1. the two moment-based columns (one pass, all models, all queries) -----
-python "$REPO/benchmarks/fixedq_ci_coverage.py" \
-    --root "${ROOTS[@]}" --dataset "$DSET" --query $QLIST \
-    ${PFT:-} ${PFT:+ } $([ -z "$PFT" ] && echo "--data-cell $CELL") \
-    --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
-    --json-out "$OUT_DIR/${TAG}_vx.json" \
-    --out "$OUT_DIR/${TAG}_vx.md" >/dev/null || {
-        echo "FATAL: fixedq_ci_coverage failed" >&2; exit 1; }
-echo "  vx    -> $OUT_DIR/${TAG}_vx.md"
+# ---- 1. the two moment-based columns, CACHED PER MODEL ----------------------
+# One invocation per model root, not one over all of them. Models are independent --
+# scoring graph2d has nothing to do with scoring dopfn_bb -- so when the three slow
+# harnesses finish a cell hours after the other ten, re-scoring should cost three
+# models, not thirteen. Each part is kept and reused; only missing ones are computed.
+#
+# Delete a part file to force that model to be re-scored.
+model_of() {   # model_of <root>
+    if [ -n "$PFT" ]; then basename "$(dirname "$1")"
+    else basename "$(dirname "$(dirname "$(dirname "$1")")")"; fi
+}
+
+vx_parts=(); n_new=0; n_cached=0
+for r in "${ROOTS[@]}"; do
+    mdl=$(model_of "$r")
+    part="$OUT_DIR/.${TAG}_vx_${mdl}.md"
+    if [ -s "$part" ]; then
+        vx_parts+=("$part"); n_cached=$((n_cached+1)); continue
+    fi
+    if python "$REPO/benchmarks/fixedq_ci_coverage.py" \
+        --root "$r" --dataset "$DSET" --query $QLIST \
+        ${PFT:-} $([ -z "$PFT" ] && echo "--data-cell $CELL") \
+        --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
+        --json-out "$OUT_DIR/.${TAG}_vx_${mdl}.json" \
+        --out "$part" >/dev/null 2>&1
+    then
+        vx_parts+=("$part"); n_new=$((n_new+1))
+    else
+        echo "  [vx] $mdl FAILED" >&2
+    fi
+done
+[ "${#vx_parts[@]}" -gt 0 ] || { echo "FATAL: no vx parts for $TAG" >&2; exit 1; }
+OUT="$OUT_DIR/${TAG}_vx.md" python - "${vx_parts[@]}" <<'PYVX'
+import os, sys
+# One header, then every data row. Each part is a single-model table from the same
+# writer, so the columns line up by construction.
+out, hdr, rows = os.environ["OUT"], None, []
+for path in sys.argv[1:]:
+    seen = False
+    for ln in open(path):
+        if not ln.lstrip().startswith("|"):
+            continue
+        cells = [c.strip().lower() for c in ln.strip().strip("|").split("|")]
+        if not seen:
+            if "model" in cells:
+                seen = True
+                if hdr is None:
+                    hdr = ln.rstrip("\n")
+                continue
+        if set("".join(cells)) <= set("-: "):
+            continue
+        rows.append(ln.rstrip("\n"))
+if hdr is None:
+    raise SystemExit("no header in any vx part")
+n = hdr.count("|") - 1
+open(out, "w").write(hdr + "\n" + "|" + "---|" * n + "\n" + "\n".join(rows) + "\n")
+PYVX
+echo "  vx    -> $OUT_DIR/${TAG}_vx.md ($n_new scored, $n_cached cached)"
 
 # ---- 2. the two credible-interval columns -----------------------------------
 run_dens() {   # run_dens <smoother> <outfile>
@@ -113,6 +162,9 @@ run_dens() {   # run_dens <smoother> <outfile>
             sel=(--root "$r" --dataset "$CASE" --context "$CTX")
         fi
         part="$OUT_DIR/.${TAG}_${sm}_${model}.md"
+        # Cached like the vx parts: a model already scored under this smoother is not
+        # recomputed when a later pass adds other models.
+        if [ -s "$part.r" ]; then parts+=("$part.r"); continue; fi
         local extra=()
         [ "$sm" = malc ] && extra=(--malc-B "$MALC_B" --malc-K "$MALC_K"
                                    --malc-workers "$WORKERS")
