@@ -62,6 +62,28 @@ def _dumped_point(path):
     return ap, ta
 
 
+def _file_truth(path, q):
+    """The dump's OWN true tau for query q, in that file's units.
+
+    ComplexMech squashes the outcome by a scaling refit on each training sample, so
+    its stored truth is in per-replicate units and no single number is the truth for
+    every replicate. But the model's interval is in those same units, so comparing
+    the two inside one file gives the right cover/miss -- coverage is invariant to
+    the affine, even though the number is not. This reads that per-file truth
+    instead of a shared constant.
+
+    WIDTHS still are not comparable across replicates, which is why the caller
+    reports them relative to sd(Y0) as well.
+    """
+    with np.load(path, allow_pickle=True) as z:
+        for k in ("true_cate_per_query", "true_cate", "cate"):
+            if k in z.files:
+                v = np.asarray(z[k], dtype=np.float64).ravel()
+                if q < v.size:
+                    return float(v[q])
+    return float("nan")
+
+
 def _one_file(args):
     """(est, v_own, v_rho1) for one replicate, or None.
 
@@ -70,7 +92,7 @@ def _one_file(args):
     cost is thousands of small reads off shared storage -- latency-bound, which is
     exactly what parallel workers fix.
     """
-    path, q = args
+    path, q, per_file_truth = args
     got = arms_for(path, q)
     if got is None:
         return None
@@ -85,7 +107,8 @@ def _one_file(args):
     return (m1 - m0,
             st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2,
             (s1 - s0) ** 2,
-            cp, ta, s0, s1)
+            cp, ta, s0, s1,
+            _file_truth(path, q) if per_file_truth else float("nan"))
 
 
 def true_tau_from(data_cell, q):
@@ -115,20 +138,30 @@ def main():
                     help="read the true tau from this cell instead of --true-tau")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--per-file-truth", action="store_true",
+                    help="take each replicate's true tau from the dump itself rather "
+                         "than one shared value. Needed for ComplexMech, whose "
+                         "stored truth is in per-replicate units; coverage is still "
+                         "exact because the interval is in those same units, but "
+                         "widths are then only comparable via sd(Y0).")
     ap.add_argument("--workers", type=int,
                     default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1") or 1),
                     help="parallel worker processes (default: $SLURM_CPUS_PER_TASK)")
     a = ap.parse_args()
 
-    if a.true_tau is not None and len(a.query) > 1:
+    if a.per_file_truth:
+        # A nominal value only, for the header: every indicator uses its own file's.
+        truths = {q: 0.0 for q in a.query}
+    elif a.true_tau is not None and len(a.query) > 1:
         sys.exit("--true-tau takes one value; use --data-cell for several queries")
-    if a.true_tau is not None:
+    elif a.true_tau is not None:
         truths = {a.query[0]: float(a.true_tau)}
     elif a.data_cell:
         truths = {q: true_tau_from(a.data_cell, q) for q in a.query}
     else:
         sys.exit("need --true-tau or a --data-cell containing it")
-    bad = [q for q, v in truths.items() if v is None or not np.isfinite(v)]
+    bad = ([] if a.per_file_truth
+           else [q for q, v in truths.items() if v is None or not np.isfinite(v)])
     if bad:
         sys.exit(f"no true tau for quer{'y' if len(bad) == 1 else 'ies'} {bad}")
     tt = truths[a.query[0]]      # for the header when there is only one
@@ -145,8 +178,8 @@ def main():
     nw = max(1, int(a.workers))
     ex = ProcessPoolExecutor(max_workers=nw) if nw > 1 else None
     def read_all(files, q):
-        it = (ex.map(_one_file, [(f, q) for f in files], chunksize=8) if ex
-              else map(_one_file, [(f, q) for f in files]))
+        arg = [(f, q, a.per_file_truth) for f in files]
+        it = (ex.map(_one_file, arg, chunksize=8) if ex else map(_one_file, arg))
         return [r for r in it if r is not None]
 
     rows = []
@@ -173,7 +206,16 @@ def main():
                 eq = np.asarray([g[0] for g in got])
                 voq = np.asarray([g[1] for g in got])
                 v1q = np.asarray([g[2] for g in got])
-                tq = truths[q]
+                # Per file when asked, else the one shared value. Either way tq
+                # lines up elementwise with eq, so the indicator is computed in the
+                # units each estimate actually lives in.
+                tq = (np.asarray([g[7] for g in got]) if a.per_file_truth
+                      else np.full(eq.shape, truths[q], dtype=np.float64))
+                keep = np.isfinite(tq)
+                if not keep.any():
+                    continue
+                eq, voq, v1q, tq = eq[keep], voq[keep], v1q[keep], tq[keep]
+                got = [g for g, k in zip(got, keep) if k]
                 for v, hit, wid in ((voq, HIT_O, W_O), (v1q, HIT_1, W_1)):
                     h = Z * np.sqrt(np.maximum(v, 0.0))
                     hit.append((eq - h <= tq) & (tq <= eq + h))
@@ -224,7 +266,11 @@ def main():
 
     ttl = f"  ({a.label})" if a.label else ""
     qs = ",".join(str(q) for q in a.query)
-    if len(a.query) == 1:
+    if a.per_file_truth:
+        tline = ("Each replicate scored against ITS OWN stored true tau (the "
+                 "benchmark's truth is in per-replicate units). Coverage is exact; "
+                 "widths are comparable only relative to sd(Y0).")
+    elif len(a.query) == 1:
         tline = f"true tau = {tt:.10f}"
     else:
         vals = ", ".join(f"{q}:{truths[q]:+.4f}" for q in a.query)
