@@ -287,12 +287,48 @@ def main():
             name = (rname + suf) if use_root else label
             c_o = float(np.mean(QC_O)); w_o = float(np.mean(QW_O))
             c_1 = float(np.mean(QC_1)); w_1 = float(np.mean(QW_1))
+
+            # MONTE CARLO SE. The R x n indicator matrix has one row per resampled
+            # dataset and one column per query. Coverage at a query is its column
+            # mean, and its SE is the binomial sqrt(c(1-c)/R) -- valid because the
+            # datasets are independent draws.
+            #
+            # The SE of the TOTAL is NOT sqrt(c(1-c)/(n*R)): within one dataset every
+            # query is scored from the same fitted density, so those n indicators
+            # succeed or fail together and are not independent. That form would
+            # understate the SE by roughly sqrt(n). The independent unit is the
+            # DATASET, so each row collapses to its own mean A_r and the ordinary
+            # SE s_A/sqrt(R) over those R values applies.
+            def _mc_se(hits):
+                # hits: list of per-query boolean arrays over replicates, same order
+                ns = {h.size for h in hits}
+                if len(ns) != 1 or hits[0].size < 2:
+                    return float("nan"), []      # ragged: no common row to average
+                I = np.stack(hits, axis=1)       # (R, n_queries)
+                A = I.mean(axis=1)               # per-dataset average coverage
+                R = A.size
+                return float(A.std(ddof=1) / np.sqrt(R)), [float(v) for v in A]
+
+            se_o, A_o = _mc_se(HIT_O)
+            se_1, A_1 = _mc_se(HIT_1)
+            R_eff = len(A_o)
             per_query = {"n_queries": len(QC_O), "replicates_per_query": QN,
                          "cover_vx": QC_O, "width_vx": QW_O,
-                         "cover_rho1": QC_1, "width_rho1": QW_1}
+                         "cover_rho1": QC_1, "width_rho1": QW_1,
+                         # binomial SE per query, from that query's own R
+                         "se_vx_per_query": [
+                             float(np.sqrt(c * (1 - c) / n)) if n else float("nan")
+                             for c, n in zip(QC_O, QN)],
+                         "se_rho1_per_query": [
+                             float(np.sqrt(c * (1 - c) / n)) if n else float("nan")
+                             for c, n in zip(QC_1, QN)],
+                         "R": R_eff,
+                         "per_dataset_mean_vx": A_o, "per_dataset_mean_rho1": A_1,
+                         "se_total_vx": se_o, "se_total_rho1": se_1}
             rows.append((name, e.size, float(e.mean() + tt), float(e.mean()),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
-                         c_o, w_o, c_1, w_1, cpm, tam, dmax, sd0, sd1))
+                         c_o, w_o, c_1, w_1, cpm, tam, dmax, sd0, sd1,
+                         se_o, se_1))
             detail[name] = per_query
 
     ttl = f"  ({a.label})" if a.label else ""
@@ -312,13 +348,19 @@ def main():
          f"{'y' if len(a.query) == 1 else 'ies'} {qs}{ttl}", "",
          tline, "",
          "| model | datasets | mean est | bias | sd(est) | cover v(x) | mean width "
-         "| cover rho=1 | mean width rho=1 | sd(Y0) | sd(Y1) | dumped est "
-         "| dumped true | max|density-dumped| |", "|" + "---|" * 14]
-    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, tam, dmax, sd0, sd1 in sorted(
-            rows, key=lambda r: abs(r[3])):
+         "| cover rho=1 | SE | mean width rho=1 | sd(Y0) | sd(Y1) | dumped est "
+         "| dumped true | max|density-dumped| |", "|" + "---|" * 16]
+    L[-2] = L[-2].replace("| cover v(x) | mean width ",
+                          "| cover v(x) | SE | mean width ")
+    for (nm, n, m, b, sdv, co, wo, c1, w1, cpm, tam, dmax, sd0, sd1,
+         se_o, se_1) in sorted(rows, key=lambda r: abs(r[3])):
         L.append(f"| {nm} | {n} | {m:+.4f} | {b:+.4f} | "
                  + (f"{sdv:.4f}" if np.isfinite(sdv) else "—")
-                 + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} "
+                 + f" | {co:.3f} | "
+                 + (f"{se_o:.4f}" if np.isfinite(se_o) else "—")
+                 + f" | {wo:.4f} | {c1:.3f} | "
+                 + (f"{se_1:.4f}" if np.isfinite(se_1) else "—")
+                 + f" | {w1:.4f} "
                  + f"| {sd0:.4f} | {sd1:.4f} | "
                  + (f"{cpm:+.4f}" if np.isfinite(cpm) else "—") + " | "
                  + (f"{tam:+.4f}" if np.isfinite(tam) else "—") + " | "
@@ -327,6 +369,12 @@ def main():
           "Coverage is over RESAMPLED OBSERVATIONAL DATASETS with the query unit",
           "held fixed, so it is the frequentist coverage of one estimand, not an",
           "average over queries and DGP draws like the main tables.",
+          "",
+          "SE is the Monte Carlo standard error of the total, computed as s_A/sqrt(R)",
+          "over the per-DATASET average coverages A_r. Not sqrt(c(1-c)/(n*R)): within",
+          "one dataset every query is scored from the same fitted density, so those n",
+          "indicators are not independent and that form understates the SE by about",
+          "sqrt(n). Per-query binomial SEs are in the --json-out.",
           "",
           "Each figure is an AVERAGE OF AVERAGES: every query's coverage over its own",
           "replicates, then the unweighted mean over queries. Pooling the indicators",
