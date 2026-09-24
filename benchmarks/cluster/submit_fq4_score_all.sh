@@ -17,6 +17,11 @@ CK="${CK:-$REPO/Required_checkpoints}"; UWYKD="${UWYK_CKPT_DIR:-/nonexistent}"
 source "$REPO/benchmarks/cluster/fq_models.sh"
 ACCT="${ACCOUNT:-def-rgrosse}"; ONLY="${ONLY:-}"
 TIME="${SCORE_TIME:-6:00:00}"
+# 13 jobs x 16 CPUs is 208 cores per benchmark, which queues. Fewer CPUs per job means
+# slower MALC within a job (it is what --malc-workers gets) but the jobs start sooner,
+# and 13 jobs starting at 8 cores beats 13 jobs waiting at 16.
+CPUS="${SCORE_CPUS:-16}"
+MEM="${SCORE_MEM:-48G}"
 mkdir -p "$KIT/logs_fq"
 N=0
 for r in "${ROWS[@]}"; do
@@ -25,6 +30,7 @@ for r in "${ROWS[@]}"; do
     N=$((N+1))
     if [ "$SUBMIT" = 1 ]; then
         jid=$(MODEL="$m" sbatch --parsable --account="$ACCT" --time="$TIME" \
+              --cpus-per-task="$CPUS" --mem="$MEM" \
               --job-name="fq4s-$m" \
               "$REPO/benchmarks/cluster/submit_fq4_score_model.sbatch") || jid=REJECTED
         printf '  score %-24s %s\n' "$m" "$jid"
@@ -33,5 +39,5 @@ for r in "${ROWS[@]}"; do
     fi
 done
 echo
-echo "JOBS: $N   mode=${MODE:-cs}  B=${MALC_B:-1000}"
+echo "JOBS: $N   mode=${MODE:-cs}  B=${MALC_B:-1000}  cpus=$CPUS mem=$MEM"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"
