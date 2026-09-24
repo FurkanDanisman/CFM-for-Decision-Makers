@@ -35,13 +35,18 @@ done
 NCS=${#CS_PATHS[@]}
 NCM=${#CM_PATHS[@]}
 
-count_cells() {   # count_cells <model> <cell paths...>
-    local m="$1"; shift
+count_cells() {   # count_cells <dumps root> <model> <cell paths...>
+    local base="$1" m="$2"; shift 2
     local paths=()
     for c in "$@"; do paths+=("$c/$m"); done
+    # Group by the CELL directory, which is the path component immediately after the
+    # dumps root. Grouping on $(NF-1) instead picks the dataset directory, which is the
+    # SAME name in every cell -- they all collided into one bucket and the count came
+    # out as 1 no matter how many cells were done.
     find "${paths[@]}" -name '*.npz' ! -name 'summary.npz' 2>/dev/null \
-      | awk -F/ -v d="$DRAWS" '{ n[$(NF-1)]++ } END { c=0
-            for (k in n) if (n[k] >= d) c++; print c+0 }'
+      | awk -F/ -v d="$DRAWS" -v b="$base" '
+          { for (i = 1; i <= NF; i++) if ($i == b) { n[$(i+1)]++; break } }
+          END { c = 0; for (k in n) if (n[k] >= d) c++; print c+0 }'
 }
 
 echo "=== queue ==="
@@ -54,8 +59,8 @@ for r in "${ROWS[@]}"; do
     # Count CELLS with at least DRAWS replicates, not files/DRAWS: cells inherited
     # from the earlier run hold 100 replicates, so dividing total files by 30 counted a
     # finished cell as 3.3 and reported 150/45. Group by cell directory instead.
-    a=$(count_cells "$m" "${CS_PATHS[@]}")
-    b=$(count_cells "$m" "${CM_PATHS[@]}")
+    a=$(count_cells "$(basename "$OUT4")" "$m" "${CS_PATHS[@]}")
+    b=$(count_cells "$(basename "$CMFQ_DUMPS")" "$m" "${CM_PATHS[@]}")
     printf '%-22s %-14s %-14s\n' "$m" "$a/$NCS" "$b/$NCM"
 done
 echo
