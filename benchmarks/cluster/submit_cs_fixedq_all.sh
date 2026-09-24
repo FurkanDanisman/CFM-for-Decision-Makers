@@ -31,6 +31,10 @@ GRES="${GRES:-none}"; CPUS="${CPUS:-8}"; MEM="${MEM:-32G}"
 # roughly 8-10x that. Overridable rather than raised for everyone, since the fast
 # models finish in minutes and a long request only costs them queue priority.
 TIME="${TIME:-}"
+# DEP=<jobid> holds every dump until that job succeeds, so a fresh replicate root
+# and the 13 dumps that read it can be submitted in one go rather than the user
+# sitting at a terminal to fire the second half by hand.
+DEP="${DEP:-}"
 SB="$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
 
 # name | harness | extra env (space-separated VAR=VAL)
@@ -74,13 +78,13 @@ for row in "${ROWS[@]}"; do
             CTX="$CTX" NQ="$NQ" DATA="$DATA" CASES_OVERRIDE="$CASE" \
             OUT_ROOT="$OUT_PARENT/$name" \
             sbatch --array=0 --gres="$GRES" --cpus-per-task="$CPUS" --mem="$MEM" \
-                   ${TIME:+--time=$TIME} \
+                   ${TIME:+--time=$TIME} ${DEP:+--dependency=afterok:$DEP} \
                    ${ACCT:+--account=$ACCT} --job-name="fq-$name" "$SB"
     else
         printf '%-22s harness=%-14s %s\n' "$name" "$harness" "${extra:-<defaults>}"
     fi
 done
 echo
-echo "jobs: $N   gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}"
+echo "jobs: $N   gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}${DEP:+ dep=afterok:$DEP}"
 echo "out:  $OUT_PARENT/<model>/shift0/d0/ctx$CTX/<harness>/$CASE"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"
