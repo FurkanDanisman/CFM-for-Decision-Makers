@@ -34,7 +34,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
-from cate_density_metrics import METHODS, _resolve_dir, _bin_width  # noqa: E402
+from cate_density_metrics import (METHODS, _resolve_dir, _bin_width,  # noqa: E402
+                                  tau_atoms, tau_pmf_comonotonic)
 
 
 def _files_in(cell_dir):
@@ -65,6 +66,33 @@ def _affine(z, arm):
             return (float(np.asarray(z[k_m]).reshape(-1)[0]),
                     float(np.asarray(z[k_s]).reshape(-1)[0]))
     return 0.0, float(np.asarray(z["y_scale"]).reshape(-1)[0]) if "y_scale" in z.files else 1.0
+
+
+def _comonotonic_var(p0, p1, J, bin_w, scale):
+    """Var(tau) under the comonotonic coupling, in raw units.
+
+    (s1 - s0)^2 is what the identity gives at rho = 1, but rho = 1 is only
+    ATTAINABLE when the two marginals are linked by an increasing affine map.
+    Pairing the quantiles gives the narrowest tau actually consistent with these
+    marginals, so this is >= (s1 - s0)^2 and is the real floor a 1D head faces.
+    """
+    p0 = np.asarray(p0, dtype=np.float64).ravel()
+    p1 = np.asarray(p1, dtype=np.float64).ravel()
+    s0, s1 = p0.sum(), p1.sum()
+    if not (np.isfinite(s0) and np.isfinite(s1)) or s0 <= 0 or s1 <= 0:
+        return float("nan")
+    try:
+        pmf = tau_pmf_comonotonic(p0 / s0, p1 / s1, J)
+    except Exception:
+        return float("nan")
+    atoms = tau_atoms(J, bin_w) * scale
+    pmf = np.asarray(pmf, dtype=np.float64).ravel()
+    t = pmf.sum()
+    if atoms.size != pmf.size or not np.isfinite(t) or t <= 0:
+        return float("nan")
+    pmf = pmf / t
+    m = float(np.sum(pmf * atoms))
+    return float(np.sum(pmf * (atoms - m) ** 2))
 
 
 def _moments(p, centers):
@@ -99,7 +127,9 @@ def arms_for(path, q):
             mt = float((pj * d).sum())
             st = float(np.sqrt(max((pj * (d - mt) ** 2).sum(), 0.0)))
             a0, b0 = _affine(z, 0)
-            return (m0s * b0 + a0, s0s * b0, m1s * b0 + a0, s1s * b0, st * b0)
+            vco = _comonotonic_var(p0, p1, J, _bin_width(z, J), b0)
+            return (m0s * b0 + a0, s0s * b0, m1s * b0 + a0, s1s * b0,
+                    st * b0, vco)
         if "p_y0_scaled" in keys and "p_y1_scaled" in keys:
             P0 = np.asarray(z["p_y0_scaled"], dtype=np.float64)
             P1 = np.asarray(z["p_y1_scaled"], dtype=np.float64)
@@ -111,8 +141,14 @@ def arms_for(path, q):
             a1, b1 = _affine(z, 1)
             m0s, s0s = _moments(P0[q], c)
             m1s, s1s = _moments(P1[q], c)
+            # Comonotonic needs both arms on ONE grid; only meaningful when the
+            # two affine maps agree, which is the case the dumps assert for the
+            # pooled scaling. Otherwise leave it blank rather than mis-scale.
+            vco = (_comonotonic_var(P0[q], P1[q], J, _bin_width(z, J), b0)
+                   if (np.isclose(a0, a1) and np.isclose(b0, b1)) else float("nan"))
             # A 1D head dumps no joint, so it has no coupling of its own.
-            return (m0s * b0 + a0, s0s * b0, m1s * b1 + a1, s1s * b1, float("nan"))
+            return (m0s * b0 + a0, s0s * b0, m1s * b1 + a1, s1s * b1,
+                    float("nan"), vco)
     return None
 
 
@@ -131,8 +167,9 @@ def main():
 
     L = [f"## Per-arm predictive spread — {a.dataset}, "
          f"realization {a.realization}, query {a.query}", "",
-         "| model | mean(Y0) | sd(Y0) | mean(Y1) | sd(Y1) | sd(tau) head "
-         "| sd(tau) indep | rho implied | v(x) | from |", "|" + "---|" * 10]
+         "| model | mean(tau) | mean(Y0) | sd(Y0) | mean(Y1) | sd(Y1) "
+         "| rho implied | v(x) | from | v rho=0 | v rho=1 | v comonotonic |",
+         "|" + "---|" * 12]
     seen, rows_out = 0, []
 
     def _rootname(root):
@@ -174,7 +211,7 @@ def main():
             else:
                 name = label
             rows_out.append((name, *got))
-    for name, m0, s0, m1, s1, st in rows_out:
+    for name, m0, s0, m1, s1, st, vco in rows_out:
         si = float(np.sqrt(s0 ** 2 + s1 ** 2))          # rho = 0
         rho = ((s0 ** 2 + s1 ** 2 - st ** 2) / (2 * s0 * s1)
                if np.isfinite(st) and s0 > 0 and s1 > 0 else float("nan"))
@@ -185,8 +222,12 @@ def main():
         # because the two are not the same estimand-under-assumption.
         vx, src = ((st ** 2, "joint") if np.isfinite(st)
                    else (si ** 2, "rho=0"))
-        L.append(f"| {name} | {f(m0)} | {f(s0)} | {f(m1)} | {f(s1)} | "
-                 f"{f(st)} | {f(si)} | {f(rho)} | {f(vx)} | {src} |")
+        v0_ = s0 ** 2 + s1 ** 2                 # rho = 0
+        v1_ = (s1 - s0) ** 2                    # rho = 1, from the identity
+        g = lambda v: "—" if not np.isfinite(v) else f"{v:.6f}"
+        L.append(f"| {name} | {f(m1 - m0)} | {f(m0)} | {f(s0)} | {f(m1)} | "
+                 f"{f(s1)} | {f(rho)} | {g(vx)} | {src} | {g(v0_)} | "
+                 f"{g(v1_)} | {g(vco)} |")
         seen += 1
     L += ["",
           "sd is of the model's PREDICTIVE distribution for that arm, in raw",
@@ -199,6 +240,13 @@ def main():
           "taken from the head's joint where there is one and from rho = 0",
           "otherwise -- the `from` column records which, since a 1D head's v(x) is",
           "a value under an ASSUMPTION, not an estimate of the dependence.",
+          "",
+          "v rho=0 = s0^2 + s1^2 and v rho=1 = (s1 - s0)^2 are the identity",
+          "evaluated at the two extremes, so they bracket v(x) for ANY coupling",
+          "of these marginals. v comonotonic is the narrowest tau ACTUALLY",
+          "attainable by pairing the quantiles: rho = 1 needs the marginals to be",
+          "linked by an increasing affine map, so v comonotonic >= v rho=1 in",
+          "general and equals it only when they are.",
           "",
           "On the CASE STUDIES the true v(x) is 0: the generator adds one shared",
           "noise draw to both arms, so Y^do(1) - Y^do(0) = mu_1 - mu_0 exactly and",
