@@ -24,15 +24,17 @@ ACCT="${ACCOUNT:-}"; ONLY="${ONLY:-}"; BENCH="${BENCH:-all}"
 DATA_CS="${DATA_CS:-$SC/cs_dvar_data}"
 # All three dump sbatches hardcode '#SBATCH --gres=gpu:1', which nibi rejects
 # ("submitted a GPU job without specifying a GPU type"). CUDA_VISIBLE_DEVICES=
-# does not help: the directive is inside the file, so the type must be supplied
+# does not help: the directive is inside the file, so the gres must be overridden
 # on the sbatch COMMAND LINE.
 #
-# These are the same dumps the original 13-model results came from, and those
-# ran on GPU. On CPU uwyk1d measures ~320 s/dataset, so 100 realizations x 5
-# datasets is ~9 h against the sbatch's 3 h limit -- it would time out. Hence
-# GPU by default. GRES=none TIME=24:00:00 switches to CPU if a GPU is scarce.
-GRES="${GRES:-gpu:h100:1}"
-CPUS="${CPUS:-4}"; MEM="${MEM:-32G}"; TIME="${TIME:-}"
+# Default is CPU. The sbatch files ask for 3 h, which was sized for the GPU runs;
+# on CPU uwyk1d measures ~320 s/dataset, so one RealCause task (100 realizations)
+# is hours, not minutes. Hence TIME=24:00:00 and 16 cores by default -- a job
+# that dies at the 3 h wall leaves a half-written dump tree behind.
+#
+# On killarney instead: GRES=gpu:l40s:1 CPUS=4 MEM=32G TIME=03:00:00.
+GRES="${GRES:-none}"
+CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-24:00:00}"
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
 CMECH_DATA="${CMECH_DATA:-$SC/cmech_data_rho99}"
 
