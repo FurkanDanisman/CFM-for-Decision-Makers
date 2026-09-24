@@ -138,6 +138,11 @@ def main():
                     help="read the true tau from this cell instead of --true-tau")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--json-out", default=None,
+                    help="write the per-model, per-query coverages here. This is "
+                         "what an across-realization aggregator consumes; re-deriving "
+                         "them from the markdown would lose the per-query detail the "
+                         "average-of-average needs.")
     ap.add_argument("--per-file-truth", action="store_true",
                     help="take each replicate's true tau from the dump itself rather "
                          "than one shared value. Needed for ComplexMech, whose "
@@ -189,6 +194,7 @@ def main():
         return [r for r in it if r is not None]
 
     rows = []
+    detail = {}
     for root in a.root:
         found = [(lab, sd, d) for lab, sd, _t in METHODS
                  for d in [_resolve_dir(root, sd, a.dataset)]
@@ -205,6 +211,11 @@ def main():
             # ESTIMATES instead would average unrelated numbers.
             E, RAW, VO, V1, CP, TA, S0, S1 = ([] for _ in range(8))
             HIT_O, HIT_1, W_O, W_1 = ([] for _ in range(4))
+            # AVERAGE OF AVERAGES: each query's own coverage over its replicates,
+            # then the unweighted mean over queries. Concatenating the indicators
+            # instead weights a query with more completed replicates more heavily,
+            # which silently changes the estimand whenever a dump is short.
+            QC_O, QC_1, QW_O, QW_1, QN = ([] for _ in range(5))
             for q in a.query:
                 got = read_all(fs, q)
                 if not got:
@@ -222,10 +233,15 @@ def main():
                     continue
                 eq, voq, v1q, tq = eq[keep], voq[keep], v1q[keep], tq[keep]
                 got = [g for g, k in zip(got, keep) if k]
-                for v, hit, wid in ((voq, HIT_O, W_O), (v1q, HIT_1, W_1)):
+                for v, hit, wid, qc, qw in ((voq, HIT_O, W_O, QC_O, QW_O),
+                                            (v1q, HIT_1, W_1, QC_1, QW_1)):
                     h = Z * np.sqrt(np.maximum(v, 0.0))
-                    hit.append((eq - h <= tq) & (tq <= eq + h))
+                    ind = (eq - h <= tq) & (tq <= eq + h)
+                    hit.append(ind)
                     wid.append(2 * h)
+                    qc.append(float(ind.mean()))        # this query's coverage
+                    qw.append(float((2 * h).mean()))
+                QN.append(int(eq.size))
                 E.append(eq - tq)          # centred, so several queries pool
                 RAW.append(eq)             # uncentred, for the density check
                 VO.append(voq); V1.append(v1q)
@@ -269,13 +285,15 @@ def main():
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
             name = (rname + suf) if use_root else label
-            c_o = float(np.concatenate(HIT_O).mean())
-            w_o = float(np.concatenate(W_O).mean())
-            c_1 = float(np.concatenate(HIT_1).mean())
-            w_1 = float(np.concatenate(W_1).mean())
+            c_o = float(np.mean(QC_O)); w_o = float(np.mean(QW_O))
+            c_1 = float(np.mean(QC_1)); w_1 = float(np.mean(QW_1))
+            per_query = {"n_queries": len(QC_O), "replicates_per_query": QN,
+                         "cover_vx": QC_O, "width_vx": QW_O,
+                         "cover_rho1": QC_1, "width_rho1": QW_1}
             rows.append((name, e.size, float(e.mean() + tt), float(e.mean()),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
                          c_o, w_o, c_1, w_1, cpm, tam, dmax, sd0, sd1))
+            detail[name] = per_query
 
     ttl = f"  ({a.label})" if a.label else ""
     qs = ",".join(str(q) for q in a.query)
@@ -309,6 +327,11 @@ def main():
           "Coverage is over RESAMPLED OBSERVATIONAL DATASETS with the query unit",
           "held fixed, so it is the frequentist coverage of one estimand, not an",
           "average over queries and DGP draws like the main tables.",
+          "",
+          "Each figure is an AVERAGE OF AVERAGES: every query's coverage over its own",
+          "replicates, then the unweighted mean over queries. Pooling the indicators",
+          "would weight a query with more completed replicates more heavily, which",
+          "changes the quantity whenever a dump is short.",
           "",
           "bias = mean(est) - true tau;  sd(est) is the sampling spread of the",
           "point estimate across datasets. A model can miss by being mis-centred",
@@ -348,6 +371,13 @@ def main():
     if a.out:
         open(a.out, "w").write(txt + "\n")
         print(f"\nwrote {a.out}")
+    if a.json_out:
+        import json
+        with open(a.json_out, "w") as fh:
+            json.dump({"dataset": a.dataset, "query": list(a.query),
+                       "label": a.label, "per_file_truth": bool(a.per_file_truth),
+                       "models": detail}, fh, indent=2)
+        print(f"wrote {a.json_out}")
     return 0
 
 

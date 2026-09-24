@@ -57,6 +57,7 @@ python "$REPO/benchmarks/fixedq_ci_coverage.py" \
     --root "${ROOTS[@]}" --dataset "$CASE" --query $QLIST \
     --data-cell "$CELL" \
     --workers "$WORKERS" --label "$TAG" \
+    --json-out "$OUT_DIR/${TAG}_vx.json" \
     --out "$OUT_DIR/${TAG}_vx.md" >/dev/null || {
         echo "FATAL: fixedq_ci_coverage failed" >&2; exit 1; }
 echo "  vx    -> $OUT_DIR/${TAG}_vx.md"
@@ -143,4 +144,5 @@ fi
 python "$REPO/benchmarks/fq4_table.py" \
     --vx "$OUT_DIR/${TAG}_vx.md" \
     --bayes "$OUT_DIR/${TAG}_raw.md" "${MALC_ARG[@]}" \
-    --label "$TAG" --out "$OUT_DIR/${TAG}_four.md"
+    --label "$TAG" --out "$OUT_DIR/${TAG}_four.md" \
+    --json-out "$OUT_DIR/${TAG}_four.json"

@@ -89,6 +89,9 @@ def main():
                     help="cate_density_metrics.py markdown, --tau-smoother malc")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--json-out", default=None,
+                    help="machine-readable copy of this cell's row values, for the "
+                         "across-realization aggregator to average")
     a = ap.parse_args()
 
     vx, _ = parse_md(a.vx, ["cover v(x)"], "vx")
@@ -156,6 +159,19 @@ def main():
           "held fixed, pooled over those rows. Each is its own fixed estimand, so",
           "this is a mean of single-estimand coverages, NOT coverage averaged over",
           "random queries as the main tables report."]
+    if a.json_out:
+        import json
+        with open(a.json_out, "w") as fh:
+            json.dump({"label": a.label,
+                       "models": {m: {"datasets": nd.get(m), "sd_y0": s0.get(m),
+                                      "sd_y1": s1.get(m),
+                                      "cover_vx": vx.get(m), "len_vx": wvx.get(m),
+                                      "cover_rho1": r1.get(m), "len_rho1": wr1.get(m),
+                                      "bayesian": bay.get(m), "len_bayesian": bayl.get(m),
+                                      "bayesian_malc": mal.get(m),
+                                      "len_bayesian_malc": mall.get(m)}
+                                  for m in models}}, fh, indent=2)
+        print(f"wrote {a.json_out}")
     txt = "\n".join(L)
     print(txt)
     if a.out:
