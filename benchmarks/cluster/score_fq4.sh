@@ -161,7 +161,9 @@ run_dens() {   # run_dens <smoother> <outfile>
             model=$(basename "$(dirname "$(dirname "$(dirname "$r")")")")
             sel=(--root "$r" --dataset "$CASE" --context "$CTX")
         fi
-        part="$OUT_DIR/.${TAG}_${sm}_${model}.md"
+        local tag_sm="$sm"
+        [ "$sm" = malc ] && tag_sm="malc${MALC_B}"
+        part="$OUT_DIR/.${TAG}_${tag_sm}_${model}.md"
         # Cached like the vx parts: a model already scored under this smoother is not
         # recomputed when a later pass adds other models.
         if [ -s "$part.r" ]; then parts+=("$part.r"); continue; fi

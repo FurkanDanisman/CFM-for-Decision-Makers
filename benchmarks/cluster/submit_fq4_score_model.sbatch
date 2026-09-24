@@ -90,7 +90,10 @@ for u in "${UNITS[@]}"; do
   # --- density parts, raw then malc ---
   for sm in none malc; do
     [ "$sm" = malc ] && [ "${SKIP_MALC:-0}" = 1 ] && continue
-    DP="$OUT_DIR/.${TAG}_${sm}_${MODEL}.md"
+    # B in the NAME: a MALC part cached at B=1000 would otherwise be reused by a run
+    # at B=100 and the table would silently mix two bootstrap sizes.
+    tag_sm="$sm"; [ "$sm" = malc ] && tag_sm="malc${MALC_B}"
+    DP="$OUT_DIR/.${TAG}_${tag_sm}_${MODEL}.md"
     [ -s "$DP.r" ] && continue
     sel=()
     if [ "$MODE" = cmech ]; then
