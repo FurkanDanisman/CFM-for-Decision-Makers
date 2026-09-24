@@ -66,7 +66,16 @@ for kv in $extra; do
     esac
 done
 
-echo "[$(date '+%F %T')] dump $MODEL (harness=$harness)"
+echo "[$(date '+%F %T')] dump $MODEL (harness=$harness) cpu_only=${CPU_ONLY:-1}"
+if [ "${CPU_ONLY:-1}" != 1 ]; then
+    # Print the device up front: a GPU job that silently fell back to CPU is otherwise
+    # indistinguishable from one that is just slow.
+    python - <<'PYDEV'
+import torch
+ok = torch.cuda.is_available()
+print(f"  cuda={ok} device={torch.cuda.get_device_name(0) if ok else 'NONE'}")
+PYDEV
+fi
 echo "  cases=$CASES shifts=$SHIFTS d=${DSA[*]} reals=$REALS"
 cd "$DEPLOY_ROOT"
 ok=0; skip=0; fail=0
@@ -86,7 +95,14 @@ for case in $CASES; do
     # MAX_REAL stops the harness at R replicates. Four of the five eval scripts
     # honour it; eval_dopfn_bb_raw does not, which is why the SCORER also caps -- that
     # is what keeps every model on the same R rather than on whatever each wrote.
-    if env $extra CUDA_VISIBLE_DEVICES= MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
+    # CPU_ONLY=1 blanks CUDA_VISIBLE_DEVICES; otherwise it is left alone and the
+    # harness selects the GPU itself via torch.cuda.is_available(). uwyk/graph2d run
+    # 40-60x slower per dataset than the other ten on CPU -- 1004 output bins plus
+    # graph conditioning -- and that is transformer inference, which is what a GPU is
+    # for.
+    if [ "${CPU_ONLY:-1}" = 1 ]; then _cvd=(CUDA_VISIBLE_DEVICES=); else _cvd=(); fi
+    # shellcheck disable=SC2086
+    if env $extra "${_cvd[@]}" MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
            MAX_REAL="$DRAWS" \
            CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$case" \
            OUT_ROOT="$OUT" SLURM_ARRAY_TASK_ID=0 \

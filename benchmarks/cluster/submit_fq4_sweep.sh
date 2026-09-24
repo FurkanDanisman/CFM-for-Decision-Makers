@@ -36,6 +36,11 @@ PHASE="${PHASE:-both}"
 ONLY="${ONLY:-}"
 GEN_TIME="${GEN_TIME:-06:00:00}"
 DUMP_TIME="${DUMP_TIME:-24:00:00}"
+# GRES / CPU_ONLY for the dump jobs. nibi rejects a bare gpu:N, so a TYPE is required.
+# Default stays CPU: the ten fast models gain nothing from a GPU and would only wait
+# longer in its queue.
+GRES="${GRES:-none}"
+CPU_ONLY="${CPU_ONLY:-1}"
 case "$PHASE" in both|gen|dump) ;; *) echo "PHASE must be both|gen|dump" >&2; exit 1 ;; esac
 mkdir -p "$KIT/logs_fq"
 
@@ -58,6 +63,7 @@ NG=$NGEN; NDU=$NDUMP
 echo "JOBS TO SUBMIT: $NG gen + $NDU dump = $(( NG + NDU ))"
 echo "CONCURRENT: at most that many, one task each (no arrays)"
 echo "each gen job walks $(( ND * REALS )) cells; each dump job walks $CELLS cells"
+echo "dump gres=$GRES cpu_only=$CPU_ONLY"
 echo
 
 GIDS=()
@@ -87,8 +93,9 @@ if [ "$PHASE" != gen ]; then
   for m in "${MODELS[@]}"; do
     if [ "$SUBMIT" = 1 ]; then
       did=$(MODEL="$m" CASES="$CASES" SHIFTS="$SHIFTS" DS="$DS" REALS="$REALS" \
-            QUERIES="$QUERIES" DRAWS="$DRAWS" CTX="$CTX" \
+            QUERIES="$QUERIES" DRAWS="$DRAWS" CTX="$CTX" CPU_ONLY="$CPU_ONLY" \
             sbatch --parsable --account="$ACCT" --time="$DUMP_TIME" \
+                   --gres="$GRES" \
                    ${DEP:+--dependency=$DEP} --job-name="fq4d-$m" \
                    "$REPO/benchmarks/cluster/submit_fq4_dump.sbatch") || did=""
       printf '  dump %-36s %s\n' "$m" "${did:-REJECTED}"
