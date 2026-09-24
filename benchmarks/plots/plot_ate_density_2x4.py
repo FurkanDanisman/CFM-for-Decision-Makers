@@ -120,7 +120,16 @@ def _panel(ax, path, source, tag, colour, bary, n_bg, label):
     ax.tick_params(labelsize=7)
     for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
-    return true_ate
+
+    # The span this panel needs: where the ATE density actually has mass, plus the
+    # truth. Returned so every panel can share one scale -- with per-panel limits the
+    # eye reads a narrow density and a wide one as the same width, which is the
+    # opposite of what the figure is for.
+    cdf = np.cumsum(p_ate) * dt
+    tot = cdf[-1] if cdf[-1] > 0 else 1.0
+    lo = float(tau[int(np.searchsorted(cdf, 0.001 * tot))])
+    hi = float(tau[min(int(np.searchsorted(cdf, 0.999 * tot)), tau.size - 1)])
+    return min(lo, true_ate), max(hi, true_ate)
 
 
 def main():
@@ -131,26 +140,49 @@ def main():
     ap.add_argument("--repo", default=_REPO)
     ap.add_argument("--n-background", type=int, default=60,
                     help="how many per-query curves to draw behind the ATE")
-    ap.add_argument("--xlim", nargs=2, type=float, default=None)
+    ap.add_argument("--xlim", nargs=2, type=float, default=None,
+                    help="shared x limits. Default: the union of where every model's "
+                         "ATE density has mass, so all panels share one scale.")
+    ap.add_argument("--free-x", action="store_true",
+                    help="let each panel autoscale (not recommended: it makes a narrow "
+                         "and a wide density look alike)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
     bary = _import_barycenter(a.repo)
     fig, axes = plt.subplots(2, len(PAIRS), figsize=(3.0 * len(PAIRS), 4.6),
                              squeeze=False)
+    spans = []
     for ci, (lab, m1, t1, m2, t2) in enumerate(PAIRS):
         for ri, (m, tg, src, colour, suffix) in enumerate((
                 (m1, t1, "marginals", C_1D, ""),
                 (m2, t2, "joint", C_2D, " 2D"))):
             ax = axes[ri][ci]
             path = _find(a.root, m, a.dataset, a.realization)
-            _panel(ax, path, src, tg, colour, bary, a.n_background, lab + suffix)
-            if a.xlim:
-                ax.set_xlim(*a.xlim)
+            sp = _panel(ax, path, src, tg, colour, bary, a.n_background,
+                        lab + suffix)
+            if sp is not None:
+                spans.append(sp)
             if ci == 0:
                 ax.set_ylabel("density", fontsize=8)
             if ri == 1:
-                ax.set_xlabel("ATE / CATE (raw)", fontsize=8)
+                ax.set_xlabel("Treatment effect", fontsize=8)
+
+    if not a.free_x:
+        if a.xlim:
+            xlo, xhi = a.xlim
+        elif spans:
+            xlo = min(s0 for s0, _ in spans)
+            xhi = max(s1 for _, s1 in spans)
+            pad = 0.03 * (xhi - xlo or 1.0)
+            xlo, xhi = xlo - pad, xhi + pad
+        else:
+            xlo = xhi = None
+        if xlo is not None:
+            for row in axes:
+                for ax in row:
+                    ax.set_xlim(xlo, xhi)
+
     fig.suptitle(f"{a.dataset}, realization {a.realization} — per-query CATE "
                  f"(faint) and ATE (bold); dashed = true ATE", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
