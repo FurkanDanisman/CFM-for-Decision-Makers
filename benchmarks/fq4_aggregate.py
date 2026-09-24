@@ -98,11 +98,19 @@ def _summarise(vals):
             "hi": mean + t * se, "min": float(v.min()), "max": float(v.max())}
 
 
-def _fmt(d, prec=3):
+def _fmt(d, prec=3, compact=False):
+    """mean ± SE, optionally with the CI and range.
+
+    Compact by default for the per-d tables: the full form is four numbers per cell and
+    sixteen cells per row, which is unreadable on a terminal -- the CI and range are in
+    the verbose form when they are what you want to look at.
+    """
     if d is None:
         return "—"
     if d["S"] == 1:
         return f"{d['mean']:.{prec}f} (S=1)"
+    if compact:
+        return f"{d['mean']:.{prec}f} ± {d['se']:.{prec}f}"
     return (f"{d['mean']:.{prec}f} ± {d['se']:.{prec}f} "
             f"[{d['lo']:.{prec}f}, {d['hi']:.{prec}f}] "
             f"({d['min']:.{prec}f}–{d['max']:.{prec}f})")
@@ -115,6 +123,16 @@ def main():
     ap.add_argument("--group", default="",
                     help="comma-separated subset of case,shift,d to break the table "
                          "down by. Empty = one row per model over everything.")
+    ap.add_argument("--case", default=None,
+                    help="only this case (e.g. Observed_Confounder). ComplexMech rows "
+                         "are cases named CMECH_<subset>.")
+    ap.add_argument("--exclude", default="",
+                    help="comma-separated model names to leave out")
+    ap.add_argument("--sections", action="store_true",
+                    help="one table per group value instead of one long table -- e.g. "
+                         "--group d --sections gives a table per d")
+    ap.add_argument("--verbose", action="store_true",
+                    help="show the 95%% CI and per-SCM range as well as mean ± SE")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -134,11 +152,14 @@ def main():
     ndata = defaultdict(lambda: defaultdict(list))
     skipped = []
     malc_bs = set()
+    drop = {x.strip() for x in a.exclude.split(",") if x.strip()}
     for f in files:
         tag = os.path.basename(f)[: -len("_four.json")]
         m = _parse_tag(tag)
         if not m:
             skipped.append(tag)
+            continue
+        if a.case and m["case"] != a.case:
             continue
         g = tuple(m[k] for k in keys)
         with open(f) as fh:
@@ -147,6 +168,8 @@ def main():
         if blob.get("malc_B") is not None:
             malc_bs.add(int(blob["malc_B"]))
         for model, v in blob.get("models", {}).items():
+            if model in drop:
+                continue
             got = False
             for col, _ in _COLS:
                 x = v.get(col)
@@ -169,29 +192,70 @@ def main():
     ttl = f"  ({a.label})" if a.label else ""
     L = [f"## fq4 final — across SCMs{ttl}", "",
          f"{len(files)} cell table(s) under {a.scores}", "",
-         "Each entry is  mean ± SE [95% CI] (min–max across SCMs).", ""]
+         ("Each entry is  mean ± SE [95% CI] (min–max across SCMs)." if a.verbose
+          else "Each entry is  mean ± SE across SCMs. --verbose adds the 95% CI and "
+               "the per-SCM range."), ""]
 
-    def _table(cols, title, prec):
+    cpt = not a.verbose
+
+    def _table(cols, title, prec, groups=None):
+        gs = sorted(acc) if groups is None else groups
+        hdr_keys = [] if groups is not None else keys
         rows_out = ["### " + title, "",
-                    "| " + " | ".join(keys + ["model", "S", "min datasets"]
+                    "| " + " | ".join(hdr_keys + ["model", "S", "min datasets"]
                                       + [n for _, n in cols]) + " |"]
         rows_out.append("|" + "---|" * (rows_out[-1].count("|") - 1))
-        for g in sorted(acc):
+        for g in gs:
             for model in sorted(acc[g]):
                 nd = ndata[g][model]
                 summ = {c: _summarise(acc[g][model][c]) for c, _ in cols}
                 any_s = next((d["S"] for d in summ.values() if d), 0)
-                out = ([*g] if keys else []) + [model, str(any_s),
-                                                str(min(nd)) if nd else "—"]
-                out += [_fmt(summ[c], prec) for c, _ in cols]
+                out = ([] if groups is not None else [*g]) + \
+                      [model, str(any_s), str(min(nd)) if nd else "—"]
+                out += [_fmt(summ[c], prec, cpt) for c, _ in cols]
                 rows_out.append("| " + " | ".join(out) + " |")
         return rows_out + [""]
 
+    def _paired(title, groups=None):
+        """Coverage next to its normalised length -- the pair is the unit of reading.
+
+        Coverage alone cannot be judged: 1.000 at 3x sd(Y) and 0.97 at 0.4x sd(Y) are
+        very different results and a coverage-only table makes the first look better.
+        """
+        gs = sorted(acc) if groups is None else groups
+        names = ["v(x)", "len", "v(x) rho=1", "len", "bayesian", "len",
+                 "MALC", "len"]
+        rows_out = ["### " + title, "",
+                    "| model | S | " + " | ".join(names) + " |",
+                    "|" + "---|" * (len(names) + 2)]
+        for g in gs:
+            for model in sorted(acc[g]):
+                c = {k: _summarise(acc[g][model][k]) for k, _ in _COVER}
+                L = {k: _summarise(acc[g][model][k + "_n"]) for k, _ in _LEN}
+                S = next((d["S"] for d in c.values() if d), 0)
+                cells = [model, str(S)]
+                for (ck, _), (lk, _) in zip(_COVER, _LEN):
+                    cells.append(_fmt(c[ck], 3, cpt))
+                    cells.append(_fmt(L[lk], 2, True) if L[lk] else "—")
+                rows_out.append("| " + " | ".join(cells) + " |")
+        return rows_out + [""]
+
     _LEN_N = [(c + "_n", n) for c, n in _LEN]
-    L += _table(_COVER, "Coverage (nominal 0.95)", 3)
-    L += _table(_LEN, "Mean interval length (outcome units)", 4)
-    L += _table(_LEN_N, "Mean interval length / sd(Y)", 4)
-    L += _table([("sd_Y", "sd(Y)")], "Outcome scale of the cells", 4)
+    if a.sections:
+        # Sort numerically where the key is numeric: sorted() on strings puts d=5 after
+        # d=20, which reads as an error in the output.
+        def _gkey(g):
+            return tuple(int(x) if str(x).lstrip("+-").isdigit() else (0, x)
+                         for x in g)
+        # One table per group value, coverage paired with length/sd(Y).
+        for g in sorted(acc, key=_gkey):
+            lab = ", ".join(f"{k}={v}" for k, v in zip(keys, g))
+            L += _paired(f"{lab}   (length is len/sd(Y))", groups=[g])
+    else:
+        L += _table(_COVER, "Coverage (nominal 0.95)", 3)
+        L += _table(_LEN, "Mean interval length (outcome units)", 4)
+        L += _table(_LEN_N, "Mean interval length / sd(Y)", 4)
+        L += _table([("sd_Y", "sd(Y)")], "Outcome scale of the cells", 4)
 
     if malc_bs:
         b = ", ".join(str(x) for x in sorted(malc_bs))
