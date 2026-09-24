@@ -134,37 +134,45 @@ def main():
          "| model | mean(Y0) | sd(Y0) | mean(Y1) | sd(Y1) | sd(tau) head "
          "| sd(tau) indep | rho implied |", "|" + "---|" * 8]
     seen, rows_out = 0, []
-    multi = len(a.root) > 1
-    for root in a.root:
-        # Name the row after the first ancestor that is not a layout component.
-        # Fixed depth does not work: the roots differ in shape --
-        #   <parent>/<model>/shift0/d0/ctx1000            (fixed-query cell)
-        #   $SCRATCH/cs_dvar_dens/shift0/d5/ctx1000       (main sweep)
-        #   $SCRATCH/dumps_all/<model>/cs/shift0/d5/ctx1000
-        # so counting 4 levels up labels the last of those "cs".
+
+    def _rootname(root):
+        """First ancestor of `root` that is not a layout component."""
         _LAYOUT = ("cs", "rc")
-        parts = [p for p in os.path.normpath(root).split(os.sep) if p]
-        rootname = os.path.basename(root)
-        for p_ in reversed(parts):
-            if (p_.startswith(("shift", "ctx")) or p_ in _LAYOUT
-                    or re.fullmatch(r"d\d+", p_)):
+        parts = [q for q in os.path.normpath(root).split(os.sep) if q]
+        for q in reversed(parts):
+            if (q.startswith(("shift", "ctx")) or q in _LAYOUT
+                    or re.fullmatch(r"d\d+", q)):
                 continue
-            rootname = p_
-            break
+            return q
+        return os.path.basename(root)
+
+    for root in a.root:
+        # Resolve first, then name. A root holding SEVERAL harnesses is the base
+        # sweep, where the harness label already IS the model (dopfn_native,
+        # cpfn1d, ...). A root holding ONE is a per-checkpoint root, where the
+        # harness label is shared across checkpoints and only the directory
+        # identifies the model -- naming by root there, by label here.
+        found = []
         for label, subdir, tag in METHODS:
             d = _resolve_dir(root, subdir, a.dataset)
-            if not d or not os.path.isdir(d):
-                continue
+            if d and os.path.isdir(d):
+                found.append((label, subdir, d))
+        by_harness = {sd for _, sd, _ in found}
+        use_root = len(by_harness) == 1
+        rootname = _rootname(root)
+        for label, subdir, d in found:
             fs = _files_in(d)
             if a.realization >= len(fs):
                 continue
             got = arms_for(fs[a.realization], a.query)
             if got is None:
                 continue
-            # Keep the ancestry suffix (-noanc/-v3a): one root can yield two rows.
-            suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
-                        if label.endswith(x)), "")
-            name = (rootname + suf) if multi else label
+            if use_root:
+                suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
+                            if label.endswith(x)), "")
+                name = rootname + suf
+            else:
+                name = label
             rows_out.append((name, *got))
     for name, m0, s0, m1, s1, st in rows_out:
         si = float(np.sqrt(s0 ** 2 + s1 ** 2))          # rho = 0
