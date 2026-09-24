@@ -66,7 +66,11 @@ mkdir -p "$OUT_DIR"
 
 echo "[$(date '+%F %T')] reaper: R=$DRAWS, score at >=$MIN_MODELS of $NMODELS models"
 echo "  dumps: $OUT4"
+# Per-job, not one shared file: two reapers running at once interleaved their per-cell
+# output into a single log, so neither could be read.
+CELLLOG="logs_fq/fq4reap_${MODE:-cs}_${SLURM_JOB_ID:-manual}_cells.log"
 echo "  scores: $OUT_DIR"
+echo "  cell log: $CELLLOG"
 echo "  ${KEEP:+KEEP=1 -- scoring only, nothing deleted}"
 
 # MODE=cmech watches the ComplexMech cells instead. Their tag and their data-cell
@@ -138,7 +142,7 @@ PYN
        CASE_OVERRIDE="${CASE_FOR_SCORER:-}" N_MODELS="$nm" \
        SKIP_MALC="${SKIP_MALC:-0}" \
        WORKERS="${SLURM_CPUS_PER_TASK:-8}" \
-       bash "$REPO/benchmarks/cluster/score_fq4.sh" >>"logs_fq/fq4reap_cells.log" 2>&1
+       bash "$REPO/benchmarks/cluster/score_fq4.sh" >>"$CELLLOG" 2>&1
     then
         # Only delete once the JSON exists on disk. A scorer that ran but failed to
         # write -- the inode failure -- must not take the dumps with it.
@@ -153,10 +157,10 @@ PYN
             fi
             did=$((did+1)); done_n=$((done_n+1))
         else
-            echo "  $TAG scored but NO json -- kept, see logs_fq/fq4reap_cells.log"
+            echo "  $TAG scored but NO json -- kept, see $CELLLOG"
         fi
     else
-        echo "  $TAG scoring FAILED -- kept, see logs_fq/fq4reap_cells.log"
+        echo "  $TAG scoring FAILED -- kept, see $CELLLOG"
     fi
   done
   echo "[$(date '+%F %T')] pass $pass: $did scored, $done_n/${#TAGS[@]} complete, $pend pending"
