@@ -143,6 +143,12 @@ def main():
                          "what an across-realization aggregator consumes; re-deriving "
                          "them from the markdown would lose the per-query detail the "
                          "average-of-average needs.")
+    ap.add_argument("--max-replicates", type=int, default=None,
+                    help="score only the first N replicates of each cell. Not every "
+                         "harness honours MAX_REAL at dump time (eval_dopfn_bb_raw "
+                         "does not), so capping HERE is what guarantees every model "
+                         "is compared on the same R rather than on whatever each "
+                         "happened to write.")
     ap.add_argument("--per-file-truth", action="store_true",
                     help="take each replicate's true tau from the dump itself rather "
                          "than one shared value. Needed for ComplexMech, whose "
@@ -203,6 +209,8 @@ def main():
         rname = _rootname(root)
         for label, subdir, d in found:
             fs = _files_in(d)
+            if a.max_replicates:
+                fs = fs[: int(a.max_replicates)]
             print(f"[{_rootname(root)}/{label}] {len(fs)} replicate(s) x "
                   f"{len(a.query)} quer{'y' if len(a.query) == 1 else 'ies'}",
                   file=sys.stderr, flush=True)

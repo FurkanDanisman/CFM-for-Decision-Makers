@@ -37,6 +37,10 @@ DUMPS="${DUMPS:?DUMPS required (e.g. \$SCRATCH/fq4_dumps/Observed_Confounder_shi
 CASE="${CASE:-Observed_Confounder}"
 CTX="${CTX:-1000}"
 QUERIES="${QUERIES:-10}"
+# R: the number of resampled datasets to score per query. Capped here, not at dump
+# time, because eval_dopfn_bb_raw ignores MAX_REAL -- so without this one model would
+# be scored on 100 replicates while the rest used 30.
+DRAWS="${DRAWS:-30}"
 TAG="$(basename "$DUMPS")"
 FQ4="${FQ4:-$SC/fq4}"          # where the generated cells live (truths come from here)
 CELL="$FQ4/$TAG/$CASE/N$CTX"
@@ -56,7 +60,7 @@ echo "== $TAG: ${#ROOTS[@]} model root(s), queries $QLIST"
 python "$REPO/benchmarks/fixedq_ci_coverage.py" \
     --root "${ROOTS[@]}" --dataset "$CASE" --query $QLIST \
     --data-cell "$CELL" \
-    --workers "$WORKERS" --label "$TAG" \
+    --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
     --json-out "$OUT_DIR/${TAG}_vx.json" \
     --out "$OUT_DIR/${TAG}_vx.md" >/dev/null || {
         echo "FATAL: fixedq_ci_coverage failed" >&2; exit 1; }
@@ -74,6 +78,7 @@ run_dens() {   # run_dens <smoother> <outfile>
                                    --malc-workers "$WORKERS")
         python "$REPO/UWYK_Fig3_4/cate_density_metrics.py" \
             --root "$r" --dataset "$CASE" --context "$CTX" \
+            --max-real "$DRAWS" \
             --tau-smoother "$sm" "${extra[@]}" \
             --out "$part" >/dev/null 2>&1 || {
                 echo "  [$sm] $model FAILED" >&2; continue; }

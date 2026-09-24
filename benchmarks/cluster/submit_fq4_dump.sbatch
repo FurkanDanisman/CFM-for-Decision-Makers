@@ -41,9 +41,9 @@ CASES="${CASES:-Observed_Confounder}"
 SHIFTS="${SHIFTS:-0 +2 -2}"
 CTX="${CTX:-1000}"
 read -r -a DSA <<<"${DS:-5 10 20 30 40 50}"
-REALS="${REALS:-10}"
+REALS="${REALS:-5}"
 QUERIES="${QUERIES:-10}"
-DRAWS="${DRAWS:-100}"
+DRAWS="${DRAWS:-30}"
 FQ4="${FQ4:-$SC/fq4}"
 OUT4="${OUT4:-$SC/fq4_dumps}"
 
@@ -83,7 +83,11 @@ for case in $CASES; do
     HAVE=$(find "$OUT" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
     if [ "$HAVE" -ge "$DRAWS" ]; then skip=$((skip+1)); continue; fi
     # shellcheck disable=SC2086
+    # MAX_REAL stops the harness at R replicates. Four of the five eval scripts
+    # honour it; eval_dopfn_bb_raw does not, which is why the SCORER also caps -- that
+    # is what keeps every model on the same R rather than on whatever each wrote.
     if env $extra CUDA_VISIBLE_DEVICES= MODEL_OVERRIDE="$harness" D=0 SHIFT=0 \
+           MAX_REAL="$DRAWS" \
            CTX="$CTX" NQ="$QUERIES" DATA="$ROOT" CASES_OVERRIDE="$case" \
            OUT_ROOT="$OUT" SLURM_ARRAY_TASK_ID=0 \
            bash "$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch" \
