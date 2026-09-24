@@ -173,13 +173,19 @@ def _grid(getter_for, cases, logx, title):
     return fig
 
 
-def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
-    """One figure for ONE metric: rows = d, columns = case study.
+def _grid_by_d(df, cases, dvals, mkey, mlabel, logx,
+               row_col="d", col_col="case", row_fmt="d = {}"):
+    """One figure for ONE metric: rows = `row_col`, columns = `col_col`.
 
     The per-d and combined modes put the two metrics on separate ROWS of the
     same figure, which leaves no room for a d axis. For an appendix that has to
     show the d-split, it is cleaner to give each metric its own figure and
     spend the rows on d.
+
+    The two axes are parameters because ComplexMech has no case dimension: it is
+    rows = node count, columns = context N. Everything else -- the pairs, the bar
+    geometry, the per-panel scaling -- is the same figure, so it would be wrong to
+    fork a second script for it.
     """
     col = _metric_col(df, mkey)
     _SEM = _sem_col(df, col)
@@ -189,7 +195,7 @@ def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
     for ri, d in enumerate(dvals):
         for ci, (ckey, clab) in enumerate(cases):
             ax = axes[ri][ci]
-            sub = df[(df["case"] == ckey) & (df["d"] == d)].set_index("model")
+            sub = df[(df[col_col] == ckey) & (df[row_col] == d)].set_index("model")
             getter = (lambda key, _s=sub: (
                 (float(_s.at[key, col]),
                  float(_s.at[key, _SEM]) if _SEM else float("nan"))
@@ -199,7 +205,7 @@ def _grid_by_d(df, cases, dvals, mkey, mlabel, logx):
                 ax.set_title(clab, fontsize=9)
             if ci == 0:
                 ax.set_yticklabels([lab for lab, _ in PAIRS], fontsize=7)
-                ax.set_ylabel(f"d = {d}", fontsize=9)
+                ax.set_ylabel(row_fmt.format(d), fontsize=9)
             # label the metric axis on the bottom row only: with many d rows the
             # per-row labels collide and add nothing.
             if ri == nD - 1:
@@ -221,6 +227,15 @@ def main():
                     help="by-d: one figure PER METRIC with d on the rows "
                          "(appendix layout).")
     ap.add_argument("--d-values", nargs="*", type=int, default=None)
+    ap.add_argument("--kind", choices=["case", "cmech"], default="case",
+                    help="case: rows = d, cols = the six case studies. "
+                         "cmech: rows = node count, cols = context N -- ComplexMech "
+                         "has no case dimension.")
+    ap.add_argument("--swap-axes", action="store_true",
+                    help="put the row variable on the columns and vice versa. With a "
+                         "single context, cmech otherwise draws one narrow column; "
+                         "swapping gives nodes across the top, which reads like the "
+                         "case-study figure.")
     ap.add_argument("--metrics", nargs="+", default=["pehe", "l1"],
                     choices=[k for _, k in _ALL_METRICS],
                     help="which metrics to draw. In by-d mode each gets its own "
@@ -245,9 +260,13 @@ def main():
         df = df[df["case"] != "ALL"]
     if df.empty:
         raise SystemExit(f"no rows for shift={ARGS.shift} N={ARGS.n} in {ARGS.csv}")
-    if ARGS.d_values:
-        df = df[df["d"].isin(ARGS.d_values)]
-    dvals = sorted(int(x) for x in df["d"].unique())
+    # ComplexMech has no d / case columns at all, so these lookups must not run for it.
+    if ARGS.kind == "cmech":
+        dvals, cases = [], []
+    else:
+        if ARGS.d_values:
+            df = df[df["d"].isin(ARGS.d_values)]
+        dvals = sorted(int(x) for x in df["d"].unique())
     global PAIRS
     have = set(df["model"])
     # Resolve each slot to the first candidate key the CSV actually supplies, and drop
@@ -259,15 +278,17 @@ def main():
         if k is not None:
             resolved.append((lab, k))
     PAIRS = resolved or [(lab, keys[0]) for lab, keys in _PAIRS_ALL]
-    present = set(df["case"])
-    cases = [(k, lab) for k, lab in _CASES if k in present]
-    # Anything not in the hardcoded case-study list (e.g. the "N=1000" columns
-    # the cmech adapter emits) was previously dropped SILENTLY, producing an
-    # empty figure with no error. Keep it, labelled by its own key.
-    extra = sorted(present - {k for k, _ in _CASES})
-    cases += [(k, k.replace("_", " ")) for k in extra]
-    if not cases:
-        raise SystemExit(f"no usable 'case' values in {ARGS.csv}: {sorted(present)}")
+    if ARGS.kind != "cmech":
+        present = set(df["case"])
+        cases = [(k, lab) for k, lab in _CASES if k in present]
+        # Anything not in the hardcoded case-study list was previously dropped
+        # SILENTLY, producing an empty figure with no error. Keep it, labelled by
+        # its own key.
+        extra = sorted(present - {k for k, _ in _CASES})
+        cases += [(k, k.replace("_", " ")) for k in extra]
+        if not cases:
+            raise SystemExit(f"no usable 'case' values in {ARGS.csv}: "
+                             f"{sorted(present)}")
     missing_models = sorted(set(df["model"]) - {k for _, k in PAIRS})
     if missing_models:
         print("[warn] models in the CSV but not in PAIRS (not plotted): "
@@ -294,8 +315,26 @@ def main():
 
     if ARGS.mode == "by-d":
         made = []
+        if ARGS.kind == "cmech":
+            # Columns are the context sizes present, ascending; rows the node counts.
+            ctxs = sorted(df["context"].unique())
+            cols = [(c, f"N = {c}") for c in ctxs]
+            rows_ = sorted(df["nodes"].unique())
+            rc, cc, rfmt = "nodes", "context", "nodes = {}"
+            if ARGS.swap_axes:
+                cols = [(n, f"nodes = {n}") for n in sorted(df["nodes"].unique())]
+                rows_ = ctxs
+                rc, cc, rfmt = "context", "nodes", "N = {}"
+        else:
+            cols, rows_ = cases, dvals
+            rc, cc, rfmt = "d", "case", "d = {}"
+            if ARGS.swap_axes:
+                cols = [(d, f"d = {d}") for d in dvals]
+                rows_ = [k for k, _ in cases]
+                rc, cc, rfmt = "case", "d", "{}"
         for mlabel, mkey in _METRICS:
-            f = _grid_by_d(df, cases, dvals, mkey, mlabel, ARGS.logx)
+            f = _grid_by_d(df, cols, rows_, mkey, mlabel, ARGS.logx,
+                           row_col=rc, col_col=cc, row_fmt=rfmt)
             p = f"{ARGS.out}_{mkey}_by_d.png"
             f.savefig(p, dpi=150, bbox_inches="tight"); plt.close(f); made.append(p)
 
