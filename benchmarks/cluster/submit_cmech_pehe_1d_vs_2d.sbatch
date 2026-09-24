@@ -197,7 +197,7 @@ case "$MODEL" in
         --dataset "$DATASET" --outdir "$OUT" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
         --ckpt "$CKPT" --config "$CONFIG" \
-        --anc-mode v3ab_only --t-encoding "${UWYK_T_ENCODING:-target}" \
+        --anc-mode "${UWYK_ANC_MODE:-v3ab_only}" --t-encoding "${UWYK_T_ENCODING:-target}" \
         --eval-max-context "$HARNESS_CTX" --eval-context-seed "$SEED"
     ;;
   graph2d)

@@ -83,11 +83,15 @@ UWYK_CFG="$AUR/best_model_config.yaml"
 #     > $AUR/uwyk_D_j32_config.yaml
 UWYK_CFG_J32="$AUR/uwyk_D_j32_config.yaml"
 
+# UWYK_ANC_MODE=v3a_only emits exactly v3a + noanc. The sbatch default is
+# v3ab_only, which adds v3b: a third forward pass per realization and a column
+# that is not reported. Case study is untouched -- it must stay case_family,
+# since v3a/v3b hardcode an adjacency that does not apply to the case families.
 # name | harness | harness index | extra env
 ROWS=(
   "dopfn_1d_botharms|dopfn_native|0|DOPFN_CKPT=$AUR/dopfn_1d_botharms_step150000.pt"
-  "uwyk_C_botharms|uwyk1d|2|CKPT=$AUR/uwyk_C_botharms_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=binary"
-  "uwyk_D_j32_nobin|uwyk1d|2|CKPT=$AUR/uwyk_D_j32_nobin_step50000.pt CONFIG=$UWYK_CFG_J32 UWYK_T_ENCODING=target"
+  "uwyk_C_botharms|uwyk1d|2|CKPT=$AUR/uwyk_C_botharms_step50000.pt CONFIG=$UWYK_CFG UWYK_T_ENCODING=binary UWYK_ANC_MODE=v3a_only"
+  "uwyk_D_j32_nobin|uwyk1d|2|CKPT=$AUR/uwyk_D_j32_nobin_step50000.pt CONFIG=$UWYK_CFG_J32 UWYK_T_ENCODING=target UWYK_ANC_MODE=v3a_only"
 )
 
 if [ "$GRES" = none ]; then CVD="CUDA_VISIBLE_DEVICES="; else CVD="DUMMY_UNUSED=1"; fi

@@ -109,7 +109,7 @@ case "$MODEL" in
     # without inventing a fake checkpoint directory around it.
     export CKPT="${CKPT:-$UWYK_CKPT_DIR/best_model.pt}"
     export CONFIG="${CONFIG:-$UWYK_CKPT_DIR/best_model_config.yaml}"
-    export ANC_MODE=v3ab_only
+    export ANC_MODE="${UWYK_ANC_MODE:-v3ab_only}"
     # --ckpt / --config explicitly: uwyk1d.py reads args.ckpt and then OVERWRITES
     # env['CKPT'] with it, so exporting CKPT alone is silently discarded and the
     # default UWYK weights load instead. That is why uwyk_bin returned results
@@ -118,7 +118,7 @@ case "$MODEL" in
         --dataset "$DATASET" --outdir "$OUT" \
         --ckpt "$CKPT" --config "$CONFIG" \
         --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-        --anc-mode v3ab_only --t-encoding "${UWYK_T_ENCODING:-target}"
+        --anc-mode "${UWYK_ANC_MODE:-v3ab_only}" --t-encoding "${UWYK_T_ENCODING:-target}"
     ;;
   graph2d)
     python -u "$REPO/realcause_eval/Table1/graph2d.py" \

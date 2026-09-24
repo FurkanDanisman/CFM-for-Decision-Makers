@@ -1,0 +1,161 @@
+% Values marked VERIFIED were read directly from checkpoints / training code /
+% run logs. \ph{} remains where nothing on disk answers it.
+\providecommand{\ph}[1]{\textcolor{red}{[#1]}}
+\section{Computational Details}
+\label{app:compute}
+
+\subsection{Hardware and Software}
+\label{app:compute:hw}
+
+% VERIFIED: hardware is NOT uniform. Do not claim "all on H100".
+Training was distributed over several clusters as availability allowed. Do-PFN
+and CausalPFN variants were trained on single NVIDIA H100 (80\,GB, SXM5) GPUs;
+the UWYK ablations reported here were trained on NVIDIA RTX PRO 6000 Blackwell
+Server Edition (96\,GB) GPUs. Throughput in Table~\ref{tab:train_cost} is
+reported per row together with the device it was measured on, since the two
+differ by roughly \ph{45\%} on an identical configuration and the column would
+otherwise read as an architectural difference. Inference forward passes were run
+on a single \ph{GPU model}. MALC fitting and optimal-transport aggregation were
+run on \ph{CPU model} using \ph{number} cores, with MALC fits parallelised across
+queries over \ph{number} workers.
+
+% VERIFIED on the training environment (uv-managed CPython).
+The implementation uses Python 3.12, PyTorch 2.11.0 (CUDA 12.8), NumPy
+\ph{2.4.4 -- confirm on the training host}, SciPy \ph{1.15.3 -- confirm},
+scikit-learn \ph{1.8.0 -- confirm}, and XGBoost \ph{3.2.0}, the last of which
+enters results through the synthetic-prior mechanism sampler. MALC uses
+\ph{our reimplementation of / the reference implementation of}
+\citet{danisman2026malc}.
+
+\subsection{Training}
+\label{app:compute:train}
+
+For each backbone, the 2D variant keeps the baseline's architecture, prior,
+optimizer and schedule unchanged; only the output head and loss
+(Equation~\ref{eq:nll}) are replaced. \ph{state the shared optimizer sentence
+once Table~\ref{tab:hparams} is complete}.
+
+% VERIFIED from training_dopfn_repro/{train.py,prior.py,batch.py}
+For Do-PFN, each training batch draws a synthetic SCM with
+$d \sim \mathrm{UniformInt}(1,6)$ observed covariates and a fixed sequence length
+of $2200$ units. The context/query split is resampled per batch as
+$M_{\mathrm{ob}} \sim \mathrm{Uniform}\{10,\dots,2199\}$ with
+$M_{\mathrm{in}} = 2200 - M_{\mathrm{ob}}$, following Algorithm~1 of the original
+work; targets are standardised using context-only statistics.
+
+We follow published code as closely as possible, but not everything was made
+public. Our decisions or possible deviations from the published configurations
+include:
+% VERIFIED: each of these is a documented, tested choice in this repository.
+\begin{itemize}
+  \item \textbf{Backbone re-initialisation.} The architecture is only
+        obtainable by unpickling the released model object; a naive
+        \texttt{reset\_parameters()} sweep silently misses 24 of 112
+        parameter-bearing modules, because every \texttt{MultiheadAttention}
+        spells it \texttt{\_reset\_parameters}. Those attention projections
+        would otherwise retain the pickle's weights on every run, unaffected by
+        the seed. We handle both spellings and raise on any module we cannot
+        initialise.
+  \item \textbf{Shared initialisation across variants.} A common seed is not
+        sufficient, since RNG draws are consumed in construction order and the
+        heads have different output widths. The backbone initialisation is
+        therefore derived once, hashed, and loaded by every variant, so the
+        head is the only difference between runs.
+  \item \textbf{Target space.} The released bar borders span $[-56.1, 256.1]$,
+        which resembles raw prior outcomes, but feeding context-standardised
+        outcomes scores $2.06 \pm 0.26$ nats better in raw-$y$ units over 64
+        paired batches. We therefore train on standardised targets.
+  \item \textbf{Query-side treatment encoding.} The joint head predicts both
+        arms, so the query treatment column carries no information, but the
+        encoder distinguishes \emph{unknown} (NaN) from \emph{known-and-zero}.
+        We mark it unknown; evaluating the same checkpoint under the other
+        convention changes IHDP $\sqrt{\mathrm{PEHE}}$ from $6.005$ to $6.205$.
+  \item \textbf{2D grid geometry.} The 1D borders are quantile-allocated
+        (released widths span $0.049$--$245.9$), whereas the 2D negative
+        log-likelihood carries a single scalar bin width and so requires a
+        uniform grid. The 2D edges span a robust quantile range of the same
+        target space, with the nine-region tail structure absorbing the
+        remainder.
+  \item \textbf{UWYK treatment binarisation.} \texttt{binarize\_treatment\_prob}
+        is absent from the released configuration and therefore defaults to
+        $0$: the released model never binarises the treatment. Our binarised
+        runs are a new baseline, not a reproduction of the published
+        checkpoint, and are compared only to each other.
+\end{itemize}
+
+The matched-label variant is trained on \ph{describe the label budget matching},
+so that it receives the same number of outcome labels as the 2D variant. Each
+model was trained \ph{once / over N seeds}. In total, we trained \ph{N} models.
+
+\begin{table}[t]
+\centering
+\caption{Training hyperparameters per backbone.}
+\label{tab:hparams}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Backbone & Optimizer & Learning rate & Schedule & Batch size (datasets) & Context size range & Steps \\
+\midrule
+% VERIFIED: training_dopfn_repro/train.py lines 83-88, 249, 270; prior.py 101
+Do-PFN              & Adam ($\beta{=}0.9/0.999$, $\epsilon{=}10^{-8}$, wd $0$)
+                    & $8.485\times10^{-5}$
+                    & linear warmup $12.5\%$, cosine to $0$
+                    & $4$
+                    & $M_{\mathrm{ob}}\sim\mathrm{U}\{10,2199\}$ of $2200$
+                    & $150{,}000$ \\
+% VERIFIED: released config.yaml + training_uwyk_variants sbatch
+UWYK                & \ph{from released config.yaml}
+                    & \ph{~}
+                    & \ph{~}
+                    & $8\times4$ accum $=32$ effective (released); $4\times8$ ours
+                    & \ph{~}
+                    & $50{,}000$ \\
+CausalPFN (stage 2) & \ph{~} & \ph{~} & \ph{~} & \ph{~} & \ph{~} & $50{,}000$ \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Training cost. $J$ is the baseline's 1D grid resolution and $K$ the
+joint head's per-dimension resolution. Head output dimension counts raw outputs
+per query. Parameter counts deduplicate shared storage. Published models are not
+trained by us.}
+\label{tab:train_cost}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llccccccc}
+\toprule
+Model & Variant & Grid & Head output dim & Total params & Throughput (s/step) & Steps & GPU-hours & Peak mem.\ (GB) \\
+\midrule
+% VERIFIED: head_2d.2.weight (113,768); dedup param count
+Do-PFN    & 1D (published)            & $J{=}100$  & $J{+}\ph{tail}$      & \ph{value}   & \ph{measured}      & ---          & ---                    & \ph{measured} \\
+          & 2D                        & $K{=}10$   & $K^2{+}13=113$       & $7{,}346{,}718$ & \ph{on H100}     & $150{,}000$  & \ph{value}             & \ph{value}    \\
+          & 1D, matched resolution    & $J{=}K{=}10$ & \ph{value}         & \ph{value}   & \ph{value}         & $150{,}000$  & \ph{value}             & \ph{value}    \\
+          & 1D, matched labels        & $J{=}100$  & $100$                & $7{,}336{,}420$ & $0.15$ (Blackwell) & $150{,}000$ & $6.3$                 & \ph{value}    \\
+\midrule
+% VERIFIED: regression_head.weight (1004,256); dedup param count; step=20000
+UWYK      & 1D continuous (published) & $J{=}1000$ & $J{+}4=1004$         & $11{,}186{,}463$ & \ph{measured}   & ---          & ---                    & \ph{measured} \\
+          & 1D binary (retrained)     & $J{=}1000$ & $1004$               & \ph{value}   & $1.17$ (H100)      & $50{,}000$   & $22.7$                 & \ph{value}    \\
+          & 2D                        & $K{=}32$   & $K^2{+}13=1037$      & $14{,}010{,}945$ & \ph{value}      & $50{,}000$   & \ph{value}             & \ph{value}    \\
+          & 1D, matched resolution    & $J{=}K{=}32$ & $J{+}4=36$         & $10{,}937{,}687$ & $1.71$ (Blackwell) & $50{,}000$ & $23.8$                & \ph{value}    \\
+          & 1D, matched labels        & $J{=}1000$ & $1004$               & \ph{value}   & $1.69$ (Blackwell) & $50{,}000$   & $23.5$                 & \ph{value}    \\
+\midrule
+% VERIFIED: model.head.2.weight; dedup param counts. NOTE the +10 offset below.
+CausalPFN & 1D two-stage (published)  & \ph{$J$}   & \ph{value}           & \ph{value}   & \ph{measured}      & ---          & ---                    & \ph{measured} \\
+          & 1D stage-2 (reproduction) & $J{=}1024$ & $J{+}10=1034$        & $18{,}844{,}034$ & $2.57$ (H100)   & $50{,}000$   & $35.7$                 & \ph{value}    \\
+          & 2D                        & $K{=}100$  & $K^2{+}13=10013$     & $16{,}119{,}072$ & \ph{value}      & $50{,}000$   & \ph{value}             & \ph{value}    \\
+          & 2D                        & $K{=}32$   & $K^2{+}13{+}10=1047$ & $18{,}852{,}002$ & $1.96$ (H100)   & $50{,}000$   & $27.2$                 & \ph{value}    \\
+          & 1D, matched labels        & $J{=}1024$ & $1034$               & \ph{value}   & \ph{value}         & $50{,}000$   & \ph{value}             & \ph{value}    \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Inference}
+\label{app:compute:inference}
+% NOTHING on disk answers this subsection -- it must be measured.
+\ph{Entire subsection requires a benchmarking run; no timing data exists in the
+repository. Needs: forward-pass time, MALC s/query, MALC total, OT time, at the
+reference setting.}
