@@ -167,10 +167,16 @@ def main():
     tt = truths[a.query[0]]      # for the header when there is only one
 
     def _rootname(root):
+        """The MODEL directory, skipping layout components.
+
+        ComplexMech roots end .../<model>/N1000, so without N<int> here every row is
+        named "N1000" and thirteen models become indistinguishable -- which is how the
+        first ComplexMech table came out with sixteen identical labels.
+        """
         _LAYOUT = ("cs", "rc")
         for p in reversed([x for x in os.path.normpath(root).split(os.sep) if x]):
             if (p.startswith(("shift", "ctx")) or p in _LAYOUT
-                    or re.fullmatch(r"d\d+", p)):
+                    or re.fullmatch(r"d\d+", p) or re.fullmatch(r"N\d+", p)):
                 continue
             return p
         return os.path.basename(root)
@@ -242,7 +248,14 @@ def main():
             # exactly this via density_scale_r2, but that gate is a regression
             # ACROSS queries and is NaN at SCM_N_QUERY=1 -- i.e. unavailable for
             # every fixed-query run -- so check it directly, per replicate.
-            ok = np.isfinite(cp)
+            # ate_pred / true_ate are means over EVERY query in the file. That is
+            # the per-query value only when the dump has one query, which is true of
+            # the case-study fixed-query runs and false here -- ComplexMech keeps all
+            # n_test queries. Comparing a 100-query mean against a per-query estimate
+            # produced differences like 6.7e-01 that mean nothing, so the columns are
+            # withheld rather than shown as a density mismatch.
+            multi_query = a.per_file_truth
+            ok = np.isfinite(cp) & (not multi_query)
             dmax = (float(np.abs(eraw[ok] - cp[ok]).max()) if ok.any()
                     else float("nan"))
             cpm = float(cp[ok].mean()) if ok.any() else float("nan")
@@ -251,7 +264,7 @@ def main():
             # more than one query) and its point estimate cannot be compared here.
             # Reported rather than used to blank the row: a blank says nothing,
             # while a wrong number names the problem.
-            okt = np.isfinite(ta)
+            okt = np.isfinite(ta) & (not multi_query)
             tam = float(ta[okt].mean()) if okt.any() else float("nan")
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
                         if label.endswith(x)), "")
@@ -301,6 +314,10 @@ def main():
           "point estimate across datasets. A model can miss by being mis-centred",
           "(large |bias|) or too narrow (width small relative to sd(est)), and the",
           "coverage column alone does not distinguish them.",
+          "",
+          "dumped est / dumped true / max|density-dumped| are blank under",
+          "--per-file-truth: the dump stores them as means over every query in the",
+          "file, which equals the per-query value only for a one-query dump.",
           "",
           "dumped true is the harness's own true effect for what it scored. It",
           "should equal the true tau above; where it does not, that harness scored",
