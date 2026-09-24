@@ -85,7 +85,15 @@ export UWYK_FIG34_DATA="${UWYK_FIG34_DATA:-$REPO/UWYK_Fig3_4/data}"
 # absence means this is the OLD, unfiltered data -- where ~13% of realizations have
 # tau constant across units and per-realization coverage is 0 or 1 by construction.
 # Scoring that silently is the failure this check exists to prevent.
-if [ ! -f "$UWYK_FIG34_DATA/manifest_complexmech.json" ]; then
+# make_cmech_rho_filtered.py:122 names its manifests manifest_rho<R>_n<N>.json,
+# one per node count, so a rho-filtered root has no manifest_complexmech.json and
+# tripped this guard even though it is exactly the filtered data the guard exists
+# to require. Accept either spelling. Nothing in Python reads these files; the
+# check is only here to stop a run against the PRE-filter benchmark.
+_have_manifest=0
+[ -f "$UWYK_FIG34_DATA/manifest_complexmech.json" ] && _have_manifest=1
+compgen -G "$UWYK_FIG34_DATA/manifest_rho*_n*.json" >/dev/null 2>&1 && _have_manifest=1
+if [ "$_have_manifest" != 1 ]; then
     echo "WARN: no manifest_complexmech.json under $UWYK_FIG34_DATA" >&2
     echo "      this may be the PRE-FILTER benchmark. Set CMECH_ALLOW_UNFILTERED=1" >&2
     echo "      to proceed deliberately." >&2
