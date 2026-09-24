@@ -10,6 +10,7 @@
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh score   # score A and B
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh both
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh fq4cs   # four-column, one cell
+#   bash R-PFN/benchmarks/cluster/fq_submit.sh rho     # cross-world correlation table
 # Env: ACCOUNT (default def-rgrosse), plus whatever the target job reads.
 set -uo pipefail
 WHAT="${1:-both}"
@@ -21,6 +22,12 @@ case "$WHAT" in
   setB|both)  echo "-- set B (generate, verify, submit 13 dumps)"
               ACCOUNT="$ACCT" sbatch --account="$ACCT" \
                   "$REPO/benchmarks/cluster/submit_fq_setB.sbatch" ;;
+esac
+case "$WHAT" in
+  rho)        echo "-- cross-world correlation table"
+              mkdir -p "$KIT/logs_rho"
+              sbatch --account="$ACCT" \
+                  "$REPO/benchmarks/cluster/submit_rho_table.sbatch" ;;
 esac
 case "$WHAT" in
   fq4cs)      echo "-- fq4 case-study cell (generate, verify, submit 13 dumps)"
