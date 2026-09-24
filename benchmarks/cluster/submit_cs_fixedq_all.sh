@@ -26,6 +26,11 @@ ACCT="${ACCOUNT:-}"; ONLY="${ONLY:-}"
 # switches to a GPU (nibi demands a TYPE, never a bare gpu:N) and CUDA_VISIBLE_DEVICES
 # is then left alone so the harness actually uses it.
 GRES="${GRES:-none}"; CPUS="${CPUS:-8}"; MEM="${MEM:-32G}"
+# The inner sbatch asks for 1h, which is fine at ~100 draws but not at 1000: the
+# uwyk/graph2d harnesses ran ~100 realizations in most of an hour, so they need
+# roughly 8-10x that. Overridable rather than raised for everyone, since the fast
+# models finish in minutes and a long request only costs them queue priority.
+TIME="${TIME:-}"
 SB="$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
 
 # name | harness | extra env (space-separated VAR=VAL)
@@ -69,12 +74,13 @@ for row in "${ROWS[@]}"; do
             CTX="$CTX" NQ="$NQ" DATA="$DATA" CASES_OVERRIDE="$CASE" \
             OUT_ROOT="$OUT_PARENT/$name" \
             sbatch --array=0 --gres="$GRES" --cpus-per-task="$CPUS" --mem="$MEM" \
+                   ${TIME:+--time=$TIME} \
                    ${ACCT:+--account=$ACCT} --job-name="fq-$name" "$SB"
     else
         printf '%-22s harness=%-14s %s\n' "$name" "$harness" "${extra:-<defaults>}"
     fi
 done
 echo
-echo "jobs: $N   gres=$GRES cpus=$CPUS mem=$MEM"
+echo "jobs: $N   gres=$GRES cpus=$CPUS mem=$MEM time=${TIME:-<sbatch default>}"
 echo "out:  $OUT_PARENT/<model>/shift0/d0/ctx$CTX/<harness>/$CASE"
 [ "$SUBMIT" = 1 ] || echo "dry run -- add --submit"
