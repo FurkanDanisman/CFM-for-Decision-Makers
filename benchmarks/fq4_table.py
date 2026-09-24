@@ -69,9 +69,11 @@ def parse_md(path, col_names, label):
             continue
         if col >= len(cells):
             continue
-        v = cells[col]
+        # "0.1304 ± 0.0046" -> 0.1304: cate_density_metrics reports mean ± SEM in
+        # its length column, and a bare float() on that raises and drops the row.
+        v = cells[col].replace(",", "").split("±")[0].split("+-")[0].strip()
         try:
-            rows[_norm(cells[0])] = float(v.replace(",", ""))
+            rows[_norm(cells[0])] = float(v)
         except ValueError:
             continue
     return rows, col
@@ -96,6 +98,12 @@ def main():
     s1, _ = parse_md(a.vx, ["sd(y1)"], "sd1")
     bay, _ = parse_md(a.bayes, ["coverage95"], "bayes")
     mal, _ = parse_md(a.malc, ["coverage95"], "malc")
+    # Coverage without length is not interpretable: an interval can cover by being
+    # correct or by being wide, and only the pair distinguishes them.
+    bayl, _ = parse_md(a.bayes, ["length"], "bayes-len")
+    mall, _ = parse_md(a.malc, ["length"], "malc-len")
+    wvx, _ = parse_md(a.vx, ["mean width"], "vx-len")
+    wr1, _ = parse_md(a.vx, ["mean width rho=1"], "rho1-len")
 
     if not vx:
         sys.exit(f"no rows parsed from {a.vx}")
@@ -106,16 +114,17 @@ def main():
     models = sorted(set(vx) | set(bay) | set(mal))
     ttl = f"  ({a.label})" if a.label else ""
     L = [f"## Fixed-query coverage, four intervals{ttl}", "",
-         "| model | datasets | sd(Y0) | sd(Y1) | v(x) | v(x) rho=1 | bayesian "
-         "| bayesian MALC |", "|" + "---|" * 8]
+         "| model | datasets | sd(Y0) | sd(Y1) | v(x) | len | v(x) rho=1 | len "
+         "| bayesian | len | bayesian MALC | len |", "|" + "---|" * 12]
     def f(d, m):
         return f"{d[m]:.3f}" if m in d else "—"
     for m in models:
         n = f"{int(nd[m])}" if m in nd else "—"
         def g(d):
             return f"{d[m]:.4f}" if m in d else "—"
-        L.append(f"| {m} | {n} | {g(s0)} | {g(s1)} | {f(vx, m)} | {f(r1, m)} "
-                 f"| {f(bay, m)} | {f(mal, m)} |")
+        L.append(f"| {m} | {n} | {g(s0)} | {g(s1)} "
+                 f"| {f(vx, m)} | {g(wvx)} | {f(r1, m)} | {g(wr1)} "
+                 f"| {f(bay, m)} | {g(bayl)} | {f(mal, m)} | {g(mall)} |")
     miss = [m for m in models if m not in bay and m not in mal]
     if miss:
         L += ["", "Missing from the density scorer: " + ", ".join(miss) + "."]
@@ -123,6 +132,13 @@ def main():
           "bayesian and bayesian MALC are the project's standard CATE coverage --",
           "the same cov raw / cov T that cate_density_metrics reports for every",
           "other table here, at B=1000 K=1. Nothing new is computed for them.",
+          "",
+          "Each coverage is followed by its mean interval LENGTH. Coverage alone",
+          "cannot be read: an interval can cover because it is correct or because it",
+          "is wide, and only the pair separates the two. The v(x) lengths come from",
+          "the same normal approximation as their coverage, the bayesian lengths from",
+          "cate_density_metrics; they are in the outcome's units, so they compare",
+          "across models on one dataset but not across datasets of different scale.",
           "",
           "sd(Y0) / sd(Y1) are the per-arm predictive spreads averaged over the",
           "replicates and frozen queries; v(x) rho=1 is (sd(Y1)-sd(Y0))^2, so a",
