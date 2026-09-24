@@ -65,7 +65,7 @@ PAR="${PAR:-1}"
 # Refuse rather than silently exceed it.
 MAXCONC="${MAXCONC:-0}"
 GRES="${GRES:-none}"
-CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-24:00:00}"
+CPUS="${CPUS:-16}"; MEM="${MEM:-64G}"; TIME="${TIME:-03:00:00}"
 mkdir -p logs_a3
 # ComplexMech rho>0.99 root, as written by submit_cmech_rho99_gen.sbatch.
 CMECH_DATA="${CMECH_DATA:-$SC/cmech_data_rho99}"
