@@ -41,6 +41,12 @@ sys.path.insert(0, _HERE)
 
 from generation import CASE_STUDIES, build_dag, _SampledSCM   # noqa: E402
 
+sys.path.insert(0, os.path.join(_HERE, "d_variation"))
+try:
+    from generation_d import build_dag_d                        # noqa: E402
+except Exception:                                               # pragma: no cover
+    build_dag_d = None
+
 
 def resample_exogenous(scm, nodes, rng, frozen_row0):
     """Fresh exogenous draws for every row, then restore row 0 from `frozen_row0`."""
@@ -52,32 +58,69 @@ def resample_exogenous(scm, nodes, rng, frozen_row0):
         elif n.kind == "structural":
             scm._noise[n.name] = rng.normal(0.0, scm.noise_std, size=scm.N)
     for name, v in frozen_row0["root"].items():
-        scm._root[name][0] = v
+        scm._root[name][frozen_row0["i"]] = v
     for name, v in frozen_row0["noise"].items():
-        scm._noise[name][0] = v
+        scm._noise[name][frozen_row0["i"]] = v
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", default="Observed_Confounder", choices=list(CASE_STUDIES))
     ap.add_argument("--seed", type=int, default=0, help="picks the SCM (frozen)")
+    ap.add_argument("--from-npz", default=None,
+                    help="reproduce an EXISTING realization's SCM: reads its "
+                         "seed / n_context / cate_shift so the estimand matches "
+                         "that file's query exactly")
+    ap.add_argument("--d", type=int, default=None,
+                    help="covariate count; required with --from-npz because the "
+                         "d_variation DAG depends on it")
+    ap.add_argument("--query", type=int, default=0,
+                    help="which row of the source realization is the fixed query")
     ap.add_argument("--n-context", type=int, default=1000)
     ap.add_argument("--n-draws", type=int, default=100)
     ap.add_argument("--out", required=True)
     ap.add_argument("--draw-seed", type=int, default=777000)
     a = ap.parse_args()
 
-    nodes = build_dag(a.case)
-    N = a.n_context + 1                      # row 0 is the fixed query
-    scm = _SampledSCM(nodes, N=N, rng=np.random.default_rng(a.seed))
+    shift, src_tau = 0.0, None
+    if a.from_npz:
+        # Rebuild the SOURCE realization's SCM exactly -- same DAG, seed,
+        # n_context and cate_shift. Anything else and the estimand is a different
+        # number, so the draws would answer a different question.
+        with np.load(a.from_npz, allow_pickle=True) as z:
+            a.seed = int(np.asarray(z["seed"]).reshape(-1)[0])
+            a.n_context = int(np.asarray(z["n_context"]).reshape(-1)[0])
+            if "cate_shift" in z.files:
+                shift = float(np.asarray(z["cate_shift"]).reshape(-1)[0])
+            if "case_study" in z.files:
+                a.case = str(np.asarray(z["case_study"]).reshape(-1)[0])
+            src_tau = float(np.asarray(z["cate"]).ravel()[a.query])
+        if a.d is None:
+            sys.exit("--d is required with --from-npz (the DAG depends on it)")
+        if build_dag_d is None:
+            sys.exit("generation_d unavailable; cannot rebuild a d_variation DAG")
+        nodes = build_dag_d(a.case, a.d)
+        print(f"[source] {a.from_npz}\n  case={a.case} d={a.d} seed={a.seed} "
+              f"n_context={a.n_context} cate_shift={shift}\n"
+              f"  true tau at query {a.query} = {src_tau:.10f}")
+    else:
+        nodes = build_dag(a.case)
+
+    # Rebuild at the SOURCE size; the chosen query is frozen in place and the
+    # other rows are resampled, so row `a.query` keeps its identity.
+    N = a.n_context
+    scm = _SampledSCM(nodes, N=N, rng=np.random.default_rng(a.seed),
+                      cate_shift=shift)
 
     # One pass to calibrate the treatment threshold, then FREEZE it: it is part of
     # the DGP, and letting it be re-derived per replicate would change the DGP.
     scm.forward()
     thr = scm._t_threshold
 
-    frozen = {"root": {k: float(v[0]) for k, v in scm._root.items()},
-              "noise": {k: float(v[0]) for k, v in scm._noise.items()}}
+    qi = a.query
+    frozen = {"i": qi,
+              "root": {k: float(v[qi]) for k, v in scm._root.items()},
+              "noise": {k: float(v[qi]) for k, v in scm._noise.items()}}
 
     cell = os.path.join(a.out, a.case, f"N{a.n_context}")
     os.makedirs(cell, exist_ok=True)
@@ -101,6 +144,14 @@ def main():
             print(f"  draw {r}: non-finite, skipped", file=sys.stderr)
             continue
 
+        # Move the frozen query to row 0. The loader takes X_test = X[:n_q], so
+        # with SCM_N_QUERY=1 it evaluates row 0 -- leaving the query at index qi
+        # would silently score a DIFFERENT unit, one that is resampled every
+        # replicate and therefore has no fixed estimand at all.
+        if qi != 0:
+            order = np.r_[qi, np.delete(np.arange(N), qi)]
+            X, T, Y = X[order], T[order], Y[order]
+            cate, mu_0, mu_1 = cate[order], mu_0[order], mu_1[order]
         truths.append(float(cate[0]))
         if qx is None:
             qx, qt, qy = X[0].copy(), float(T[0]), float(Y[0])
@@ -120,6 +171,14 @@ def main():
     print(f"\ncase={a.case} seed={a.seed} draws={t.size} n_context={a.n_context}")
     print(f"  true tau at the fixed query: {t[0]:.10f}")
     print(f"  spread across replicates:    {spread:.3e}   (must be ~0)")
+    if src_tau is not None and t.size:
+        # The whole point of --from-npz is that the estimand is the SOURCE
+        # realization's. If it is not, the 1000 draws describe a different
+        # number and the exercise is void, so fail loudly.
+        dev = abs(float(t[0]) - src_tau)
+        print(f"  source tau:                  {src_tau:.10f}")
+        print(f"  |ours - source|:             {dev:.3e}   "
+              f"{'OK' if dev < 1e-6 else 'MISMATCH -- not the same estimand'}")
     ok = t.size > 1 and spread < 1e-6
     print(f"  FIXED ESTIMAND: {'OK' if ok else 'NO -- design violated'}")
     man = {"case": a.case, "seed": a.seed, "n_context": a.n_context,
