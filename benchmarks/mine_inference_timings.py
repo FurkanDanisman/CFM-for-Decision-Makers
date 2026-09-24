@@ -32,6 +32,13 @@ from collections import defaultdict
 
 # --- print sites -------------------------------------------------------------
 RE_MODEL = re.compile(r'\bmodel=(\S+)')
+# submit_cs_dvar_density.sbatch:121 echoes the HARNESS, not the model: joint2d
+# runs through the dopfn_native harness, so 'model=' pools two checkpoints into
+# one row. fq4dump_<model>_cells.log names the model in the FILENAME, which is
+# the only reliable attribution we have. Harness is kept as a '~'-marked
+# fallback so it is never silently mistaken for a model.
+RE_FNMODEL = re.compile(r'fq4dump_(.+?)_cells\.log$')
+RE_OUTROOT = re.compile(r'OUT(?:_ROOT)?=\S*?/([^/\s]+)/shift\d')
 RE_CTX   = re.compile(r'\bN=(\d+)\s+N_QUERY=(\d+)')
 RE_FWD   = re.compile(r'^\s*r=(\d+)\b.*?\((\d+(?:\.\d+)?)s\)\s*$')
 RE_MALC  = re.compile(r'wrote\s+(\S*malc_ci_\S+\.npz)\s+N_q=(\d+).*?\((\d+(?:\.\d+)?)s\)')
@@ -54,12 +61,11 @@ def _undo_cumulative(times):
 def _stats(xs):
     if not xs:
         return None
-    n = len(xs)
-    m = sum(xs) / n
-    if n < 2:
-        return m, 0.0, n
-    var = sum((x - m) ** 2 for x in xs) / (n - 1)
-    return m, var ** 0.5, n
+    n = len(xs); m = sum(xs) / n
+    ss = sorted(xs)
+    med = ss[n // 2] if n % 2 else 0.5 * (ss[n // 2 - 1] + ss[n // 2])
+    sd = 0.0 if n < 2 else (sum((x - m) ** 2 for x in xs) / (n - 1)) ** 0.5
+    return m, sd, n, med
 
 def main():
     ap = argparse.ArgumentParser()
@@ -70,6 +76,8 @@ def main():
                     help='keep only MALC lines at this B (tag malc<B>)')
     ap.add_argument('--min-r', type=int, default=0,
                     help='drop the first K realizations per log as warm-up')
+    ap.add_argument('--n', type=int, default=None, help='keep only logs with this context N')
+    ap.add_argument('--q', type=int, default=None, help='keep only logs with this N_QUERY')
     ap.add_argument('--verbose', action='store_true')
     a = ap.parse_args()
 
@@ -88,6 +96,7 @@ def main():
     ot   = defaultdict(list)   # harness -> [s per realization]
     settings = defaultdict(set)
     unattributed = defaultdict(int)
+    nonlocal_neg = [0]
 
     for path in files:
         try:
@@ -95,12 +104,24 @@ def main():
         except OSError:
             continue
         harness = None
-        m = RE_MODEL.search(txt)
-        if m:
-            harness = m.group(1)
+        fn = RE_FNMODEL.search(os.path.basename(path))
+        if fn:
+            harness = fn.group(1)                      # model, from filename
+        else:
+            o = RE_OUTROOT.search(txt)
+            if o:
+                harness = o.group(1)                   # model, from OUT_ROOT
+            else:
+                m = RE_MODEL.search(txt)
+                if m:
+                    harness = '~' + m.group(1)         # harness only
         c = RE_CTX.search(txt)
+        NQ = (int(c.group(1)), int(c.group(2))) if c else (None, None)
         if c and harness:
-            settings[harness].add((int(c.group(1)), int(c.group(2))))
+            settings[harness].add(NQ)
+        if a.n is not None and NQ[0] != a.n: continue
+        if a.q is not None and NQ[1] != a.q: continue
+        key = (harness, NQ)
 
         raw_fwd = []
         for line in txt.splitlines():
@@ -115,17 +136,21 @@ def main():
                     b = tag and (tag.group(1) or tag.group(2))
                     if str(b) != str(a.malc_b):
                         continue
-                (malc[harness] if harness else malc['<unknown>']).append((t, nq))
+                malc[key if harness else ('<unknown>', NQ)].append((t, nq))
             mo = RE_OT.search(line)
             if mo and 'ate_mean' in line:
-                (ot[harness] if harness else ot['<unknown>']).append(float(mo.group(2)))
+                ot[key if harness else ('<unknown>', NQ)].append(float(mo.group(2)))
 
         if raw_fwd:
             raw_fwd.sort()
             times, how = _undo_cumulative([t for _, t in raw_fwd])
             times = times[a.min_r:]
+            neg = [t for t in times if t < 0]
+            if neg:
+                nonlocal_neg[0] += len(neg)
+                times = [t for t in times if t >= 0]
             if harness:
-                fwd[harness] += times
+                fwd[key] += times
             else:
                 unattributed[os.path.basename(path)] += len(times)
             if a.verbose:
@@ -137,13 +162,15 @@ def main():
               f'{len(unattributed)} log(s) had no "model=" header and were dropped',
               file=sys.stderr)
 
-    harnesses = sorted(set(fwd) | set(malc) | set(ot))
+    if nonlocal_neg[0]:
+        print(f'[warn] dropped {nonlocal_neg[0]} NEGATIVE per-dataset diffs '
+              f'(a cumulative timer that went backwards = restarted/concatenated job)',
+              file=sys.stderr)
+    harnesses = sorted(set(fwd) | set(malc) | set(ot), key=lambda k: (str(k[0]), k[1]))
     print(f'\nlogs scanned: {len(files)}')
-    for h in harnesses:
-        s = sorted(settings.get(h, []))
-        print(f'  {h:18s} settings(N,Q)={s if s else "?"}')
+    print('  (rows are (model, (N, Q)); a ~prefix means harness-level only)')
 
-    print(f'\n{"harness":18s} {"fwd s/dataset":>22s} {"MALC s/query":>18s} '
+    print(f'\n{"model / (N,Q)":34s} {"fwd s/dataset":>22s} {"MALC s/query":>18s} '
           f'{"MALC s/cell":>18s} {"OT s":>18s}')
     rows = {}
     for h in harnesses:
@@ -152,8 +179,8 @@ def main():
         mq = _stats([t / nq for t, nq in mc if nq]) if mc else None
         mt = _stats([t for t, _ in mc]) if mc else None
         o = _stats(ot.get(h, []))
-        fmt = lambda s: '---' if s is None else f'{s[0]:.3g} ± {s[1]:.3g} (n={s[2]})'
-        print(f'{h:18s} {fmt(f):>22s} {fmt(mq):>18s} {fmt(mt):>18s} {fmt(o):>18s}')
+        fmt = lambda s: '---' if s is None else f'{s[0]:.3g}±{s[1]:.3g} m={s[3]:.3g} n={s[2]}'
+        print(f'{str(h):34s} {fmt(f):>26s} {fmt(mq):>18s} {fmt(mt):>18s} {fmt(o):>18s}')
         rows[h] = (f, mq, mt, o)
 
     if a.latex:
@@ -165,7 +192,7 @@ def main():
             parts = [x[0] for x in (f, mt, o) if x]
             if parts:
                 tot = sum(parts)
-            print(f'{h:18s} & {cell(f)} & {cell(mq)} & {cell(mt)} & {cell(o)} & '
+            print(f'{str(h):34s} & {cell(f)} & {cell(mq)} & {cell(mt)} & {cell(o)} & '
                   f'{"---" if tot is None else f"${tot:.3g}$"} \\\\')
 
 if __name__ == '__main__':
