@@ -252,4 +252,5 @@ python "$REPO/benchmarks/fq4_table.py" \
     --label "$TAG" --out "$OUT_DIR/${TAG}_four.md" \
     --sdy "$OUT_DIR/${TAG}_sdy.json" \
     ${N_MODELS:+--n-models "$N_MODELS"} \
+    ${SKIP_MALC:+ } $([ "${SKIP_MALC:-0}" = 1 ] || echo "--malc-b $MALC_B") \
     --json-out "$OUT_DIR/${TAG}_four.json"

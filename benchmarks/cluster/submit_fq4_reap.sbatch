@@ -53,6 +53,7 @@ FQ4="${FQ4:-$SC/fq4}"
 OUT4="${OUT4:-$SC/fq4_dumps}"
 OUT_DIR="${OUT_DIR:-$HOME/projects/def-rgrosse/$USER/fq4_scores}"
 MALC_B="${MALC_B:-1000}"
+MALC_ON_PARTIAL="${MALC_ON_PARTIAL:-0}"
 NMODELS="${NMODELS:-13}"
 # MIN_MODELS: score a cell once this many models are present, instead of waiting for
 # all NMODELS. Three of the thirteen harnesses are 40-60x slower than the rest, so
@@ -71,6 +72,7 @@ echo "  dumps: $OUT4"
 CELLLOG="logs_fq/fq4reap_${MODE:-cs}_${SLURM_JOB_ID:-manual}_cells.log"
 echo "  scores: $OUT_DIR"
 echo "  cell log: $CELLLOG"
+echo "  malc: B=$MALC_B on_partial=$MALC_ON_PARTIAL"
 echo "  ${KEEP:+KEEP=1 -- scoring only, nothing deleted}"
 
 # MODE=cmech watches the ComplexMech cells instead. Their tag and their data-cell
@@ -142,7 +144,12 @@ PYN
     # slow models finish it, so paying ~11 min of bootstrap on a table that is about to
     # be thrown away doubles the expensive half of the work for nothing. The cheap
     # columns land early; MALC is computed once, on the complete cell.
-    if [ "${SKIP_MALC:-0}" = 1 ] || [ "$nm" -lt "$NMODELS" ]; then
+    # MALC_ON_PARTIAL=1 runs MALC on incomplete cells too. Worth it once the parts are
+    # cached per model: a later pass then computes MALC only for the models that were
+    # missing, so nothing is recomputed and the column exists from the first pass.
+    if [ "${SKIP_MALC:-0}" = 1 ]; then
+        _skip_malc=1
+    elif [ "$nm" -lt "$NMODELS" ] && [ "${MALC_ON_PARTIAL:-0}" != 1 ]; then
         _skip_malc=1
     else
         _skip_malc=0

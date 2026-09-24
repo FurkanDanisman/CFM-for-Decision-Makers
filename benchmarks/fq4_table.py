@@ -95,6 +95,11 @@ def main():
                     help="how many model directories the cell held when scored. Stored "
                          "so a later pass can tell a partial scoring from a complete "
                          "one and re-score instead of accepting the partial table.")
+    ap.add_argument("--malc-b", type=int, default=None,
+                    help="B used for the MALC column. Recorded because the project's "
+                         "other tables use B=1000 K=1, and a MALC number at a different "
+                         "B is not comparable to them -- it has to travel with its B "
+                         "rather than be inferred later.")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
     ap.add_argument("--json-out", default=None,
@@ -178,6 +183,7 @@ def main():
         import json
         with open(a.json_out, "w") as fh:
             json.dump({"label": a.label, "sd_Y": sdy, "n_models": a.n_models,
+                       "malc_B": a.malc_b,
                        "models": {m: {"datasets": nd.get(m), "sd_y0": s0.get(m),
                                       "sd_y1": s1.get(m),
                                       "cover_vx": vx.get(m), "len_vx": wvx.get(m),

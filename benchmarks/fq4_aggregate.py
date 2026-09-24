@@ -133,6 +133,7 @@ def main():
     ncell = defaultdict(lambda: defaultdict(int))
     ndata = defaultdict(lambda: defaultdict(list))
     skipped = []
+    malc_bs = set()
     for f in files:
         tag = os.path.basename(f)[: -len("_four.json")]
         m = _parse_tag(tag)
@@ -143,6 +144,8 @@ def main():
         with open(f) as fh:
             blob = json.load(fh)
         sdy = (blob.get("sd_Y") or {}).get("sd")
+        if blob.get("malc_B") is not None:
+            malc_bs.add(int(blob["malc_B"]))
         for model, v in blob.get("models", {}).items():
             got = False
             for col, _ in _COLS:
@@ -190,6 +193,12 @@ def main():
     L += _table(_LEN_N, "Mean interval length / sd(Y)", 4)
     L += _table([("sd_Y", "sd(Y)")], "Outcome scale of the cells", 4)
 
+    if malc_bs:
+        b = ", ".join(str(x) for x in sorted(malc_bs))
+        L += ["", f"MALC bootstrap B = {b}."
+              + ("" if malc_bs == {1000} else
+                 " NOTE: the project's other tables use B=1000 K=1, so this column is"
+                 " internally consistent but NOT comparable to them.")]
     L += ["",
           "THE SCM IS THE INDEPENDENT UNIT. Each SCM is collapsed to one coverage --",
           "its own average over datasets and queries -- and the mean, SE and CI are",
