@@ -12,23 +12,30 @@
 # Set A froze row 0 alone, so every replicate was a nearly independent draw of the
 # observational sample. Set B additionally freezes 99 of its neighbours, so the
 # context the model conditions on barely moves between replicates. Both are dumped
-# with NQ=1, i.e. ONLY row 0 is ever a query, so the two runs estimate the same
-# estimand and differ purely in how much of the surrounding sample is held fixed.
-# That isolates how much of a head's sampling spread comes from the context.
+# with NQ=1, i.e. ONLY row 0 is ever a query, so the two estimate the same estimand
+# and differ purely in how much of the surrounding sample is held fixed. That
+# isolates how much of a head's sampling spread comes from the context.
 #
-# Generates, VERIFIES, then submits -- one job instead of generating, waiting at a
-# terminal, and firing the dumps by hand. The verification is the point: it refuses
-# to submit 13 jobs unless row 0's true tau reproduces set A's to 1e-9. Nothing
-# else guarantees the two sets share an estimand, and if they do not, every number
-# the comparison produces is meaningless.
+# THE ESTIMAND. Set A was generated as
+#   gen_fixed_query.py --from-npz case_study_data/d_variation/shift0/d5/
+#       Observed_Confounder/N1000/Observed_Confounder_0.npz --d 5 --query 0
+#       --n-draws 1000 --out $SCRATCH/cs_fq1000
+# i.e. from a d_variation source realization -- DAG build_dag_d(case, 5), seed
+# 2251341562 read out of that npz, true tau at query 0 = -0.2445281297. Set B is
+# the same command plus --n-queries 100. The seed is NOT guessable and is recorded
+# nowhere in the replicate files, so the source npz is the input that matters here;
+# it is a parameter below rather than something rediscovered at runtime.
+#
+# LAYOUT. The generator writes <GEN_OUT>/<case>/N<ctx>, but the dump harness wants
+# <root>/shift<S>/d<K>/<case>/N<ctx>. Set A bridged that with a symlink, and so
+# does this.
 #
 #   bash R-PFN/benchmarks/cluster/fq_submit.sh setB
-# NOT plain sbatch: logs_fq must exist BEFORE Slurm opens --output, or the
-# job dies at launch with no log and no squeue entry. fq_submit.sh mkdirs it.
+# NOT plain sbatch: logs_fq must exist BEFORE Slurm opens --output, or the job dies
+# at launch with no log and no squeue entry. fq_submit.sh mkdirs it.
 #
-# Env: ROOT_A / ROOT_B (data roots), OUT_B (dump parent), DRAWS, NFROZEN,
-#      CASE, CTX, ACCOUNT, TIME_DUMP, GRES, SEED, SEED_CANDIDATES,
-#      FROM_NPZ + SRC_D (if set A was built from a d_variation source)
+# Env: FROM_NPZ, SRC_D, ROOT_A, GEN_OUT, ROOT_B, OUT_B, DRAWS, NFROZEN, CASE, CTX,
+#      ACCOUNT, TIME_DUMP, GRES
 
 set -uo pipefail
 mkdir -p logs_fq
@@ -46,113 +53,54 @@ source "$DEPLOY_ROOT/venv/bin/activate"
 REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 SC="${SCRATCH:?SCRATCH must be set}"
 
-ROOT_A="${ROOT_A:-$SC/cs_fq1000_root}"
-ROOT_B="${ROOT_B:-$SC/cs_fq1000_f100_root}"
-OUT_B="${OUT_B:-$SC/cs_fq1000_f100_dumps}"
 CASE="${CASE:-Observed_Confounder}"
 CTX="${CTX:-1000}"
 DRAWS="${DRAWS:-1000}"
 NFROZEN="${NFROZEN:-100}"
+SRC_D="${SRC_D:-5}"
+FROM_NPZ="${FROM_NPZ:-$DEPLOY_ROOT/case_study_data/d_variation/shift0/d$SRC_D/$CASE/N$CTX/${CASE}_0.npz}"
+ROOT_A="${ROOT_A:-$SC/cs_fq1000_root}"
+GEN_OUT="${GEN_OUT:-$SC/cs_fq1000_f100}"
+ROOT_B="${ROOT_B:-$SC/cs_fq1000_f100_root}"
+OUT_B="${OUT_B:-$SC/cs_fq1000_f100_dumps}"
 TIME_DUMP="${TIME_DUMP:-8:00:00}"
 GRES="${GRES:-none}"
 ACCT="${ACCOUNT:-}"
-SEED="${SEED:-}"
 
 CELL_A="$ROOT_A/shift0/d0/$CASE/N$CTX"
-CELL_B="$ROOT_B/shift0/d0/$CASE/N$CTX"
+CELL_B="$GEN_OUT/$CASE/N$CTX"
 echo "[$(date '+%F %T')] set B: $DRAWS draws, rows 0..$((NFROZEN-1)) frozen"
-echo "  A root : $ROOT_A"
-echo "  B root : $ROOT_B"
+echo "  source : $FROM_NPZ  (d=$SRC_D)"
+echo "  gen out: $GEN_OUT"
+echo "  B root : $ROOT_B   (symlink wrapper)"
 echo "  B dumps: $OUT_B"
+[ -f "$FROM_NPZ" ] || { echo "FATAL: source npz not found: $FROM_NPZ" >&2; exit 1; }
 
-# ---- 1. the estimand set A actually used -------------------------------------
-# From A's DATA CELL, not a manifest: a manifest is written by one version of the
-# generator and may simply be absent (set A's is), whereas cate[query] inside any
-# replicate IS the estimand and is always there. It is also the exact source
-# score_fq.sh reads, so the two cannot disagree.
-tau_of() {   # tau_of <cell dir> -> cate[query 0] of its first replicate
-    python - "$1" <<'PYTAU'
-import glob, os, sys
-import numpy as np
-fs = sorted(f for f in glob.glob(os.path.join(sys.argv[1], "*.npz"))
-            if os.path.basename(f) != "summary.npz")
-if not fs:
-    raise SystemExit(1)
-with np.load(fs[0], allow_pickle=True) as z:
-    print(repr(float(np.asarray(z["cate"]).ravel()[0])))
-PYTAU
-}
-
-A_TAU=$(tau_of "$CELL_A") || {
-    echo "FATAL: no replicate npz under $CELL_A -- ROOT_A is wrong." >&2
-    echo "Candidate roots on this filesystem:" >&2
-    ls -d "$SC"/*/shift0/d0/"$CASE"/N"$CTX" 2>/dev/null >&2
-    exit 1; }
-echo "  A cell : $CELL_A"
-echo "  A true tau[0] = $A_TAU"
-
-# The generator needs the SEED that produced that tau, and set A's npz files do not
-# record it. Probe for it with 1-draw generations (seconds each) rather than asking:
-# row 0's exogenous draws depend only on (case, seed, n_context), not on how many
-# rows are frozen, so a 1-draw probe settles it exactly.
-# Searched over d as well as seed: plain seeds 0..9 do NOT reproduce set A, which
-# means A came from a d_variation DAG -- build_dag_d(case, d), a different graph
-# from build_dag(case). Neither d nor the seed is recorded in the replicate files,
-# so both are probed. "" in D_CANDIDATES means the plain DAG.
-if [ -z "$SEED" ] && [ -z "${FROM_NPZ:-}" ]; then
-    PROBE="${PROBE_DIR:-$SC/.fq_seed_probe}"
-    for dcand in ${D_CANDIDATES:-none 5 10 20 30 40 50}; do
-        [ -n "$SEED" ] && break
-        if [ "$dcand" = none ]; then DARG=(); else DARG=(--d "$dcand"); fi
-        for cand in ${SEED_CANDIDATES:-0 1 2 3 4 5 6 7 8 9}; do
-            rm -rf "$PROBE"
-            python "$REPO/case_study/gen_fixed_query.py" \
-                --case "$CASE" --seed "$cand" --n-context "$CTX" \
-                --query 0 --n-queries 1 --n-draws 1 "${DARG[@]}" \
-                --out "$PROBE/shift0/d0" >/dev/null 2>&1 || continue
-            got=$(tau_of "$PROBE/shift0/d0/$CASE/N$CTX" 2>/dev/null) || continue
-            same=$(python -c "import sys;print(int(abs(float(sys.argv[1])-float(sys.argv[2]))<1e-9))" "$got" "$A_TAU")
-            if [ "$same" = 1 ]; then
-                echo "    d=$dcand seed=$cand -> tau $got   <-- MATCH"
-                SEED="$cand"; MATCH_D="$dcand"; break
-            fi
-            echo "    d=$dcand seed=$cand -> tau $got"
-        done
-    done
-    rm -rf "$PROBE"
-fi
-if [ -z "$SEED" ] && [ -z "${FROM_NPZ:-}" ]; then
-    echo "FATAL: no (d, seed) in the probe grid reproduces A's tau ($A_TAU)." >&2
-    echo "       Widen it with D_CANDIDATES / SEED_CANDIDATES, or pass the source" >&2
-    echo "       directly: FROM_NPZ=<d_variation npz> SRC_D=<d>." >&2
-    exit 1
-fi
-MATCH_D="${MATCH_D:-none}"
-[ "$MATCH_D" = none ] || SRC_D="${SRC_D:-$MATCH_D}"
-echo "  seed: ${SEED:-<from FROM_NPZ>}   d: $MATCH_D"
-
-# ---- 2. generate, unless the root is already complete ------------------------
+# ---- 1. generate, unless already complete ------------------------------------
 HAVE=$(find "$CELL_B" -name "${CASE}_*.npz" 2>/dev/null | wc -l)
 if [ "$HAVE" -ge "$DRAWS" ]; then
     echo "  generation: SKIP ($HAVE >= $DRAWS npz already in $CELL_B)"
 else
     echo "  generation: $HAVE/$DRAWS present -- running gen_fixed_query"
-    EXTRA=()
-    [ -n "${FROM_NPZ:-}" ] && EXTRA+=(--from-npz "$FROM_NPZ")
-    [ -n "${SRC_D:-}" ]    && EXTRA+=(--d "$SRC_D")   # set from the probe match
-    [ -n "$SEED" ]         && EXTRA+=(--seed "$SEED")
     python "$REPO/case_study/gen_fixed_query.py" \
-        --case "$CASE" --n-context "$CTX" \
+        --from-npz "$FROM_NPZ" --d "$SRC_D" \
         --query 0 --n-queries "$NFROZEN" --n-draws "$DRAWS" \
-        --out "$ROOT_B/shift0/d0" "${EXTRA[@]}" || {
+        --out "$GEN_OUT" || {
             echo "FATAL: generation failed (or the fixed-estimand assert tripped)" >&2
             exit 1; }
 fi
 
+# ---- 2. the shift0/d0 view the dump harness expects --------------------------
+mkdir -p "$ROOT_B/shift0/d0"
+ln -sfn "$GEN_OUT/$CASE" "$ROOT_B/shift0/d0/$CASE"
+[ -d "$ROOT_B/shift0/d0/$CASE/N$CTX" ] || {
+    echo "FATAL: symlink did not resolve to $GEN_OUT/$CASE/N$CTX" >&2; exit 1; }
+
 # ---- 3. refuse to submit unless B's row 0 IS A's row 0 -----------------------
-# From the data cells on both sides, and across EVERY B replicate rather than just
-# the first: if row 0's tau moves between replicates the estimand is not fixed and
-# "coverage for one estimand" means nothing.
+# Read from the data cells on both sides -- cate[0] inside a replicate IS the
+# estimand, and it is the same value score_fq.sh reads, so the two cannot disagree.
+# Checked across EVERY B replicate, not just the first: if row 0's tau moves
+# between replicates the estimand is not fixed and the whole design is void.
 python - "$CELL_A" "$CELL_B" <<'PYVER' || exit 1
 import glob, os, sys
 import numpy as np
@@ -170,7 +118,7 @@ def taus(cell):
 
 ta, tb = taus(sys.argv[1]), taus(sys.argv[2])
 if ta.size == 0 or tb.size == 0:
-    print("FATAL: empty data cell", file=sys.stderr)
+    print(f"FATAL: empty data cell (A={ta.size}, B={tb.size})", file=sys.stderr)
     raise SystemExit(1)
 dev = abs(float(ta[0]) - float(tb[0]))
 spread = float(np.abs(tb - tb[0]).max())
@@ -180,7 +128,7 @@ print(f"  |A - B|                    = {dev:.3e}")
 print(f"  B spread across replicates = {spread:.3e}")
 if dev >= 1e-9:
     print("FATAL: B's row 0 is NOT A's row 0 -- a different estimand, so the two\n"
-          "       sets cannot be compared. Pass FROM_NPZ/SRC_D or SEED to match A.",
+          "       sets cannot be compared. Check FROM_NPZ / SRC_D against set A.",
           file=sys.stderr)
     raise SystemExit(1)
 if spread >= 1e-6:
