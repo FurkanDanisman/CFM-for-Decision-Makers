@@ -61,8 +61,20 @@ _EXACT_KEYS = ('true_cate', 'mu0_scaled', 'mu1_scaled', 'tau_star_scaled',
 # Recorded provenance, not computation. These are EXPECTED to differ -- the
 # repair runs from a different checkout than the original shard, so absolute
 # paths move. The checkpoint BYTES are what matter, and the logits prove those.
+#
+# The SUFFIX RULE is not decoration. Every model in a dump writes its own
+# '<method>_ckpt', and the method names are dynamic (DOPFN_MODELS /
+# CAUSALPFN_MODELS), so a fixed list cannot name them. Measured on the 5629355
+# repair: the Do-PFN probe reported three '<method>_ckpt differs' lines that
+# were nothing but /home/lukez/... against /project/6105522/lukez/..., which
+# would fail a probe whose logits agreed perfectly.
+_PATH_SUFFIXES = ('_ckpt', '_cfg', '_root', '_sources')
 _PATH_KEYS = ('ckpt', 'uwyk_ckpt', 'uwyk_cfg', 'dopfn_root', 'causalpfn_root',
               'dopfn_sources', 'causalpfn_sources', 'source_dump')
+
+
+def _is_provenance(key: str) -> bool:
+    return key in _PATH_KEYS or key.endswith(_PATH_SUFFIXES)
 
 
 def _rel(a: np.ndarray, b: np.ndarray) -> float:
@@ -111,7 +123,7 @@ def main() -> int:
     worst: list[tuple[float, str, float]] = []
     skipped, failures = [], []
     for k in sorted(ref):
-        if k in _PATH_KEYS:
+        if _is_provenance(k):
             skipped.append(k)
             continue
         a, b = np.asarray(ref[k]), np.asarray(new[k])
