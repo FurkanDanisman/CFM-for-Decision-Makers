@@ -61,15 +61,37 @@ mkdir -p "$OUT_DIR"
 echo "[$(date '+%F %T')] reaper: R=$DRAWS, $NMODELS models, scores -> $OUT_DIR"
 echo "  ${KEEP:+KEEP=1 -- scoring only, nothing deleted}"
 
-TAGS=()
-for c in $CASES; do for s in $SHIFTS; do for d in "${DSA[@]}"; do
-  for (( r=0; r<REALS; r++ )); do TAGS+=("${c}_shift${s}_d${d}_r${r}"); done
-done; done; done
-echo "  watching ${#TAGS[@]} cell(s)"
+# MODE=cmech watches the ComplexMech cells instead. Their tag and their data-cell
+# path differ from the case study's, and the reaper has to know BOTH: the scorer needs
+# --data-cell to read truths, and the delete has to remove the right directories.
+MODE="${MODE:-cs}"
+TAGS=(); CELLS=(); DATAS=()
+if [ "$MODE" = cmech ]; then
+  CMFQ="${CMFQ:-$SC/cmech_fq}"
+  OUT4="${OUT4:-$SC/cmech_fq_dumps}"
+  REGIME="${REGIME:-path_TY}"; HIDE="${HIDE:-0.0}"; SUBSET="${SUBSET:-nonzero}"
+  for n in "${DSA[@]}"; do
+    for (( r=0; r<REALS; r++ )); do
+      TAGS+=("CMECH_n${n}_${SUBSET}_r${r}")
+      CELLS+=("$CMFQ/n$n/r$r/complexmech/${n}node/$REGIME/hide_$HIDE")
+      DATAS+=("$CMFQ/n$n/r$r")
+    done
+  done
+else
+  for c in $CASES; do for s in $SHIFTS; do for d in "${DSA[@]}"; do
+    for (( r=0; r<REALS; r++ )); do
+      TAGS+=("${c}_shift${s}_d${d}_r${r}")
+      CELLS+=("$FQ4/${c}_shift${s}_d${d}_r${r}/$c/N$CTX")
+      DATAS+=("$FQ4/${c}_shift${s}_d${d}_r${r}")
+    done
+  done; done; done
+fi
+echo "  mode=$MODE, watching ${#TAGS[@]} cell(s)"
 
 for (( pass=1; pass<=PASSES; pass++ )); do
   did=0; pend=0; done_n=0
-  for TAG in "${TAGS[@]}"; do
+  for i in "${!TAGS[@]}"; do
+    TAG="${TAGS[$i]}"; CELL="${CELLS[$i]}"; DATA="${DATAS[$i]}"
     [ -f "$OUT_DIR/${TAG}_four.json" ] && { done_n=$((done_n+1)); continue; }
     DUMPS="$OUT4/$TAG"
     [ -d "$DUMPS" ] || { pend=$((pend+1)); continue; }
@@ -86,7 +108,9 @@ for (( pass=1; pass<=PASSES; pass++ )); do
 
     echo "[$(date '+%F %T')] scoring $TAG ($nm models)"
     if DUMPS="$DUMPS" QUERIES="$QUERIES" DRAWS="$DRAWS" CTX="$CTX" \
-       OUT_DIR="$OUT_DIR" FQ4="$FQ4" MALC_B="$MALC_B" \
+       OUT_DIR="$OUT_DIR" CELL_OVERRIDE="$CELL" MALC_B="$MALC_B" \
+       CASE_OVERRIDE="${CASE_FOR_SCORER:-}" \
+       SKIP_MALC="${SKIP_MALC:-0}" \
        WORKERS="${SLURM_CPUS_PER_TASK:-8}" \
        bash "$REPO/benchmarks/cluster/score_fq4.sh" >>"logs_fq/fq4reap_cells.log" 2>&1
     then
@@ -96,7 +120,7 @@ for (( pass=1; pass<=PASSES; pass++ )); do
             if [ "${KEEP:-0}" = 1 ]; then
                 echo "  $TAG scored (kept)"
             else
-                rm -rf "$DUMPS" "$FQ4/$TAG" "$FQ4/${TAG}_root"
+                rm -rf "$DUMPS" "$DATA" "${DATA}_root"
                 echo "  $TAG scored and reaped"
             fi
             did=$((did+1)); done_n=$((done_n+1))

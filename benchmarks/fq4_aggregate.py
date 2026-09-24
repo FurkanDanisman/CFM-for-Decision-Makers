@@ -33,7 +33,25 @@ import numpy as np
 
 # TAG is <case>_shift<S>_d<D>_r<R>; the case name itself contains underscores, so
 # parse from the right rather than splitting on "_".
+# Case study: <case>_shift<S>_d<D>_r<R>. Case names contain underscores, so the
+# shift/d/r suffixes are anchored from the right rather than split on "_".
 _TAG = re.compile(r"^(?P<case>.+)_shift(?P<shift>[+-]?\d+)_d(?P<d>\d+)_r(?P<r>\d+)$")
+# ComplexMech: CMECH_n<D>_<subset>_r<R>. Mapped onto the same (case, shift, d) keys so
+# one aggregator serves both -- d is the node count and shift is fixed, which keeps
+# --group working unchanged instead of needing a second code path.
+_TAG_CM = re.compile(r"^CMECH_n(?P<d>\d+)_(?P<case>[a-z]+)_r(?P<r>\d+)$")
+
+
+def _parse_tag(tag):
+    m = _TAG.match(tag)
+    if m:
+        return {"case": m.group("case"), "shift": m.group("shift"),
+                "d": m.group("d"), "r": m.group("r")}
+    m = _TAG_CM.match(tag)
+    if m:
+        return {"case": f"CMECH_{m.group('case')}", "shift": "0",
+                "d": m.group("d"), "r": m.group("r")}
+    return None
 
 _COVER = [("cover_vx", "v(x)"), ("cover_rho1", "v(x) rho=1"),
           ("bayesian", "bayesian"), ("bayesian_malc", "bayesian MALC")]
@@ -117,11 +135,11 @@ def main():
     skipped = []
     for f in files:
         tag = os.path.basename(f)[: -len("_four.json")]
-        m = _TAG.match(tag)
+        m = _parse_tag(tag)
         if not m:
             skipped.append(tag)
             continue
-        g = tuple(m.group(k) for k in keys)
+        g = tuple(m[k] for k in keys)
         with open(f) as fh:
             blob = json.load(fh)
         sdy = (blob.get("sd_Y") or {}).get("sd")

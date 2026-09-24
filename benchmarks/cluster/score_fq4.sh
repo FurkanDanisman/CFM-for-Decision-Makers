@@ -43,7 +43,15 @@ QUERIES="${QUERIES:-10}"
 DRAWS="${DRAWS:-30}"
 TAG="$(basename "$DUMPS")"
 FQ4="${FQ4:-$SC/fq4}"          # where the generated cells live (truths come from here)
-CELL="$FQ4/$TAG/$CASE/N$CTX"
+# CELL_OVERRIDE / CASE_OVERRIDE: ComplexMech cells sit at a different path and carry a
+# different dataset name, and deriving either from the tag would need a second parser
+# here. The caller already knows both, so it passes them.
+CELL="${CELL_OVERRIDE:-$FQ4/$TAG/$CASE/N$CTX}"
+[ -n "${CASE_OVERRIDE:-}" ] && CASE="$CASE_OVERRIDE"
+# ComplexMech truths are in per-replicate units, so each replicate is scored against
+# its OWN stored tau; the case study has one fixed truth per query.
+PFT=""
+case "$TAG" in CMECH_*) PFT="--per-file-truth" ;; esac
 OUT_DIR="${OUT_DIR:-$SC/fq4_scores}"
 MALC_B="${MALC_B:-1000}"; MALC_K="${MALC_K:-1}"
 WORKERS="${WORKERS:-${SLURM_CPUS_PER_TASK:-1}}"
@@ -59,7 +67,7 @@ echo "== $TAG: ${#ROOTS[@]} model root(s), queries $QLIST"
 # ---- 1. the two moment-based columns (one pass, all models, all queries) -----
 python "$REPO/benchmarks/fixedq_ci_coverage.py" \
     --root "${ROOTS[@]}" --dataset "$CASE" --query $QLIST \
-    --data-cell "$CELL" \
+    ${PFT:-} ${PFT:+ } $([ -z "$PFT" ] && echo "--data-cell $CELL") \
     --workers "$WORKERS" --label "$TAG" --max-replicates "$DRAWS" \
     --json-out "$OUT_DIR/${TAG}_vx.json" \
     --out "$OUT_DIR/${TAG}_vx.md" >/dev/null || {
