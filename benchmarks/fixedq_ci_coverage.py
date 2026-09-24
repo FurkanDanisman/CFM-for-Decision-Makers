@@ -43,6 +43,25 @@ from arm_sd_one_query import arms_for, _files_in                    # noqa: E402
 Z = 1.959963984540054          # exact two-sided 95% normal quantile
 
 
+def _dumped_point(path):
+    """(the harness's own point estimate, its own true tau) for the fixed query.
+
+    The case-study dumps store `ate_pred` / `true_ate` -- means over the queries --
+    and NOT a per-query cate_pred vector. Every fixed-query dump is made with
+    SCM_N_QUERY=1, so that mean is over exactly one query and `ate_pred` IS the
+    point estimate for it. `true_ate` is returned so the caller can verify that:
+    if it does not equal the estimand under test, the file is not a one-query dump
+    and `ate_pred` is a mean over several queries, which would be meaningless here.
+    """
+    with np.load(path, allow_pickle=True) as z:
+        k = z.files
+        ap = (float(np.asarray(z["ate_pred"]).ravel()[0])
+              if "ate_pred" in k else float("nan"))
+        ta = (float(np.asarray(z["true_ate"]).ravel()[0])
+              if "true_ate" in k else float("nan"))
+    return ap, ta
+
+
 def _one_file(args):
     """(est, v_own, v_rho1) for one replicate, or None.
 
@@ -58,10 +77,15 @@ def _one_file(args):
     m0, s0, m1, s1, st, cp, _ck = got
     if not all(np.isfinite(x) for x in (m0, s0, m1, s1)):
         return None
+    if not np.isfinite(cp):
+        # No per-query cate vector in these dumps; ate_pred at SCM_N_QUERY=1 is it.
+        cp, ta = _dumped_point(path)
+    else:
+        ta = float("nan")
     return (m1 - m0,
             st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2,
             (s1 - s0) ** 2,
-            cp)
+            cp, ta)
 
 
 def true_tau_from(data_cell, q):
@@ -137,7 +161,14 @@ def main():
             # ACROSS queries and is NaN at SCM_N_QUERY=1 -- i.e. unavailable for
             # every fixed-query run -- so check it directly, per replicate.
             cp = np.asarray([g[3] for g in got])
+            ta = np.asarray([g[4] for g in got])
             ok = np.isfinite(cp)
+            # Only trust ate_pred as a per-query estimate where the dump's own
+            # true_ate IS the estimand under test -- that is what proves the mean
+            # is over one query. Where true_ate is absent (nan) the value came
+            # from a real per-query cate vector and needs no such check.
+            chk = np.isfinite(ta)
+            ok &= ~chk | (np.abs(ta - tt) < 1e-3)
             dmax = float(np.abs(e[ok] - cp[ok]).max()) if ok.any() else float("nan")
             cpm = float(cp[ok].mean()) if ok.any() else float("nan")
             suf = next((x for x in ("-noanc", "-v3ab", "-v3a", "-v3b")
