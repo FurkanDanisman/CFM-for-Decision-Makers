@@ -92,6 +92,8 @@ def main():
     vx, _ = parse_md(a.vx, ["cover v(x)"], "vx")
     r1, _ = parse_md(a.vx, ["cover rho=1"], "rho1")
     nd, _ = parse_md(a.vx, ["datasets"], "datasets")
+    s0, _ = parse_md(a.vx, ["sd(y0)"], "sd0")
+    s1, _ = parse_md(a.vx, ["sd(y1)"], "sd1")
     bay, _ = parse_md(a.bayes, ["coverage95"], "bayes")
     mal, _ = parse_md(a.malc, ["coverage95"], "malc")
 
@@ -104,18 +106,28 @@ def main():
     models = sorted(set(vx) | set(bay) | set(mal))
     ttl = f"  ({a.label})" if a.label else ""
     L = [f"## Fixed-query coverage, four intervals{ttl}", "",
-         "| model | datasets | v(x) | v(x) rho=1 | bayesian | bayesian MALC |",
-         "|" + "---|" * 6]
+         "| model | datasets | sd(Y0) | sd(Y1) | v(x) | v(x) rho=1 | bayesian "
+         "| bayesian MALC |", "|" + "---|" * 8]
     def f(d, m):
         return f"{d[m]:.3f}" if m in d else "—"
     for m in models:
         n = f"{int(nd[m])}" if m in nd else "—"
-        L.append(f"| {m} | {n} | {f(vx, m)} | {f(r1, m)} | {f(bay, m)} "
-                 f"| {f(mal, m)} |")
+        def g(d):
+            return f"{d[m]:.4f}" if m in d else "—"
+        L.append(f"| {m} | {n} | {g(s0)} | {g(s1)} | {f(vx, m)} | {f(r1, m)} "
+                 f"| {f(bay, m)} | {f(mal, m)} |")
     miss = [m for m in models if m not in bay and m not in mal]
     if miss:
         L += ["", "Missing from the density scorer: " + ", ".join(miss) + "."]
     L += ["",
+          "bayesian and bayesian MALC are the project's standard CATE coverage --",
+          "the same cov raw / cov T that cate_density_metrics reports for every",
+          "other table here, at B=1000 K=1. Nothing new is computed for them.",
+          "",
+          "sd(Y0) / sd(Y1) are the per-arm predictive spreads averaged over the",
+          "replicates and frozen queries; v(x) rho=1 is (sd(Y1)-sd(Y0))^2, so a",
+          "near-zero width there is visible as two nearly equal arm spreads.",
+          "",
           "v(x) and v(x) rho=1 are normal-approximation intervals from the density's",
           "MOMENTS: est +- 1.96*sqrt(v), with v the head's own coupling and",
           "(s1-s0)^2 respectively. bayesian is the CENTRAL 95% interval of the",

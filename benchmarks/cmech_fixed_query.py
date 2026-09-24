@@ -25,6 +25,10 @@ That recovery is exact only while the transform IS affine. Outlier clipping at t
 0.99 quantile is not, so `target_affine_resid` is checked and a realization whose
 residual is large is REJECTED rather than scaled by a fitted b that does not apply.
 
+Needs UWYK on the path, as every ComplexMech generation step does:
+
+    export UWYK_SRC=$DEPLOY_ROOT/external/uwyk_reproduce/src
+    export UWYK_ROOT=$DEPLOY_ROOT/external/uwyk_reproduce
     python benchmarks/cmech_fixed_query.py --nodes 5 --target-real 10 \
         --draws 100 --n-test 100 --queries 10 --rho-min 0.99 \
         --out-root $SCRATCH/cmech_fq
@@ -108,6 +112,12 @@ def main():
     ap.add_argument("--out-root", required=True)
     a = ap.parse_args()
 
+    # Fail on the real cause, not on a FileNotFoundError for a config under
+    # /tmp/g4cfm -- that default path is what an unset UWYK_SRC looks like.
+    if not os.path.isdir(os.environ.get("UWYK_SRC", "/tmp/g4cfm/src")):
+        sys.exit("UWYK_SRC is not set (or does not exist). Export it first:\n"
+                 "  export UWYK_SRC=$DEPLOY_ROOT/external/uwyk_reproduce/src\n"
+                 "  export UWYK_ROOT=$DEPLOY_ROOT/external/uwyk_reproduce")
     cfg, cfg_path, synth = resolve_config(a.prior, a.nodes, a.regime, a.hide)
     uwyk = _import_uwyk()
     SCMSampler = uwyk[0]

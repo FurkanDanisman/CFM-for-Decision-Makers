@@ -85,7 +85,7 @@ def _one_file(args):
     return (m1 - m0,
             st ** 2 if np.isfinite(st) else s0 ** 2 + s1 ** 2,
             (s1 - s0) ** 2,
-            cp, ta)
+            cp, ta, s0, s1)
 
 
 def true_tau_from(data_cell, q):
@@ -164,7 +164,7 @@ def main():
             # Every query is its own fixed estimand with its own truth, so each is
             # scored separately and the indicators are concatenated. Pooling the
             # ESTIMATES instead would average unrelated numbers.
-            E, RAW, VO, V1, CP, TA = ([] for _ in range(6))
+            E, RAW, VO, V1, CP, TA, S0, S1 = ([] for _ in range(8))
             HIT_O, HIT_1, W_O, W_1 = ([] for _ in range(4))
             for q in a.query:
                 got = read_all(fs, q)
@@ -183,12 +183,16 @@ def main():
                 VO.append(voq); V1.append(v1q)
                 CP.append(np.asarray([g[3] for g in got]))
                 TA.append(np.asarray([g[4] for g in got]))
+                S0.append(np.asarray([g[5] for g in got]))
+                S1.append(np.asarray([g[6] for g in got]))
             if not E:
                 continue
             e = np.concatenate(E)          # now a BIAS series, not an estimate
             eraw = np.concatenate(RAW)     # the estimates themselves
             vo = np.concatenate(VO); v1 = np.concatenate(V1)
             cp = np.concatenate(CP); ta = np.concatenate(TA)
+            sd0 = float(np.concatenate(S0).mean())
+            sd1 = float(np.concatenate(S1).mean())
             # The harness also dumps its OWN point estimate. mean(Y1)-mean(Y0)
             # under the dumped density should reproduce it; where it does not, the
             # density (or this reader's un-scaling of it) is wrong and every
@@ -216,7 +220,7 @@ def main():
             w_1 = float(np.concatenate(W_1).mean())
             rows.append((name, e.size, float(e.mean() + tt), float(e.mean()),
                          float(e.std(ddof=1)) if e.size > 1 else float("nan"),
-                         c_o, w_o, c_1, w_1, cpm, tam, dmax))
+                         c_o, w_o, c_1, w_1, cpm, tam, dmax, sd0, sd1))
 
     ttl = f"  ({a.label})" if a.label else ""
     qs = ",".join(str(q) for q in a.query)
@@ -231,13 +235,14 @@ def main():
          f"{'y' if len(a.query) == 1 else 'ies'} {qs}{ttl}", "",
          tline, "",
          "| model | datasets | mean est | bias | sd(est) | cover v(x) | mean width "
-         "| cover rho=1 | mean width rho=1 | dumped est | dumped true "
-         "| max|density-dumped| |", "|" + "---|" * 12]
-    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, tam, dmax in sorted(
+         "| cover rho=1 | mean width rho=1 | sd(Y0) | sd(Y1) | dumped est "
+         "| dumped true | max|density-dumped| |", "|" + "---|" * 14]
+    for nm, n, m, b, sdv, co, wo, c1, w1, cpm, tam, dmax, sd0, sd1 in sorted(
             rows, key=lambda r: abs(r[3])):
         L.append(f"| {nm} | {n} | {m:+.4f} | {b:+.4f} | "
                  + (f"{sdv:.4f}" if np.isfinite(sdv) else "—")
-                 + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} | "
+                 + f" | {co:.3f} | {wo:.4f} | {c1:.3f} | {w1:.4f} "
+                 + f"| {sd0:.4f} | {sd1:.4f} | "
                  + (f"{cpm:+.4f}" if np.isfinite(cpm) else "—") + " | "
                  + (f"{tam:+.4f}" if np.isfinite(tam) else "—") + " | "
                  + (f"{dmax:.2e}" if np.isfinite(dmax) else "—") + " |")

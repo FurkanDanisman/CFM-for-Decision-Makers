@@ -96,12 +96,38 @@ PYREN
         parts+=("$part.r")
     done
     [ "${#parts[@]}" -gt 0 ] || return 1
-    # one header from the first part, then every data row
-    head -n 2 "${parts[0]}" | grep '^|' > "$out"
-    for f in "${parts[@]}"; do
-        grep '^|' "$f" | tail -n +3 >> "$out"
-    done
-    echo "  $sm -> $out ($(( $(grep -c '^|' "$out") - 2 )) rows)"
+    # Concatenate in python, keyed on the HEADER row rather than on line numbers.
+    # 'head -n 2 | grep ^|' assumed the table starts at line 1; cate_density_metrics
+    # prints a title first, so the header was dropped and the merge then read a data
+    # row as the header and found no coverage95 column at all.
+    OUT="$out" python - "${parts[@]}" <<'PYCAT'
+import os, sys
+out, hdr, rows = os.environ["OUT"], None, []
+for path in sys.argv[1:]:
+    seen_hdr = False
+    for ln in open(path):
+        if not ln.lstrip().startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if not seen_hdr:
+            if "method" in [c.lower() for c in cells]:
+                seen_hdr = True
+                if hdr is None:
+                    hdr = ln.rstrip("\n")
+                continue
+            # a part with no header at all: treat every pipe line as data
+        if set("".join(cells)) <= set("-: "):
+            continue
+        rows.append(ln.rstrip("\n"))
+if hdr is None:
+    print(f"no header row in any of {len(sys.argv)-1} part(s)", file=sys.stderr)
+    raise SystemExit(1)
+n = hdr.count("|") - 1
+with open(out, "w") as fh:
+    fh.write(hdr + "\n" + "|" + "---|" * n + "\n" + "\n".join(rows) + "\n")
+print(len(rows))
+PYCAT
+    echo "  $sm -> $out ($(grep -c '^| ' "$out") rows incl. header)"
 }
 
 run_dens none "$OUT_DIR/${TAG}_raw.md" || echo "  raw: no rows"
