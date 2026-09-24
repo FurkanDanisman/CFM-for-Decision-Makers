@@ -91,6 +91,10 @@ def main():
                     help="this cell's sd(Y) json from fq4_cell_sdy.py. Carried into "
                          "the output so lengths stay comparable across datasets of "
                          "different scale after the raw cell is deleted.")
+    ap.add_argument("--n-models", type=int, default=None,
+                    help="how many model directories the cell held when scored. Stored "
+                         "so a later pass can tell a partial scoring from a complete "
+                         "one and re-score instead of accepting the partial table.")
     ap.add_argument("--label", default="")
     ap.add_argument("--out", default=None)
     ap.add_argument("--json-out", default=None,
@@ -173,7 +177,7 @@ def main():
     if a.json_out:
         import json
         with open(a.json_out, "w") as fh:
-            json.dump({"label": a.label, "sd_Y": sdy,
+            json.dump({"label": a.label, "sd_Y": sdy, "n_models": a.n_models,
                        "models": {m: {"datasets": nd.get(m), "sd_y0": s0.get(m),
                                       "sd_y1": s1.get(m),
                                       "cover_vx": vx.get(m), "len_vx": wvx.get(m),

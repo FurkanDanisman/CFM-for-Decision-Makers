@@ -54,6 +54,12 @@ OUT4="${OUT4:-$SC/fq4_dumps}"
 OUT_DIR="${OUT_DIR:-$HOME/projects/def-rgrosse/$USER/fq4_scores}"
 MALC_B="${MALC_B:-1000}"
 NMODELS="${NMODELS:-13}"
+# MIN_MODELS: score a cell once this many models are present, instead of waiting for
+# all NMODELS. Three of the thirteen harnesses are 40-60x slower than the rest, so
+# waiting for a complete cell means ten finished models sit unscored for hours and you
+# see nothing until the very end. A partial cell is re-scored when more models arrive,
+# and is only DELETED once all NMODELS are in -- so nothing is lost by scoring early.
+MIN_MODELS="${MIN_MODELS:-$NMODELS}"
 PASSES="${PASSES:-48}"
 SLEEP="${SLEEP:-900}"
 mkdir -p "$OUT_DIR"
@@ -92,24 +98,39 @@ for (( pass=1; pass<=PASSES; pass++ )); do
   did=0; pend=0; done_n=0
   for i in "${!TAGS[@]}"; do
     TAG="${TAGS[$i]}"; CELL="${CELLS[$i]}"; DATA="${DATAS[$i]}"
-    [ -f "$OUT_DIR/${TAG}_four.json" ] && { done_n=$((done_n+1)); continue; }
     DUMPS="$OUT4/$TAG"
     [ -d "$DUMPS" ] || { pend=$((pend+1)); continue; }
-    # complete = every model directory holds at least R replicates
-    ready=1; nm=0
+    # How many model dirs hold a full R replicates. A model still mid-cell does not
+    # count -- scoring it would use a truncated set.
+    nm=0
     for md in "$DUMPS"/*/; do
       [ -d "$md" ] || continue
-      nm=$((nm+1))
       n=$(find "$md" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
-      [ "$n" -ge "$DRAWS" ] || { ready=0; break; }
+      [ "$n" -ge "$DRAWS" ] && nm=$((nm+1))
     done
-    [ "$nm" -ge "$NMODELS" ] || ready=0
-    [ "$ready" = 1 ] || { pend=$((pend+1)); continue; }
+    # Already scored? Re-score only if MORE models are ready than last time.
+    HAVE_N=0
+    if [ -f "$OUT_DIR/${TAG}_four.json" ]; then
+        HAVE_N=$(python - "$OUT_DIR/${TAG}_four.json" <<'PYN'
+import json, sys
+try:
+    print(int(json.load(open(sys.argv[1])).get("n_models") or 0))
+except Exception:
+    print(0)
+PYN
+)
+        [ "$HAVE_N" -ge "$NMODELS" ] && { done_n=$((done_n+1)); continue; }
+        if [ "$nm" -le "$HAVE_N" ]; then
+            done_n=$((done_n+1)); continue          # scored, nothing new yet
+        fi
+        echo "  $TAG: $HAVE_N -> $nm models, re-scoring"
+    fi
+    [ "$nm" -ge "$MIN_MODELS" ] || { pend=$((pend+1)); continue; }
 
     echo "[$(date '+%F %T')] scoring $TAG ($nm models)"
     if DUMPS="$DUMPS" QUERIES="$QUERIES" DRAWS="$DRAWS" CTX="$CTX" \
        OUT_DIR="$OUT_DIR" CELL_OVERRIDE="$CELL" MALC_B="$MALC_B" \
-       CASE_OVERRIDE="${CASE_FOR_SCORER:-}" \
+       CASE_OVERRIDE="${CASE_FOR_SCORER:-}" N_MODELS="$nm" \
        SKIP_MALC="${SKIP_MALC:-0}" \
        WORKERS="${SLURM_CPUS_PER_TASK:-8}" \
        bash "$REPO/benchmarks/cluster/score_fq4.sh" >>"logs_fq/fq4reap_cells.log" 2>&1
@@ -117,8 +138,10 @@ for (( pass=1; pass<=PASSES; pass++ )); do
         # Only delete once the JSON exists on disk. A scorer that ran but failed to
         # write -- the inode failure -- must not take the dumps with it.
         if [ -f "$OUT_DIR/${TAG}_four.json" ]; then
-            if [ "${KEEP:-0}" = 1 ]; then
-                echo "  $TAG scored (kept)"
+            if [ "${KEEP:-0}" = 1 ] || [ "$nm" -lt "$NMODELS" ]; then
+                # Partial cells are never deleted: the slow models still have to dump
+                # them, and MALC cannot be recomputed once the densities are gone.
+                echo "  $TAG scored with $nm/$NMODELS models (kept)"
             else
                 rm -rf "$DUMPS" "$DATA" "${DATA}_root"
                 echo "  $TAG scored and reaped"

@@ -168,4 +168,5 @@ python "$REPO/benchmarks/fq4_table.py" \
     --bayes "$OUT_DIR/${TAG}_raw.md" "${MALC_ARG[@]}" \
     --label "$TAG" --out "$OUT_DIR/${TAG}_four.md" \
     --sdy "$OUT_DIR/${TAG}_sdy.json" \
+    ${N_MODELS:+--n-models "$N_MODELS"} \
     --json-out "$OUT_DIR/${TAG}_four.json"
