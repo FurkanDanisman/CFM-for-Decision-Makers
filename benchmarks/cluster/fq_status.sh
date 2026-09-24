@@ -35,6 +35,15 @@ done
 NCS=${#CS_PATHS[@]}
 NCM=${#CM_PATHS[@]}
 
+count_cells() {   # count_cells <model> <cell paths...>
+    local m="$1"; shift
+    local paths=()
+    for c in "$@"; do paths+=("$c/$m"); done
+    find "${paths[@]}" -name '*.npz' ! -name 'summary.npz' 2>/dev/null \
+      | awk -F/ -v d="$DRAWS" '{ n[$(NF-1)]++ } END { c=0
+            for (k in n) if (n[k] >= d) c++; print c+0 }'
+}
+
 echo "=== queue ==="
 squeue --me -o "%.10i %.22j %.2t %.10L %R" | head -34
 echo
@@ -42,11 +51,12 @@ printf '%-22s %-14s %-14s\n' model "case ($NCS)" "cmech ($NCM)"
 printf '%-22s %-14s %-14s\n' ---------------------- -------------- --------------
 for r in "${ROWS[@]}"; do
     IFS='|' read -r m _rest <<<"$r"
-    # files/DRAWS is the cell count. A partially written cell shows as a fraction,
-    # which is honest -- it is not done and the scorer will not use it.
-    a=$(find "${CS_PATHS[@]/%//$m}" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
-    b=$(find "${CM_PATHS[@]/%//$m}" -name '*.npz' ! -name 'summary.npz' 2>/dev/null | wc -l)
-    printf '%-22s %-14s %-14s\n' "$m" "$((a / DRAWS))/$NCS" "$((b / DRAWS))/$NCM"
+    # Count CELLS with at least DRAWS replicates, not files/DRAWS: cells inherited
+    # from the earlier run hold 100 replicates, so dividing total files by 30 counted a
+    # finished cell as 3.3 and reported 150/45. Group by cell directory instead.
+    a=$(count_cells "$m" "${CS_PATHS[@]}")
+    b=$(count_cells "$m" "${CM_PATHS[@]}")
+    printf '%-22s %-14s %-14s\n' "$m" "$a/$NCS" "$b/$NCM"
 done
 echo
 CS=$(ls "$OUT_DIR"/*_four.json 2>/dev/null | grep -vc CMECH || true)
