@@ -78,8 +78,8 @@ def main():
     base = os.path.join(a.out, a.smoother)
 
     # rc / cm live in flat files whose names embed the model; cs lives per-model.
-    rc = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    cm = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    rc = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
+    cm = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     for f in glob.glob(os.path.join(base, "*.npz")):
         b = os.path.basename(f)[:-4]
         for ds in sorted(RC, key=len, reverse=True):
@@ -89,7 +89,7 @@ def main():
         if m:
             load(f, cm[m.group(1)][int(m.group(2))])
 
-    cs = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    cs = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list))))
     for d in glob.glob(os.path.join(base, "perreal", "*")):
         if not os.path.isdir(d):
             continue
