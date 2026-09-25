@@ -21,7 +21,8 @@ both are scored and both are stored:
               For N(mu_q, 2 sigma^2) this is a MIXTURE of width
               ~sqrt(2 sigma^2 + var(mu_q)); the barycenter is N(mean mu_q,
               2 sigma^2) of width sqrt(2) sigma. They coincide only when the
-              CATE is homogeneous, so the two NLLs can differ a lot.
+              CATE is homogeneous. L2 and KL can differ substantially; NLL
+              reads only the estimate and is identical under both conventions.
 
 Metrics per realization, on the scaled tau axis (the axis f_tau lives on;
 multiply a density by 1/y_scale for raw units, and NLL shifts by log y_scale):

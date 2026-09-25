@@ -9,7 +9,8 @@ tau is formed:
         eval_density_tauC then CONVOLVES them into p(tau). We read pred0/pred1.
     2D heads (graph2d, DoPFN joint, CausalPFN-2D)
         one forward pass -> a joint head over (y0, y1).
-        eval_density_tauC then takes ANTI-DIAGONAL SUMS to get p(tau).
+        eval_density_tauC integrates p(y0, y0 + tau) over y0, with exact
+        interior terms and tail quadrature, to get p(tau).
         We integrate the other arm out instead (density_common.joint_marginals,
         closed form over the same 9-region mixture).
 

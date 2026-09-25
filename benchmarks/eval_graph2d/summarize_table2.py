@@ -13,6 +13,9 @@ and are not independent, so adding the per-arm SEs in quadrature would be wrong.
 
 Usage:
     python benchmarks/eval_graph2d/summarize_table2.py
+
+For strict coverage checks and updates to FOR_FURKAN.md, use
+refresh_density_tables.py. This lightweight summarizer reports available files.
 """
 from __future__ import annotations
 

@@ -37,9 +37,9 @@
 # COST. Measured on a laptop: ~0.24 s/query for uwyk_tau_density and ~0.17 s for
 # joint_tau_density at N_Y0=4096; the histogram convolutions (causalpfn, dopfn
 # 1D) are much cheaper. Budget the sum over the methods in each dump:
-#   causalpfn IHDP  90 real x  75 q x 5 methods  ~= 1.7 h at 1 worker, ~13 min at 8
+#   causalpfn IHDP 100 real x  75 q x 5 methods  ~= 1.9 h at 1 worker, ~14 min at 8
 #   causalpfn ACIC  10 real x 481 q x 5 methods  ~= 1.2 h at 1 worker, ~ 9 min at 8
-#   dopfn     IHDP  90 real x  75 q x 4 methods  ~= 1.4 h at 1 worker, ~11 min at 8
+#   dopfn     IHDP 100 real x  75 q x 4 methods  ~= 1.6 h at 1 worker, ~12 min at 8
 #   uwyk_*    IHDP 100 real x  75 q x 2 methods  ~= 45 min at 1 worker, ~ 6 min at 8
 # Every task fits 03:00:00 even single-threaded, so the wall clock is not the
 # binding constraint; the pool is there to keep the queue short.
@@ -71,8 +71,8 @@ COMBOS=(
     "uwyk_v3a:5312882:ACIC"
     "uwyk_noanc:5312884:IHDP"    # UWYK-1D (anc=noanc) + graph2d Joint-2D
     "uwyk_noanc:5312884:ACIC"
-    "dopfn:60508900:IHDP"        # DoPFN native + repro_1d_J10/J100 + repro_joint2d
-    "dopfn:60508900:ACIC"
+    "dopfn_refresh:dopfn_refresh:IHDP" # full refresh; keep old derived scores separate
+    "dopfn_refresh:dopfn_refresh:ACIC"
     "causalpfn:5571187:IHDP"     # all five CausalPFN checkpoints
     "causalpfn:5571187:ACIC"
 )

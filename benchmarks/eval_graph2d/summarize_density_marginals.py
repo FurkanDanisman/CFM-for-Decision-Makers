@@ -23,8 +23,8 @@ import numpy as np
 
 # (label, marginals run dir, tauC shard, method key in both tiers)
 ROWS = [
-    ('Do-PFN',                        'dopfn',      '60508900', 'dopfn_native'),
-    ('Do-PFN 2D',                     'dopfn',      '60508900', 'dopfn_repro_joint2d'),
+    ('Do-PFN',                        'dopfn_refresh', 'dopfn_refresh', 'dopfn_native'),
+    ('Do-PFN 2D',                     'dopfn_refresh', 'dopfn_refresh', 'dopfn_repro_joint2d'),
     ('UWYK No-Anc',                   'uwyk_noanc', '5312884',  'uwyk_native'),
     ('UWYK No-Anc 2D',                'uwyk_noanc', '5312884',  'joint'),
     ('UWYK Anc (v3a)',                'uwyk_v3a',   '5312882',  'uwyk_native'),

@@ -42,26 +42,28 @@ Two designs: IHDP/ACIC ship both potential outcomes and both μ_t, so noise is d
 More details in python /project/6105522/lukez/CFM-for-Decision-Makers/benchmarks/empirical_tests/prove_arm_independence.py, FULL RESULTS in arm_independence_5312807.out
 
 # Summary Table
+
 Table 2: Density on IHDP and ACIC.
 
-Method                        | IHDP: f_Y0 + f_Y1 ↓ | IHDP: f_τ ↓    | IHDP: f_ATE ↓  | ACIC: f_Y0 + f_Y1 ↓ | ACIC: f_τ ↓    | ACIC: f_ATE ↓ 
-------------------------------|---------------------|----------------|----------------|---------------------|----------------|---------------
-Do-PFN                        | -0.5559±0.0616      | 0.2115±0.0343  | -0.1132±0.0337 | -0.3457±0.2079      | -0.0374±0.1436 | -0.2118±0.1145
-Do-PFN 2D                     | -0.2096±0.0483      | 0.4802±0.0449  | -0.1847±0.0602 | -0.1434±0.2094      | 0.2644±0.2574  | -0.1540±0.1882
-UWYK No-Anc                   | -0.7887±0.0640      | 0.3415±0.0330  | 0.0775±0.0431  | -1.2416±0.1829      | -0.2536±0.1118 | -0.5013±0.0944
-UWYK No-Anc 2D                | -0.9272±0.0739      | 0.0103±0.0358  | -0.3798±0.0290 | -1.2508±0.2121      | -0.4638±0.1481 | -0.9971±0.1901
-UWYK Anc (v3a)                | -1.0910±0.0494      | 0.1598±0.0243  | -0.1829±0.0325 | -1.4673±0.2005      | -0.4253±0.1200 | -0.6910±0.1024
-UWYK Anc 2D (v3a)             | -1.0857±0.0736      | -0.0504±0.0364 | -0.5157±0.0289 | -1.3360±0.2157      | -0.4862±0.1496 | -1.0176±0.1882
-CausalPFN-C j1024_headrand 1D | -3.9026±0.1767      | -0.6009±0.0867 | -1.5770±0.0833 | -2.9809±0.2365      | -0.9017±0.1125 | -1.3009±0.1298
-CausalPFN-C j32 1D            | -1.8176±0.0693      | -0.3847±0.0463 | -0.5767±0.0352 | -2.0433±0.1912      | -0.6323±0.0934 | -0.7541±0.0892
-CausalPFN-C botharms 1D       | -3.8274±0.1748      | -0.6012±0.0880 | -1.5630±0.0835 | -2.9764±0.2475      | -0.9054±0.1191 | -1.3118±0.1405
-CausalPFN-C j32_random 2D     | -1.7667±0.0702      | -0.3649±0.0478 | -0.6624±0.0281 | -2.0240±0.1910      | -0.6718±0.0908 | -0.8598±0.0813
-CausalPFN-C j32_eta0_y01 2D   | -1.7242±0.0742      | -0.3511±0.0484 | -0.6476±0.0287 | -2.0666±0.1799      | -0.7026±0.0888 | -0.8750±0.0809
+| Method | IHDP: f_Y0 + f_Y1 ↓ | IHDP: f_τ ↓ | IHDP: f_ATE ↓ | ACIC: f_Y0 + f_Y1 ↓ | ACIC: f_τ ↓ | ACIC: f_ATE ↓ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Do-PFN | -0.6100±0.0649 | 0.1848±0.0354 | -0.1361±0.0345 | -0.2837±0.1703 | -0.0245±0.1144 | -0.1918±0.0912 |
+| Do-PFN 2D | -0.2419±0.0532 | 0.4711±0.0466 | -0.1941±0.0615 | -0.1038±0.1680 | 0.2889±0.2049 | -0.1759±0.1609 |
+| UWYK No-Anc | -0.7887±0.0640 | 0.3415±0.0330 | 0.0775±0.0431 | -1.2416±0.1829 | -0.2536±0.1118 | -0.5013±0.0944 |
+| UWYK No-Anc 2D | -0.9272±0.0739 | 0.0103±0.0358 | -0.3798±0.0290 | -1.2508±0.2121 | -0.4638±0.1481 | -0.9971±0.1901 |
+| UWYK Anc (v3a) | -1.0910±0.0494 | 0.1598±0.0243 | -0.1829±0.0325 | -1.4673±0.2005 | -0.4253±0.1200 | -0.6910±0.1024 |
+| UWYK Anc 2D (v3a) | -1.0857±0.0736 | -0.0504±0.0364 | -0.5157±0.0289 | -1.3360±0.2157 | -0.4862±0.1496 | -1.0176±0.1882 |
+| CausalPFN-C j1024_headrand 1D | -3.8387±0.1688 | -0.5666±0.0829 | -1.5436±0.0788 | -2.9809±0.2365 | -0.9017±0.1125 | -1.3009±0.1298 |
+| CausalPFN-C j32 1D | -1.7873±0.0658 | -0.3614±0.0441 | -0.5607±0.0335 | -2.0433±0.1912 | -0.6323±0.0934 | -0.7541±0.0892 |
+| CausalPFN-C botharms 1D | -3.7637±0.1664 | -0.5640±0.0842 | -1.5290±0.0790 | -2.9764±0.2475 | -0.9054±0.1191 | -1.3118±0.1405 |
+| CausalPFN-C j32_random 2D | -1.7365±0.0666 | -0.3393±0.0457 | -0.6504±0.0266 | -2.0240±0.1910 | -0.6718±0.0908 | -0.8598±0.0813 |
+| CausalPFN-C j32_eta0_y01 2D | -1.6910±0.0704 | -0.3248±0.0463 | -0.6344±0.0271 | -2.0666±0.1799 | -0.7026±0.0888 | -0.8750±0.0809 |
 
 `f_X` is the NLL of density `X`, in nats, mean ± SE over realizations; lower is
-better. All three tiers are scored on the **scaled** axis, so the columns are
-directly comparable (a raw-unit density is 1/y_scale times this one, which
-shifts every NLL by log y_scale).
+better within each column. All three tiers use the **scaled** axis, but score
+different targets, so their absolute NLLs should not be compared across tiers.
+Converting to raw units adds `log(y_scale)` to each one-dimensional NLL and
+`2 log(y_scale)` to the summed arm NLL, per realization.
 
 - `f_Y0 + f_Y1` — summed arm NLL, formed **per realization** and only then
   averaged. The two arms are scored on the same realizations and are positively
@@ -76,8 +78,8 @@ shifts every NLL by log y_scale).
   full-mixture tail quadrature, not an anti-diagonal sum or a grid convolution.
   The eval stores the metric under both truth conventions (`_bary`, the W2
   barycenter of the true per-query densities, and `_mix`, their arithmetic
-  mean); for NLL they are identical to the last bit across all 1332
-  method-cells, since −log p_est(ATE_true) reads only the estimate. The
+  mean); for NLL they are identical to the last bit across all 1210 displayed
+  method-realization cells, since −log p_est(ATE_true) reads only the estimate. The
   distinction matters for `l2` and `kl_*`, which are stored too. Estimate mass
   is 1.00000 everywhere; no inf or nan.
 
@@ -100,21 +102,24 @@ upstream of p(τ). Nothing here is reconstructed from a CATE density:
   carry no arm-independence assumption — that assumption enters only in the
   convolution.
 - **2D heads** (Do-PFN 2D, UWYK Joint-2D, CausalPFN-2D) emit one joint over
-  (y0, y1). p(τ) comes from its anti-diagonal sums; these rows integrate the
-  other arm out of the same joint instead, in closed form
+  (y0, y1). p(τ) integrates p(y0, y0 + τ) over y0, with exact interior terms
+  and tail quadrature; these rows integrate the other arm out of the same
+  joint instead, in closed form
   (`density_common.joint_marginals`, exact — checked against brute-force 2D
   quadrature, whose gap falls 4× per 4× refinement).
 
 Grid `Y_MARG`: [-2, 2], 8001 nodes, step 0.0005 in scaled units — the same step
-as the τ grid and anchored at 0, so every model knot lands on a node (UWYK
-0.002 → 4, joint J=32 0.0625 → 125, DoPFN J=10 0.2 → 400). Widened from ±1.5
+as the τ grid and anchored at 0. It aligns with the UWYK grids (1D 0.002 → 4
+steps, joint J=32 0.0625 → 125 steps); Do-PFN's adaptive borders and the
+affinely transformed Do-PFN/CausalPFN bins need not align. Widened from ±1.5
 because UWYK's half-Gaussian tail scales run ≈0.43–0.49.
 
 - `nll` = −log p_est(μ_t), at the true conditional mean, evaluated on the
   density object rather than read off the grid. (The τ tier takes NLL at a
   sampled τ*; the dumps carry no sampled y0*/y1*.)
-- `l2` = ‖p_true − p_est‖₂ against the analytic Gaussian N(μ_t, σ) the IHDP /
-  ACIC DGPs ship. `mass` = ∫p_est over the grid, a diagnostic.
+- `l2` = ‖p_true − p_est‖₂ against the analytic Gaussian with mean μ_t and
+  standard deviation σ from the IHDP / ACIC DGPs. `mass` = ∫p_est over the
+  grid, a diagnostic.
 - `n` = realizations; cells are mean ± SE across them.
 
 Computed offline from the prediction dumps `eval_density_tauC.py` already writes
@@ -127,24 +132,24 @@ Scripts: `benchmarks/eval_graph2d/eval_density_marginals.py`,
 
 | method | n | nll_y0 | nll_y1 | l2_y0 | l2_y1 | mass_y0 | mass_y1 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Do-PFN | 90 | -0.2601±0.0275 | -0.2958±0.0415 | 1.5429±0.1335 | 1.5387±0.1239 | 0.9999±0.0000 | 0.9998±0.0000 |
-| Do-PFN 2D | 90 | -0.2239±0.0263 | 0.0144±0.0300 | 1.5685±0.1323 | 1.7134±0.1302 | 0.9975±0.0002 | 0.9955±0.0003 |
+| Do-PFN | 100 | -0.2760±0.0288 | -0.3340±0.0426 | 1.6627±0.1379 | 1.6469±0.1287 | 0.9999±0.0000 | 0.9998±0.0000 |
+| Do-PFN 2D | 100 | -0.2342±0.0275 | -0.0077±0.0324 | 1.6895±0.1371 | 1.8289±0.1345 | 0.9976±0.0002 | 0.9957±0.0002 |
 | UWYK No-Anc | 100 | -0.4175±0.0285 | -0.3713±0.0413 | 1.6090±0.1343 | 1.6799±0.1238 | 1.0004±0.0001 | 1.0001±0.0001 |
 | UWYK No-Anc 2D | 100 | -0.3060±0.0307 | -0.6213±0.0561 | 1.6208±0.1369 | 1.4921±0.1199 | 1.0000±0.0000 | 1.0000±0.0000 |
 | UWYK Anc (v3a) | 100 | -0.5686±0.0259 | -0.5224±0.0314 | 1.5103±0.1375 | 1.5819±0.1314 | 1.0008±0.0001 | 1.0001±0.0001 |
 | UWYK Anc 2D (v3a) | 100 | -0.3980±0.0317 | -0.6877±0.0543 | 1.5791±0.1369 | 1.4647±0.1205 | 1.0000±0.0000 | 1.0000±0.0000 |
-| CausalPFN-C j1024_headrand 1D | 90 | -1.6005±0.0738 | -2.3022±0.1042 | 0.8768±0.0893 | 2.0046±0.1195 | 1.0000±0.0000 | 0.9997±0.0003 |
-| CausalPFN-C j32 1D | 90 | -0.8810±0.0328 | -0.9366±0.0371 | 1.3832±0.1438 | 1.3453±0.1431 | 1.0000±0.0000 | 1.0000±0.0001 |
-| CausalPFN-C botharms 1D | 90 | -1.5947±0.0743 | -2.2327±0.1022 | 0.8596±0.0913 | 2.0088±0.1227 | 1.0000±0.0000 | 0.9997±0.0003 |
-| CausalPFN-C j32_random 2D | 90 | -0.8784±0.0340 | -0.8883±0.0369 | 1.4424±0.1401 | 1.4620±0.1366 | 1.0000±0.0000 | 1.0000±0.0000 |
-| CausalPFN-C j32_eta0_y01 2D | 90 | -0.8601±0.0357 | -0.8641±0.0391 | 1.4593±0.1392 | 1.4635±0.1373 | 1.0000±0.0000 | 1.0000±0.0000 |
+| CausalPFN-C j1024_headrand 1D | 100 | -1.5776±0.0706 | -2.2611±0.0995 | 0.8616±0.0829 | 1.9555±0.1136 | 1.0000±0.0000 | 0.9997±0.0002 |
+| CausalPFN-C j32 1D | 100 | -0.8660±0.0311 | -0.9212±0.0353 | 1.3547±0.1362 | 1.3173±0.1354 | 1.0000±0.0000 | 1.0000±0.0000 |
+| CausalPFN-C botharms 1D | 100 | -1.5674±0.0707 | -2.1963±0.0972 | 0.8449±0.0860 | 1.9687±0.1155 | 1.0000±0.0000 | 0.9997±0.0002 |
+| CausalPFN-C j32_random 2D | 100 | -0.8599±0.0325 | -0.8766±0.0349 | 1.4188±0.1325 | 1.4344±0.1293 | 1.0000±0.0000 | 1.0000±0.0000 |
+| CausalPFN-C j32_eta0_y01 2D | 100 | -0.8418±0.0339 | -0.8492±0.0370 | 1.4359±0.1317 | 1.4375±0.1299 | 1.0000±0.0000 | 1.0000±0.0000 |
 
 ### ACIC — marginals
 
 | method | n | nll_y0 | nll_y1 | l2_y0 | l2_y1 | mass_y0 | mass_y1 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Do-PFN | 8 | -0.2120±0.1101 | -0.1337±0.1052 | 2.1078±0.0691 | 2.1367±0.0700 | 0.9999±0.0000 | 0.9999±0.0000 |
-| Do-PFN 2D | 8 | -0.0963±0.1147 | -0.0471±0.1041 | 2.1521±0.0717 | 2.1684±0.0738 | 0.9876±0.0042 | 0.9849±0.0051 |
+| Do-PFN | 10 | -0.1833±0.0893 | -0.1005±0.0867 | 2.1070±0.0570 | 2.1358±0.0571 | 0.9999±0.0000 | 0.9999±0.0000 |
+| Do-PFN 2D | 10 | -0.0719±0.0921 | -0.0319±0.0833 | 2.1484±0.0597 | 2.1604±0.0603 | 0.9888±0.0034 | 0.9853±0.0041 |
 | UWYK No-Anc | 10 | -0.8055±0.0948 | -0.4361±0.1219 | 1.7402±0.1189 | 1.9944±0.0728 | 0.9999±0.0003 | 1.0002±0.0003 |
 | UWYK No-Anc 2D | 10 | -0.6955±0.1017 | -0.5553±0.1214 | 1.8252±0.1045 | 1.9031±0.0843 | 1.0000±0.0000 | 1.0000±0.0000 |
 | UWYK Anc (v3a) | 10 | -0.8656±0.0941 | -0.6016±0.1363 | 1.6958±0.1137 | 1.8897±0.0807 | 0.9999±0.0003 | 1.0001±0.0003 |
@@ -159,9 +164,9 @@ Scripts: `benchmarks/eval_graph2d/eval_density_marginals.py`,
 ## Densities (all models) — p(τ | x)
 
 The same eleven models in one table, so the marginal tier above and the CATE
-tier line up row for row. Recomputed from the same per-realization NPZs that
-back the per-run tables below, and they agree to 4 dp; `mass` is carried along
-here, since the per-run tables push it into their commented-out blocks.
+tier line up row for row. Recomputed from the complete per-realization NPZs;
+the older per-run tables below retain their earlier coverage and may differ.
+`mass` is carried along here as a diagnostic.
 
 - `nll` = −log p(τ*) at the observed τ*, `l2` = ‖p_true − p_est‖₂ on
   `TAU_CENTERS` ([-3, 3], 12001 nodes), `mass` = ∫p_est dτ.
@@ -171,24 +176,24 @@ here, since the per-run tables push it into their commented-out blocks.
 
 | method | n | nll | l2 | mass |
 | --- | ---: | ---: | ---: | ---: |
-| Do-PFN | 90 | 0.2115±0.0343 | 1.3222±0.1080 | 0.9998±0.0000 |
-| Do-PFN 2D | 90 | 0.4802±0.0449 | 1.4690±0.1099 | 0.9981±0.0002 |
+| Do-PFN | 100 | 0.1848±0.0354 | 1.4193±0.1118 | 0.9998±0.0000 |
+| Do-PFN 2D | 100 | 0.4711±0.0466 | 1.5737±0.1133 | 0.9981±0.0002 |
 | UWYK No-Anc | 100 | 0.3415±0.0330 | 1.5399±0.1098 | 1.0000±0.0000 |
 | UWYK No-Anc 2D | 100 | 0.0103±0.0358 | 1.2964±0.1144 | 1.0000±0.0000 |
 | UWYK Anc (v3a) | 100 | 0.1598±0.0243 | 1.4097±0.1180 | 1.0000±0.0000 |
 | UWYK Anc 2D (v3a) | 100 | -0.0504±0.0364 | 1.2545±0.1156 | 1.0000±0.0000 |
-| CausalPFN-C j1024_headrand 1D | 90 | -0.6009±0.0867 | 0.8198±0.0641 | 1.0000±0.0000 |
-| CausalPFN-C j32 1D | 90 | -0.3847±0.0463 | 1.0816±0.1224 | 1.0000±0.0000 |
-| CausalPFN-C botharms 1D | 90 | -0.6012±0.0880 | 0.8116±0.0627 | 1.0000±0.0000 |
-| CausalPFN-C j32_random 2D | 90 | -0.3649±0.0478 | 1.1127±0.1209 | 1.0000±0.0000 |
-| CausalPFN-C j32_eta0_y01 2D | 90 | -0.3511±0.0484 | 1.1281±0.1203 | 1.0000±0.0000 |
+| CausalPFN-C j1024_headrand 1D | 100 | -0.5666±0.0829 | 0.8036±0.0597 | 1.0000±0.0000 |
+| CausalPFN-C j32 1D | 100 | -0.3614±0.0441 | 1.0582±0.1159 | 1.0000±0.0000 |
+| CausalPFN-C botharms 1D | 100 | -0.5640±0.0842 | 0.7959±0.0587 | 1.0000±0.0000 |
+| CausalPFN-C j32_random 2D | 100 | -0.3393±0.0457 | 1.0900±0.1145 | 1.0000±0.0000 |
+| CausalPFN-C j32_eta0_y01 2D | 100 | -0.3248±0.0463 | 1.1071±0.1138 | 1.0000±0.0000 |
 
 ### ACIC — CATE density
 
 | method | n | nll | l2 | mass |
 | --- | ---: | ---: | ---: | ---: |
-| Do-PFN | 8 | -0.0374±0.1436 | 1.7047±0.0549 | 0.9998±0.0001 |
-| Do-PFN 2D | 8 | 0.2644±0.2574 | 1.8911±0.0684 | 0.9899±0.0038 |
+| Do-PFN | 10 | -0.0245±0.1144 | 1.7014±0.0453 | 0.9998±0.0000 |
+| Do-PFN 2D | 10 | 0.2889±0.2049 | 1.9126±0.0650 | 0.9896±0.0031 |
 | UWYK No-Anc | 10 | -0.2536±0.1118 | 1.5791±0.0566 | 1.0000±0.0000 |
 | UWYK No-Anc 2D | 10 | -0.4638±0.1481 | 1.3377±0.1164 | 1.0000±0.0000 |
 | UWYK Anc (v3a) | 10 | -0.4253±0.1200 | 1.4460±0.0673 | 1.0000±0.0000 |
@@ -200,9 +205,17 @@ here, since the per-run tables push it into their commented-out blocks.
 | CausalPFN-C j32_eta0_y01 2D | 10 | -0.7026±0.0888 | 1.2883±0.0450 | 1.0000±0.0000 |
 
 **Row provenance.** "Do-PFN" is the library (native) head and "Do-PFN 2D" is
-`repro_joint2d`, both from the **new (raw)** run — not the stale one. "UWYK Anc"
-is the **v3a** anchor. Realization counts differ by row (IHDP 90 vs 100, ACIC 8
-vs 10), so cross-row gaps are as-run comparisons, not matched-sample ones.
+`repro_joint2d`, both from `results_density_tauC/dopfn_refresh`. Its marginal
+and ATE scores are recomputed into separate `dopfn_refresh` directories;
+the old `60508900` predictions and `dopfn` derived scores are superseded.
+UWYK No-Anc uses `5312884`, UWYK Anc uses the **v3a** anchor `5312882`, and
+CausalPFN uses the repaired `5571187` shard. Every displayed row uses IHDP
+r000–r099 and ACIC r000–r009, with matching query truth, scaling and grids.
+
+Recheck all three tiers and all seven tables with
+`python benchmarks/eval_graph2d/refresh_density_tables.py` (NumPy/SciPy required).
+Add `--fill-missing --workers 4 --write` to compute missing marginal/ATE scores
+from the saved predictions and update the tables; no model inference is needed.
 
 
 ## ATE density — p_ATE(τ)
@@ -227,10 +240,11 @@ width ≈ √(2σ² + var(μ_q)) while the barycenter has width √2·σ, so the
 only under a homogeneous CATE.
 
 This matters: `nll` and `ate_err` are **identical** under both (they read only
-the estimate — verified equal to the last bit across all 1332 method-cells), but
-`l2` and `kl_rev` move a lot. IHDP Do-PFN `kl_rev` is 168.2 against `bary` and
-2.31 against `mix`; its `l2` is 1.23 against `bary` and 0.46 against `mix`. The
-large `kl_rev` under `bary` is the expected blow-up of KL(est ‖ truth) where the
+the estimate — verified equal to the last bit across all 1210 displayed
+method-realization cells), but `l2` and `kl_rev` move a lot. IHDP Do-PFN
+`kl_rev` is 181.2 against `bary` and 2.67 against `mix`; its `l2` is 1.33
+against `bary` and 0.46 against `mix`. The large `kl_rev` under `bary` is the
+expected blow-up of KL(est ‖ truth) where the
 narrow barycenter truth is near zero — read it as a shape-mismatch diagnostic,
 not as a score to rank on. Pass `--truth mix` to
 `summarize_density_ate.py` for the other convention.
@@ -239,24 +253,24 @@ not as a score to rank on. Pass `--truth mix` to
 
 | method | n | nll | l2 | kl_rev | mass | ate_err |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Do-PFN | 90 | -0.1132±0.0337 | 1.2284±0.1087 | 168.1795±17.7938 | 1.0000±0.0000 | 0.1454±0.0109 |
-| Do-PFN 2D | 90 | -0.1847±0.0602 | 1.3153±0.1078 | 143.5165±16.3346 | 1.0000±0.0000 | 0.1572±0.0128 |
+| Do-PFN | 100 | -0.1361±0.0345 | 1.3282±0.1130 | 181.1842±17.6737 | 1.0000±0.0000 | 0.1429±0.0104 |
+| Do-PFN 2D | 100 | -0.1941±0.0615 | 1.4182±0.1103 | 154.8850±16.2952 | 1.0000±0.0000 | 0.1554±0.0123 |
 | UWYK No-Anc | 100 | 0.0775±0.0431 | 1.4713±0.1044 | 230.1013±14.0457 | 1.0000±0.0000 | 0.2529±0.0146 |
 | UWYK No-Anc 2D | 100 | -0.3798±0.0290 | 1.1799±0.1175 | 182.2747±15.8101 | 1.0000±0.0000 | 0.1281±0.0103 |
 | UWYK Anc (v3a) | 100 | -0.1829±0.0325 | 1.3105±0.1127 | 180.7021±15.8714 | 1.0000±0.0000 | 0.1384±0.0071 |
 | UWYK Anc 2D (v3a) | 100 | -0.5157±0.0289 | 1.0988±0.1190 | 155.7422±15.5828 | 1.0000±0.0000 | 0.1028±0.0088 |
-| CausalPFN-C j1024_headrand 1D | 90 | -1.5770±0.0833 | 0.5334±0.0497 | 2.3321±1.0790 | 1.0000±0.0000 | 0.0097±0.0010 |
-| CausalPFN-C j32 1D | 90 | -0.5767±0.0352 | 1.0585±0.1232 | 98.3948±16.3433 | 1.0000±0.0000 | 0.0258±0.0029 |
-| CausalPFN-C botharms 1D | 90 | -1.5630±0.0835 | 0.5525±0.0500 | 2.4236±1.1611 | 1.0000±0.0000 | 0.0179±0.0021 |
-| CausalPFN-C j32_random 2D | 90 | -0.6624±0.0281 | 0.9934±0.1271 | 93.6539±16.4672 | 1.0000±0.0000 | 0.0195±0.0019 |
-| CausalPFN-C j32_eta0_y01 2D | 90 | -0.6476±0.0287 | 0.9988±0.1275 | 95.1433±16.6849 | 1.0000±0.0000 | 0.0172±0.0017 |
+| CausalPFN-C j1024_headrand 1D | 100 | -1.5436±0.0788 | 0.5405±0.0494 | 2.3426±0.9875 | 1.0000±0.0000 | 0.0101±0.0010 |
+| CausalPFN-C j32 1D | 100 | -0.5607±0.0335 | 1.0350±0.1167 | 96.2148±15.4849 | 1.0000±0.0000 | 0.0266±0.0028 |
+| CausalPFN-C botharms 1D | 100 | -1.5290±0.0790 | 0.5582±0.0493 | 2.4936±1.0740 | 1.0000±0.0000 | 0.0191±0.0020 |
+| CausalPFN-C j32_random 2D | 100 | -0.6504±0.0266 | 0.9668±0.1205 | 91.5238±15.6013 | 1.0000±0.0000 | 0.0197±0.0018 |
+| CausalPFN-C j32_eta0_y01 2D | 100 | -0.6344±0.0271 | 0.9720±0.1209 | 93.0207±15.8078 | 1.0000±0.0000 | 0.0169±0.0016 |
 
 ### ACIC — ATE density
 
 | method | n | nll | l2 | kl_rev | mass | ate_err |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Do-PFN | 8 | -0.2118±0.1145 | 1.6614±0.0593 | 310.2159±17.3429 | 1.0000±0.0000 | 0.1193±0.0213 |
-| Do-PFN 2D | 8 | -0.1540±0.1882 | 1.9286±0.0750 | 169.9473±28.4340 | 1.0000±0.0000 | 0.1192±0.0239 |
+| Do-PFN | 10 | -0.1918±0.0912 | 1.6575±0.0509 | 313.5267±14.5518 | 1.0000±0.0000 | 0.1174±0.0187 |
+| Do-PFN 2D | 10 | -0.1759±0.1609 | 1.9023±0.0882 | 166.9746±24.7882 | 1.0000±0.0000 | 0.1175±0.0193 |
 | UWYK No-Anc | 10 | -0.5013±0.0944 | 1.4813±0.0643 | 222.4741±19.1474 | 1.0000±0.0000 | 0.0649±0.0109 |
 | UWYK No-Anc 2D | 10 | -0.9971±0.1901 | 1.0539±0.1521 | 131.0416±29.3798 | 1.0000±0.0000 | 0.0181±0.0046 |
 | UWYK Anc (v3a) | 10 | -0.6910±0.1024 | 1.3363±0.0710 | 172.1913±18.2576 | 1.0000±0.0000 | 0.0284±0.0083 |
