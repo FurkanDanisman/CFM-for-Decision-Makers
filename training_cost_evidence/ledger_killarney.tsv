@@ -1,0 +1,27 @@
+cluster	logdir	job	out_dir	tag	resume_step	last_step	start	mtime	hours
+killarney	logs_causalpfn2d	5032511	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 06:22:46	2026-08-26 08:10:20	1.793
+killarney	logs_causalpfn2d	5032910	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 08:24:37	2026-08-26 08:27:00	0.040
+killarney	logs_causalpfn2d	5035601	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 13:57:12	2026-08-26 13:58:58	0.029
+killarney	logs_causalpfn2d	5037726	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 17:12:44	2026-08-26 17:24:13	0.191
+killarney	logs_causalpfn2d	5037860	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 17:25:50	2026-08-26 17:30:37	0.080
+killarney	logs_causalpfn2d	5037909	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 17:34:41	2026-08-26 17:46:21	0.194
+killarney	logs_causalpfn2d	5038403	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 17:55:07	2026-08-26 18:19:11	0.401
+killarney	logs_causalpfn2d	5038461	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_cpfn2d_fullcompile_test	J=32	?	?	2026-08-26 18:02:44	2026-08-26 18:08:15	0.092
+killarney	logs_causalpfn2d	5038503	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_cpfn2d_fullcompile_test	J=32	?	?	2026-08-26 18:10:18	2026-08-26 18:18:46	0.141
+killarney	logs_causalpfn2d	5038595	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 18:19:29	2026-08-26 18:37:58	0.308
+killarney	logs_causalpfn2d	5038597	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 18:20:03	2026-08-26 18:24:11	0.069
+killarney	logs_causalpfn2d	5038775	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 18:38:27	2026-08-26 18:49:10	0.179
+killarney	logs_causalpfn2d	5038911	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d	J=32	?	?	2026-08-26 18:51:32	2026-08-26 19:02:05	0.176
+killarney	logs_causalpfn2d_l40s	5051731	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	?	2026-08-27 17:10:37	2026-08-27 17:13:01	0.040
+killarney	logs_causalpfn2d_l40s	5051851	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	?	2026-08-27 17:12:25	2026-08-27 17:20:30	0.135
+killarney	logs_causalpfn2d_l40s	5052074	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	?	2026-08-27 17:44:22	2026-08-27 18:06:35	0.370
+killarney	logs_causalpfn2d_l40s	5052815	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	?	2026-08-27 18:07:26	2026-08-27 18:17:16	0.164
+killarney	logs_causalpfn2d_l40s	5052921	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	?	?	?	2026-08-27 18:21:22	2026-08-27 18:24:25	0.051
+killarney	logs_causalpfn2d_l40s	5053020	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	?	2026-08-27 18:27:51	2026-08-27 18:34:46	0.115
+killarney	logs_causalpfn2d_l40s	5053194	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s	J=32	?	31100	2026-08-27 18:34:59	2026-08-28 08:39:31	14.076
+killarney	logs_causalpfn_original_j1024_headrand	5214936	/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100	J=1024	?	?	2026-09-03 18:54:27	2026-09-04 06:49:32	11.918
+killarney	logs_cpfn2d_j32_random	5203860	/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100	J=32,J=32	?	?	2026-09-03 14:20:39	2026-09-03 14:21:03	0.007
+killarney	logs_cpfn2d_j32_random	5214864	/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100	J=32,J=32	?	?	2026-09-07 02:46:44	2026-09-07 09:04:37	6.298
+killarney	logs_graph2d	5017944	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d	J=100	?	12400	2026-08-25 14:26:12	2026-08-26 05:03:58	14.629
+killarney	logs_graph2d	5028410	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d	J=100	?	46300	2026-08-27 21:08:05	2026-08-28 06:58:15	9.836
+killarney	logs_graph2d	5062410	/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d	J=100	?	?	2026-08-28 07:10:20	2026-08-28 07:14:46	0.074
