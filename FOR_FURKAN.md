@@ -1240,149 +1240,62 @@ Point errors in original outcome units, from the same predictions. Full-density 
 _negative = destination method has lower error._
 _Native DoPFN and its joint head use different resolutions; this is an as-run comparison._
 
----
-# Updated DoPFN Reprodcution results
+-->
 
+### IHDP — CausalPFN
 
-### IHDP — DoPFN
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0023, range=[0.9485, 1.0683].
 
-Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0029, range=[0.9550, 1.0683].
+realizations=100, ~75 queries each, graph=none, |tau*|>3: 0.00%
 
-realizations=90, ~75 queries each, graph=none, |tau*|>3: 0.00%
+| method                    |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| ------------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| CausalPFN (x)indep native | **-0.5666±0.0829** | **0.8036±0.0597** | **0.2280±0.0121** | **0.5564±0.1801** | 1.0000±0.0000 |
+| CausalPFN Joint-2D        |     -0.3393±0.0457 |     1.0900±0.1145 |     0.4751±0.0532 |     7.0526±2.0455 | 1.0000±0.0000 |
 
-- `dopfn_native`: library
-- `dopfn_repro_1d_J10`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_1d_J10_step150000.pt
-- `dopfn_repro_1d_J100`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_1d_J100_step150000.pt
-- `dopfn_repro_joint2d`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_joint2d_step150000.pt
-
-| method                       |               nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| ---------------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| DoPFN (x)indep native        |     0.2115±0.0343 |     1.3222±0.1080 |     0.9473±0.0717 |     26.0474±6.7933 | **0.9998±0.0000** |
-| DoPFN repro_1d_J10 (x)indep  |     0.6903±0.0540 |     1.4401±0.1024 |     1.4202±0.0562 |     41.4002±7.2440 |     0.8158±0.0126 |
-| DoPFN repro_1d_J100 (x)indep | **0.1121±0.0247** | **1.2533±0.1141** | **0.8481±0.0785** |     25.2750±6.7573 |     0.9944±0.0003 |
-| DoPFN repro_joint2d Joint-2D |     0.4802±0.0449 |     1.4690±0.1099 |     1.2194±0.0821 | **24.9072±6.5440** |     0.9981±0.0002 |
+Native finite support: zero density at tau* in 0.00% of queries (mean over realizations); NLL retains +inf. Grid KL uses the shared numerical density floor.
 
 Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
 
-| mean estimator                                   |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ------------------------------------------------ | ----------------: | ----------------: | ----------------: |
-| DoPFN (x)indep native                            |     6.0065±1.0287 |     4.1687±0.6372 |     2.2837±0.4223 |
-| DoPFN repro_1d_J10 (x)indep                      |     9.2522±0.6143 |     7.6938±0.4089 |     6.5640±0.3247 |
-| DoPFN repro_1d_J100 (x)indep                     | **4.3980±0.7484** | **3.3470±0.5329** | **0.8957±0.0953** |
-| DoPFN repro_joint2d Joint-2D                     |     5.4772±0.8300 |     4.3394±0.5797 |     1.8038±0.1371 |
-| DoPFN repro_joint2d Joint-2D interior mean (raw) |     5.5764±0.8413 |     4.4459±0.5906 |     1.9153±0.1374 |
-  dopfn_native: max |finite-grid moment - full mean| = 50.3087
-  dopfn_repro_1d_J10: max |finite-grid moment - full mean| = 61.2402
-  dopfn_repro_1d_J100: max |finite-grid moment - full mean| = 40.6119
-  dopfn_repro_joint2d: max |finite-grid moment - full mean| = 4.72033
+| mean estimator                         |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| -------------------------------------- | ----------------: | ----------------: | ----------------: |
+| CausalPFN (x)indep native              | **0.8242±0.1455** | **0.4850±0.0438** | **0.1457±0.0222** |
+| CausalPFN Joint-2D                     |     1.2176±0.1232 |     0.8371±0.0514 |     0.2112±0.0167 |
+| CausalPFN Joint-2D interior mean (raw) |     1.2180±0.1235 |     0.8373±0.0514 |     0.2112±0.0167 |
+  causalpfn_native: max |finite-grid moment - full mean| = 0.00487677
+  causalpfn_joint: max |finite-grid moment - full mean| = 0.00860613
 
-**TAIL NOTE:** The finite tau grid omits distant tail mass for ['dopfn_native', 'dopfn_repro_1d_J10', 'dopfn_repro_1d_J100', 'dopfn_repro_joint2d']. NLL is evaluated at the observed tau and point errors use exact full-density means; L2/KL/mass are finite-grid quantities. In particular, KL_rev is not the full-support reverse KL when omitted tail mass lies far from the truth.
-
-|        | contrast                                               |               dNLL |              dKLrev |              dPEHE |
-| ------ | ------------------------------------------------------ | -----------------: | ------------------: | -----------------: |
-| as run | model gap (dopfn_native -> dopfn_repro_joint2d)        |     +0.2687±0.0423 |      -1.1402±0.8909 |     -0.5293±0.2618 |
-| as run | model gap (dopfn_repro_1d_J10 -> dopfn_repro_joint2d)  | **-0.2101±0.0530** | **-16.4930±1.9556** | **-3.7750±0.4891** |
-| as run | model gap (dopfn_repro_1d_J100 -> dopfn_repro_joint2d) |     +0.3681±0.0345 |      -0.3678±0.6039 |     +1.0792±0.1160 |
+|              | contrast                                               |           dNLL |         dKLrev |          dPEHE |
+| ------------ | ------------------------------------------------------ | -------------: | -------------: | -------------: |
+| **HEADLINE** | model gap as run (causalpfn_native -> causalpfn_joint) | +0.2273±0.0445 | +6.4962±1.8901 | +0.3934±0.0375 |
 
 _negative = destination method has lower error._
-_DoPFN rows differ in head resolution (and native DoPFN in preprocessing); these are as-run comparisons._
 
-**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES.
+### ACIC — CausalPFN
 
-### ACIC — DoPFN
+Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9951, range=[0.9800, 1.0119].
 
-Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9963, range=[0.9806, 1.0119].
+realizations=10, ~481 queries each, graph=none, |tau*|>3: 0.00%
 
-realizations=8, ~481 queries each, graph=none, |tau*|>3: 0.00%
+| method                    |                nll |                l2 |            kl_fwd |            kl_rev |          mass |
+| ------------------------- | -----------------: | ----------------: | ----------------: | ----------------: | ------------: |
+| CausalPFN (x)indep native | **-0.9017±0.1125** | **0.9430±0.0625** | **0.3917±0.0696** | **1.9576±0.5605** | 1.0000±0.0000 |
+| CausalPFN Joint-2D        |     -0.6718±0.0908 |     1.3104±0.0439 |     0.6124±0.0461 |     2.8739±0.4178 | 1.0000±0.0000 |
 
-- `dopfn_native`: library
-- `dopfn_repro_1d_J10`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_1d_J10_step150000.pt
-- `dopfn_repro_1d_J100`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_1d_J100_step150000.pt
-- `dopfn_repro_joint2d`: /home/lukez/CFM-for-Decision-Makers/Required_checkpoints/new/dopfn_repro_joint2d_step150000.pt
-
-| method                       |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| ---------------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| DoPFN (x)indep native        | **-0.0374±0.1436** | **1.7047±0.0549** | **1.2606±0.0892** |     15.1882±2.0775 | **0.9998±0.0001** |
-| DoPFN repro_1d_J10 (x)indep  |      0.1911±0.1491 |     1.7408±0.0557 |     1.4890±0.0944 |     59.4220±4.0391 |     0.9313±0.0090 |
-| DoPFN repro_1d_J100 (x)indep |     -0.0085±0.1400 |     1.7155±0.0550 |     1.2885±0.0869 |     19.6245±2.1997 |     0.9966±0.0013 |
-| DoPFN repro_joint2d Joint-2D |      0.2644±0.2574 |     1.8911±0.0684 |     1.5676±0.2006 | **14.5573±2.1428** |     0.9899±0.0038 |
+Native finite support: zero density at tau* in 0.00% of queries (mean over realizations); NLL retains +inf. Grid KL uses the shared numerical density floor.
 
 Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
 
-| mean estimator                                   |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ------------------------------------------------ | ----------------: | ----------------: | ----------------: |
-| DoPFN (x)indep native                            |     4.1863±0.6864 |     3.3368±0.5497 |     2.4508±0.3163 |
-| DoPFN repro_1d_J10 (x)indep                      |     4.7559±0.6123 |     3.7696±0.5274 | **1.6296±0.5955** |
-| DoPFN repro_1d_J100 (x)indep                     | **3.8339±0.7193** | **2.9316±0.5915** |     1.8055±0.3326 |
-| DoPFN repro_joint2d Joint-2D                     |     4.1702±0.5990 |     3.2844±0.4916 |     2.1617±0.3401 |
-| DoPFN repro_joint2d Joint-2D interior mean (raw) |     4.4226±0.6205 |     3.6012±0.5073 |     2.7921±0.2948 |
-  dopfn_native: max |finite-grid moment - full mean| = 10.1069
-  dopfn_repro_1d_J10: max |finite-grid moment - full mean| = 12.3885
-  dopfn_repro_1d_J100: max |finite-grid moment - full mean| = 1.84353
-  dopfn_repro_joint2d: max |finite-grid moment - full mean| = 11.5334
+| mean estimator                         |         sqrt PEHE |           CATE L1 |     ATE abs error |
+| -------------------------------------- | ----------------: | ----------------: | ----------------: |
+| CausalPFN (x)indep native              | **1.7308±0.2771** | **1.1583±0.1703** | **0.3246±0.0758** |
+| CausalPFN Joint-2D                     |     1.8774±0.2549 |     1.2980±0.1605 |     0.6679±0.1164 |
+| CausalPFN Joint-2D interior mean (raw) |     1.8748±0.2546 |     1.2975±0.1605 |     0.6674±0.1163 |
+  causalpfn_native: max |finite-grid moment - full mean| = 0.017889
+  causalpfn_joint: max |finite-grid moment - full mean| = 0.0926293
 
-**TAIL NOTE:** The finite tau grid omits distant tail mass for ['dopfn_native', 'dopfn_repro_1d_J10', 'dopfn_repro_1d_J100', 'dopfn_repro_joint2d']. NLL is evaluated at the observed tau and point errors use exact full-density means; L2/KL/mass are finite-grid quantities. In particular, KL_rev is not the full-support reverse KL when omitted tail mass lies far from the truth.
-
-|        | contrast                                               |               dNLL |              dKLrev |              dPEHE |
-| ------ | ------------------------------------------------------ | -----------------: | ------------------: | -----------------: |
-| as run | model gap (dopfn_native -> dopfn_repro_joint2d)        |     +0.3018±0.1548 |      -0.6308±2.3675 |     -0.0161±0.2388 |
-| as run | model gap (dopfn_repro_1d_J10 -> dopfn_repro_joint2d)  | **+0.0733±0.1448** | **-44.8646±4.2062** | **-0.5857±0.4640** |
-| as run | model gap (dopfn_repro_1d_J100 -> dopfn_repro_joint2d) |     +0.2729±0.1515 |      -5.0672±2.4751 |     +0.3363±0.2267 |
+|              | contrast                                               |           dNLL |         dKLrev |          dPEHE |
+| ------------ | ------------------------------------------------------ | -------------: | -------------: | -------------: |
+| **HEADLINE** | model gap as run (causalpfn_native -> causalpfn_joint) | +0.2298±0.0405 | +0.9163±0.3176 | +0.1467±0.1344 |
 
 _negative = destination method has lower error._
-_DoPFN rows differ in head resolution (and native DoPFN in preprocessing); these are as-run comparisons._
-
-**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10', 'dopfn_repro_joint2d'] -- the tau grid is clipping real density; widen TAU_EDGES.
-
-
-# Dopfn MALC reproduction
-
-### IHDP — DoPFN
-
-Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=1.0029, range=[0.9550, 1.0683].
-
-realizations=90, ~75 queries each, graph=none, |tau*|>3: 0.00%
-
-
-| method                       |               nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| ---------------------------- | ----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| DoPFN (x)indep native        |     0.2179±0.0341 |     1.3254±0.1081 |     0.9673±0.0716 |     25.7897±6.8165 | **0.9999±0.0000** |
-| DoPFN repro_1d_J10 (x)indep  |     0.6917±0.0543 |     1.4406±0.1024 |     1.4220±0.0560 |     41.2970±7.2206 |     0.8157±0.0126 |
-| DoPFN repro_1d_J100 (x)indep | **0.1120±0.0246** | **1.2575±0.1140** | **0.8494±0.0787** | **25.0180±6.7366** |     0.9944±0.0003 |
-| DoPFN repro_joint2d (x)indep |     0.3514±0.0347 |     1.3874±0.1122 |     1.0936±0.0792 |     26.0094±6.8208 |     0.9981±0.0002 |
-
-Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
-
-| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ---------------------------- | ----------------: | ----------------: | ----------------: |
-| DoPFN (x)indep native        |     6.0133±1.0283 |     4.1739±0.6379 |     2.2864±0.4233 |
-| DoPFN repro_1d_J10 (x)indep  |     9.2498±0.6144 |     7.6893±0.4089 |     6.5626±0.3252 |
-| DoPFN repro_1d_J100 (x)indep | **4.3993±0.7485** | **3.3460±0.5324** | **0.8914±0.0954** |
-| DoPFN repro_joint2d (x)indep |     5.4801±0.8303 |     4.3408±0.5794 |     1.8041±0.1364 |
-
-**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES.
-
-### ACIC — DoPFN
-
-Truth: generator Gaussian, raw sigma=1. Training-residual sigma (diagnostic, raw units): mean=0.9963, range=[0.9806, 1.0119].
-
-realizations=8, ~481 queries each, graph=none, |tau*|>3: 0.00%
-
-
-| method                       |                nll |                l2 |            kl_fwd |             kl_rev |              mass |
-| ---------------------------- | -----------------: | ----------------: | ----------------: | -----------------: | ----------------: |
-| DoPFN (x)indep native        |     -0.0255±0.1401 |     1.7151±0.0584 |     1.2753±0.0895 | **14.4787±2.0263** | **0.9999±0.0000** |
-| DoPFN repro_1d_J10 (x)indep  |      0.1902±0.1497 |     1.7408±0.0558 |     1.4876±0.0949 |     59.3346±4.0367 |     0.9313±0.0090 |
-| DoPFN repro_1d_J100 (x)indep |     -0.0032±0.1382 |     1.7212±0.0569 |     1.2936±0.0862 |     19.1105±2.0893 |     0.9966±0.0013 |
-| DoPFN repro_joint2d (x)indep | **-0.0454±0.1929** | **1.6979±0.0543** | **1.2544±0.1416** |     16.2514±2.0455 |     0.9902±0.0038 |
-
-Point errors in original outcome units, from the same predictions. Full-density means except the interior row; CATE L1 is per-query MAE, ATE error is unnormalised.
-
-| mean estimator               |         sqrt PEHE |           CATE L1 |     ATE abs error |
-| ---------------------------- | ----------------: | ----------------: | ----------------: |
-| DoPFN (x)indep native        |     4.1972±0.6844 |     3.3441±0.5474 |     2.4533±0.3157 |
-| DoPFN repro_1d_J10 (x)indep  |     4.7559±0.6132 |     3.7678±0.5280 | **1.6302±0.5954** |
-| DoPFN repro_1d_J100 (x)indep | **3.8483±0.7190** | **2.9421±0.5909** |     1.8048±0.3352 |
-| DoPFN repro_joint2d (x)indep |     4.1692±0.5992 |     3.2821±0.4913 |     2.1608±0.3397 |
-
-**WARNING:** p(tau) mass off 1.0 by >1% for ['dopfn_repro_1d_J10'] -- the tau grid is clipping real density; widen TAU_EDGES. -->
