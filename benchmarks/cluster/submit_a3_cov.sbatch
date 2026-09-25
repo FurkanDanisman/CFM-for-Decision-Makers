@@ -44,7 +44,11 @@ NODES="${NODES:-5 10 20 30 40 50}"
 # (final_table.py CS_D_DEFAULT), and the point tables pool exactly those. A bare
 # shift*/d* glob would pool 24 cells against the point tables' 18, so PEHE and
 # coverage in one row would describe different cells.
-CS_DS="${CS_DS:-5 10 20 30 40 50}"
+# ALL eight d by default: final_table.py filters at REPORT time via --cs-d
+# (load_perreal matches ^[a-z_]+__d(\d+)_ against the file name), so writing
+# every d keeps d=2,3 available without forcing them into the reported number.
+CS_DS="${CS_DS:-2 3 5 10 20 30 40 50}"
+CS_SHIFTS="${CS_SHIFTS:-0 +2 -2}"
 CASES="${CASES:-Observed_Confounder Backdoor_Criterion Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion}"
 W="${SLURM_CPUS_PER_TASK:-8}"
 DEST="$OUT/$SMOOTHER"
