@@ -1,0 +1,56 @@
+### HEAD
+[2026-08-28 07:10:20] job=5062410  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  uwyk=/scratch/furkanbd/rpfn_bench_kit/external/uwyk
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d   N_STEPS=50000
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Free memory:   84.5 GB
+Precision:     bf16 autocast
+Checkpoint:    activation checkpointing off
+J:             100  (output_dim = 10013)
+Model:         d_model=256  depth=6  heads=4  hidden_mult=4
+Optimizer:     Adam(lr=1e-04, wd=1e-05)  grad_clip=1.0
+Schedule:      cosine  warmup_frac=0.1  min_lr_ratio=0.1
+Training:      steps=50000  microbatch=2  grad_accum=16
+                effective_batch = 32
+                N_context=1000  N_query=250
+Streaming:     workers=8  seed_base=42  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[stream] starting DataLoader (workers=8, microbatch=2)
+[stream] drawing 4 warm-up tasks for edge fitting…
+[BarDistribution2D] Fitting edges from 8000 Y_obs values over 8 samples → y_min=-1.000000, y_max=1.000000
+[GraphConditioned2DHead] mode=partial_gcn_and_soft_attention  sink_rows=10  sink_cols=0
+[GraphConditioned2DHead] regression_head: 256 -> 10013  (J=100, expected total_params(J) = 10013)
+Model parameters: 16,317,777
+   step        loss          lr      wall
+──────────────────────────────────────────
+      1      5.2534    2.00e-08      4.4s
+[2026-08-28 07:14:41] SIGTERM — forwarding to trainer pid=825947
+[signal] Received signal 15 — will save checkpoint and exit at next step boundary
+  → interrupt checkpoint saved: /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d/step_52_interrupt.pt
+  Exiting cleanly. Resubmit sbatch to resume.
+[2026-08-28 07:14:46] requeueing 5062410
+### STEPS
+### TAIL
+                effective_batch = 32
+                N_context=1000  N_query=250
+Streaming:     workers=8  seed_base=42  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[stream] starting DataLoader (workers=8, microbatch=2)
+[stream] drawing 4 warm-up tasks for edge fitting…
+[BarDistribution2D] Fitting edges from 8000 Y_obs values over 8 samples → y_min=-1.000000, y_max=1.000000
+[GraphConditioned2DHead] mode=partial_gcn_and_soft_attention  sink_rows=10  sink_cols=0
+[GraphConditioned2DHead] regression_head: 256 -> 10013  (J=100, expected total_params(J) = 10013)
+Model parameters: 16,317,777
+   step        loss          lr      wall
+──────────────────────────────────────────
+      1      5.2534    2.00e-08      4.4s
+[2026-08-28 07:14:41] SIGTERM — forwarding to trainer pid=825947
+[signal] Received signal 15 — will save checkpoint and exit at next step boundary
+  → interrupt checkpoint saved: /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d/step_52_interrupt.pt
+  Exiting cleanly. Resubmit sbatch to resume.
+[2026-08-28 07:14:46] requeueing 5062410

@@ -1,0 +1,59 @@
+### HEAD
+[2026-08-27 21:08:05] job=5028410  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  uwyk=/scratch/furkanbd/rpfn_bench_kit/external/uwyk
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d   N_STEPS=50000
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Free memory:   84.5 GB
+Precision:     bf16 autocast
+Checkpoint:    activation checkpointing off
+J:             100  (output_dim = 10013)
+Model:         d_model=256  depth=8  heads=8  hidden_mult=4
+Optimizer:     Adam(lr=1e-04, wd=1e-05)  grad_clip=1.0
+Schedule:      cosine  warmup_frac=0.1  min_lr_ratio=0.1
+Training:      steps=50000  microbatch=2  grad_accum=16
+                effective_batch = 32
+                N_context=1000  N_query=250
+Streaming:     workers=8  seed_base=42  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[stream] starting DataLoader (workers=8, microbatch=2)
+[stream] drawing 4 warm-up tasks for edge fitting…
+[BarDistribution2D] Fitting edges from 8000 Y_obs values over 8 samples → y_min=-1.000000, y_max=1.000000
+[GraphConditionedInterventionalPFN] Using device: cuda
+[GraphConditioned2DHead] regression_head: 256 -> 10013  (J=100, expected total_params(J) = 10013)
+Model parameters: 16,119,072
+Resuming from /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d/step_38877_interrupt.pt
+   step        loss          lr      wall
+──────────────────────────────────────────
+  38900     -2.8867    2.28e-05     88.6s
+  39000     -2.5931    2.26e-05    466.5s
+  39100     -2.1128    2.24e-05    848.8s
+  39200     -2.4001    2.22e-05   1230.4s
+  39300     -3.1578    2.20e-05   1617.2s
+  39400     -2.2447    2.18e-05   2008.4s
+  39500     -2.8929    2.16e-05   2398.2s
+### STEPS
+  38900     -2.8867    2.28e-05     88.6s
+### TAIL
+  45000     -2.3682    1.27e-05  26814.6s
+  45100     -2.7794    1.26e-05  27286.3s
+  45200     -2.0018    1.25e-05  27769.0s
+  45300     -1.9999    1.24e-05  28256.3s
+  45400     -3.1050    1.23e-05  28739.3s
+  45500     -2.4533    1.22e-05  29224.3s
+  45600     -2.6186    1.21e-05  29674.7s
+  45700     -2.3197    1.20e-05  30143.3s
+  45800     -2.8158    1.19e-05  30614.5s
+  45900     -2.3232    1.18e-05  31112.7s
+  46000     -1.8770    1.17e-05  31758.0s
+  → checkpoint saved: /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d/step_46000.pt
+  46100     -2.5238    1.17e-05  33071.6s
+  46200     -2.0072    1.16e-05  34699.0s
+  46300     -2.1396    1.15e-05  35280.6s
+[2026-08-28 06:58:07] SIGTERM — forwarding to trainer pid=3317219
+[signal] Received signal 15 — will save checkpoint and exit at next step boundary
+  → interrupt checkpoint saved: /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_graph2d/step_46327_interrupt.pt
+  Exiting cleanly. Resubmit sbatch to resume.
+[2026-08-28 06:58:15] requeueing 5028410

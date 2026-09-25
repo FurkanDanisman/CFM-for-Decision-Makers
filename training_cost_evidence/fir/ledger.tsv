@@ -1,0 +1,34 @@
+cluster	logdir	job	out_dir	tag	resume_step	last_step	start	mtime	hours
+fir	logs_cpfn1d_j1024_botharms	60247982	/scratch/furkanbd/rpfn_bench_kit/cpfn1d_j1024_botharms_output	J=1024,BOTH_ARMS=1	33258	50000	2026-09-17 14:23:34	2026-09-18 02:28:18	12.079
+fir	logs_cpfn1d_j32_headrand	60244329	?	?	?	?	?	2026-09-17 13:41:31	?
+fir	logs_cpfn1d_j32_headrand	60245096	/scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output	J=32	46065	50000	2026-09-17 13:51:31	2026-09-17 15:56:14	2.079
+fir	logs_cpfn2d_j32_sharednoise_y01	60275347	/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_eta0_y01_A1_h100	J=32,J=32	43898	?	2026-09-17 17:18:16	2026-09-17 20:42:26	3.403
+fir	logs_dopfn_repro_1d	60246537	?	?	?	?	?	2026-09-17 13:57:01	?
+fir	logs_dopfn_repro_1d	60248699	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/dopfn_1d	variant=dopfn_1d,variant=dopfn_1d,n_out=100	0	?	2026-09-17 14:13:56	2026-09-17 14:14:32	0.010
+fir	logs_dopfn_repro_1d	60250772	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/dopfn_1d	variant=dopfn_1d,variant=dopfn_1d,n_out=100	0	?	2026-09-17 14:28:34	2026-09-17 14:28:47	0.004
+fir	logs_dopfn_repro_1d	60251112	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/dopfn_1d	variant=dopfn_1d,variant=dopfn_1d,n_out=100	0	150000	2026-09-17 14:55:37	2026-09-17 19:03:52	4.138
+fir	logs_dopfn_repro_1d	60275854	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro_j10/dopfn_1d	variant=dopfn_1d,variant=dopfn_1d,n_out=10	0	150000	2026-09-17 17:18:16	2026-09-17 21:09:35	3.855
+fir	logs_dopfn_repro_2d	60248700	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/joint_2d	variant=joint_2d,variant=joint_2d,n_out=113	0	?	2026-09-17 14:21:16	2026-09-17 14:21:26	0.003
+fir	logs_dopfn_repro_2d	60250773	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/joint_2d	variant=joint_2d,variant=joint_2d,n_out=113	0	?	2026-09-17 14:29:05	2026-09-17 14:29:09	0.001
+fir	logs_dopfn_repro_2d	60251113	/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/joint_2d	variant=joint_2d,variant=joint_2d,n_out=113	0	150000	2026-09-17 14:55:37	2026-09-17 19:13:43	4.302
+fir	logs_uwyk_ablation	60242895	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 13:41:01	2026-09-17 13:59:50	0.314
+fir	logs_uwyk_ablation	60242896	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 13:44:32	2026-09-17 13:59:45	0.254
+fir	logs_uwyk_ablation	60247936	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:13:56	2026-09-17 14:18:24	0.074
+fir	logs_uwyk_ablation	60247937	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:18:33	2026-09-17 14:21:50	0.055
+fir	logs_uwyk_ablation	60247938	?	TAG=C_botharms,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=1	?	?	2026-09-17 14:19:33	2026-09-17 14:23:13	0.061
+fir	logs_uwyk_ablation	60247939	?	TAG=D_j32_nobin,NUM_BARS=32,BOTH_ARMS=0	?	?	2026-09-17 14:20:03	2026-09-17 14:23:49	0.063
+fir	logs_uwyk_ablation	60251066	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:29:35	2026-09-17 14:40:09	0.176
+fir	logs_uwyk_ablation	60251067	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:29:35	2026-09-17 14:41:20	0.196
+fir	logs_uwyk_ablation	60253575	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:54:30	2026-09-17 16:11:21	1.281
+fir	logs_uwyk_ablation	60253576	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 14:55:37	2026-09-17 16:11:28	1.264
+fir	logs_uwyk_ablation	60253577	?	TAG=C_botharms,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=1	?	?	2026-09-17 15:00:38	2026-09-17 16:12:38	1.200
+fir	logs_uwyk_ablation	60253578	?	TAG=D_j32_nobin,NUM_BARS=32,BOTH_ARMS=0	?	?	2026-09-17 15:00:38	2026-09-17 16:12:43	1.201
+fir	logs_uwyk_ablation	60267335	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 16:13:42	2026-09-17 16:19:31	0.097
+fir	logs_uwyk_ablation	60267336	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 16:13:42	2026-09-17 16:19:33	0.098
+fir	logs_uwyk_ablation	60267337	?	TAG=C_botharms,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=1	?	?	2026-09-17 16:13:42	2026-09-17 16:19:32	0.097
+fir	logs_uwyk_ablation	60267338	?	TAG=D_j32_nobin,NUM_BARS=32,BOTH_ARMS=0	?	?	2026-09-17 16:13:42	2026-09-17 16:17:34	0.064
+fir	logs_uwyk_ablation	60268310	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 16:22:23	2026-09-17 16:40:08	0.296
+fir	logs_uwyk_ablation	60268311	?	TAG=B_j32,NUM_BARS=32,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 16:22:23	2026-09-17 16:40:00	0.294
+fir	logs_uwyk_ablation	60268312	?	TAG=C_botharms,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=1	?	?	2026-09-17 16:22:23	2026-09-17 16:40:10	0.296
+fir	logs_uwyk_ablation	60268313	?	TAG=D_j32_nobin,NUM_BARS=32,BOTH_ARMS=0	?	?	2026-09-17 16:22:23	2026-09-17 16:39:56	0.292
+fir	logs_uwyk_ablation	60277426	?	TAG=A_base,NUM_BARS=<released,BINARIZE=1.0,BOTH_ARMS=0	?	?	2026-09-17 17:40:57	2026-09-18 16:22:59	22.701

@@ -1,0 +1,45 @@
+### HEAD
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[2026-08-26 13:57:12] job=5035601  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d   N_STEPS=262144
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-8.432364, y_max=8.526368
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] downloaded pretrained TabDPT ckpt from vdblm/causalpfn/tabdpt_long_context.ckpt@83aad07d: <MagicMock name='huggingface_hub.hf_hub_download()' id='23451867622736'>
+### STEPS
+### TAIL
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d   N_STEPS=262144
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-8.432364, y_max=8.526368
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] downloaded pretrained TabDPT ckpt from vdblm/causalpfn/tabdpt_long_context.ckpt@83aad07d: <MagicMock name='huggingface_hub.hf_hub_download()' id='23451867622736'>

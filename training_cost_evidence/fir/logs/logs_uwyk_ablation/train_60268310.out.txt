@@ -1,0 +1,58 @@
+### HEAD
+[config] intended changes : ['dataset_config.binarize_treatment_prob.value', 'training_config.num_workers.value']
+[config] actual  changes  : ['dataset_config.binarize_treatment_prob.value', 'training_config.num_workers.value']
+           dataset_config.binarize_treatment_prob.value: <absent> -> 1.0
+           training_config.num_workers.value: 50 -> 8
+[config] verified: exactly the intended keys changed
+[2026-09-17 16:22:23] UWYK ablation TAG=A_base
+  NUM_BARS=<released 1000>  BINARIZE=1.0  BOTH_ARMS=0  NUM_WORKERS=8
+  CONFIG=/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/configs_ablation/config_A_base.yaml
+NVIDIA H100 80GB HBM3, 81559 MiB
+[MULTIPROCESSING] Set start method to 'fork'
+[MULTIPROCESSING] Set sharing strategy to 'file_system'
+[DEBUG] Import debug log written to: /tmp/lingaus_import_debug.log
+[DEBUG] Attempting to import LinGausBenchmark and LinGausBenchmarkIDK...
+[DEBUG] Current working directory: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm
+[DEBUG] sys.path (first 5 entries): ['/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../../priors/causal_prior/scm/../../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..']
+[DEBUG] LINGAUS_BENCHMARK_DIR env var: None
+[DEBUG] PYTHONPATH: /cvmfs/soft.computecanada.ca/easybuild/python/site-packages:/cvmfs/soft.computecanada.ca/custom/python/site-packages
+[DEBUG] Direct import failed: No module named 'LingausBenchmark'
+[DEBUG] Checking fallback paths for LinGausBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/__init__.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/LingausBenchmark.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGaus - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus to sys.path
+[DEBUG] LinGausBenchmark imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus
+[DEBUG] Direct LinGausBenchmarkIDK import failed: No module named 'LingausBenchmarkIDK'
+[DEBUG] Checking fallback paths for LinGausBenchmarkIDK:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/LingausBenchmarkIDK.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGausIDK - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK to sys.path
+[DEBUG] LinGausBenchmarkIDK imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK
+[DEBUG] Attempting to import ComplexMechBenchmark...
+[DEBUG] Direct ComplexMechBenchmark import failed: No module named 'ComplexMechBenchmark'
+[DEBUG] Checking fallback paths for ComplexMechBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/ComplexMech (exists: True)
+### STEPS
+### TAIL
+   X_intv: torch.Size([8, 389, 50]), T_intv: torch.Size([8, 389, 1]), Y_intv: torch.Size([8, 389])
+   adjacency_matrix: torch.Size([8, 52, 52])
+   Step    3/50000 | Loss: 69.048266 | Time: 2.067s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    4/50000 | Loss: 17.732137 | Time: 1.989s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    5/50000 | Loss: 13.982777 | Time: 1.873s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    6/50000 | Loss: 21.167041 | Time: 1.824s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    7/50000 | Loss: 21.884829 | Time: 1.844s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    8/50000 | Loss: 32.739411 | Time: 2.027s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step    9/50000 | Loss: 4.314695 | Time: 1.730s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+   Step   10/50000 | Loss: 46.568763 | Time: 1.817s | Eff. batch size: 32 LR: 0.000000 [no wandb]
+[InterventionalDataset] Warning: NaN detected in sample 1381 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 2271 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 4347 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 6889 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 9116 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 9190 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 10697 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 11951 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 12306 (attempt 1/10). Resampling...
+[InterventionalDataset] Warning: NaN detected in sample 19284 (attempt 1/10). Resampling...

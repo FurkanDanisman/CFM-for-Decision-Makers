@@ -1,0 +1,56 @@
+### HEAD
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[warmstart-preflight] found ckpt at /scratch/furkanbd/rpfn_bench_kit/warmstart/tabdpt_long_context.ckpt
+[2026-08-27 18:27:51] job=5053020  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s   N_STEPS=262144
+  GPU class: L40s   worker count: 32
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA L40S
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=16
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 1048576 Y_obs values over 512 samples → y_min=-12.040261, y_max=11.800624
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+Resuming from /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s/step_9_interrupt.pt
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=10]  data=0.29s  fwd=234.81s  bwd=4.92s  opt=0.45s  total=240.48s  (per microbatch: fwd=29351ms  bwd=615ms)
+[profile step=11]  data=0.02s  fwd=0.59s  bwd=1.24s  opt=0.01s  total=1.86s  (per microbatch: fwd=74ms  bwd=155ms)
+[profile step=12]  data=0.02s  fwd=0.98s  bwd=1.58s  opt=0.02s  total=2.60s  (per microbatch: fwd=123ms  bwd=197ms)
+[2026-08-27 18:33:57] SIGTERM — forwarding to trainer pid=2447289
+[signal] 15 — will save on next step boundary
+[2026-08-27 18:34:46] requeueing 5053020
+### STEPS
+### TAIL
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=16
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 1048576 Y_obs values over 512 samples → y_min=-12.040261, y_max=11.800624
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+Resuming from /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s/step_9_interrupt.pt
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=10]  data=0.29s  fwd=234.81s  bwd=4.92s  opt=0.45s  total=240.48s  (per microbatch: fwd=29351ms  bwd=615ms)
+[profile step=11]  data=0.02s  fwd=0.59s  bwd=1.24s  opt=0.01s  total=1.86s  (per microbatch: fwd=74ms  bwd=155ms)
+[profile step=12]  data=0.02s  fwd=0.98s  bwd=1.58s  opt=0.02s  total=2.60s  (per microbatch: fwd=123ms  bwd=197ms)
+[2026-08-27 18:33:57] SIGTERM — forwarding to trainer pid=2447289
+[signal] 15 — will save on next step boundary
+[2026-08-27 18:34:46] requeueing 5053020

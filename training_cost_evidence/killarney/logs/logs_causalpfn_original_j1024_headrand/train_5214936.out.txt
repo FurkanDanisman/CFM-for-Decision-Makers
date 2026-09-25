@@ -1,0 +1,47 @@
+### HEAD
+[install] copying patched trainer.py    → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+[install] copying patched checkpoint.py → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+[install] copying patched train.py      → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[install] OK. To revert:
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-03 18:54:27] CausalPFN Exp 3: J=1024 σ=0.01 head_reinit=True
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100
+[compile] disabled via COMPILE=0
+[resume] found /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/checkpoints/run/latest.pt
+[head-reinit] head[2] re-initialised at native shape (768, 1034); backbone kept warmstarted.
+[resume] loaded 151 tensors from /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run
+[step-ckpt] resuming from actual_step=43121
+Effective batch size is: 256
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0044000.pt
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0046000.pt
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0048000.pt
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt
+[2026-09-04 06:49:32] SIGTERM — forwarding to child pid=1449122
+### STEPS
+### TAIL
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-03 18:54:27] CausalPFN Exp 3: J=1024 σ=0.01 head_reinit=True
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100
+[compile] disabled via COMPILE=0
+[resume] found /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/checkpoints/run/latest.pt
+[head-reinit] head[2] re-initialised at native shape (768, 1034); backbone kept warmstarted.
+[resume] loaded 151 tensors from /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run
+[step-ckpt] resuming from actual_step=43121
+Effective batch size is: 256
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0044000.pt
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0046000.pt
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0048000.pt
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/causalpfn_j1024_headrand_A1_h100/step_checkpoints/run/step_0050000.pt
+[2026-09-04 06:49:32] SIGTERM — forwarding to child pid=1449122

@@ -1,0 +1,58 @@
+### HEAD
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[2026-08-26 17:55:07] job=5038403  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d   N_STEPS=262144
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-12.491880, y_max=10.167785
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] loading local pretrained TabDPT ckpt: /scratch/furkanbd/rpfn_bench_kit/pretrained/tabdpt_long_context.ckpt
+[warmstart] unwrapped state_dict from top-level key 'model'
+[warmstart] stripped '_orig_mod.' prefix from state_dict keys (torch.compile wrapping)
+[warmstart] skipped 2 shape-mismatched key(s) (kept random init on these — architectural difference vs CausalPFN):
+  encoder.weight: ckpt (384, 100) vs ours (384, 101)
+  head.2.weight: ckpt (1034, 768) vs ours (1047, 768)
+[warmstart] backbone loaded  missing=2  unexpected=0  (missing includes the 2 skipped mismatches above)
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=1]  data=0.35s  fwd=149.73s  bwd=1.81s  opt=0.20s  total=152.09s  (per microbatch: fwd=18716ms  bwd=226ms)
+      1      8.4691    5.00e-04    152.3s
+[profile step=2]  data=0.02s  fwd=1.00s  bwd=1.22s  opt=0.04s  total=2.28s  (per microbatch: fwd=125ms  bwd=153ms)
+[profile step=3]  data=0.01s  fwd=1.42s  bwd=2.43s  opt=0.07s  total=3.93s  (per microbatch: fwd=178ms  bwd=304ms)
+### STEPS
+### TAIL
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-12.491880, y_max=10.167785
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] loading local pretrained TabDPT ckpt: /scratch/furkanbd/rpfn_bench_kit/pretrained/tabdpt_long_context.ckpt
+[warmstart] unwrapped state_dict from top-level key 'model'
+[warmstart] stripped '_orig_mod.' prefix from state_dict keys (torch.compile wrapping)
+[warmstart] skipped 2 shape-mismatched key(s) (kept random init on these — architectural difference vs CausalPFN):
+  encoder.weight: ckpt (384, 100) vs ours (384, 101)
+  head.2.weight: ckpt (1034, 768) vs ours (1047, 768)
+[warmstart] backbone loaded  missing=2  unexpected=0  (missing includes the 2 skipped mismatches above)
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=1]  data=0.35s  fwd=149.73s  bwd=1.81s  opt=0.20s  total=152.09s  (per microbatch: fwd=18716ms  bwd=226ms)
+      1      8.4691    5.00e-04    152.3s
+[profile step=2]  data=0.02s  fwd=1.00s  bwd=1.22s  opt=0.04s  total=2.28s  (per microbatch: fwd=125ms  bwd=153ms)
+[profile step=3]  data=0.01s  fwd=1.42s  bwd=2.43s  opt=0.07s  total=3.93s  (per microbatch: fwd=178ms  bwd=304ms)
+[2026-08-26 18:18:41] SIGTERM — forwarding to trainer pid=1883952
+[signal] 15 — will save on next step boundary
+[2026-08-26 18:19:11] requeueing 5038403

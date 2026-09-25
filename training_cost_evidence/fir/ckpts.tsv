@@ -1,0 +1,20 @@
+dir	file	step	mtime	bytes
+./checkpoints	step_50000_final.pt	50000	2026-07-23 01:16:13	193726203
+./checkpoints_causalpfn2d	step_108331_interrupt.pt	108331	2026-08-29 02:29:14	226374437
+./checkpoints_causalpfn2d	step_100000.pt	100000	2026-08-29 00:57:24	226369833
+./checkpoints_causalpfn2d	step_104000.pt	104000	2026-08-29 01:41:29	226369833
+./checkpoints_causalpfn2d	step_102000.pt	102000	2026-08-29 01:19:26	226369833
+./checkpoints_causalpfn2d	step_10000.pt	10000	2026-08-28 08:24:02	226369379
+./checkpoints_causalpfn2d	step_106000.pt	106000	2026-08-29 02:03:32	226369833
+./checkpoints_causalpfn2d	step_108000.pt	108000	2026-08-29 02:25:35	226369833
+./checkpoints_causalpfn2d.pre_warmstart_v3	step_20_interrupt.pt	20	2026-08-26 14:23:24	226386125
+./checkpoints_causalpfn2d.pre_ddp	step_12_interrupt.pt	12	2026-08-26 16:01:52	226386125
+./checkpoints_causalpfn2d.old	step_286_interrupt.pt	286	2026-08-26 05:10:09	226383379
+./checkpoints_causalpfn2d.stream_workers_starved	step_21_interrupt.pt	21	2026-08-26 15:49:39	226386125
+./checkpoints_causalpfn2d.pre_warmstart_v5	step_24_interrupt.pt	24	2026-08-26 14:46:26	226386125
+./checkpoints_causalpfn2d.pre_warmstart_v4	step_1_interrupt.pt	1	2026-08-26 14:30:37	226385671
+./Required_checkpoints	graph2d_step_50000.pt	50000	2026-09-01 09:16:27	168496101
+./Required_checkpoints	cpfn1d_j1024_headrand_step_50000.pt	50000	2026-09-14 09:38:22	226264538
+./Required_checkpoints	dopfn_bb_j10_step_150000.pt	150000	2026-09-01 09:16:14	88269919
+./Required_checkpoints	graph2d_step_58000.pt	58000	2026-09-01 09:16:24	168496101
+./Required_checkpoints	cpfn2d_j32_random_step_50000.pt	50000	2026-09-14 09:38:23	226405661

@@ -1,0 +1,58 @@
+### HEAD
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[2026-08-26 17:34:41] job=5037909  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d   N_STEPS=262144
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA H100 80GB HBM3
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=4
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-9.350997, y_max=12.423780
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] loading local pretrained TabDPT ckpt: /scratch/furkanbd/rpfn_bench_kit/pretrained/tabdpt_long_context.ckpt
+[warmstart] unwrapped state_dict from top-level key 'model'
+[warmstart] stripped '_orig_mod.' prefix from state_dict keys (torch.compile wrapping)
+[warmstart] FAILED (Error(s) in loading state_dict for TabDPTLongContextModel:
+	size mismatch for encoder.weight: copying a param with shape torch.Size([384, 100]) from checkpoint, the shape in current model is torch.Size([384, 101]).
+	size mismatch for head.2.weight: copying a param with shape torch.Size([1034, 768]) from checkpoint, the shape in current model is torch.Size([1047, 768]).); continuing from scratch
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=1]  data=0.07s  fwd=154.57s  bwd=2.06s  opt=0.19s  total=156.88s  (per microbatch: fwd=19321ms  bwd=257ms)
+      1      8.4131    5.00e-04    156.9s
+[profile step=2]  data=0.01s  fwd=0.92s  bwd=1.53s  opt=0.01s  total=2.47s  (per microbatch: fwd=115ms  bwd=192ms)
+[profile step=3]  data=0.01s  fwd=1.21s  bwd=2.28s  opt=0.06s  total=3.56s  (per microbatch: fwd=152ms  bwd=285ms)
+[2026-08-26 17:46:18] SIGTERM — forwarding to trainer pid=1869329
+### STEPS
+### TAIL
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 262144 Y_obs values over 128 samples → y_min=-9.350997, y_max=12.423780
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] loading local pretrained TabDPT ckpt: /scratch/furkanbd/rpfn_bench_kit/pretrained/tabdpt_long_context.ckpt
+[warmstart] unwrapped state_dict from top-level key 'model'
+[warmstart] stripped '_orig_mod.' prefix from state_dict keys (torch.compile wrapping)
+[warmstart] FAILED (Error(s) in loading state_dict for TabDPTLongContextModel:
+	size mismatch for encoder.weight: copying a param with shape torch.Size([384, 100]) from checkpoint, the shape in current model is torch.Size([384, 101]).
+	size mismatch for head.2.weight: copying a param with shape torch.Size([1034, 768]) from checkpoint, the shape in current model is torch.Size([1047, 768]).); continuing from scratch
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=1]  data=0.07s  fwd=154.57s  bwd=2.06s  opt=0.19s  total=156.88s  (per microbatch: fwd=19321ms  bwd=257ms)
+      1      8.4131    5.00e-04    156.9s
+[profile step=2]  data=0.01s  fwd=0.92s  bwd=1.53s  opt=0.01s  total=2.47s  (per microbatch: fwd=115ms  bwd=192ms)
+[profile step=3]  data=0.01s  fwd=1.21s  bwd=2.28s  opt=0.06s  total=3.56s  (per microbatch: fwd=152ms  bwd=285ms)
+[2026-08-26 17:46:18] SIGTERM — forwarding to trainer pid=1869329
+[signal] 15 — will save on next step boundary

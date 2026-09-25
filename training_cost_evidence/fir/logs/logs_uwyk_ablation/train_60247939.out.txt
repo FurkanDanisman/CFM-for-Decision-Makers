@@ -1,0 +1,58 @@
+### HEAD
+[config] intended changes : ['model_config.num_bars.value']
+[config] actual  changes  : ['model_config.num_bars.value']
+           model_config.num_bars.value: 1000 -> 32
+[config] verified: exactly the intended keys changed
+[2026-09-17 14:20:03] UWYK ablation TAG=D_j32_nobin
+  NUM_BARS=32  BINARIZE=<default 0.0>  BOTH_ARMS=0
+  CONFIG=/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/configs_ablation/config_D_j32_nobin.yaml
+NVIDIA H100 80GB HBM3, 81559 MiB
+[MULTIPROCESSING] Set start method to 'spawn' for stability
+[MULTIPROCESSING] Set sharing strategy to 'file_system'
+[DEBUG] Import debug log written to: /tmp/lingaus_import_debug.log
+[DEBUG] Attempting to import LinGausBenchmark and LinGausBenchmarkIDK...
+[DEBUG] Current working directory: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm
+[DEBUG] sys.path (first 5 entries): ['/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../../priors/causal_prior/scm/../../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..']
+[DEBUG] LINGAUS_BENCHMARK_DIR env var: None
+[DEBUG] PYTHONPATH: /cvmfs/soft.computecanada.ca/easybuild/python/site-packages:/cvmfs/soft.computecanada.ca/custom/python/site-packages
+[DEBUG] Direct import failed: No module named 'LingausBenchmark'
+[DEBUG] Checking fallback paths for LinGausBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/__init__.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/LingausBenchmark.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGaus - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus to sys.path
+[DEBUG] LinGausBenchmark imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus
+[DEBUG] Direct LinGausBenchmarkIDK import failed: No module named 'LingausBenchmarkIDK'
+[DEBUG] Checking fallback paths for LinGausBenchmarkIDK:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/LingausBenchmarkIDK.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGausIDK - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK to sys.path
+[DEBUG] LinGausBenchmarkIDK imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK
+[DEBUG] Attempting to import ComplexMechBenchmark...
+[DEBUG] Direct ComplexMechBenchmark import failed: No module named 'ComplexMechBenchmark'
+[DEBUG] Checking fallback paths for ComplexMechBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/ComplexMech (exists: True)
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/ComplexMech (exists: False)
+### STEPS
+### TAIL
+[DEBUG] ComplexMechBenchmark imported successfully via PYTHONPATH
+[DEBUG] LinGausBenchmark imported successfully via PYTHONPATH
+[DEBUG] LinGausBenchmarkIDK imported successfully via PYTHONPATH
+[DEBUG] Attempting to import ComplexMechBenchmark...
+[DEBUG] ComplexMechBenchmark imported successfully via PYTHONPATH
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 738, 50]), T_obs: torch.Size([8, 738, 1]), Y_obs: torch.Size([8, 738])
+   X_intv: torch.Size([8, 262, 50]), T_intv: torch.Size([8, 262, 1]), Y_intv: torch.Size([8, 262])
+   adjacency_matrix: torch.Size([8, 52, 52])
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 981, 50]), T_obs: torch.Size([8, 981, 1]), Y_obs: torch.Size([8, 981])
+   X_intv: torch.Size([8, 19, 50]), T_intv: torch.Size([8, 19, 1]), Y_intv: torch.Size([8, 19])
+   adjacency_matrix: torch.Size([8, 52, 52])
+============================================================
+TRAINING FAILED!
+============================================================
+Error: CUDA out of memory. Tried to allocate 604.00 MiB. GPU 0 has a total capacity of 79.18 GiB of which 343.31 MiB is free. Including non-PyTorch memory, this process has 56.79 GiB memory in use. Process 3826080 has 518.00 MiB memory in use. Process 3826082 has 518.00 MiB memory in use. Process 3826103 has 518.00 MiB memory in use. Process 3826083 has 518.00 MiB memory in use. Process 3826094 has 518.00 MiB memory in use. Process 3826117 has 518.00 MiB memory in use. Process 3826096 has 518.00 MiB memory in use. Process 3826120 has 518.00 MiB memory in use. Process 3826121 has 518.00 MiB memory in use. Process 3826093 has 518.00 MiB memory in use. Process 3826077 has 518.00 MiB memory in use. Process 3826126 has 518.00 MiB memory in use. Process 3826097 has 518.00 MiB memory in use. Process 3826114 has 518.00 MiB memory in use. Process 3826087 has 518.00 MiB memory in use. Process 3826115 has 518.00 MiB memory in use. Process 3826081 has 518.00 MiB memory in use. Process 3826113 has 518.00 MiB memory in use. Process 3826099 has 518.00 MiB memory in use. Process 3826104 has 518.00 MiB memory in use. Process 3826125 has 518.00 MiB memory in use. Process 3826109 has 518.00 MiB memory in use. Process 3826122 has 518.00 MiB memory in use. Process 3826092 has 518.00 MiB memory in use. Process 3826118 has 518.00 MiB memory in use. Process 3826085 has 518.00 MiB memory in use. Process 3826091 has 518.00 MiB memory in use. Process 3826102 has 518.00 MiB memory in use. Process 3826123 has 518.00 MiB memory in use. Process 3826101 has 518.00 MiB memory in use. Process 3826090 has 518.00 MiB memory in use. Process 3826106 has 518.00 MiB memory in use. Process 3826095 has 518.00 MiB memory in use. Process 3826078 has 518.00 MiB memory in use. Process 3826084 has 518.00 MiB memory in use. Process 3826086 has 518.00 MiB memory in use. Process 3826119 has 518.00 MiB memory in use. Process 3826089 has 518.00 MiB memory in use. Process 3826107 has 518.00 MiB memory in use. Process 3826079 has 518.00 MiB memory in use. Process 3826116 has 518.00 MiB memory in use. Process 3826111 has 518.00 MiB memory in use. Process 3826105 has 518.00 MiB memory in use. Of the allocated memory 50.81 GiB is allocated by PyTorch, and 5.24 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)
+Error type: OutOfMemoryError
+Full traceback:
+[FATAL ERROR] Unhandled exception in main: cannot access local variable 'traceback' where it is not associated with a value

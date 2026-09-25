@@ -1,0 +1,58 @@
+### HEAD
+[config] intended changes : ['dataset_config.binarize_treatment_prob.value']
+[config] actual  changes  : ['dataset_config.binarize_treatment_prob.value']
+           dataset_config.binarize_treatment_prob.value: <absent> -> 1.0
+[config] verified: exactly the intended keys changed
+[2026-09-17 13:41:01] UWYK ablation TAG=A_base
+  NUM_BARS=<released 1000>  BINARIZE=1.0  BOTH_ARMS=0
+  CONFIG=/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/configs_ablation/config_A_base.yaml
+NVIDIA H100 80GB HBM3, 81559 MiB
+[MULTIPROCESSING] Set start method to 'spawn' for stability
+[MULTIPROCESSING] Set sharing strategy to 'file_system'
+[DEBUG] Import debug log written to: /tmp/lingaus_import_debug.log
+[DEBUG] Attempting to import LinGausBenchmark and LinGausBenchmarkIDK...
+[DEBUG] Current working directory: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm
+[DEBUG] sys.path (first 5 entries): ['/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../../priors/causal_prior/scm/../../..', '/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/src/priordata_processing/Datasets/../..']
+[DEBUG] LINGAUS_BENCHMARK_DIR env var: None
+[DEBUG] PYTHONPATH: /cvmfs/soft.computecanada.ca/easybuild/python/site-packages:/cvmfs/soft.computecanada.ca/custom/python/site-packages
+[DEBUG] Direct import failed: No module named 'LingausBenchmark'
+[DEBUG] Checking fallback paths for LinGausBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/__init__.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/LingausBenchmark.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGaus - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus to sys.path
+[DEBUG] LinGausBenchmark imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGaus
+[DEBUG] Direct LinGausBenchmarkIDK import failed: No module named 'LingausBenchmarkIDK'
+[DEBUG] Checking fallback paths for LinGausBenchmarkIDK:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK - exists: True
+      Contents: [PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/LingausBenchmarkIDK.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_benchmark_data.py'), PosixPath('/scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK/generate_all_variants_data.py')]
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/LinGausIDK - exists: False
+[DEBUG] Adding /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK to sys.path
+[DEBUG] LinGausBenchmarkIDK imported successfully from: /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/LinGausIDK
+[DEBUG] Attempting to import ComplexMechBenchmark...
+[DEBUG] Direct ComplexMechBenchmark import failed: No module named 'ComplexMechBenchmark'
+[DEBUG] Checking fallback paths for ComplexMechBenchmark:
+  [0] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/experiments/GraphConditioning/Benchmarks/ComplexMech (exists: True)
+  [1] /scratch/furkanbd/rpfn_bench_kit/external/g4cfm/Benchmarks/ComplexMech (exists: False)
+### STEPS
+### TAIL
+   Number of eval sets: 1
+   - head: dataset_size=16, batch_size=8, total_batches=2, using_up_to_batches=2
+Batch structure (Interventional + Graph): 8 samples, 738 obs points, 262 intv points, 50 features, adjacency matrix: torch.Size([8, 52, 52])
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 738, 50]), T_obs: torch.Size([8, 738, 1]), Y_obs: torch.Size([8, 738])
+   X_intv: torch.Size([8, 262, 50]), T_intv: torch.Size([8, 262, 1]), Y_intv: torch.Size([8, 262])
+   adjacency_matrix: torch.Size([8, 52, 52])
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 981, 50]), T_obs: torch.Size([8, 981, 1]), Y_obs: torch.Size([8, 981])
+   X_intv: torch.Size([8, 19, 50]), T_intv: torch.Size([8, 19, 1]), Y_intv: torch.Size([8, 19])
+   adjacency_matrix: torch.Size([8, 52, 52])
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 690, 50]), T_obs: torch.Size([8, 690, 1]), Y_obs: torch.Size([8, 690])
+   X_intv: torch.Size([8, 310, 50]), T_intv: torch.Size([8, 310, 1]), Y_intv: torch.Size([8, 310])
+   adjacency_matrix: torch.Size([8, 52, 52])
+[Step 0] Input shapes (Interventional + Graph):
+   X_obs: torch.Size([8, 557, 50]), T_obs: torch.Size([8, 557, 1]), Y_obs: torch.Size([8, 557])
+   X_intv: torch.Size([8, 443, 50]), T_intv: torch.Size([8, 443, 1]), Y_intv: torch.Size([8, 443])
+   adjacency_matrix: torch.Size([8, 52, 52])
+   Step    1/50000 | Loss: 94.513730 | Time: 10.666s | Eff. batch size: 32 LR: 0.000000 [no wandb]

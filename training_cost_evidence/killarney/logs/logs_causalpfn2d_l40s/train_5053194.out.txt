@@ -1,0 +1,59 @@
+### HEAD
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[warmstart-preflight] found ckpt at /scratch/furkanbd/rpfn_bench_kit/warmstart/tabdpt_long_context.ckpt
+[2026-08-27 18:34:59] job=5053194  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s   N_STEPS=262144
+  GPU class: L40s   worker count: 32
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA L40S
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=32  warmup=16
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[BarDistribution2D] Fitting edges from 1048576 Y_obs values over 512 samples → y_min=-9.460252, y_max=39.864086
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[warmstart] loading local pretrained TabDPT ckpt: /scratch/furkanbd/rpfn_bench_kit/warmstart/tabdpt_long_context.ckpt
+[warmstart] unwrapped state_dict from top-level key 'model'
+[warmstart] stripped '_orig_mod.' prefix from state_dict keys (torch.compile wrapping)
+[warmstart] skipped 2 shape-mismatched key(s) (kept random init on these — architectural difference vs CausalPFN):
+  encoder.weight: ckpt (384, 100) vs ours (384, 101)
+  head.2.weight: ckpt (1034, 768) vs ours (1047, 768)
+[warmstart] backbone loaded  missing=2  unexpected=0  (missing includes the 2 skipped mismatches above)
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+   step        loss          lr      wall
+──────────────────────────────────────────
+[profile step=1]  data=0.05s  fwd=126.50s  bwd=4.85s  opt=0.10s  total=131.49s  (per microbatch: fwd=15812ms  bwd=606ms)
+      1      9.9267    5.00e-04    131.5s
+### STEPS
+    100      3.0148    5.00e-04    293.5s
+### TAIL
+  29500      1.7424    5.00e-04  48048.8s
+  29600      1.8458    5.00e-04  48210.9s
+  29700      1.8732    5.00e-04  48373.5s
+  29800      1.8611    5.00e-04  48535.5s
+  29900      1.8144    5.00e-04  48697.9s
+  30000      1.8538    5.00e-04  48860.4s
+  30100      1.7912    5.00e-04  49023.2s
+  30200      1.8303    5.00e-04  49185.8s
+  30300      1.8435    5.00e-04  49348.3s
+  30400      1.8906    5.00e-04  49511.2s
+  30500      1.8834    5.00e-04  49673.4s
+  30600      1.9165    5.00e-04  49835.6s
+  30700      1.8718    5.00e-04  49998.0s
+  30800      1.8898    5.00e-04  50160.6s
+  30900      1.8256    5.00e-04  50323.0s
+  31000      1.8025    5.00e-04  50485.4s
+  31100      1.8345    5.00e-04  50647.7s
+[2026-08-28 08:39:26] SIGTERM — forwarding to trainer pid=2454920
+[signal] 15 — will save on next step boundary
+[2026-08-28 08:39:30] requeueing 5053194
