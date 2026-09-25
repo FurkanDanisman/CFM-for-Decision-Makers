@@ -40,6 +40,11 @@ MALC_B="${MALC_B:-1000}"; MALC_K="${MALC_K:-1}"
 CTX="${CTX:-1000}"
 DATASETS="${DATASETS:-IHDP ACIC CPS PSID PSID_bal}"
 NODES="${NODES:-5 10 20 30 40 50}"
+# Case-study d values. The dumps carry d=2..50, but the reported sweep is d>=5
+# (final_table.py CS_D_DEFAULT), and the point tables pool exactly those. A bare
+# shift*/d* glob would pool 24 cells against the point tables' 18, so PEHE and
+# coverage in one row would describe different cells.
+CS_DS="${CS_DS:-5 10 20 30 40 50}"
 CASES="${CASES:-Observed_Confounder Backdoor_Criterion Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion}"
 W="${SLURM_CPUS_PER_TASK:-8}"
 DEST="$OUT/$SMOOTHER"
@@ -83,8 +88,12 @@ for B in $BENCHES; do
           # Glob pools the shift x d cells: concatenating per-realization arrays
           # is exact, whereas averaging per-cell means is not unless every cell
           # has the same realization count.
-          run "cs_${MODEL}_${C}" --root "$PARENT"/cs/"$MODEL"/shift*/d*/ctx"$CTX" \
-              --dataset "$C"
+          _roots=()
+          for _s in 0 +2 -2; do for _d in $CS_DS; do
+              _r="$PARENT/cs/$MODEL/shift${_s}/d${_d}/ctx$CTX"
+              [ -d "$_r" ] && _roots+=("$_r")
+          done; done
+          run "cs_${MODEL}_${C}" --root "${_roots[@]}" --dataset "$C"
         done ;;
   esac
 done
