@@ -88,16 +88,27 @@ for B in $BENCHES; do
           run "cm_${MODEL}_n${N}" --root "$PARENT/cm_rho99/$MODEL" \
               --context "$CTX" --nodes "$N" --subset total
         done ;;
-    cs) for C in $CASES; do
-          # Glob pools the shift x d cells: concatenating per-realization arrays
-          # is exact, whereas averaging per-cell means is not unless every cell
-          # has the same realization count.
-          _roots=()
-          for _s in 0 +2 -2; do for _d in $CS_DS; do
+    cs)
+        # ONE FILE PER (case, shift, d), named <stage>__d<D>_<Case>__shift<S>.npz
+        # under $DEST/perreal/$MODEL -- the layout final_table.py:135 globs for
+        # and filters with keep_d. A single pooled-per-case file can neither be
+        # matched by that glob nor filtered by d afterwards.
+        _stage="raw"; [ "$SMOOTHER" = malc ] && _stage="malc"
+        mkdir -p "$DEST/perreal/$MODEL"
+        for C in $CASES; do
+          for _s in $CS_SHIFTS; do
+            for _d in $CS_DS; do
               _r="$PARENT/cs/$MODEL/shift${_s}/d${_d}/ctx$CTX"
-              [ -d "$_r" ] && _roots+=("$_r")
-          done; done
-          run "cs_${MODEL}_${C}" --root "${_roots[@]}" --dataset "$C"
+              [ -d "$_r" ] || continue
+              _npz="$DEST/perreal/$MODEL/${_stage}__d${_d}_${C}__shift${_s}.npz"
+              if [ -s "$_npz" ]; then echo "  [skip] $(basename $_npz)"; continue; fi
+              echo "---- cs $C shift$_s d$_d ----"
+              python -u "$REPO/benchmarks/coverage_by_realization.py" \
+                  --methods $METHODS "${SM[@]}" --dump-per-real "$_npz" \
+                  --root "$_r" --dataset "$C" \
+                  || { echo "[warn] cs $C shift$_s d$_d FAILED"; rm -f "$_npz"; }
+            done
+          done
         done ;;
   esac
 done
