@@ -282,6 +282,106 @@ not as a score to rank on. Pass `--truth mix` to
 | CausalPFN-C j32_eta0_y01 2D | 10 | -0.8750±0.0809 | 1.2036±0.0524 | 97.7151±10.1792 | 1.0000±0.0000 | 0.0115±0.0031 |
 
 
+<!-- MALC_T_SUMMARY_BEGIN -->
+# MALC-T Summary Table
+
+Variant **T** smooths the interior effect distribution in τ space after the
+joint projection or independent-arm convolution, restoring its original
+interior mass and retaining the tail contribution. The original CATE results
+come from `results_density_tauC_malcT`, with **B=1000, K=1, seed=0**, 12001 smoothing
+nodes and `n_y0=4096`. The job logs record 1024 rebinning bins for Do-PFN.
+Its 1D arms are rebinned before MALC-T; comparisons with the exact native
+density therefore include this rebinning step as well as smoothing.
+The older MALC tables below use variant **J**, which fits on the joint plane.
+
+All eleven rows use **100 IHDP realizations (r000–r099)** and **10 ACIC
+realizations (r000–r009)**, matched to the native table's prediction dumps.
+Cells are mean ± SE across realizations, on the same scaled axis.
+
+| Method | IHDP: f_Y0 + f_Y1 (native) ↓ | IHDP: f_τ (MALC-T) ↓ | IHDP: f_ATE (MALC-T) ↓ | ACIC: f_Y0 + f_Y1 (native) ↓ | ACIC: f_τ (MALC-T) ↓ | ACIC: f_ATE (MALC-T) ↓ |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Do-PFN | -0.6100±0.0649 | 0.1866±0.0354 | — | -0.2837±0.1703 | -0.0238±0.1140 | — |
+| Do-PFN 2D | -0.2419±0.0532 | 0.5148±0.0505 | — | -0.1038±0.1680 | 0.3352±0.2158 | — |
+| UWYK No-Anc | -0.7887±0.0640 | 0.3492±0.0327 | — | -1.2416±0.1829 | -0.2537±0.1094 | — |
+| UWYK No-Anc 2D | -0.9272±0.0739 | 0.0187±0.0354 | — | -1.2508±0.2121 | -0.4553±0.1486 | — |
+| UWYK Anc (v3a) | -1.0910±0.0494 | 0.1682±0.0242 | — | -1.4673±0.2005 | -0.4238±0.1179 | — |
+| UWYK Anc 2D (v3a) | -1.0857±0.0736 | -0.0490±0.0362 | — | -1.3360±0.2157 | -0.4755±0.1503 | — |
+| CausalPFN-C j1024_headrand 1D | -3.8387±0.1688 | -0.5690±0.0828 | — | -2.9809±0.2365 | -0.8992±0.1119 | — |
+| CausalPFN-C j32 1D | -1.7873±0.0658 | -0.4018±0.0467 | — | -2.0433±0.1912 | -0.6764±0.0954 | — |
+| CausalPFN-C botharms 1D | -3.7637±0.1664 | -0.5680±0.0842 | — | -2.9764±0.2475 | -0.9038±0.1196 | — |
+| CausalPFN-C j32_random 2D | -1.7365±0.0666 | -0.3679±0.0491 | — | -2.0240±0.1910 | -0.7146±0.0934 | — |
+| CausalPFN-C j32_eta0_y01 2D | -1.6910±0.0704 | -0.3524±0.0496 | — | -2.0666±0.1799 | -0.7503±0.0905 | — |
+
+The **native** arm columns repeat the original arm NLLs: variant T fits no new
+arm or joint density, so it does not define new marginal scores. These are
+the input-model marginals, not marginals reconstructed from the smoothed τ.
+The arm sum is formed per realization before calculating its SE.
+
+**ATE computation pending.** `—` means that a complete MALC-T ATE run is
+not available; partial realization sets are never averaged into this table.
+
+For any family/dataset with a complete ATE refit in
+`results_density_tauC_malcT_ate`, **both CATE and ATE columns and diagnostics**
+use that refit. Until it is complete, the CATE column uses the full original
+run and ATE stays blank. This keeps the two tiers on the same fitted densities;
+MALC optimization can vary across software/numerical environments even with
+the same sampling seed. The refresh command prints which source each row uses.
+
+MALC-T ATE requires the W2 barycenter of the **smoothed per-query densities**.
+The original MALC-T files save CATE metrics and means, but not those density
+grids, so this requires repeating the CPU-only MALC fits from the saved model
+predictions. `ate_abs_err_*` in those files is a point error in raw units;
+it cannot substitute for ATE-density NLL. Native ATE scores cannot fill these
+columns either.
+
+## MALC-T CATE diagnostics
+
+| Method | IHDP: L2 ↓ | IHDP: mass | IHDP: fallback | ACIC: L2 ↓ | ACIC: mass | ACIC: fallback |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Do-PFN | 1.4205±0.1118 | 0.9998±0.0000 | 0.11% | 1.7024±0.0457 | 0.9998±0.0000 | 0.06% |
+| Do-PFN 2D | 1.6141±0.1116 | 0.9981±0.0002 | 0.43% | 2.0184±0.0739 | 0.9896±0.0031 | 0.37% |
+| UWYK No-Anc | 1.5409±0.1099 | 1.0000±0.0000 | 2.72% | 1.5805±0.0560 | 1.0000±0.0000 | 0.19% |
+| UWYK No-Anc 2D | 1.3063±0.1142 | 1.0000±0.0000 | 0.04% | 1.3582±0.1104 | 1.0000±0.0000 | 0.12% |
+| UWYK Anc (v3a) | 1.4139±0.1179 | 1.0000±0.0000 | 3.11% | 1.4493±0.0663 | 1.0000±0.0000 | 0.37% |
+| UWYK Anc 2D (v3a) | 1.2599±0.1153 | 1.0000±0.0000 | 0.05% | 1.3312±0.1155 | 1.0000±0.0000 | 0.17% |
+| CausalPFN-C j1024_headrand 1D | 0.8162±0.0606 | 1.0000±0.0000 | 1.27% | 0.9554±0.0620 | 1.0000±0.0000 | 0.33% |
+| CausalPFN-C j32 1D | 1.0186±0.1152 | 1.0000±0.0000 | 0.00% | 1.3025±0.0458 | 1.0000±0.0000 | 0.00% |
+| CausalPFN-C botharms 1D | 0.8077±0.0594 | 1.0000±0.0000 | 1.36% | 0.9454±0.0646 | 1.0000±0.0000 | 0.27% |
+| CausalPFN-C j32_random 2D | 1.0689±0.1129 | 1.0000±0.0000 | 0.13% | 1.2647±0.0430 | 1.0000±0.0000 | 0.08% |
+| CausalPFN-C j32_eta0_y01 2D | 1.0858±0.1125 | 1.0000±0.0000 | 0.15% | 1.2388±0.0447 | 1.0000±0.0000 | 0.02% |
+
+Fallback is the percentage of queries scored with the raw density: failed
+fits and queries whose observed τ* falls outside the fitted interior support
+are retained using the evaluator's raw fallback. This rule uses the observed
+evaluation outcome; these are scores of that existing hybrid rule. The
+denominators are 7500 IHDP and 4810 ACIC queries per method. Mass is the
+integral over [-3, 3], without renormalization; the Do-PFN 2D ACIC mean is
+0.9896, a grid-mass shortfall of about 1.04%.
+
+**Provenance.** Do-PFN: `dopfn_refresh`; UWYK No-Anc: `5312884`; UWYK Anc
+(v3a): `5312882`; CausalPFN: `5571187`. The summarizer checks realization
+coverage, settings, source paths, truth/scaling, finite scores and fallbacks.
+
+To compute the missing ATE columns on the cluster, from the repository root:
+
+```bash
+mkdir -p logs_density_ate_malcT
+REPO="$PWD" sbatch benchmarks/cluster/submit_density_ate_malcT.sbatch
+```
+
+This writes a separate `results_density_tauC_malcT_ate` tree and verifies the
+recomputed CATE metrics and fallback masks against the existing MALC-T run,
+recording differences in the job logs and `reference_cate_matches` field.
+The new files contain both tiers from the same fits; a mismatch does not
+cause old CATE scores to be paired with new ATE scores.
+After the jobs finish and the results are available locally, refresh with:
+
+```bash
+python benchmarks/eval_graph2d/summarize_density_malcT.py --write
+```
+<!-- MALC_T_SUMMARY_END -->
+
+
 # UWYK — IHDP, all runs
 
 The live UWYK runs on IHDP, pooled here for readability. Per-run detail — the full metric set

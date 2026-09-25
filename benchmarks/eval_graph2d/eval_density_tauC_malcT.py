@@ -92,6 +92,14 @@ Runs entirely off the prediction dumps eval_density_tauC.py writes with
 SAVE_PREDICTIONS=1. CPU only -- no checkpoint, no GPU, no harness import, no
 dataset loader. Parallel over QUERIES, one realization at a time.
 
+COMPUTE_ATE=1 also scores the W2 barycenter of the very same per-query
+densities (including the existing raw-fallback decisions). Use a separate OUT
+for this pass; the original files contain only scores, so the MALC fits must
+be repeated. REFERENCE_ROOT can point to the original MALC-T run to verify
+that the repeated CATE scores and fallback masks reproduce before saving.
+REFERENCE_STRICT=0 records mismatches without aborting; in that case consume
+the new CATE and ATE results together, never mix fits from the two runs.
+
 Usage (CPU node):
     DUMPS=./results_density_tauC/5312884/IHDP/predictions \
     OUT=./results_density_tauC_malcT/IHDP \
@@ -165,6 +173,9 @@ if MODEL_FAMILY not in ('uwyk', 'dopfn', 'causalpfn', 'all', 'auto'):
 # fidelity: measured 0.004% relative L2 against the exact unequal-bar tau
 # density, against 0.35% at 100 bins and 0.013% at 512.
 DOPFN_MALC_BINS = int(os.environ.get('DOPFN_MALC_BINS', '1024'))
+COMPUTE_ATE = os.environ.get('COMPUTE_ATE', '0') == '1'
+REFERENCE_ROOT = os.environ.get('REFERENCE_ROOT', '')
+REFERENCE_STRICT = os.environ.get('REFERENCE_STRICT', '1') == '1'
 
 _G: dict = {}
 
@@ -529,7 +540,33 @@ def run_query(q):
             cate = float(b['raw_mean']())
 
         out[name] = dict(score=score(p_grid, p_true, d_star), cate=cate, **rec)
+        if COMPUTE_ATE:
+            out[name]['density'] = p_grid
     return q, out
+
+
+def ate_metrics(d, results, methods):
+    """Barycenter scores from the exact post-fallback CATE grids just scored."""
+    from eval_density_ate import _normalise, score as score_ate
+    from ot_barycenter import wasserstein_barycenter_1d
+
+    mu0, mu1 = np.asarray(d['mu0_scaled']), np.asarray(d['mu1_scaled'])
+    p_true_q = np.stack([truth_tau_density(a, b, float(d['sigma_scaled']), TAU_CENTERS)
+                         for a, b in zip(mu0, mu1)])
+    truths = {'bary': _normalise(wasserstein_barycenter_1d(p_true_q, TAU_CENTERS)),
+              'mix': _normalise(p_true_q.mean(axis=0))}
+    ate_true = float((mu1 - mu0).mean())
+    out = {'ate_true_scaled': ate_true, 'tau_grid': TAU_CENTERS,
+           'ate_density_source': 'malcT_post_fallback'}
+    for tag, truth in truths.items():
+        out[f'p_ate_truth_{tag}'] = truth
+    for method in methods:
+        grids = np.stack([rec[method]['density'] for _, rec in results])
+        estimate = _normalise(wasserstein_barycenter_1d(grids, TAU_CENTERS))
+        for tag, truth in truths.items():
+            for key, value in score_ate(estimate, truth, ate_true).items():
+                out[f'{key}_{tag}_{method}'] = value
+    return out
 
 
 def _init(payload):
@@ -591,6 +628,7 @@ def evaluate(path, pool_cls):
            'true_cate': true_cate,
            'malc_variant': 'T', 'malc_B': MALC_B, 'malc_K': MALC_K,
            'malc_seed': MALC_SEED, 'malc_n_tau': MALC_N_TAU,
+           'dopfn_malc_bins': DOPFN_MALC_BINS,
            'n_y0': N_Y0, 'source_dump': str(path),
            'tau_star_scaled': np.asarray(d['tau_star_scaled']),
            'frac_tau_outside_grid': float(
@@ -623,6 +661,8 @@ def evaluate(path, pool_cls):
         row[f'malc_fallback_query_{name}'] = np.array(
             [q for q, x in enumerate(recs) if x['fallback']], dtype=np.int32)
     row['methods'] = np.asarray(methods)
+    if COMPUTE_ATE:
+        row.update(ate_metrics(d, results, methods))
     return row, methods
 
 
@@ -650,9 +690,36 @@ def _shard_ok(path: str) -> bool:
     try:
         with np.load(path, allow_pickle=True) as z:
             int(np.asarray(z['realization']).reshape(-1)[0])
-            return 'methods' in z.files
+            if 'methods' not in z.files:
+                return False
+            if COMPUTE_ATE:
+                if str(z.get('ate_density_source', '')) != 'malcT_post_fallback':
+                    return False
+                for method in z['methods']:
+                    for truth in ('bary', 'mix'):
+                        for metric in ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass', 'ate_err'):
+                            key = f'{metric}_{truth}_{method}'
+                            if key not in z.files or not np.isfinite(z[key]).all():
+                                return False
+            return True
     except Exception:
         return False
+
+
+def check_reference(row, methods, path):
+    """Prevent combining a new ATE fit with different cached CATE results."""
+    with np.load(path) as ref:
+        for key in ('dataset', 'realization', 'malc_variant', 'malc_B', 'malc_K',
+                    'malc_seed', 'malc_n_tau', 'n_y0', 'n_queries'):
+            if not np.array_equal(row[key], ref[key]):
+                raise ValueError(f'{path}: {key} differs from the reference run')
+        for method in methods:
+            if not np.array_equal(row[f'malc_fallback_{method}'], ref[f'malc_fallback_{method}']):
+                raise ValueError(f'{path}: fallback mask changed for {method}')
+            for metric in ('nll', 'l2', 'kl_fwd', 'kl_rev', 'mass'):
+                key = f'{metric}_{method}'
+                if not np.allclose(row[key], ref[key], rtol=1e-7, atol=1e-9):
+                    raise ValueError(f'{path}: {key} changed; do not mix these CATE/ATE runs')
 
 
 def main():
@@ -695,8 +762,23 @@ def main():
             print(f'r={_r:03d}  shard unreadable, recomputing', flush=True)
         row, methods = evaluate(os.path.join(DUMPS, path), pool_cls)
         r = int(row['realization'])
-        np.savez(os.path.join(OUT, f'{dataset}_r{r:03d}.npz'),
-                 **{k: np.array(v) for k, v in row.items()})
+        if REFERENCE_ROOT:
+            try:
+                check_reference(row, methods, os.path.join(
+                    REFERENCE_ROOT, dataset, f'{dataset}_r{r:03d}.npz'))
+            except ValueError as exc:
+                if REFERENCE_STRICT:
+                    raise
+                row['reference_cate_matches'] = False
+                print(f'[reference] {exc}. New CATE and ATE scores must be used together.',
+                      flush=True)
+            else:
+                row['reference_cate_matches'] = True
+        # Keep resumable outputs intact if a job is interrupted during a write.
+        dest = os.path.join(OUT, f'{dataset}_r{r:03d}.npz')
+        with open(dest + '.tmp', 'wb') as f:
+            np.savez_compressed(f, **{k: np.array(v) for k, v in row.items()})
+        os.replace(dest + '.tmp', dest)
         print(f'r={r:03d}  ' + '  |  '.join(
             f'{m}: nll={row[f"nll_{m}"]:7.3f} l2={row[f"l2_{m}"]:6.3f} '
             f'klrev={row[f"kl_rev_{m}"]:7.4f} pehe={row[f"pehe_{m}"]:7.3f} '
