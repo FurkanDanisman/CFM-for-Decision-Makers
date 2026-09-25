@@ -80,10 +80,17 @@ def main():
                     pehes.append(r["pehe"]); epss.append(r["eps"])
                     n_cells += 1; n_real += r["n"]
             if n_cells:
+                # The +- is the BETWEEN-CELL standard error: spread over the
+                # (shift, d) cells, not over realizations. A per-realization SE
+                # would need the per-realization arrays, which run_cell already
+                # collapses to one number per cell.
+                _se = (lambda v: float(np.std(v, ddof=1) / np.sqrt(len(v)))
+                       if len(v) > 1 else 0.0)
                 per_case[case] = dict(
                     # squares add: RMS across cells, never the mean of PEHEs
                     pehe=float(np.sqrt(np.mean(np.square(pehes)))),
-                    eps=float(np.mean(epss)),
+                    pehe_se=_se(pehes),
+                    eps=float(np.mean(epss)), eps_se=_se(epss),
                     cells=n_cells, empty=n_empty, n=n_real)
             else:
                 per_case[case] = None
@@ -97,6 +104,8 @@ def main():
            f"shifts={','.join(a.shifts)} d={','.join(a.ds)} ctx={a.ctx} -->",
            "### Case study — PEHE / eps_ATE, shifts and d pooled", "",
            "PEHE pooled as RMS across (shift, d) cells; eps_ATE as a plain mean.",
+           "The +- is the BETWEEN-CELL standard error over those cells, not a",
+           "per-realization SE.",
            ""]
     hdr = "| method | metric | " + " | ".join(short[c] for c in a.cases) + " |"
     out += [hdr, "|" + "---|" * (len(a.cases) + 2)]
@@ -105,7 +114,8 @@ def main():
             cells = []
             for c in a.cases:
                 v = rows[name][c]
-                cells.append("--" if v is None else f"{v[key]:.4f}")
+                cells.append("--" if v is None
+                             else f"{v[key]:.4f} ± {v[key + '_se']:.4f}")
             out.append(f"| {name} | {label} | " + " | ".join(cells) + " |")
     txt = "\n".join(out)
     print("\n" + txt)
