@@ -626,6 +626,35 @@ def evaluate(path, pool_cls):
     return row, methods
 
 
+def _real_of(dump_name: str) -> int:
+    """Realization index from a dump filename, e.g. IHDP_r007.npz -> 7.
+
+    Read from the NAME so the resume check costs no npz load. Safe because the
+    output shard is named from the dump's own `realization` field and the raw
+    arm writes both from the same r -- the two cannot disagree without the raw
+    job having written a mislabelled file.
+    """
+    digits = ''.join(c for c in dump_name.rsplit('_r', 1)[-1] if c.isdigit())
+    if not digits:
+        raise ValueError(f'cannot read a realization index from {dump_name!r}')
+    return int(digits)
+
+
+def _shard_ok(path: str) -> bool:
+    """True if `path` is an output shard that actually opens and has content.
+
+    Costs ~10 ms against recomputing a realization, which for Do-PFN is ~114 s.
+    """
+    if not os.path.exists(path):
+        return False
+    try:
+        with np.load(path, allow_pickle=True) as z:
+            int(np.asarray(z['realization']).reshape(-1)[0])
+            return 'methods' in z.files
+    except Exception:
+        return False
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     paths = sorted(p for p in os.listdir(DUMPS) if p.endswith('.npz'))
@@ -646,6 +675,24 @@ def main():
 
     t0 = time.time()
     for path in paths[lo:hi]:
+        # RESUMABLE, like the raw arm. Do-PFN measured ~114 s per IHDP
+        # realization here -- four methods, and its 1D arms rebinned to 1024
+        # bins -- so 100 realizations is ~3h10m against a 2:59:00 wall clock.
+        # Job 5649123 died at r=093 having done 94 of them, and without this
+        # skip a re-submission would recompute all 94 and time out at the same
+        # place. Deleting a shard forces it to be redone; a changed MALC_B or
+        # MALC_K needs a fresh OUT, exactly as for the raw job.
+        _r = _real_of(path)
+        _done = os.path.join(OUT, f'{dataset}_r{_r:03d}.npz')
+        if _shard_ok(_done):
+            print(f'r={_r:03d}  skip (shard exists)', flush=True)
+            continue
+        if os.path.exists(_done):
+            # Exists but will not open: the previous run was killed DURING the
+            # write. Recompute rather than skip -- "file is present" is the
+            # wrong test when the thing that stopped the job was a wall clock
+            # that can land anywhere, including inside np.savez.
+            print(f'r={_r:03d}  shard unreadable, recomputing', flush=True)
         row, methods = evaluate(os.path.join(DUMPS, path), pool_cls)
         r = int(row['realization'])
         np.savez(os.path.join(OUT, f'{dataset}_r{r:03d}.npz'),
