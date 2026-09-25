@@ -1,0 +1,25 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-17 14:21:16] dopfn-repro variant=joint_2d steps=150000
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN_SRC=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  OUT=/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/joint_2d
+NVIDIA H100 80GB HBM3, 81559 MiB
+  no latest.pt -> fresh start
+variant=joint_2d  n_out=113  params=7,346,417  device=cuda
+  backbone sha256 1f119e9c1d6297db
+fitting target support from 100 prior batches ...
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-17 14:21:16] dopfn-repro variant=joint_2d steps=150000
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN_SRC=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  OUT=/scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_repro/joint_2d
+NVIDIA H100 80GB HBM3, 81559 MiB
+  no latest.pt -> fresh start
+variant=joint_2d  n_out=113  params=7,346,417  device=cuda
+  backbone sha256 1f119e9c1d6297db
+fitting target support from 100 prior batches ...

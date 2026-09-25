@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-17 19:50:52] native DoPFN  DATASET=IHDP  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/IHDP  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  IHDP  n=100
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 48 absent bias tensors, 0 unexpected)
+r=000  pehe= 0.697  err=0.063  ate=+3.80 vs true +4.06  (1s)
+r=001  pehe= 0.798  err=0.106  ate=+3.77 vs true +4.21  (1s)
+r=002  pehe= 1.234  err=0.125  ate=+3.55 vs true +4.06  (1s)
+r=003  pehe= 1.600  err=0.154  ate=+3.39 vs true +4.01  (2s)
+r=004  pehe= 2.858  err=0.376  ate=+2.60 vs true +4.16  (2s)
+r=005  pehe= 0.748  err=0.121  ate=+3.46 vs true +3.93  (2s)
+r=006  pehe= 0.679  err=0.121  ate=+3.53 vs true +4.02  (2s)
+r=007  pehe= 1.677  err=0.167  ate=+2.97 vs true +3.56  (3s)
+r=008  pehe=30.902  err=0.120  ate=+9.39 vs true +10.67  (3s)
+r=009  pehe= 6.828  err=0.054  ate=+5.59 vs true +5.30  (3s)
+r=010  pehe= 2.018  err=0.333  ate=+2.89 vs true +4.34  (3s)
+r=011  pehe= 2.886  err=0.264  ate=+3.23 vs true +4.39  (4s)
+r=012  pehe=31.351  err=0.207  ate=+9.86 vs true +8.17  (4s)
+r=013  pehe= 0.675  err=0.072  ate=+3.64 vs true +3.93  (4s)
+r=014  pehe= 1.863  err=0.091  ate=+3.60 vs true +3.96  (4s)
+r=015  pehe= 1.375  err=0.116  ate=+3.97 vs true +4.49  (5s)
+r=016  pehe= 2.765  err=0.289  ate=+2.72 vs true +3.83  (5s)
+r=017  pehe= 2.567  err=0.325  ate=+2.53 vs true +3.75  (5s)
+r=018  pehe= 2.551  err=0.180  ate=+3.23 vs true +3.93  (5s)
+r=019  pehe= 1.099  err=0.105  ate=+3.74 vs true +4.18  (6s)
+r=020  pehe= 5.401  err=0.514  ate=+2.30 vs true +4.72  (6s)
+r=021  pehe= 1.194  err=0.158  ate=+3.46 vs true +4.11  (6s)
+r=022  pehe= 2.478  err=0.293  ate=+3.27 vs true +4.62  (6s)
+r=023  pehe= 5.301  err=0.387  ate=+2.80 vs true +2.02  (7s)
+r=024  pehe= 2.327  err=0.069  ate=+3.74 vs true +4.02  (7s)
+r=025  pehe=10.668  err=0.144  ate=+2.71 vs true +2.37  (7s)
+r=026  pehe= 1.602  err=0.225  ate=+3.15 vs true +4.07  (7s)
+r=027  pehe=44.169  err=10.914  ate=+6.63 vs true -0.67  (8s)
+r=028  pehe= 2.196  err=0.277  ate=+2.74 vs true +3.79  (8s)
+r=029  pehe= 2.558  err=0.274  ate=+3.67 vs true +5.05  (8s)
+r=030  pehe= 3.317  err=0.259  ate=+2.76 vs true +3.72  (8s)
+r=031  pehe= 0.806  err=0.067  ate=+3.74 vs true +4.01  (9s)
+r=032  pehe= 2.508  err=0.324  ate=+3.18 vs true +4.71  (9s)
+r=033  pehe=31.464  err=0.272  ate=+4.65 vs true +6.39  (9s)
+r=034  pehe= 5.063  err=0.120  ate=+2.69 vs true +3.06  (9s)
+r=035  pehe= 4.774  err=0.290  ate=+3.94 vs true +5.55  (10s)
+r=036  pehe= 8.947  err=0.515  ate=+3.39 vs true +2.24  (10s)
+r=037  pehe= 1.862  err=0.176  ate=+3.06 vs true +3.71  (10s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=079  pehe= 0.568  err=0.009  ate=+3.92 vs true +3.88  (20s)
+r=080  pehe=20.764  err=0.020  ate=+8.91 vs true +8.74  (21s)
+r=081  pehe= 9.670  err=0.020  ate=+3.52 vs true +3.45  (21s)
+r=082  pehe= 4.298  err=0.270  ate=+2.96 vs true +4.06  (21s)
+r=083  pehe=12.713  err=1.604  ate=+2.43 vs true +0.93  (21s)
+r=084  pehe=17.038  err=2.346  ate=+1.87 vs true -1.39  (22s)
+r=085  pehe=17.408  err=0.233  ate=+3.35 vs true +2.72  (22s)
+r=086  pehe= 2.414  err=0.215  ate=+3.66 vs true +4.66  (22s)
+r=087  pehe= 0.495  err=0.073  ate=+3.69 vs true +3.98  (22s)
+r=088  pehe= 2.287  err=0.241  ate=+3.13 vs true +4.12  (23s)
+r=089  pehe= 2.270  err=0.111  ate=+3.39 vs true +3.81  (23s)
+r=090  pehe= 0.768  err=0.134  ate=+3.39 vs true +3.91  (23s)
+r=091  pehe= 2.794  err=0.364  ate=+2.33 vs true +3.66  (23s)
+r=092  pehe=11.140  err=0.308  ate=+6.08 vs true +8.79  (24s)
+r=093  pehe= 1.551  err=0.108  ate=+3.86 vs true +4.33  (24s)
+r=094  pehe= 1.500  err=0.117  ate=+3.17 vs true +3.59  (24s)
+r=095  pehe= 2.228  err=0.057  ate=+3.49 vs true +3.30  (24s)
+r=096  pehe= 1.846  err=0.216  ate=+3.54 vs true +4.52  (25s)
+r=097  pehe=13.119  err=0.166  ate=+5.19 vs true +4.45  (25s)
+r=098  pehe= 2.635  err=0.008  ate=+4.29 vs true +4.25  (25s)
+r=099  pehe= 2.409  err=0.177  ate=+3.36 vs true +4.08  (25s)
+══ IHDP  native DoPFN  n=100 ══
+  pehe_raw   =    4.824 ±  0.750
+  err_raw    =    0.317 ±  0.111
+[2026-09-17 19:51:24] done

@@ -1,0 +1,57 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[install] copying patched trainer.py    → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+[install] copying patched checkpoint.py → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+[install] copying patched train.py      → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[install] OK. To revert:
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-17 13:51:31] cpfn1d J=32 headrand  σ=0.32  nbins_override=32
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output
+[compile] disabled via COMPILE=0
+[resume] found /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/checkpoints/run/latest.pt
+[nbins-override] replacing head[2]: Linear(768, 1034) → Linear(768, 42); nbins: 1024 → 32
+[nbins-override] new bin_edges range: [-10.00, 10.00]  bin_width=0.6250  n_bins=32
+[resume] loaded 151 tensors from /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run
+[step-ckpt] retention: last 3
+[step-ckpt] resuming from actual_step=46065
+[step-limit] training will stop at actual_step=50000
+Effective batch size is: 256
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run/step_0048000.pt
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run/step_0050000.pt
+[step-limit] reached actual_step=50000 >= 50000; stopping training.
+[2026-09-17 15:56:14] DONE
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[install] copying patched trainer.py    → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+[install] copying patched checkpoint.py → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+[install] copying patched train.py      → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[install] OK. To revert:
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-17 13:51:31] cpfn1d J=32 headrand  σ=0.32  nbins_override=32
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output
+[compile] disabled via COMPILE=0
+[resume] found /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/checkpoints/run/latest.pt
+[nbins-override] replacing head[2]: Linear(768, 1034) → Linear(768, 42); nbins: 1024 → 32
+[nbins-override] new bin_edges range: [-10.00, 10.00]  bin_width=0.6250  n_bins=32
+[resume] loaded 151 tensors from /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run
+[step-ckpt] retention: last 3
+[step-ckpt] resuming from actual_step=46065
+[step-limit] training will stop at actual_step=50000
+Effective batch size is: 256
+[Warning] non-finite, NaN, or empty gradients – skipping update.
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run/step_0048000.pt
+[step-ckpt] saved /scratch/furkanbd/rpfn_bench_kit/cpfn1d_j32_headrand_output/step_checkpoints/run/step_0050000.pt
+[step-limit] reached actual_step=50000 >= 50000; stopping training.
+[2026-09-17 15:56:14] DONE

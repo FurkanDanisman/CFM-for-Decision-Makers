@@ -1,0 +1,49 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-17 19:50:52] native DoPFN  DATASET=ACIC  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/ACIC  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  ACIC  n=10
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 48 absent bias tensors, 0 unexpected)
+r=000  pehe= 4.271  err=0.574  ate=+0.79 vs true +1.86  (8s)
+r=001  pehe= 3.397  err=0.708  ate=+1.37 vs true +4.68  (16s)
+r=002  pehe= 2.114  err=0.413  ate=+2.79 vs true +4.75  (24s)
+r=003  pehe= 5.834  err=0.633  ate=+1.72 vs true +4.68  (32s)
+r=004  pehe= 4.662  err=0.571  ate=+1.42 vs true +3.31  (40s)
+r=005  pehe= 2.588  err=0.519  ate=+1.39 vs true +2.89  (49s)
+r=006  pehe= 3.265  err=0.313  ate=+2.46 vs true +3.59  (57s)
+r=007  pehe= 2.168  err=0.532  ate=+0.75 vs true +1.61  (65s)
+r=008  pehe= 2.495  err=0.226  ate=+2.89 vs true +3.73  (73s)
+r=009  pehe= 7.353  err=0.584  ate=+1.97 vs true +4.72  (81s)
+══ ACIC  native DoPFN  n=10 ══
+  pehe_raw   =    3.815 ±  0.546
+  err_raw    =    0.507 ±  0.047
+[2026-09-17 19:52:20] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-17 19:50:52] native DoPFN  DATASET=ACIC  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/ACIC  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  ACIC  n=10
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 48 absent bias tensors, 0 unexpected)
+r=000  pehe= 4.271  err=0.574  ate=+0.79 vs true +1.86  (8s)
+r=001  pehe= 3.397  err=0.708  ate=+1.37 vs true +4.68  (16s)
+r=002  pehe= 2.114  err=0.413  ate=+2.79 vs true +4.75  (24s)
+r=003  pehe= 5.834  err=0.633  ate=+1.72 vs true +4.68  (32s)
+r=004  pehe= 4.662  err=0.571  ate=+1.42 vs true +3.31  (40s)
+r=005  pehe= 2.588  err=0.519  ate=+1.39 vs true +2.89  (49s)
+r=006  pehe= 3.265  err=0.313  ate=+2.46 vs true +3.59  (57s)
+r=007  pehe= 2.168  err=0.532  ate=+0.75 vs true +1.61  (65s)
+r=008  pehe= 2.495  err=0.226  ate=+2.89 vs true +3.73  (73s)
+r=009  pehe= 7.353  err=0.584  ate=+1.97 vs true +4.72  (81s)
+══ ACIC  native DoPFN  n=10 ══
+  pehe_raw   =    3.815 ±  0.546
+  err_raw    =    0.507 ±  0.047
+[2026-09-17 19:52:20] done

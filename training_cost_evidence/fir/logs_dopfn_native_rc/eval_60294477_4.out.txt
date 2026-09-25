@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-17 19:48:22] native DoPFN  DATASET=PSID_bal  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/PSID_bal  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  PSID_bal  n=100
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-17 19:48:22] native DoPFN  DATASET=PSID_bal  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/PSID_bal  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  PSID_bal  n=100
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.

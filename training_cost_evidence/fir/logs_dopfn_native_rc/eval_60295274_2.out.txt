@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-17 19:50:52] native DoPFN  DATASET=CPS  OUT=/scratch/furkanbd/rpfn_bench_kit/rc_dopfn_repro_1d/CPS  DENSITY_DUMP=0
+[sklearn-shim] check_array finite kwarg -> 'ensure_all_finite'
+[dopfn_native] instantiated on device=cpu
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/final_checkpoints/dopfn_repro_1d_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  CPS  n=100
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 48 absent bias tensors, 0 unexpected)
+r=000  pehe=11557.245  err=0.856  ate=-1020.08 vs true -7074.78  (58s)
+r=001  pehe=11536.167  err=0.875  ate=-878.90 vs true -7008.79  (117s)
+r=002  pehe=10619.444  err=0.621  ate=-2508.15 vs true -6613.78  (177s)
+r=003  pehe=11701.036  err=0.886  ate=-799.46 vs true -7034.24  (239s)
+r=004  pehe=10822.249  err=0.687  ate=-2122.12 vs true -6772.13  (301s)
+r=005  pehe=11478.695  err=0.842  ate=-1132.19 vs true -7144.51  (363s)
+r=006  pehe=11698.072  err=0.877  ate=-861.97 vs true -7030.41  (425s)
+r=007  pehe=11674.492  err=0.876  ate=-867.35 vs true -7018.87  (487s)
+r=008  pehe=11831.747  err=0.903  ate=-703.29 vs true -7270.82  (548s)
+r=009  pehe=11185.932  err=0.810  ate=-1277.23 vs true -6715.67  (611s)
+r=010  pehe=11573.981  err=0.841  ate=-1178.17 vs true -7389.18  (674s)
+r=011  pehe=11469.554  err=0.812  ate=-1375.44 vs true -7301.83  (738s)
+r=012  pehe=11071.994  err=0.760  ate=-1568.76 vs true -6537.86  (801s)
+r=013  pehe=11729.491  err=0.892  ate=-724.52 vs true -6718.84  (865s)
+r=014  pehe=12012.068  err=0.981  ate=-125.22 vs true -6751.18  (927s)
+r=015  pehe=11620.246  err=0.867  ate=-882.71 vs true -6637.85  (988s)
+r=016  pehe=10812.818  err=0.704  ate=-2095.15 vs true -7070.99  (1050s)
+r=017  pehe=11335.077  err=0.762  ate=-1826.73 vs true -7680.40  (1113s)
+r=018  pehe=10913.336  err=0.746  ate=-1820.72 vs true -7167.04  (1176s)
+r=019  pehe=11404.336  err=0.792  ate=-1510.78 vs true -7278.13  (1240s)
+r=020  pehe=11316.770  err=0.744  ate=-1766.75 vs true -6912.33  (1302s)
+r=021  pehe=11253.546  err=0.701  ate=-2184.21 vs true -7295.48  (1365s)
+r=022  pehe=11028.241  err=0.734  ate=-1756.40 vs true -6604.25  (1428s)
+r=023  pehe=11156.800  err=0.789  ate=-1387.31 vs true -6562.85  (1490s)
+r=024  pehe=11267.657  err=0.807  ate=-1241.54 vs true -6434.08  (1552s)
+r=025  pehe=10705.729  err=0.612  ate=-2852.57 vs true -7358.98  (1615s)
+r=026  pehe=10860.752  err=0.656  ate=-2348.23 vs true -6830.48  (1676s)
+r=027  pehe=11028.043  err=0.671  ate=-2421.87 vs true -7353.57  (1737s)
+r=028  pehe=11159.777  err=0.748  ate=-1749.71 vs true -6949.01  (1799s)
+r=029  pehe=10858.436  err=0.684  ate=-2335.43 vs true -7379.80  (1863s)
+r=030  pehe=11281.933  err=0.720  ate=-1960.30 vs true -7005.08  (1926s)
+r=031  pehe=11465.913  err=0.788  ate=-1565.65 vs true -7393.73  (1992s)
+r=032  pehe=11291.604  err=0.767  ate=-1630.84 vs true -6994.95  (2059s)
+r=033  pehe=10758.827  err=0.678  ate=-2274.83 vs true -7053.86  (2125s)
+r=034  pehe=11342.071  err=0.746  ate=-1867.58 vs true -7358.33  (2188s)
+r=035  pehe=11929.624  err=0.886  ate=-799.84 vs true -7031.09  (2250s)
+r=036  pehe=12141.012  err=0.955  ate=-302.72 vs true -6785.84  (2313s)
+r=037  pehe=11670.972  err=0.877  ate=-884.07 vs true -7201.79  (2375s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=079  pehe=11374.100  err=0.813  ate=-1334.41 vs true -7145.94  (4965s)
+r=080  pehe=12359.227  err=0.999  ate=-6.18 vs true -7267.99  (5026s)
+r=081  pehe=11127.855  err=0.751  ate=-1661.83 vs true -6675.86  (5087s)
+r=082  pehe=11535.528  err=0.882  ate=-767.95 vs true -6519.77  (5147s)
+r=083  pehe=11487.629  err=0.812  ate=-1249.74 vs true -6648.85  (5211s)
+r=084  pehe=12096.141  err=0.948  ate=-363.39 vs true -6975.88  (5275s)
+r=085  pehe=11458.773  err=0.767  ate=-1677.26 vs true -7212.74  (5338s)
+r=086  pehe=11423.213  err=0.785  ate=-1568.95 vs true -7290.18  (5401s)
+r=087  pehe=11109.331  err=0.740  ate=-1886.10 vs true -7266.91  (5463s)
+r=088  pehe=11552.536  err=0.769  ate=-1686.49 vs true -7289.47  (5525s)
+r=089  pehe=11498.976  err=0.818  ate=-1257.15 vs true -6923.82  (5588s)
+r=090  pehe=10243.728  err=0.582  ate=-2854.52 vs true -6829.86  (5649s)
+r=091  pehe=11514.018  err=0.813  ate=-1334.64 vs true -7154.76  (5711s)
+r=092  pehe=10987.948  err=0.691  ate=-2086.12 vs true -6748.03  (5772s)
+r=093  pehe=10830.429  err=0.696  ate=-2182.47 vs true -7172.84  (5836s)
+r=094  pehe=10903.425  err=0.781  ate=-1483.84 vs true -6767.35  (5898s)
+r=095  pehe=11758.653  err=0.932  ate=-480.40 vs true -7054.92  (5959s)
+r=096  pehe=10837.396  err=0.683  ate=-2229.97 vs true -7033.46  (6020s)
+r=097  pehe=11017.791  err=0.763  ate=-1595.72 vs true -6732.20  (6081s)
+r=098  pehe=10934.823  err=0.708  ate=-2083.99 vs true -7135.47  (6142s)
+r=099  pehe=11689.149  err=0.959  ate=-278.73 vs true -6820.76  (6203s)
+══ CPS  native DoPFN  n=100 ══
+  pehe_raw   = 11346.857 ± 44.845
+  err_raw    =    0.796 ±  0.010
+[2026-09-17 21:34:31] done

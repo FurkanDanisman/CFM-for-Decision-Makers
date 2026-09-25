@@ -1,0 +1,88 @@
+JobID|JobName|State|Elapsed|AllocTRES|ExitCode
+60242120|wrap|COMPLETED|00:00:00|billing=12200,cpu=4,gres/gpu:h100=1,gres/gpu=1,mem=16G,node=1|0:0
+60242895|uwyk-abl|CANCELLED by 3143987|00:19:29|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60242896|uwyk-abl|CANCELLED by 3143987|00:15:58|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60242897|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60242898|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60244329|cpfn1d-j32-headrand|FAILED|00:00:01|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|1:0
+60244331|cpfn1d-j1024-botharms|CANCELLED by 3143987|00:00:00||0:0
+60245096|cpfn1d-j32-headrand|COMPLETED|02:04:43|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60245097|cpfn1d-j1024-botharms|CANCELLED by 3143987|00:00:00||0:0
+60246537|dopfn-repro-1d|FAILED|00:00:00|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|1:0
+60246538|dopfn-repro-2d|CANCELLED by 3143987|00:00:00||0:0
+60247934|dopfn-repro-1d|CANCELLED by 3143987|00:00:00||0:0
+60247935|dopfn-repro-2d|CANCELLED by 3143987|00:00:00||0:0
+60247936|uwyk-abl|FAILED|00:04:31|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|1:0
+60247937|uwyk-abl|FAILED|00:03:19|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|1:0
+60247938|uwyk-abl|FAILED|00:03:42|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|1:0
+60247939|uwyk-abl|FAILED|00:03:48|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|1:0
+60247982|cpfn1d-j1024-botharms|COMPLETED|12:04:45|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60248699|dopfn-repro-1d|FAILED|00:00:40|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|1:0
+60248700|dopfn-repro-2d|FAILED|00:00:11|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|1:0
+60250772|dopfn-repro-1d|FAILED|00:00:15|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|1:0
+60250773|dopfn-repro-2d|FAILED|00:00:05|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|1:0
+60251066|uwyk-abl|CANCELLED by 3143987|00:11:44|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60251067|uwyk-abl|CANCELLED by 3143987|00:11:47|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60251068|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60251069|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60251112|dopfn-repro-1d|COMPLETED|04:08:15|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|0:0
+60251113|dopfn-repro-2d|COMPLETED|04:18:06|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|0:0
+60253575|uwyk-abl|CANCELLED by 3143987|01:18:15|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60253576|uwyk-abl|CANCELLED by 3143987|01:17:07|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60253577|uwyk-abl|CANCELLED by 3143987|01:12:06|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60253578|uwyk-abl|CANCELLED by 3143987|01:12:06|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60267335|uwyk-abl|CANCELLED by 3143987|00:07:41|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60267336|uwyk-abl|CANCELLED by 3143987|00:07:41|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60267337|uwyk-abl|CANCELLED by 3143987|00:07:41|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60267338|uwyk-abl|CANCELLED by 3143987|00:07:41|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60268310|uwyk-abl|CANCELLED by 3143987|00:18:08|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60268311|uwyk-abl|CANCELLED by 3143987|00:18:08|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60268312|uwyk-abl|CANCELLED by 3143987|00:18:08|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60268313|uwyk-abl|CANCELLED by 3143987|00:18:08|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60275347|cpfn2d-j32-eta0|CANCELLED by 3143987|03:24:11|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60275854|dopfn-repro-1d|COMPLETED|03:51:20|billing=12200,cpu=8,gres/gpu:h100=1,gres/gpu=1,mem=64G,node=1|0:0
+60277426|uwyk-abl|COMPLETED|22:42:02|billing=32533,cpu=32,gres/gpu:h100=1,gres/gpu=1,mem=128G,node=1|0:0
+60277427|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60277428|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60277429|uwyk-abl|CANCELLED by 3143987|00:00:00||0:0
+60292329_[0-4]|dopfn-bb-rc|CANCELLED by 3143987|00:00:00||0:0
+60292573_[0-4]|dopfn-bb-rc|CANCELLED by 3143987|00:00:00||0:0
+60292682_0|dopfn-bb-rc|COMPLETED|00:00:19|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60292682_1|dopfn-bb-rc|COMPLETED|00:00:19|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60292682_2|dopfn-bb-rc|CANCELLED by 3143987|00:01:03|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60292682_3|dopfn-bb-rc|COMPLETED|00:00:23|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60292682_4|dopfn-bb-rc|COMPLETED|00:00:19|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60293051_0|dopfn-bb-rc|CANCELLED by 3143987|00:00:10|billing=4066,cpu=4,gres/gpu:nvidia_h100_80gb_hbm3_2g.20gb=1,gres/gpu=1,mem=32G,node=1|0:0
+60293051_[1-4]|dopfn-bb-rc|CANCELLED by 3143987|00:00:00||0:0
+60293234_0|dopfn-bb-rc|COMPLETED|00:00:32|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293234_1|dopfn-bb-rc|COMPLETED|00:01:07|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293234_2|dopfn-bb-rc|FAILED|00:00:06|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293234_3|dopfn-bb-rc|COMPLETED|00:02:16|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293234_4|dopfn-bb-rc|COMPLETED|00:00:17|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293988_0|dopfn-native-rc|FAILED|00:00:11|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293988_1|dopfn-native-rc|FAILED|00:00:11|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293988_2|dopfn-native-rc|FAILED|00:00:11|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293988_3|dopfn-native-rc|FAILED|00:00:10|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293988_4|dopfn-native-rc|FAILED|00:00:11|billing=8000,cpu=8,mem=32G,node=1|1:0
+60293989_0|cpfn1d-rc+cs|COMPLETED|00:00:22|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293989_1|cpfn1d-rc+cs|COMPLETED|00:00:27|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293989_2|cpfn1d-rc+cs|COMPLETED|00:23:57|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293989_3|cpfn1d-rc+cs|COMPLETED|00:01:16|billing=8000,cpu=8,mem=32G,node=1|0:0
+60293989_4|cpfn1d-rc+cs|COMPLETED|00:00:22|billing=8000,cpu=8,mem=32G,node=1|0:0
+60294100_2|dopfn-bb-rc|COMPLETED|00:53:12|billing=8000,cpu=8,mem=32G,node=1|0:0
+60294477_0|dopfn-native-rc|FAILED|00:00:06|billing=8000,cpu=8,mem=32G,node=1|1:0
+60294477_1|dopfn-native-rc|FAILED|00:00:07|billing=8000,cpu=8,mem=32G,node=1|1:0
+60294477_2|dopfn-native-rc|FAILED|00:00:12|billing=8000,cpu=8,mem=32G,node=1|1:0
+60294477_3|dopfn-native-rc|FAILED|00:00:12|billing=8000,cpu=8,mem=32G,node=1|1:0
+60294477_4|dopfn-native-rc|FAILED|00:00:12|billing=8000,cpu=8,mem=32G,node=1|1:0
+60295274_0|dopfn-native-rc|COMPLETED|00:00:32|billing=8000,cpu=8,mem=32G,node=1|0:0
+60295274_1|dopfn-native-rc|COMPLETED|00:01:28|billing=8000,cpu=8,mem=32G,node=1|0:0
+60295274_2|dopfn-native-rc|COMPLETED|01:43:39|billing=8000,cpu=8,mem=32G,node=1|0:0
+60295274_3|dopfn-native-rc|FAILED|00:00:08|billing=8000,cpu=8,mem=32G,node=1|1:0
+60295274_4|dopfn-native-rc|FAILED|00:00:07|billing=8000,cpu=8,mem=32G,node=1|1:0
+60295778_3|dopfn-native-rc|FAILED|00:00:06|billing=8000,cpu=8,mem=32G,node=1|1:0
+60295778_4|dopfn-native-rc|COMPLETED|00:03:53|billing=8000,cpu=8,mem=32G,node=1|0:0
+60296791_3|wrap|CANCELLED by 3143987|00:01:05|billing=8000,cpu=8,mem=32G,node=1|0:0
+60296884_3|dopfn-native-rc|COMPLETED|00:03:49|billing=8000,cpu=8,mem=32G,node=1|0:0
+60628524_0|dopfn-bb-rc|COMPLETED|00:01:11|billing=8000,cpu=8,mem=32G,node=1|0:0
+60628525_0|dopfn-bb-rc|COMPLETED|00:01:16|billing=8000,cpu=8,mem=32G,node=1|0:0
