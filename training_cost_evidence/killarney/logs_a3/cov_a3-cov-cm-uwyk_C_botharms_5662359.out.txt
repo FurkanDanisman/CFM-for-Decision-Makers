@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:21:46] model=uwyk_C_botharms smoother=none workers=16 benches=cm
+---- cm_uwyk_C_botharms_n5 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n5_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         109 |   0.8626  0.2693  0.0258 |     0.7737    0.6722 |     2.5896 |    0.1532
+uwyk1d-v3a           109 |   0.9261  0.2037  0.0195 |     0.9397    0.6983 |     1.9368 |    0.1384
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n5.npz (8 arrays)
+---- cm_uwyk_C_botharms_n10 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n10_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         115 |   0.8958  0.2319  0.0216 |     0.6774    0.6181 |     1.0740 |    0.0781
+uwyk1d-v3a           115 |   0.9338  0.1682  0.0157 |     0.7444    0.6108 |     0.9139 |    0.0716
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n10.npz (8 arrays)
+---- cm_uwyk_C_botharms_n20 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n20_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         113 |   0.9204  0.2285  0.0215 |     0.5599    0.5280 |     1.3212 |    0.0602
+uwyk1d-v3a           113 |   0.9237  0.2268  0.0213 |     0.5572    0.5191 |     1.2661 |    0.0589
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n20.npz (8 arrays)
+---- cm_uwyk_C_botharms_n30 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n30_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         139 |   0.9492  0.1798  0.0153 |     0.6986    0.7654 |     0.8073 |    0.0371
+uwyk1d-v3a           139 |   0.9498  0.1778  0.0151 |     0.6894    0.7756 |     0.7937 |    0.0375
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n30.npz (8 arrays)
+---- cm_uwyk_C_botharms_n40 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n40_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         123 |   0.9560  0.1793  0.0162 |     0.5815    0.6018 |     0.6710 |    0.0327
+uwyk1d-v3a           123 |   0.9548  0.1822  0.0164 |     0.5619    0.6139 |     0.6939 |    0.0329
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         139 |   0.9492  0.1798  0.0153 |     0.6986    0.7654 |     0.8073 |    0.0371
+uwyk1d-v3a           139 |   0.9498  0.1778  0.0151 |     0.6894    0.7756 |     0.7937 |    0.0375
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n30.npz (8 arrays)
+---- cm_uwyk_C_botharms_n40 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n40_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         123 |   0.9560  0.1793  0.0162 |     0.5815    0.6018 |     0.6710 |    0.0327
+uwyk1d-v3a           123 |   0.9548  0.1822  0.0164 |     0.5619    0.6139 |     0.6939 |    0.0329
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n40.npz (8 arrays)
+---- cm_uwyk_C_botharms_n50 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/uwyk_C_botharms
+selector=CMECH_n50_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         122 |   0.9647  0.1375  0.0125 |     0.5939    0.5502 |     0.7147 |    0.0387
+uwyk1d-v3a           122 |   0.9562  0.1605  0.0145 |     0.5782    0.5660 |     0.6927 |    0.0386
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cm_uwyk_C_botharms_n50.npz (8 arrays)
+[2026-09-24 23:22:21] done -> /scratch/furkanbd/a3_cov/none

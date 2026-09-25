@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 04:27:22] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0016000.pt
+  STD_MODE=log_winsor  K_NN=0
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0016000_log_winsor
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run/step_0016000.pt
+[bootstrap] STD_MODE=log_winsor  K_NN=0
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-10.00,10.00]  bw_std=0.6250
+r=000  in=1.000  raw= 0.588  full= 0.588  em= 0.588  (ate=+4.06, 0s)
+r=001  in=1.000  raw= 0.564  full= 0.564  em= 0.564  (ate=+4.21, 1s)
+r=002  in=1.000  raw= 0.697  full= 0.697  em= 0.697  (ate=+4.06, 1s)
+r=003  in=1.000  raw= 0.579  full= 0.579  em= 0.579  (ate=+4.01, 1s)
+r=004  in=1.000  raw= 0.601  full= 0.601  em= 0.601  (ate=+4.16, 1s)
+r=005  in=1.000  raw= 0.779  full= 0.779  em= 0.779  (ate=+3.93, 1s)
+r=006  in=1.000  raw= 0.420  full= 0.420  em= 0.420  (ate=+4.02, 1s)
+r=007  in=1.000  raw= 0.618  full= 0.618  em= 0.618  (ate=+3.56, 1s)
+r=008  in=1.000  raw= 1.815  full= 1.815  em= 1.814  (ate=+10.67, 1s)
+r=009  in=1.000  raw= 0.750  full= 0.750  em= 0.749  (ate=+5.30, 1s)
+r=010  in=1.000  raw= 0.706  full= 0.706  em= 0.706  (ate=+4.34, 1s)
+r=011  in=1.000  raw= 0.780  full= 0.780  em= 0.780  (ate=+4.39, 2s)
+r=012  in=1.000  raw= 3.008  full= 3.008  em= 3.007  (ate=+8.17, 2s)
+r=013  in=1.000  raw= 0.733  full= 0.733  em= 0.733  (ate=+3.93, 2s)
+r=014  in=1.000  raw= 0.862  full= 0.862  em= 0.862  (ate=+3.96, 2s)
+r=015  in=1.000  raw= 0.561  full= 0.561  em= 0.561  (ate=+4.49, 2s)
+r=016  in=1.000  raw= 0.840  full= 0.840  em= 0.840  (ate=+3.83, 2s)
+r=017  in=1.000  raw= 0.664  full= 0.664  em= 0.664  (ate=+3.75, 2s)
+r=018  in=1.000  raw= 0.638  full= 0.638  em= 0.638  (ate=+3.93, 2s)
+r=019  in=1.000  raw= 0.631  full= 0.631  em= 0.630  (ate=+4.18, 2s)
+r=020  in=1.000  raw= 0.783  full= 0.783  em= 0.783  (ate=+4.72, 2s)
+r=021  in=1.000  raw= 0.618  full= 0.618  em= 0.618  (ate=+4.11, 2s)
+r=022  in=1.000  raw= 0.616  full= 0.616  em= 0.616  (ate=+4.62, 3s)
+r=023  in=1.000  raw= 0.951  full= 0.951  em= 0.952  (ate=+2.02, 3s)
+r=024  in=1.000  raw= 1.107  full= 1.107  em= 1.107  (ate=+4.02, 3s)
+r=025  in=1.000  raw= 1.337  full= 1.337  em= 1.337  (ate=+2.37, 3s)
+r=026  in=1.000  raw= 0.786  full= 0.786  em= 0.786  (ate=+4.07, 3s)
+r=027  in=1.000  raw= 3.661  full= 3.661  em= 3.658  (ate=-0.67, 3s)
+r=028  in=1.000  raw= 0.647  full= 0.647  em= 0.647  (ate=+3.79, 3s)
+r=029  in=1.000  raw= 0.744  full= 0.744  em= 0.744  (ate=+5.05, 3s)
+r=030  in=1.000  raw= 0.851  full= 0.851  em= 0.851  (ate=+3.72, 3s)
+r=031  in=1.000  raw= 0.633  full= 0.633  em= 0.633  (ate=+4.01, 3s)
+r=032  in=1.000  raw= 0.823  full= 0.823  em= 0.823  (ate=+4.71, 4s)
+r=033  in=1.000  raw= 2.278  full= 2.278  em= 2.280  (ate=+6.39, 4s)
+r=034  in=1.000  raw= 0.786  full= 0.786  em= 0.785  (ate=+3.06, 4s)
+r=035  in=1.000  raw= 0.683  full= 0.683  em= 0.682  (ate=+5.55, 4s)
+r=036  in=1.000  raw= 0.963  full= 0.963  em= 0.963  (ate=+2.24, 4s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=084  in=1.000  raw= 1.745  full= 1.745  em= 1.746  (ate=-1.39, 9s)
+r=085  in=1.000  raw= 1.579  full= 1.579  em= 1.579  (ate=+2.72, 9s)
+r=086  in=1.000  raw= 0.671  full= 0.671  em= 0.671  (ate=+4.66, 9s)
+r=087  in=1.000  raw= 0.720  full= 0.720  em= 0.720  (ate=+3.98, 9s)
+r=088  in=1.000  raw= 0.755  full= 0.755  em= 0.755  (ate=+4.12, 9s)
+r=089  in=1.000  raw= 0.565  full= 0.565  em= 0.565  (ate=+3.81, 9s)
+r=090  in=1.000  raw= 0.716  full= 0.716  em= 0.716  (ate=+3.91, 9s)
+r=091  in=1.000  raw= 0.726  full= 0.726  em= 0.726  (ate=+3.66, 9s)
+r=092  in=1.000  raw= 1.498  full= 1.498  em= 1.496  (ate=+8.79, 10s)
+r=093  in=1.000  raw= 0.684  full= 0.684  em= 0.683  (ate=+4.33, 10s)
+r=094  in=1.000  raw= 0.675  full= 0.675  em= 0.675  (ate=+3.59, 10s)
+r=095  in=1.000  raw= 0.718  full= 0.718  em= 0.718  (ate=+3.30, 10s)
+r=096  in=1.000  raw= 0.677  full= 0.677  em= 0.677  (ate=+4.52, 10s)
+r=097  in=1.000  raw= 1.232  full= 1.232  em= 1.231  (ate=+4.45, 10s)
+r=098  in=1.000  raw= 0.789  full= 0.789  em= 0.789  (ate=+4.25, 10s)
+r=099  in=1.000  raw= 0.681  full= 0.681  em= 0.681  (ate=+4.08, 10s)
+══ IHDP  STD_MODE=log_winsor  n=100  edges=[-10.0,10.0] ══
+  frac_ctx_in_edges      =    1.000 ±  0.000
+  pehe_raw               =    0.861 ±  0.049
+  err_raw                =    0.048 ±  0.005
+  pehe_full              =    0.861 ±  0.049
+  err_full               =    0.048 ±  0.005
+  pehe_em                =    0.861 ±  0.049
+  err_em                 =    0.048 ±  0.005
+[2026-09-03 04:27:38] done

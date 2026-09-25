@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 05:34:32] TASK=109  DATASET=ACIC  REAL=9  variant=baseline
+[   0.0s] [baseline-only] loading ACIC r9
+[   0.8s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  86.0s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r009.npz  (PEHE=8.361  ATE=0.993)
+[2026-07-23 05:36:01] DONE task=109
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 05:34:32] TASK=109  DATASET=ACIC  REAL=9  variant=baseline
+[   0.0s] [baseline-only] loading ACIC r9
+[   0.8s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  86.0s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r009.npz  (PEHE=8.361  ATE=0.993)
+[2026-07-23 05:36:01] DONE task=109

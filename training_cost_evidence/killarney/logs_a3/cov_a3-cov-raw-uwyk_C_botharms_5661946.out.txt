@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:11:43] model=uwyk_C_botharms smoother=none workers=16 benches=rc cm cs
+---- rc_uwyk_C_botharms_IHDP ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_C_botharms
+selector=IHDP
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.8785  0.1184  0.0118 |    19.3440   17.8414 |    43.1827 |    4.3613
+uwyk1d-v3a           100 |   0.8943  0.1081  0.0108 |    20.1741   19.7271 |    39.7883 |    4.2160
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_C_botharms_IHDP.npz (8 arrays)
+---- rc_uwyk_C_botharms_ACIC ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_C_botharms
+selector=ACIC
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc          10 |   0.9701  0.0400  0.0126 |    19.9196    4.0479 |    23.5210 |    2.7180
+uwyk1d-v3a            10 |   0.9719  0.0405  0.0128 |    19.9521    4.1931 |    23.2606 |    2.6765
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_C_botharms_ACIC.npz (8 arrays)
+---- rc_uwyk_C_botharms_CPS ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_C_botharms
+selector=CPS
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.9104  0.0240  0.0024 | 45477.4091 2064.2793 | 54744.6300 | 7858.5467
+uwyk1d-v3a           100 |   0.9038  0.0206  0.0021 | 44206.7475 1993.3270 | 54493.7841 | 7866.0663
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_C_botharms_CPS.npz (8 arrays)
+---- rc_uwyk_C_botharms_PSID ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_C_botharms
+selector=PSID
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.8146  0.0340  0.0034 | 55346.4913 2429.1573 | 135874.0784 | 13292.1722
+uwyk1d-v3a           100 |   0.8240  0.0345  0.0034 | 56048.8653 2624.5665 | 130866.8807 | 13213.2886
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_C_botharms_PSID.npz (8 arrays)
+---- rc_uwyk_C_botharms_PSID_bal ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_C_botharms
+selector=PSID_bal
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.8987  0.0304  0.0030 | 59029.7122 3474.9113 | 104596.8984 | 12083.2403
+uwyk1d-v3a           100 |   0.9258  0.0260  0.0026 | 59334.6119 3682.8963 | 98481.0080 | 11018.2465
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+---- cs_uwyk_C_botharms_Observed_Mediator_and_Confounder ----
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_C_botharms/shift0/d10/ctx1000 ...)
+selector=Observed_Mediator_and_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.4681  0.4216  0.0086 |     2.4357    2.1112 |    21.9208 |    1.1164
+uwyk1d-v3a          2400 |   0.5379  0.4176  0.0085 |     2.7630    2.2269 |    17.5796 |    1.0466
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cs_uwyk_C_botharms_Observed_Mediator_and_Confounder.npz (8 arrays)
+---- cs_uwyk_C_botharms_Unobserved_Confounder ----
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_C_botharms/shift0/d10/ctx1000 ...)
+selector=Unobserved_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.9367  0.1517  0.0031 |     5.2902    4.1716 |     5.8819 |    0.8093
+uwyk1d-v3a          2400 |   0.9480  0.1349  0.0028 |     5.4133    4.3183 |     5.8304 |    0.8010
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cs_uwyk_C_botharms_Unobserved_Confounder.npz (8 arrays)
+---- cs_uwyk_C_botharms_Frontdoor_Criterion ----
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_C_botharms/shift0/d10/ctx1000 ...)
+selector=Frontdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.9852  0.0759  0.0015 |     2.7670    4.0930 |     2.8071 |    0.1307

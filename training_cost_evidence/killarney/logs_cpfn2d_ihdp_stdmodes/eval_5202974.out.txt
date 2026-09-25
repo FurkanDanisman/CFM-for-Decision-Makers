@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 03:49:04] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  STD_MODE=pooled
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/R-PFN_checkpoints_step_50000_final_pooled
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[bootstrap] STD_MODE=pooled
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-03 03:49:04] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  STD_MODE=pooled
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/R-PFN_checkpoints_step_50000_final_pooled
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[bootstrap] STD_MODE=pooled

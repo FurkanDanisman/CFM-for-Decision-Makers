@@ -1,0 +1,47 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 09:48:20] TASK=8  DATASET=law_race  SEED=3  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.5s] load_dataset('law_race')  seed=3
+[   5.4s] building CATE_Dataset view
+[   5.4s] reading precomputed true CATE from test_ds.cate
+[   5.4s] n_train=1600  n_test=400  true_ate=+0.6742
+[   5.4s] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[   8.3s] loading UWYK
+[   8.6s] UWYK-Ancestral
+[  35.4s] UWYK-NoAncestral
+[  62.5s] loading OURS (step_50000_final.pt)
+[  62.9s] OURS inference
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 3 clusters (sizes: [599, 419, 582])
+[1226.5s] saved /scratch/furkanbd/rpfn_bench_kit/results_semi_real/law_race_seed0003.npz
+[2026-07-28 10:08:50] DONE task=8
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-28 09:48:20] TASK=8  DATASET=law_race  SEED=3  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.5s] load_dataset('law_race')  seed=3
+[   5.4s] building CATE_Dataset view
+[   5.4s] reading precomputed true CATE from test_ds.cate
+[   5.4s] n_train=1600  n_test=400  true_ate=+0.6742
+[   5.4s] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[   8.3s] loading UWYK
+[   8.6s] UWYK-Ancestral
+[  35.4s] UWYK-NoAncestral
+[  62.5s] loading OURS (step_50000_final.pt)
+[  62.9s] OURS inference
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 3 clusters (sizes: [599, 419, 582])
+[1226.5s] saved /scratch/furkanbd/rpfn_bench_kit/results_semi_real/law_race_seed0003.npz
+[2026-07-28 10:08:50] DONE task=8

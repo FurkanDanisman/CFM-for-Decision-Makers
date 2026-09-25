@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 12:55:28] TASK=80  DATASET=IHDP  REAL=80  variant=noanc
+[   0.0s] [noanc-only] loading IHDP r80
+[   0.1s] [noanc-only] loading UWYK (noanc) ckpt
+[   0.6s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  11.7s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r080.npz  (PEHE=24.045  ATE=0.832)
+[2026-07-23 12:55:43] DONE task=80
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 12:55:28] TASK=80  DATASET=IHDP  REAL=80  variant=noanc
+[   0.0s] [noanc-only] loading IHDP r80
+[   0.1s] [noanc-only] loading UWYK (noanc) ckpt
+[   0.6s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  11.7s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r080.npz  (PEHE=24.045  ATE=0.832)
+[2026-07-23 12:55:43] DONE task=80

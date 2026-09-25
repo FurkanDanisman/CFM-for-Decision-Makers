@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:32:30] TASK=96  DATASET=IHDP  REAL=96  variant=ours-ot
+[   0.0s] [ot-only] loading IHDP r96
+[   0.1s] [ot-only] loading OURS
+[   0.5s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ 148.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r096.npz  (OT-mode ATE=4.083  OT-mean ATE=3.252)
+[2026-07-24 08:35:02] DONE task=96
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:32:30] TASK=96  DATASET=IHDP  REAL=96  variant=ours-ot
+[   0.0s] [ot-only] loading IHDP r96
+[   0.1s] [ot-only] loading OURS
+[   0.5s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ 148.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r096.npz  (OT-mode ATE=4.083  OT-mean ATE=3.252)
+[2026-07-24 08:35:02] DONE task=96

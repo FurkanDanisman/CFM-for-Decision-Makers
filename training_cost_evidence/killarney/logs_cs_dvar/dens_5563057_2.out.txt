@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-20 09:28:08] task=2 model=dopfn_native shift0 d5
+  CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5  N=1000  N_QUERY=100
+=== dopfn_native  Observed_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Observed_Confounder  n=100
+WARN: dopfn_native Observed_Confounder failed
+=== dopfn_native  Backdoor_Criterion ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Backdoor_Criterion  n=100
+WARN: dopfn_native Backdoor_Criterion failed
+=== dopfn_native  Observed_Mediator ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Observed_Mediator  n=100
+WARN: dopfn_native Observed_Mediator failed
+=== dopfn_native  Observed_Mediator_and_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Observed_Mediator_and_Confounder  n=100
+WARN: dopfn_native Observed_Mediator_and_Confounder failed
+=== dopfn_native  Unobserved_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Unobserved_Confounder  n=100
+WARN: dopfn_native Unobserved_Confounder failed
+=== dopfn_native  Frontdoor_Criterion ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Frontdoor_Criterion  n=100
+WARN: dopfn_native Frontdoor_Criterion failed
+[2026-09-20 09:28:37] done  dopfn_native shift0 d5
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Observed_Mediator  n=100
+WARN: dopfn_native Observed_Mediator failed
+=== dopfn_native  Observed_Mediator_and_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Observed_Mediator_and_Confounder  n=100
+WARN: dopfn_native Observed_Mediator_and_Confounder failed
+=== dopfn_native  Unobserved_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Unobserved_Confounder  n=100
+WARN: dopfn_native Unobserved_Confounder failed
+=== dopfn_native  Frontdoor_Criterion ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift0/d5)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  Frontdoor_Criterion  n=100
+WARN: dopfn_native Frontdoor_Criterion failed
+[2026-09-20 09:28:37] done  dopfn_native shift0 d5

@@ -1,0 +1,60 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 15:39:48] REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  CHECKPOINT50=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  CHECKPOINT10=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  K=50   N_CONTEXT=200   N_TEST=50   OUT=/scratch/furkanbd/rpfn_bench_kit/rho_scaling_test.png
+[load] Ours fn=50
+[load] Ours fn=10
+[load] UWYK
+[load] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[scm] ρ=0.00 k=0 ρ̂=+0.749  UWYK=2.569 DoPFN=3.423 Ours50=3.079 Ours10=3.778
+[scm] ρ=0.00 k=1 ρ̂=+0.032  UWYK=2.003 DoPFN=2.003 Ours50=2.294 Ours10=2.780
+[scm] ρ=0.00 k=2 ρ̂=-0.039  UWYK=2.593 DoPFN=3.161 Ours50=2.967 Ours10=3.198
+[scm] ρ=0.00 k=3 ρ̂=-0.132  UWYK=1.316 DoPFN=1.979 Ours50=1.590 Ours10=1.924
+[scm] ρ=0.00 k=4 ρ̂=+0.025  UWYK=3.766 DoPFN=3.965 Ours50=4.014 Ours10=4.535
+[scm] ρ=0.00 k=5 ρ̂=-0.183  UWYK=1.270 DoPFN=2.194 Ours50=2.251 Ours10=2.405
+[scm] ρ=0.00 k=6 ρ̂=-0.650  UWYK=3.220 DoPFN=4.303 Ours50=3.653 Ours10=4.626
+[scm] ρ=0.00 k=7 ρ̂=+0.007  UWYK=3.051 DoPFN=3.041 Ours50=2.936 Ours10=3.329
+[scm] ρ=0.00 k=8 ρ̂=-0.032  UWYK=1.583 DoPFN=2.239 Ours50=1.992 Ours10=2.174
+[scm] ρ=0.00 k=9 ρ̂=-0.250  UWYK=2.218 DoPFN=3.260 Ours50=3.207 Ours10=3.349
+[scm] ρ=0.00 k=10 ρ̂=-0.419  UWYK=1.642 DoPFN=2.683 Ours50=2.958 Ours10=3.352
+[scm] ρ=0.00 k=11 ρ̂=-0.132  UWYK=1.929 DoPFN=2.572 Ours50=2.381 Ours10=2.658
+[scm] ρ=0.00 k=12 ρ̂=-0.121  UWYK=2.077 DoPFN=2.398 Ours50=2.393 Ours10=2.484
+[scm] ρ=0.00 k=13 ρ̂=+0.227  UWYK=1.537 DoPFN=2.407 Ours50=2.003 Ours10=2.380
+[scm] ρ=0.00 k=14 ρ̂=+0.129  UWYK=2.316 DoPFN=2.525 Ours50=2.374 Ours10=2.675
+[scm] ρ=0.00 k=15 ρ̂=+0.339  UWYK=2.191 DoPFN=2.893 Ours50=2.343 Ours10=3.355
+[scm] ρ=0.00 k=16 ρ̂=-0.484  UWYK=3.449 DoPFN=3.926 Ours50=3.609 Ours10=3.857
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  K=50   N_CONTEXT=200   N_TEST=50   OUT=/scratch/furkanbd/rpfn_bench_kit/rho_scaling_test.png
+[load] Ours fn=50
+[load] Ours fn=10
+[load] UWYK
+[load] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[scm] ρ=0.00 k=0 ρ̂=+0.749  UWYK=2.569 DoPFN=3.423 Ours50=3.079 Ours10=3.778
+[scm] ρ=0.00 k=1 ρ̂=+0.032  UWYK=2.003 DoPFN=2.003 Ours50=2.294 Ours10=2.780
+[scm] ρ=0.00 k=2 ρ̂=-0.039  UWYK=2.593 DoPFN=3.161 Ours50=2.967 Ours10=3.198
+[scm] ρ=0.00 k=3 ρ̂=-0.132  UWYK=1.316 DoPFN=1.979 Ours50=1.590 Ours10=1.924
+[scm] ρ=0.00 k=4 ρ̂=+0.025  UWYK=3.766 DoPFN=3.965 Ours50=4.014 Ours10=4.535
+[scm] ρ=0.00 k=5 ρ̂=-0.183  UWYK=1.270 DoPFN=2.194 Ours50=2.251 Ours10=2.405
+[scm] ρ=0.00 k=6 ρ̂=-0.650  UWYK=3.220 DoPFN=4.303 Ours50=3.653 Ours10=4.626
+[scm] ρ=0.00 k=7 ρ̂=+0.007  UWYK=3.051 DoPFN=3.041 Ours50=2.936 Ours10=3.329
+[scm] ρ=0.00 k=8 ρ̂=-0.032  UWYK=1.583 DoPFN=2.239 Ours50=1.992 Ours10=2.174
+[scm] ρ=0.00 k=9 ρ̂=-0.250  UWYK=2.218 DoPFN=3.260 Ours50=3.207 Ours10=3.349
+[scm] ρ=0.00 k=10 ρ̂=-0.419  UWYK=1.642 DoPFN=2.683 Ours50=2.958 Ours10=3.352
+[scm] ρ=0.00 k=11 ρ̂=-0.132  UWYK=1.929 DoPFN=2.572 Ours50=2.381 Ours10=2.658
+[scm] ρ=0.00 k=12 ρ̂=-0.121  UWYK=2.077 DoPFN=2.398 Ours50=2.393 Ours10=2.484
+[scm] ρ=0.00 k=13 ρ̂=+0.227  UWYK=1.537 DoPFN=2.407 Ours50=2.003 Ours10=2.380
+[scm] ρ=0.00 k=14 ρ̂=+0.129  UWYK=2.316 DoPFN=2.525 Ours50=2.374 Ours10=2.675
+[scm] ρ=0.00 k=15 ρ̂=+0.339  UWYK=2.191 DoPFN=2.893 Ours50=2.343 Ours10=3.355
+[scm] ρ=0.00 k=16 ρ̂=-0.484  UWYK=3.449 DoPFN=3.926 Ours50=3.609 Ours10=3.857

@@ -1,0 +1,29 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 15:34:20] REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  CHECKPOINT50=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  CHECKPOINT10=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  K=50   N_CONTEXT=200   N_TEST=50   OUT=/scratch/furkanbd/rpfn_bench_kit/rho_scaling_test.png
+[load] Ours fn=50
+[load] Ours fn=10
+[load] UWYK
+[load] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-28 15:34:20] REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  CHECKPOINT50=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  CHECKPOINT10=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  K=50   N_CONTEXT=200   N_TEST=50   OUT=/scratch/furkanbd/rpfn_bench_kit/rho_scaling_test.png
+[load] Ours fn=50
+[load] Ours fn=10
+[load] UWYK
+[load] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.

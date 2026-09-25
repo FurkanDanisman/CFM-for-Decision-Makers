@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 00:14:44] task=4 model=dopfn_native dataset=PSID_bal
+  OUT=/scratch/furkanbd/dumps_all/dopfn_repro_joint2d/rc/dopfn_native/PSID_bal
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  PSID_bal  n=100
+[do_pfn] PSID-balanced: kept 141 treated + 500/2266 controls (seed=42); final n_train=641
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=15881 data_mean=17010.4  edges_raw=[-22477.5495, +76269.1758]
+[dopfn_native][2d] joint: E[Y0]=+19430.7567 E[Y1]=+9485.2306 ATE=-9945.5262  rho=+0.5577  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+17010.4344 sd=15868.6018 range=[+0.0000, +103367.2344]
+r=000  pehe=17055.371  err=0.342  ate=-9945.53 vs true -15119.46  (4s)
+[do_pfn] PSID-balanced: kept 144 treated + 500/2263 controls (seed=42); final n_train=644
+r=001  pehe=15067.854  err=0.093  ate=-11911.45 vs true -13125.72  (4s)
+[do_pfn] PSID-balanced: kept 163 treated + 500/2244 controls (seed=42); final n_train=663
+r=002  pehe=16969.002  err=0.180  ate=-12445.64 vs true -15184.81  (4s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+r=003  pehe=15664.761  err=0.305  ate=-9137.20 vs true -13153.20  (5s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+r=004  pehe=19217.730  err=0.003  ate=-12126.98 vs true -12161.88  (5s)
+[do_pfn] PSID-balanced: kept 162 treated + 500/2245 controls (seed=42); final n_train=662
+r=005  pehe=15884.875  err=0.190  ate=-11246.82 vs true -13892.05  (5s)
+[do_pfn] PSID-balanced: kept 164 treated + 500/2243 controls (seed=42); final n_train=664
+r=006  pehe=19222.182  err=0.285  ate=-10665.70 vs true -14910.44  (5s)
+[do_pfn] PSID-balanced: kept 177 treated + 500/2230 controls (seed=42); final n_train=677
+r=007  pehe=17682.453  err=0.019  ate=-10748.70 vs true -10550.47  (5s)
+[do_pfn] PSID-balanced: kept 167 treated + 500/2240 controls (seed=42); final n_train=667
+r=008  pehe=16649.574  err=0.188  ate=-11894.52 vs true -14648.58  (5s)
+[do_pfn] PSID-balanced: kept 153 treated + 500/2254 controls (seed=42); final n_train=653
+r=009  pehe=17650.961  err=0.037  ate=-11169.92 vs true -11593.34  (5s)
+[do_pfn] PSID-balanced: kept 159 treated + 500/2248 controls (seed=42); final n_train=659
+r=010  pehe=17685.797  err=0.149  ate=-13410.06 vs true -11669.81  (6s)
+[do_pfn] PSID-balanced: kept 144 treated + 500/2263 controls (seed=42); final n_train=644
+r=011  pehe=17082.115  err=0.201  ate=-11103.46 vs true -13900.31  (6s)
+[do_pfn] PSID-balanced: kept 156 treated + 500/2251 controls (seed=42); final n_train=656
+r=012  pehe=17565.424  err=0.014  ate=-13971.24 vs true -14174.50  (6s)
+[do_pfn] PSID-balanced: kept 156 treated + 500/2251 controls (seed=42); final n_train=656
+r=013  pehe=17827.664  err=0.109  ate=-12284.16 vs true -13786.69  (6s)
+[do_pfn] PSID-balanced: kept 164 treated + 500/2243 controls (seed=42); final n_train=664
+r=014  pehe=15800.047  err=0.024  ate=-14825.80 vs true -14473.71  (6s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=089  pehe=18627.057  err=0.013  ate=-12230.13 vs true -12392.59  (17s)
+[do_pfn] PSID-balanced: kept 155 treated + 500/2252 controls (seed=42); final n_train=655
+r=090  pehe=18098.535  err=0.055  ate=-12406.75 vs true -13134.36  (18s)
+[do_pfn] PSID-balanced: kept 155 treated + 500/2252 controls (seed=42); final n_train=655
+r=091  pehe=19878.852  err=0.106  ate=-11777.31 vs true -13175.18  (18s)
+[do_pfn] PSID-balanced: kept 154 treated + 500/2253 controls (seed=42); final n_train=654
+r=092  pehe=17671.014  err=0.050  ate=-13441.34 vs true -12797.43  (18s)
+[do_pfn] PSID-balanced: kept 153 treated + 500/2254 controls (seed=42); final n_train=653
+r=093  pehe=16715.992  err=0.095  ate=-11125.29 vs true -12286.78  (18s)
+[do_pfn] PSID-balanced: kept 159 treated + 500/2248 controls (seed=42); final n_train=659
+r=094  pehe=13879.724  err=0.066  ate=-13130.21 vs true -14065.55  (18s)
+[do_pfn] PSID-balanced: kept 156 treated + 500/2251 controls (seed=42); final n_train=656
+r=095  pehe=14381.888  err=0.126  ate=-12946.51 vs true -14813.21  (18s)
+[do_pfn] PSID-balanced: kept 166 treated + 500/2241 controls (seed=42); final n_train=666
+r=096  pehe=16900.918  err=0.047  ate=-12736.21 vs true -13366.58  (18s)
+[do_pfn] PSID-balanced: kept 142 treated + 500/2265 controls (seed=42); final n_train=642
+r=097  pehe=19278.512  err=0.296  ate=-10077.73 vs true -14324.00  (19s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+r=098  pehe=14490.312  err=0.063  ate=-12001.07 vs true -12801.23  (19s)
+[do_pfn] PSID-balanced: kept 165 treated + 500/2242 controls (seed=42); final n_train=665
+r=099  pehe=17406.549  err=0.218  ate=-10832.71 vs true -13852.33  (19s)
+══ PSID_bal  native DoPFN  n=100 ══
+  pehe_raw   = 17195.552 ± 153.343
+  err_raw    =    0.113 ±  0.009
+[2026-09-21 00:15:17] done  dopfn_native PSID_bal

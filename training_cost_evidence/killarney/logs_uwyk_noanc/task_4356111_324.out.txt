@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 13:05:00] TASK=324  DATASET=PSID  REAL=24  variant=noanc
+[   0.0s] [noanc-only] loading PSID r24
+[   1.0s] [noanc-only] loading UWYK (noanc) ckpt
+[   2.3s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  49.6s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r024.npz  (PEHE=20519.585  ATE=0.976)
+[2026-07-23 13:05:59] DONE task=324
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 13:05:00] TASK=324  DATASET=PSID  REAL=24  variant=noanc
+[   0.0s] [noanc-only] loading PSID r24
+[   1.0s] [noanc-only] loading UWYK (noanc) ckpt
+[   2.3s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  49.6s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r024.npz  (PEHE=20519.585  ATE=0.976)
+[2026-07-23 13:05:59] DONE task=324

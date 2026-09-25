@@ -1,0 +1,37 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 14:02:11] r=2  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn,ours_dopfn_bb
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500
+[start] realization 2  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb']
+[truth] r=2  n_queries=481  sigma_scaled=0.0463
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 1162.0s
+[cache] saved ours_fn50 to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.ours_fn50_cache.npz
+[ours-dopfn-bb] loading /scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_backbone_j10/step_200000.pt
+[ours-dopfn-bb] done in 1244.7s
+[cache] saved ours_dopfn_bb to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.ours_dopfn_bb_cache.npz
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 10.1s
+[cache] saved dopfn to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.dopfn_cache.npz
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 14:02:11] r=2  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn,ours_dopfn_bb
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500
+[start] realization 2  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb']
+[truth] r=2  n_queries=481  sigma_scaled=0.0463
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 1162.0s
+[cache] saved ours_fn50 to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.ours_fn50_cache.npz
+[ours-dopfn-bb] loading /scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_backbone_j10/step_200000.pt
+[ours-dopfn-bb] done in 1244.7s
+[cache] saved ours_dopfn_bb to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.ours_dopfn_bb_cache.npz
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 10.1s
+[cache] saved dopfn to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_all_B500.r002.dopfn_cache.npz
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt

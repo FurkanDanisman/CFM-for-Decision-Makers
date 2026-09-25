@@ -1,0 +1,39 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 04:31:55] TASK=0  DATASET=sales  VARIANT=baseline
+[dopfn-semireal] loading dataset=sales
+  N_train=292  d=6  N_test=73  y_range=[598376.625, 2317608.000]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on sales split 1/5 ===
+  PEHE(raw-mean):    455617.0722
+  eps_ATE(raw-mean): 0.3224
+  true_ATE:          +1249114.6250   ours_ATE: +846378.5340
+  runtime:           1.2s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/sales_split1_of5.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:32:08] DONE sales / baseline
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 04:31:55] TASK=0  DATASET=sales  VARIANT=baseline
+[dopfn-semireal] loading dataset=sales
+  N_train=292  d=6  N_test=73  y_range=[598376.625, 2317608.000]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on sales split 1/5 ===
+  PEHE(raw-mean):    455617.0722
+  eps_ATE(raw-mean): 0.3224
+  true_ATE:          +1249114.6250   ours_ATE: +846378.5340
+  runtime:           1.2s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/sales_split1_of5.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:32:08] DONE sales / baseline

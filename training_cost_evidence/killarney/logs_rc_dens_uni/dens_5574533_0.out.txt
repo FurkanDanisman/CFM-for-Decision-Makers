@@ -1,0 +1,64 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 01:21:52] task=0 model=dopfn_native dataset=SEMIREAL_sales
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_1d_J10/dopfn_native/SEMIREAL_sales
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_sales  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 5 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (10, 768)
+    decoder_dict.standard.2.bias: (100,) -> (10,)
+    criterion.borders: (101,) -> (11,)
+    criterion.bucket_widths: (100,) -> (10,)
+    criterion.losses_per_bucket: (100,) -> (10,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe=893652.125  err=870932.938  ate=+378181.69 vs true +1249114.62  (8s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.188 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe=856814.312  err=846995.625  ate=+373952.75 vs true +1220948.38  (8s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe=904327.688  err=825859.312  ate=+361430.06 vs true +1187289.38  (9s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe=902831.875  err=859081.281  ate=+342407.22 vs true +1201488.50  (10s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.188 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe=886879.000  err=867584.531  ate=+385423.97 vs true +1253008.50  (10s)
+══ SEMIREAL_sales  native DoPFN  n=5 ══
+  pehe_raw   = 888901.000 ± 8626.324
+  err_raw    = 854090.738 ± 8179.247
+[2026-09-21 01:22:08] done  dopfn_native SEMIREAL_sales
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+    decoder_dict.standard.2.weight: (100, 768) -> (10, 768)
+    decoder_dict.standard.2.bias: (100,) -> (10,)
+    criterion.borders: (101,) -> (11,)
+    criterion.bucket_widths: (100,) -> (10,)
+    criterion.losses_per_bucket: (100,) -> (10,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe=893652.125  err=870932.938  ate=+378181.69 vs true +1249114.62  (8s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.188 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe=856814.312  err=846995.625  ate=+373952.75 vs true +1220948.38  (8s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe=904327.688  err=825859.312  ate=+361430.06 vs true +1187289.38  (9s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.125 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe=902831.875  err=859081.281  ate=+342407.22 vs true +1201488.50  (10s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.188 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe=886879.000  err=867584.531  ate=+385423.97 vs true +1253008.50  (10s)
+══ SEMIREAL_sales  native DoPFN  n=5 ══
+  pehe_raw   = 888901.000 ± 8626.324
+  err_raw    = 854090.738 ± 8179.247
+[2026-09-21 01:22:08] done  dopfn_native SEMIREAL_sales

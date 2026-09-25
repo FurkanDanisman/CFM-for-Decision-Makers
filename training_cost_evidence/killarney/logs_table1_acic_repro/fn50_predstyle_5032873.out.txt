@@ -1,0 +1,39 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-26 07:53:30] fn=50 (pred-mirror) on ACIC
+[bootstrap] device=cuda  ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt  out=/scratch/furkanbd/rpfn_bench_kit/results_table1_ours_fn50
+[bootstrap] J=100  F=50  params=16,119,072
+══ ACIC  (n_realizations=10)  [predictive-mirror] ══
+  r=000  pehe=     4.123  ate_rel_err= 0.479  (3s)
+  r=001  pehe=     1.069  ate_rel_err= 0.203  (6s)
+  r=002  pehe=     0.261  ate_rel_err= 0.003  (9s)
+  r=003  pehe=     4.648  ate_rel_err= 0.099  (11s)
+  r=004  pehe=     4.041  ate_rel_err= 0.187  (14s)
+  r=005  pehe=     2.202  ate_rel_err= 0.385  (17s)
+  r=006  pehe=     3.044  ate_rel_err= 0.275  (19s)
+  r=007  pehe=     1.868  ate_rel_err= 0.038  (22s)
+  r=008  pehe=     2.007  ate_rel_err= 0.221  (25s)
+  r=009  pehe=     5.025  ate_rel_err= 0.054  (27s)
+ACIC summary   PEHE =      2.829 ±  0.506   ATE_rel_err = 0.194 ± 0.049
+[2026-08-26 07:54:05] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-26 07:53:30] fn=50 (pred-mirror) on ACIC
+[bootstrap] device=cuda  ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt  out=/scratch/furkanbd/rpfn_bench_kit/results_table1_ours_fn50
+[bootstrap] J=100  F=50  params=16,119,072
+══ ACIC  (n_realizations=10)  [predictive-mirror] ══
+  r=000  pehe=     4.123  ate_rel_err= 0.479  (3s)
+  r=001  pehe=     1.069  ate_rel_err= 0.203  (6s)
+  r=002  pehe=     0.261  ate_rel_err= 0.003  (9s)
+  r=003  pehe=     4.648  ate_rel_err= 0.099  (11s)
+  r=004  pehe=     4.041  ate_rel_err= 0.187  (14s)
+  r=005  pehe=     2.202  ate_rel_err= 0.385  (17s)
+  r=006  pehe=     3.044  ate_rel_err= 0.275  (19s)
+  r=007  pehe=     1.868  ate_rel_err= 0.038  (22s)
+  r=008  pehe=     2.007  ate_rel_err= 0.221  (25s)
+  r=009  pehe=     5.025  ate_rel_err= 0.054  (27s)
+ACIC summary   PEHE =      2.829 ±  0.506   ATE_rel_err = 0.194 ± 0.049
+[2026-08-26 07:54:05] done

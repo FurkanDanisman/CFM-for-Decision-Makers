@@ -1,0 +1,15 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:29:38] TASK=485  DATASET=PSIDbal  REAL=85  variant=baseline
+[   0.0s] [baseline-only] loading PSIDbal r85
+[   0.7s] [baseline-only] loading UWYK (baseline) ckpt
+[   1.6s] [baseline-only] inference (target-encoded T, zero adjacency)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:29:38] TASK=485  DATASET=PSIDbal  REAL=85  variant=baseline
+[   0.0s] [baseline-only] loading PSIDbal r85
+[   0.7s] [baseline-only] loading UWYK (baseline) ckpt
+[   1.6s] [baseline-only] inference (target-encoded T, zero adjacency)

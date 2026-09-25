@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 00:14:05] task=4 model=dopfn_native dataset=PSID_bal
+  OUT=/scratch/furkanbd/dumps_all/dopfn_repro_1d_J100/rc/dopfn_native/PSID_bal
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J100_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  PSID_bal  n=100
+[do_pfn] PSID-balanced: kept 141 treated + 500/2266 controls (seed=42); final n_train=641
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00684 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe=17406.633  err=0.567  ate=-6547.90 vs true -15119.46  (4s)
+[do_pfn] PSID-balanced: kept 144 treated + 500/2263 controls (seed=42); final n_train=644
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe=16110.495  err=0.560  ate=-5775.19 vs true -13125.72  (5s)
+[do_pfn] PSID-balanced: kept 163 treated + 500/2244 controls (seed=42); final n_train=663
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.0117 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe=17108.219  err=0.484  ate=-7835.94 vs true -15184.81  (6s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe=15341.345  err=0.505  ate=-6517.38 vs true -13153.20  (6s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe=19197.947  err=0.524  ate=-5784.88 vs true -12161.88  (7s)
+[do_pfn] PSID-balanced: kept 162 treated + 500/2245 controls (seed=42); final n_train=662
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe=16368.229  err=0.533  ate=-6487.40 vs true -13892.05  (7s)
+[do_pfn] PSID-balanced: kept 164 treated + 500/2243 controls (seed=42); final n_train=664
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.0117 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe=19719.834  err=0.552  ate=-6680.80 vs true -14910.44  (8s)
+[do_pfn] PSID-balanced: kept 177 treated + 500/2230 controls (seed=42); final n_train=677
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=007  pehe=16983.562  err=0.276  ate=-7633.98 vs true -10550.47  (8s)
+[do_pfn] PSID-balanced: kept 167 treated + 500/2240 controls (seed=42); final n_train=667
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=008  pehe=18231.568  err=0.543  ate=-6696.97 vs true -14648.58  (9s)
+[do_pfn] PSID-balanced: kept 153 treated + 500/2254 controls (seed=42); final n_train=653
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.0117 -- the saved arrays do not reproduce the model's own estimator.
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=094  pehe=15545.665  err=0.454  ate=-7686.81 vs true -14065.55  (58s)
+[do_pfn] PSID-balanced: kept 156 treated + 500/2251 controls (seed=42); final n_train=656
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=095  pehe=15490.114  err=0.545  ate=-6746.74 vs true -14813.21  (58s)
+[do_pfn] PSID-balanced: kept 166 treated + 500/2241 controls (seed=42); final n_train=666
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=096  pehe=17408.416  err=0.371  ate=-8408.92 vs true -13366.58  (59s)
+[do_pfn] PSID-balanced: kept 142 treated + 500/2265 controls (seed=42); final n_train=642
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=097  pehe=19881.086  err=0.587  ate=-5915.24 vs true -14324.00  (60s)
+[do_pfn] PSID-balanced: kept 148 treated + 500/2259 controls (seed=42); final n_train=648
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=098  pehe=15274.754  err=0.469  ate=-6799.44 vs true -12801.23  (60s)
+[do_pfn] PSID-balanced: kept 165 treated + 500/2242 controls (seed=42); final n_train=665
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.0137 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=099  pehe=17410.016  err=0.540  ate=-6366.34 vs true -13852.33  (61s)
+══ PSID_bal  native DoPFN  n=100 ══
+  pehe_raw   = 17488.087 ± 147.019
+  err_raw    =    0.466 ±  0.009
+[2026-09-21 00:15:23] done  dopfn_native PSID_bal

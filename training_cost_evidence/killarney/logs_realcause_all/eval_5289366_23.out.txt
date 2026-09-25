@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-07 13:47:07] METHOD=fn_50  DATASET=PSID  OUT=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/PSID
+[fn_50] dataset=PSID  underlying_dataset=PSID  flags=[]  extra_args=[]
+[bootstrap] device=cuda  ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt  out=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/PSID
+[bootstrap] J=100  F=50  params=16,119,072
+══ PSID  (n_realizations=100) ══
+  r=000  pehe= 20855.840  ate_rel_err= 0.849  (1s)
+  r=001  pehe= 19585.812  ate_rel_err= 0.899  (2s)
+  r=002  pehe= 21518.480  ate_rel_err= 0.848  (3s)
+  r=003  pehe= 19170.316  ate_rel_err= 0.817  (4s)
+  r=004  pehe= 22934.289  ate_rel_err= 0.928  (5s)
+  r=005  pehe= 21139.760  ate_rel_err= 0.894  (6s)
+  r=006  pehe= 22656.498  ate_rel_err= 0.792  (7s)
+  r=007  pehe= 18440.535  ate_rel_err= 0.576  (8s)
+  r=008  pehe= 22120.377  ate_rel_err= 0.889  (9s)
+  r=009  pehe= 21275.326  ate_rel_err= 0.923  (10s)
+  r=010  pehe= 21238.691  ate_rel_err= 0.913  (10s)
+  r=011  pehe= 22478.199  ate_rel_err= 0.945  (11s)
+  r=012  pehe= 22346.840  ate_rel_err= 0.925  (12s)
+  r=013  pehe= 21982.619  ate_rel_err= 0.850  (13s)
+  r=014  pehe= 21112.119  ate_rel_err= 0.878  (14s)
+  r=015  pehe= 21520.188  ate_rel_err= 0.878  (15s)
+  r=016  pehe= 21021.568  ate_rel_err= 0.873  (16s)
+  r=017  pehe= 20634.176  ate_rel_err= 0.618  (17s)
+  r=018  pehe= 22485.732  ate_rel_err= 0.821  (18s)
+  r=019  pehe= 23235.512  ate_rel_err= 0.894  (19s)
+  r=020  pehe= 25318.508  ate_rel_err= 0.883  (20s)
+  r=021  pehe= 19352.717  ate_rel_err= 0.845  (21s)
+  r=022  pehe= 23064.172  ate_rel_err= 0.908  (21s)
+  r=023  pehe= 20578.506  ate_rel_err= 0.778  (22s)
+  r=024  pehe= 19344.750  ate_rel_err= 0.846  (23s)
+  r=025  pehe= 22402.666  ate_rel_err= 0.900  (24s)
+  r=026  pehe= 22006.199  ate_rel_err= 0.918  (25s)
+  r=027  pehe= 22768.906  ate_rel_err= 0.903  (26s)
+  r=028  pehe= 21230.889  ate_rel_err= 0.934  (27s)
+  r=029  pehe= 22562.773  ate_rel_err= 0.837  (28s)
+  r=030  pehe= 19677.965  ate_rel_err= 0.870  (29s)
+  r=031  pehe= 22007.803  ate_rel_err= 0.939  (30s)
+  r=032  pehe= 20718.092  ate_rel_err= 0.844  (31s)
+  r=033  pehe= 21346.703  ate_rel_err= 0.924  (32s)
+  r=034  pehe= 21092.086  ate_rel_err= 0.873  (32s)
+  r=035  pehe= 19601.590  ate_rel_err= 0.884  (33s)
+  r=036  pehe= 21209.092  ate_rel_err= 0.847  (34s)
+  r=037  pehe= 19620.863  ate_rel_err= 0.864  (35s)
+  r=038  pehe= 21398.830  ate_rel_err= 0.915  (36s)
+  r=039  pehe= 18928.439  ate_rel_err= 0.918  (37s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  r=077  pehe= 20641.396  ate_rel_err= 0.807  (72s)
+  r=078  pehe= 20888.922  ate_rel_err= 0.930  (73s)
+  r=079  pehe= 21172.648  ate_rel_err= 0.973  (74s)
+  r=080  pehe= 20227.189  ate_rel_err= 0.887  (75s)
+  r=081  pehe= 21157.842  ate_rel_err= 0.917  (75s)
+  r=082  pehe= 20234.982  ate_rel_err= 0.812  (76s)
+  r=083  pehe= 21502.000  ate_rel_err= 0.832  (77s)
+  r=084  pehe= 21222.178  ate_rel_err= 0.803  (78s)
+  r=085  pehe= 21530.055  ate_rel_err= 0.923  (79s)
+  r=086  pehe= 23627.279  ate_rel_err= 0.855  (80s)
+  r=087  pehe= 22451.662  ate_rel_err= 0.897  (81s)
+  r=088  pehe= 19815.236  ate_rel_err= 0.875  (82s)
+  r=089  pehe= 22371.117  ate_rel_err= 0.885  (83s)
+  r=090  pehe= 22193.303  ate_rel_err= 0.886  (84s)
+  r=091  pehe= 23883.799  ate_rel_err= 0.888  (85s)
+  r=092  pehe= 22160.031  ate_rel_err= 0.885  (86s)
+  r=093  pehe= 20812.467  ate_rel_err= 0.900  (86s)
+  r=094  pehe= 20170.828  ate_rel_err= 0.909  (87s)
+  r=095  pehe= 18955.105  ate_rel_err= 0.801  (88s)
+  r=096  pehe= 21457.174  ate_rel_err= 0.871  (89s)
+  r=097  pehe= 23035.238  ate_rel_err= 0.894  (90s)
+  r=098  pehe= 18655.084  ate_rel_err= 0.827  (91s)
+  r=099  pehe= 19448.889  ate_rel_err= 0.686  (92s)
+PSID summary   PEHE =  21292.810 ± 139.630   ATE_rel_err = 0.868 ± 0.006
+[2026-09-07 13:48:44] done  METHOD=fn_50  DATASET=PSID

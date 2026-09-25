@@ -1,0 +1,45 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 17:50:03] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v3d
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v3d/ACIC
+[bootstrap] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v3d  n=10
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=001  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=002  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=003  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=004  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=005  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=006  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=007  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=008  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=009  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+══ ACIC  UWYK-v3d  n=0 ══
+  pehe_raw   =      nan ±    nan
+  err_l1     =      nan ±    nan
+[2026-09-03 17:50:09] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-03 17:50:03] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v3d
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v3d/ACIC
+[bootstrap] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v3d  n=10
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=001  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=002  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=003  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=004  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=005  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=006  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=007  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=008  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=009  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+══ ACIC  UWYK-v3d  n=0 ══
+  pehe_raw   =      nan ±    nan
+  err_l1     =      nan ±    nan
+[2026-09-03 17:50:09] done

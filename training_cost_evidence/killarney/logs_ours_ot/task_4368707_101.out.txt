@@ -1,0 +1,21 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:34:31] TASK=101  DATASET=ACIC  REAL=1  variant=ours-ot
+[   0.0s] [ot-only] loading ACIC r1
+[   0.8s] [ot-only] loading OURS
+[   1.5s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=4321 > MAX_N_TRAIN=1000 → 8 clusters (sizes: [367, 524, 13, 939, 914, 563, 88, 913])
+[1019.4s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r001.npz  (OT-mode ATE=4.876  OT-mean ATE=3.625)
+[2026-07-24 08:51:34] DONE task=101
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:34:31] TASK=101  DATASET=ACIC  REAL=1  variant=ours-ot
+[   0.0s] [ot-only] loading ACIC r1
+[   0.8s] [ot-only] loading OURS
+[   1.5s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=4321 > MAX_N_TRAIN=1000 → 8 clusters (sizes: [367, 524, 13, 939, 914, 563, 88, 913])
+[1019.4s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r001.npz  (OT-mode ATE=4.876  OT-mean ATE=3.625)
+[2026-07-24 08:51:34] DONE task=101

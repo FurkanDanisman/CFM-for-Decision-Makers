@@ -1,0 +1,13 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 12:55:45] TASK=143  DATASET=ACIC  REAL=43  variant=noanc
+[SKIP] ACIC only has 10 tables; r=43 out of range.
+[2026-07-23 12:55:48] DONE task=143
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 12:55:45] TASK=143  DATASET=ACIC  REAL=43  variant=noanc
+[SKIP] ACIC only has 10 tables; r=43 out of range.
+[2026-07-23 12:55:48] DONE task=143

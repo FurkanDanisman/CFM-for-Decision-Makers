@@ -1,0 +1,59 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 01:21:52] task=0 model=dopfn_native dataset=SEMIREAL_law_race
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_1d_J10/dopfn_native/SEMIREAL_law_race
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_law_race  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 5 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (10, 768)
+    decoder_dict.standard.2.bias: (100,) -> (10,)
+    criterion.borders: (101,) -> (11,)
+    criterion.bucket_widths: (100,) -> (10,)
+    criterion.losses_per_bucket: (100,) -> (10,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 0.477  err=0.428  ate=+1.10 vs true +0.67  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 0.782  err=0.761  ate=+1.44 vs true +0.68  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 0.632  err=0.608  ate=+1.30 vs true +0.69  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 0.739  err=0.717  ate=+1.39 vs true +0.68  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 0.743  err=0.726  ate=+1.40 vs true +0.67  (7s)
+══ SEMIREAL_law_race  native DoPFN  n=5 ══
+  pehe_raw   =    0.675 ±  0.055
+  err_raw    =    0.648 ±  0.061
+[2026-09-21 01:22:04] done  dopfn_native SEMIREAL_law_race
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_law_race  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 5 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (10, 768)
+    decoder_dict.standard.2.bias: (100,) -> (10,)
+    criterion.borders: (101,) -> (11,)
+    criterion.bucket_widths: (100,) -> (10,)
+    criterion.losses_per_bucket: (100,) -> (10,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 0.477  err=0.428  ate=+1.10 vs true +0.67  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 0.782  err=0.761  ate=+1.44 vs true +0.68  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 0.632  err=0.608  ate=+1.30 vs true +0.69  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 0.739  err=0.717  ate=+1.39 vs true +0.68  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 0.743  err=0.726  ate=+1.40 vs true +0.67  (7s)
+══ SEMIREAL_law_race  native DoPFN  n=5 ══
+  pehe_raw   =    0.675 ±  0.055
+  err_raw    =    0.648 ±  0.061
+[2026-09-21 01:22:04] done  dopfn_native SEMIREAL_law_race

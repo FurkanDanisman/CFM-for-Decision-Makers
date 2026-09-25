@@ -1,0 +1,43 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:46:57] model=uwyk_D_j32_nobin smoother=malc workers=16 benches=cs
+---- cs Observed_Confounder shift0 d10 ----
+[tau-smoother] MALC-1D ACTIVE  SmootherConfig(enabled=True, B=1000, K=1, seed=20180621, n_tau=4001, n_workers=16)
+roots=1  /scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000
+selector=Observed_Confounder
+variant=T (MALC B=1000 K=1)
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+  [uwyk1d-noanc] 100 realization file(s) ...
+  [uwyk1d-noanc] realization 1/100                    
+  [uwyk1d-noanc] realization 2/100                    
+  [uwyk1d-noanc] realization 3/100                    
+  [uwyk1d-noanc] realization 4/100                    
+  [uwyk1d-noanc] realization 5/100                    
+  [uwyk1d-noanc] realization 6/100                    
+  [uwyk1d-noanc] realization 7/100                    
+  [uwyk1d-noanc] realization 8/100                    
+  [uwyk1d-noanc] realization 9/100                    
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-24 23:46:57] model=uwyk_D_j32_nobin smoother=malc workers=16 benches=cs
+---- cs Observed_Confounder shift0 d10 ----
+[tau-smoother] MALC-1D ACTIVE  SmootherConfig(enabled=True, B=1000, K=1, seed=20180621, n_tau=4001, n_workers=16)
+roots=1  /scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000
+selector=Observed_Confounder
+variant=T (MALC B=1000 K=1)
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+  [uwyk1d-noanc] 100 realization file(s) ...
+  [uwyk1d-noanc] realization 1/100                    
+  [uwyk1d-noanc] realization 2/100                    
+  [uwyk1d-noanc] realization 3/100                    
+  [uwyk1d-noanc] realization 4/100                    
+  [uwyk1d-noanc] realization 5/100                    
+  [uwyk1d-noanc] realization 6/100                    
+  [uwyk1d-noanc] realization 7/100                    
+  [uwyk1d-noanc] realization 8/100                    
+  [uwyk1d-noanc] realization 9/100                    

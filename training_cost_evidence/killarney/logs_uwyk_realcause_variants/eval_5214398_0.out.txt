@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 17:52:57] UWYK RealCause  DATASET=IHDP  ANC_VARIANT=v3f
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v3f/IHDP
+[bootstrap] UWYK RealCause  DATASET=IHDP  ANC_VARIANT=v3f  n=100
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=001  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=002  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=003  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=004  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=005  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=006  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=007  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=008  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=009  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=010  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=011  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=012  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=013  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=014  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=015  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=016  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=017  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=018  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=019  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=020  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=021  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=022  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=023  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=024  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=025  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=026  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=027  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=028  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=029  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=030  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=031  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=032  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=033  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=034  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=035  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=036  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=037  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=038  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=039  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=079  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=080  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=081  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=082  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=083  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=084  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=085  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=086  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=087  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=088  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=089  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=090  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=091  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=092  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=093  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=094  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=095  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=096  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=097  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=098  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+r=099  ERROR: ValueError: Inconsistent PAM: found T[i,i] == 1 (a node cannot be its own strict ancestor).
+══ IHDP  UWYK-v3f  n=0 ══
+  pehe_raw   =      nan ±    nan
+  err_l1     =      nan ±    nan
+[2026-09-03 17:53:04] done

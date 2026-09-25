@@ -1,0 +1,45 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 10:32:18] TASK=0  DATASET=sales  SEED=0  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.5s] load_dataset('sales')  seed=0
+[   3.4s] building CATE_Dataset view
+[   3.4s] reading precomputed true CATE from test_ds.cate
+[   3.4s] n_train=292  n_test=73  true_ate=+1249114.6250
+[   3.4s] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[   5.8s] loading UWYK
+[   6.6s] UWYK-Ancestral
+[  16.0s] UWYK-NoAncestral
+[  25.3s] loading OURS (step_50000_final.pt)
+[  26.6s] OURS inference
+[ 188.1s] saved /scratch/furkanbd/rpfn_bench_kit/results_semi_real/sales_seed0000.npz
+[2026-07-28 10:35:30] DONE task=0
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-28 10:32:18] TASK=0  DATASET=sales  SEED=0  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.5s] load_dataset('sales')  seed=0
+[   3.4s] building CATE_Dataset view
+[   3.4s] reading precomputed true CATE from test_ds.cate
+[   3.4s] n_train=292  n_test=73  true_ate=+1249114.6250
+[   3.4s] Do-PFN
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[   5.8s] loading UWYK
+[   6.6s] UWYK-Ancestral
+[  16.0s] UWYK-NoAncestral
+[  25.3s] loading OURS (step_50000_final.pt)
+[  26.6s] OURS inference
+[ 188.1s] saved /scratch/furkanbd/rpfn_bench_kit/results_semi_real/sales_seed0000.npz
+[2026-07-28 10:35:30] DONE task=0

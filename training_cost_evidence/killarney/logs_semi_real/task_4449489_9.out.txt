@@ -1,0 +1,25 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 09:28:15] TASK=9  DATASET=law_race  SEED=4  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.4s] load_dataset('law_race')  seed=4
+[   5.7s] building CATE_Dataset view
+[   5.7s] computing true CATE via DoWhy
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-28 09:28:15] TASK=9  DATASET=law_race  SEED=4  OURS_ONLY=0
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src   UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+  CHECKPOINT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  OUTDIR=/scratch/furkanbd/rpfn_bench_kit/results_semi_real
+[   0.4s] load_dataset('law_race')  seed=4
+[   5.7s] building CATE_Dataset view
+[   5.7s] computing true CATE via DoWhy

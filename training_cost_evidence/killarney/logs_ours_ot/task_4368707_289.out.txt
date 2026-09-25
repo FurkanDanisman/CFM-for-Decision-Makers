@@ -1,0 +1,21 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 09:42:38] TASK=289  DATASET=CPS  REAL=89  variant=ours-ot
+[   0.0s] [ot-only] loading CPS r89
+[   2.4s] [ot-only] loading OURS
+[   2.7s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=14559 > MAX_N_TRAIN=1000 → 21 clusters (sizes: [973, 863, 596, 938, 327, 946, 478, 995, 764, 504, 793, 561, 455, 794, 420, 514, 846, 441, 648, 792, 911])
+[3290.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r089.npz  (OT-mode ATE=675.953  OT-mean ATE=-153.358)
+[2026-07-24 10:37:32] DONE task=289
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 09:42:38] TASK=289  DATASET=CPS  REAL=89  variant=ours-ot
+[   0.0s] [ot-only] loading CPS r89
+[   2.4s] [ot-only] loading OURS
+[   2.7s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=14559 > MAX_N_TRAIN=1000 → 21 clusters (sizes: [973, 863, 596, 938, 327, 946, 478, 995, 764, 504, 793, 561, 455, 794, 420, 514, 846, 441, 648, 792, 911])
+[3290.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r089.npz  (OT-mode ATE=675.953  OT-mean ATE=-153.358)
+[2026-07-24 10:37:32] DONE task=289

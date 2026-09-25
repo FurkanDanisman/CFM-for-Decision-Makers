@@ -1,0 +1,47 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 05:33:47] shard=17/20  source=poly  variant=baseline
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   baseline
+[scan] already have UWYK-baseline fields: 0
+[scan] non-matching filename:     0
+[scan] to process:                2832
+[shard] 17/20: 141 files
+[load] UWYK model…
+[progress] 25/141  ok=25 fail=0  rate=0.02/s  eta=122.7 min
+[progress] 50/141  ok=50 fail=0  rate=0.02/s  eta=82.3 min
+[progress] 75/141  ok=75 fail=0  rate=0.02/s  eta=50.7 min
+[progress] 100/141  ok=100 fail=0  rate=0.02/s  eta=33.2 min
+[progress] 125/141  ok=125 fail=0  rate=0.02/s  eta=13.0 min
+[progress] 141/141  ok=141 fail=0  rate=0.02/s  eta=0.0 min
+[done] processed 141 files: ok=141 fail=0
+[2026-07-23 07:19:42] DONE shard=17
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 05:33:47] shard=17/20  source=poly  variant=baseline
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/no_graph_conditioning/unconditional
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   baseline
+[scan] already have UWYK-baseline fields: 0
+[scan] non-matching filename:     0
+[scan] to process:                2832
+[shard] 17/20: 141 files
+[load] UWYK model…
+[progress] 25/141  ok=25 fail=0  rate=0.02/s  eta=122.7 min
+[progress] 50/141  ok=50 fail=0  rate=0.02/s  eta=82.3 min
+[progress] 75/141  ok=75 fail=0  rate=0.02/s  eta=50.7 min
+[progress] 100/141  ok=100 fail=0  rate=0.02/s  eta=33.2 min
+[progress] 125/141  ok=125 fail=0  rate=0.02/s  eta=13.0 min
+[progress] 141/141  ok=141 fail=0  rate=0.02/s  eta=0.0 min
+[done] processed 141 files: ok=141 fail=0
+[2026-07-23 07:19:42] DONE shard=17

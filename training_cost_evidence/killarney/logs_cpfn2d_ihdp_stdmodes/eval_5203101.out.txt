@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 04:02:39] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+  STD_MODE=log
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0027000_log
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+[bootstrap] STD_MODE=log
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-4.00,4.00]  bw_std=0.2500
+r=000  in=0.997  raw pehe= 0.649 err=0.023  |  full pehe= 0.648 err=0.023  (ate=+4.06, 0s)
+r=001  in=1.000  raw pehe= 0.676 err=0.062  |  full pehe= 0.676 err=0.062  (ate=+4.21, 0s)
+r=002  in=0.999  raw pehe= 0.894 err=0.077  |  full pehe= 0.894 err=0.077  (ate=+4.06, 0s)
+r=003  in=0.999  raw pehe= 0.752 err=0.066  |  full pehe= 0.752 err=0.067  (ate=+4.01, 0s)
+r=004  in=0.999  raw pehe= 0.724 err=0.029  |  full pehe= 0.724 err=0.030  (ate=+4.16, 0s)
+r=005  in=1.000  raw pehe= 0.933 err=0.081  |  full pehe= 0.935 err=0.082  (ate=+3.93, 1s)
+r=006  in=0.999  raw pehe= 0.550 err=0.033  |  full pehe= 0.552 err=0.033  (ate=+4.02, 1s)
+r=007  in=0.996  raw pehe= 0.877 err=0.016  |  full pehe= 0.882 err=0.017  (ate=+3.56, 1s)
+r=008  in=0.999  raw pehe= 3.520 err=0.043  |  full pehe= 3.516 err=0.043  (ate=+10.67, 1s)
+r=009  in=0.997  raw pehe= 1.029 err=0.005  |  full pehe= 1.029 err=0.005  (ate=+5.30, 1s)
+r=010  in=0.999  raw pehe= 0.710 err=0.023  |  full pehe= 0.712 err=0.024  (ate=+4.34, 1s)
+r=011  in=0.997  raw pehe= 0.831 err=0.024  |  full pehe= 0.831 err=0.024  (ate=+4.39, 1s)
+r=012  in=0.996  raw pehe= 2.658 err=0.037  |  full pehe= 2.658 err=0.037  (ate=+8.17, 1s)
+r=013  in=0.999  raw pehe= 0.925 err=0.082  |  full pehe= 0.925 err=0.082  (ate=+3.93, 1s)
+r=014  in=0.997  raw pehe= 1.006 err=0.058  |  full pehe= 1.012 err=0.060  (ate=+3.96, 1s)
+r=015  in=0.999  raw pehe= 0.901 err=0.085  |  full pehe= 0.922 err=0.087  (ate=+4.49, 1s)
+r=016  in=0.994  raw pehe= 0.865 err=0.064  |  full pehe= 0.883 err=0.066  (ate=+3.83, 1s)
+r=017  in=0.997  raw pehe= 0.806 err=0.036  |  full pehe= 0.805 err=0.037  (ate=+3.75, 1s)
+r=018  in=1.000  raw pehe= 0.713 err=0.007  |  full pehe= 0.723 err=0.006  (ate=+3.93, 1s)
+r=019  in=1.000  raw pehe= 0.723 err=0.008  |  full pehe= 0.723 err=0.008  (ate=+4.18, 1s)
+r=020  in=0.997  raw pehe= 1.015 err=0.065  |  full pehe= 1.015 err=0.065  (ate=+4.72, 1s)
+r=021  in=0.999  raw pehe= 0.804 err=0.038  |  full pehe= 0.804 err=0.039  (ate=+4.11, 1s)
+r=022  in=0.999  raw pehe= 0.739 err=0.061  |  full pehe= 0.744 err=0.062  (ate=+4.62, 1s)
+r=023  in=0.999  raw pehe= 0.834 err=0.109  |  full pehe= 0.834 err=0.109  (ate=+2.02, 1s)
+r=024  in=0.999  raw pehe= 1.121 err=0.133  |  full pehe= 1.119 err=0.133  (ate=+4.02, 1s)
+r=025  in=0.999  raw pehe= 1.404 err=0.119  |  full pehe= 1.404 err=0.119  (ate=+2.37, 1s)
+r=026  in=0.997  raw pehe= 0.918 err=0.081  |  full pehe= 0.920 err=0.083  (ate=+4.07, 1s)
+r=027  in=0.999  raw pehe= 2.515 err=0.223  |  full pehe= 2.515 err=0.223  (ate=-0.67, 1s)
+r=028  in=1.000  raw pehe= 0.798 err=0.110  |  full pehe= 0.799 err=0.110  (ate=+3.79, 1s)
+r=029  in=0.999  raw pehe= 0.690 err=0.040  |  full pehe= 0.690 err=0.040  (ate=+5.05, 1s)
+r=030  in=0.999  raw pehe= 1.001 err=0.078  |  full pehe= 1.002 err=0.079  (ate=+3.72, 2s)
+r=031  in=0.999  raw pehe= 0.738 err=0.038  |  full pehe= 0.740 err=0.038  (ate=+4.01, 2s)
+r=032  in=1.000  raw pehe= 0.831 err=0.063  |  full pehe= 0.831 err=0.063  (ate=+4.71, 2s)
+r=033  in=0.999  raw pehe= 2.678 err=0.129  |  full pehe= 2.678 err=0.129  (ate=+6.39, 2s)
+r=034  in=0.999  raw pehe= 0.891 err=0.017  |  full pehe= 0.890 err=0.017  (ate=+3.06, 2s)
+r=035  in=0.999  raw pehe= 0.730 err=0.038  |  full pehe= 0.730 err=0.038  (ate=+5.55, 2s)
+r=036  in=0.999  raw pehe= 1.114 err=0.034  |  full pehe= 1.115 err=0.034  (ate=+2.24, 2s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=082  in=0.999  raw pehe= 0.785 err=0.021  |  full pehe= 0.785 err=0.021  (ate=+4.06, 4s)
+r=083  in=0.997  raw pehe= 1.700 err=0.183  |  full pehe= 1.697 err=0.183  (ate=+0.93, 4s)
+r=084  in=1.000  raw pehe= 1.936 err=0.172  |  full pehe= 1.936 err=0.172  (ate=-1.39, 4s)
+r=085  in=0.993  raw pehe= 1.694 err=0.041  |  full pehe= 1.685 err=0.034  (ate=+2.72, 4s)
+r=086  in=1.000  raw pehe= 0.651 err=0.009  |  full pehe= 0.651 err=0.009  (ate=+4.66, 4s)
+r=087  in=1.000  raw pehe= 0.911 err=0.016  |  full pehe= 0.911 err=0.017  (ate=+3.98, 4s)
+r=088  in=0.999  raw pehe= 0.836 err=0.062  |  full pehe= 0.837 err=0.062  (ate=+4.12, 4s)
+r=089  in=1.000  raw pehe= 0.828 err=0.079  |  full pehe= 0.831 err=0.080  (ate=+3.81, 4s)
+r=090  in=0.999  raw pehe= 0.842 err=0.020  |  full pehe= 0.843 err=0.020  (ate=+3.91, 4s)
+r=091  in=0.997  raw pehe= 0.939 err=0.009  |  full pehe= 0.939 err=0.008  (ate=+3.66, 4s)
+r=092  in=1.000  raw pehe= 1.330 err=0.039  |  full pehe= 1.330 err=0.039  (ate=+8.79, 4s)
+r=093  in=0.999  raw pehe= 0.749 err=0.042  |  full pehe= 0.749 err=0.043  (ate=+4.33, 4s)
+r=094  in=0.999  raw pehe= 0.820 err=0.083  |  full pehe= 0.821 err=0.083  (ate=+3.59, 4s)
+r=095  in=0.999  raw pehe= 0.877 err=0.072  |  full pehe= 0.871 err=0.070  (ate=+3.30, 4s)
+r=096  in=0.999  raw pehe= 0.844 err=0.051  |  full pehe= 0.845 err=0.051  (ate=+4.52, 4s)
+r=097  in=1.000  raw pehe= 1.781 err=0.115  |  full pehe= 1.781 err=0.115  (ate=+4.45, 4s)
+r=098  in=1.000  raw pehe= 1.020 err=0.047  |  full pehe= 1.020 err=0.047  (ate=+4.25, 4s)
+r=099  in=0.997  raw pehe= 0.815 err=0.012  |  full pehe= 0.822 err=0.010  (ate=+4.08, 4s)
+══ IHDP  STD_MODE=log  n=100  edges=[-4.0,4.0] ══
+  frac_ctx_in_edges      =    0.998 ±  0.000
+  pehe_raw               =    0.991 ±  0.048
+  err_raw                =    0.059 ±  0.004
+  pehe_full              =    0.992 ±  0.048
+  err_full               =    0.059 ±  0.004
+[2026-09-03 04:02:47] done

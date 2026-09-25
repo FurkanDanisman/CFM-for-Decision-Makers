@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 05:41:53] TASK=129  DATASET=ACIC  REAL=29  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:53] --- variant=noanc ---
+[SKIP] ACIC only has 10 tables; r=29 out of range.
+[2026-08-13 05:41:56] --- variant=anc ---
+[SKIP] ACIC only has 10 tables; r=29 out of range.
+[2026-08-13 05:41:58] DONE task=129
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 05:41:53] TASK=129  DATASET=ACIC  REAL=29  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:53] --- variant=noanc ---
+[SKIP] ACIC only has 10 tables; r=29 out of range.
+[2026-08-13 05:41:56] --- variant=anc ---
+[SKIP] ACIC only has 10 tables; r=29 out of range.
+[2026-08-13 05:41:58] DONE task=129

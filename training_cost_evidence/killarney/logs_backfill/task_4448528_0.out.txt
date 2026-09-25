@@ -1,0 +1,35 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-28 07:47:46] shard=0/20  source=poly  variant=ancestral
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   ancestral
+[scan] already have UWYK-ancestral fields: 2832
+[scan] non-matching filename:     0
+[scan] to process:                0
+[shard] 0/20: 0 files
+[load] UWYK model…
+[done] processed 0 files: ok=0 fail=0
+[2026-07-28 07:47:54] DONE shard=0
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-28 07:47:46] shard=0/20  source=poly  variant=ancestral
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   ancestral
+[scan] already have UWYK-ancestral fields: 2832
+[scan] non-matching filename:     0
+[scan] to process:                0
+[shard] 0/20: 0 files
+[load] UWYK model…
+[done] processed 0 files: ok=0 fail=0
+[2026-07-28 07:47:54] DONE shard=0

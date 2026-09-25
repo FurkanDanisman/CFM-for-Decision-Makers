@@ -1,0 +1,61 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 16:47:29] r=94  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn,ours_dopfn_bb
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_all_rawbardist_B500
+[start] realization 94  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn', 'ours_dopfn_bb']
+[truth] r=94  n_queries=75  sigma_scaled=0.1304
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 173.5s
+[ours-dopfn-bb] loading /scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_backbone_j10/step_200000.pt
+[ours-dopfn-bb] done in 123.6s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 1.6s
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 18.8s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 19.9s
+[density-diag] saved r=94
+[l2 ] ours_fn50       y0=0.8138  y1=0.8344  tau=0.6757  ate=0.5966
+[pnt] ours_fn50       PEHE(MALC)=1.5052  PEHE(raw)=1.4739    eps_ATE(MALC)=0.2966  eps_ATE(raw)=0.2907  (true_ATE=+3.593)
+[l2 ] ours_dopfn_bb   y0=0.8467  y1=0.8365  tau=0.6840  ate=0.4645
+[pnt] ours_dopfn_bb   PEHE(MALC)=1.5348  PEHE(raw)=1.5363    eps_ATE(MALC)=0.0428  eps_ATE(raw)=0.0387  (true_ATE=+3.593)
+[l2 ] dopfn           y0=0.9812  y1=0.9062  tau=0.8500  ate=0.7196
+[pnt] dopfn           PEHE=2.2009  eps_ATE=0.3569  (true_ATE=+3.593, pred_ATE=+2.311)
+[l2 ] uwyk_noanc      y0=0.8561  y1=0.9869  tau=0.9010  ate=0.8868
+[pnt] uwyk_noanc      PEHE=2.7370  eps_ATE=0.6415  (true_ATE=+3.593, pred_ATE=+1.288)
+[l2 ] uwyk_anc        y0=0.7390  y1=0.8855  tau=0.7958  ate=0.7446
+[pnt] uwyk_anc        PEHE=2.0812  eps_ATE=0.4254  (true_ATE=+3.593, pred_ATE=+2.065)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_all_rawbardist_B500.r094.npz
+[2026-08-13 16:53:13] DONE r=94
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 173.5s
+[ours-dopfn-bb] loading /scratch/furkanbd/rpfn_bench_kit/checkpoints_dopfn_backbone_j10/step_200000.pt
+[ours-dopfn-bb] done in 123.6s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 1.6s
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 18.8s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 19.9s
+[density-diag] saved r=94
+[l2 ] ours_fn50       y0=0.8138  y1=0.8344  tau=0.6757  ate=0.5966
+[pnt] ours_fn50       PEHE(MALC)=1.5052  PEHE(raw)=1.4739    eps_ATE(MALC)=0.2966  eps_ATE(raw)=0.2907  (true_ATE=+3.593)
+[l2 ] ours_dopfn_bb   y0=0.8467  y1=0.8365  tau=0.6840  ate=0.4645
+[pnt] ours_dopfn_bb   PEHE(MALC)=1.5348  PEHE(raw)=1.5363    eps_ATE(MALC)=0.0428  eps_ATE(raw)=0.0387  (true_ATE=+3.593)
+[l2 ] dopfn           y0=0.9812  y1=0.9062  tau=0.8500  ate=0.7196
+[pnt] dopfn           PEHE=2.2009  eps_ATE=0.3569  (true_ATE=+3.593, pred_ATE=+2.311)
+[l2 ] uwyk_noanc      y0=0.8561  y1=0.9869  tau=0.9010  ate=0.8868
+[pnt] uwyk_noanc      PEHE=2.7370  eps_ATE=0.6415  (true_ATE=+3.593, pred_ATE=+1.288)
+[l2 ] uwyk_anc        y0=0.7390  y1=0.8855  tau=0.7958  ate=0.7446
+[pnt] uwyk_anc        PEHE=2.0812  eps_ATE=0.4254  (true_ATE=+3.593, pred_ATE=+2.065)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_all_rawbardist_B500.r094.npz
+[2026-08-13 16:53:13] DONE r=94

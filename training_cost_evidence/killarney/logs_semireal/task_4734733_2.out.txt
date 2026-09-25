@@ -1,0 +1,41 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 04:35:12] TASK=2  DATASET=law_race  VARIANT=baseline
+[dopfn-semireal] loading dataset=law_race
+  N_train=1600  d=2  N_test=400  y_range=[-3.140, 2.780]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 2 clusters (sizes: [613, 987])
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on law_race split 3/5 ===
+  PEHE(raw-mean):    0.4764
+  eps_ATE(raw-mean): 0.6570
+  true_ATE:          +0.6867   ours_ATE: +0.2355
+  runtime:           9.9s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/law_race_split3_of5.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:35:33] DONE law_race / baseline
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 04:35:12] TASK=2  DATASET=law_race  VARIANT=baseline
+[dopfn-semireal] loading dataset=law_race
+  N_train=1600  d=2  N_test=400  y_range=[-3.140, 2.780]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 2 clusters (sizes: [613, 987])
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on law_race split 3/5 ===
+  PEHE(raw-mean):    0.4764
+  eps_ATE(raw-mean): 0.6570
+  true_ATE:          +0.6867   ours_ATE: +0.2355
+  runtime:           9.9s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/law_race_split3_of5.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:35:33] DONE law_race / baseline

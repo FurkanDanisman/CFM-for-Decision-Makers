@@ -1,0 +1,35 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 05:41:59] TASK=344  DATASET=PSID  REAL=44  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:59] --- variant=noanc ---
+[   0.6s] [noanc-only] loading PSID r44
+[   1.5s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   2.7s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  14.9s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r044.npz  (PEHE=23115.877  ATE=0.951)
+[2026-08-13 05:42:17] --- variant=anc ---
+[   0.2s] [anc-only] loading PSID r44
+[   0.9s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   1.3s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[  13.4s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r044.npz  (PEHE=19918.443  ATE=0.598)
+[2026-08-13 05:42:33] DONE task=344
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 05:41:59] TASK=344  DATASET=PSID  REAL=44  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:59] --- variant=noanc ---
+[   0.6s] [noanc-only] loading PSID r44
+[   1.5s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   2.7s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  14.9s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r044.npz  (PEHE=23115.877  ATE=0.951)
+[2026-08-13 05:42:17] --- variant=anc ---
+[   0.2s] [anc-only] loading PSID r44
+[   0.9s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   1.3s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[  13.4s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r044.npz  (PEHE=19918.443  ATE=0.598)
+[2026-08-13 05:42:33] DONE task=344

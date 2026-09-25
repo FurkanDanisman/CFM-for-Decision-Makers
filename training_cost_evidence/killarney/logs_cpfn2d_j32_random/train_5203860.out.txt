@@ -1,0 +1,45 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[install] copying patched trainer.py    → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+[install] copying patched checkpoint.py → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+[install] copying patched train.py      → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[install] OK. To revert:
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-03 14:20:39] cpfn2d j32_random  J=32  σ_hl=0.32  loss=hlgauss  y_scale=pooled_std
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100
+[resume] found /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/checkpoints/run/latest.pt
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[cpfn2d-warmstart] copied 147 / 148 backbone tensors
+[cpfn2d-warmstart] skipped 1 (head reshape expected):
+    - head.2.weight  [shape mismatch]
+[resume] loaded 298 tensors from /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run
+[step-ckpt] resuming from actual_step=23168
+Effective batch size is: 256
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[install] copying patched trainer.py    → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+[install] copying patched checkpoint.py → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+[install] copying patched train.py      → /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[install] OK. To revert:
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py.beforestepckpt    /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/trainer.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/src/causalpfn/training/callbacks/checkpoint.py
+  cp /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py.beforestepckpt /scratch/furkanbd/rpfn_bench_kit/external/causalpfn/train.py
+[2026-09-03 14:20:39] cpfn2d j32_random  J=32  σ_hl=0.32  loss=hlgauss  y_scale=pooled_std
+  CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100
+[resume] found /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/checkpoints/run/latest.pt
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[cpfn2d-warmstart] copied 147 / 148 backbone tensors
+[cpfn2d-warmstart] skipped 1 (head reshape expected):
+    - head.2.weight  [shape mismatch]
+[resume] loaded 298 tensors from /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/checkpoints/run/latest.pt
+[step-ckpt] enabled: every 2000 steps → /scratch/furkanbd/rpfn_bench_kit/cpfn2d_j32_random_A1_h100/step_checkpoints/run
+[step-ckpt] resuming from actual_step=23168
+Effective batch size is: 256

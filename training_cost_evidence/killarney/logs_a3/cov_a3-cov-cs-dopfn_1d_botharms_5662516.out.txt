@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:28:23] model=dopfn_1d_botharms smoother=none workers=16 benches=cs
+---- cs Observed_Confounder shift0 d2 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d2/ctx1000
+selector=Observed_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native          16 |   0.9888  0.0120  0.0030 |     0.4030    0.2274 |     0.5341 |    0.0403
+[per-real] wrote /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d2_Observed_Confounder__shift0.npz (4 arrays)
+---- cs Observed_Confounder shift0 d3 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d3/ctx1000
+selector=Observed_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native          16 |   0.9944  0.0109  0.0027 |     0.3856    0.2538 |     0.5981 |    0.0401
+[per-real] wrote /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d3_Observed_Confounder__shift0.npz (4 arrays)
+---- cs Backdoor_Criterion shift0 d2 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d2/ctx1000
+selector=Backdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d2_Backdoor_Criterion__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cs Backdoor_Criterion shift0 d3 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d3/ctx1000
+selector=Backdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d3_Backdoor_Criterion__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cs Observed_Mediator shift0 d2 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d2/ctx1000
+selector=Observed_Mediator
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d2_Observed_Mediator__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cs Observed_Mediator shift0 d3 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d3/ctx1000
+selector=Observed_Mediator
+variant=raw
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+---- cs Unobserved_Confounder shift0 d3 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d3/ctx1000
+selector=Unobserved_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d3_Unobserved_Confounder__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cs Frontdoor_Criterion shift0 d2 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d2/ctx1000
+selector=Frontdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d2_Frontdoor_Criterion__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cs Frontdoor_Criterion shift0 d3 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cs/dopfn_1d_botharms/shift0/d3/ctx1000
+selector=Frontdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/perreal/dopfn_1d_botharms/raw__d3_Frontdoor_Criterion__shift0.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+[2026-09-24 23:28:26] done -> /scratch/furkanbd/a3_cov/none

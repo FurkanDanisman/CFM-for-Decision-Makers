@@ -1,0 +1,55 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 01:22:29] task=0 model=dopfn_native dataset=SEMIREAL_law_race
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_joint2d/dopfn_native/SEMIREAL_law_race
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_law_race  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=0.925263 data_mean=0.0851572  edges_raw=[-2.2155, +3.5377]
+[dopfn_native][2d] joint: E[Y0]=-0.2947 E[Y1]=+0.2405 ATE=+0.5353  rho=+0.9572  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+0.0852 sd=0.9250 range=[-3.1400, +2.7800]
+r=000  pehe= 0.201  err=0.139  ate=+0.54 vs true +0.67  (10s)
+r=001  pehe= 0.162  err=0.065  ate=+0.61 vs true +0.68  (10s)
+r=002  pehe= 0.186  err=0.116  ate=+0.57 vs true +0.69  (11s)
+r=003  pehe= 0.162  err=0.069  ate=+0.61 vs true +0.68  (11s)
+r=004  pehe= 0.165  err=0.075  ate=+0.60 vs true +0.67  (11s)
+══ SEMIREAL_law_race  native DoPFN  n=5 ══
+  pehe_raw   =    0.175 ±  0.008
+  err_raw    =    0.093 ±  0.015
+[2026-09-21 01:22:51] done  dopfn_native SEMIREAL_law_race
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-21 01:22:29] task=0 model=dopfn_native dataset=SEMIREAL_law_race
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_joint2d/dopfn_native/SEMIREAL_law_race
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_law_race  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=0.925263 data_mean=0.0851572  edges_raw=[-2.2155, +3.5377]
+[dopfn_native][2d] joint: E[Y0]=-0.2947 E[Y1]=+0.2405 ATE=+0.5353  rho=+0.9572  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+0.0852 sd=0.9250 range=[-3.1400, +2.7800]
+r=000  pehe= 0.201  err=0.139  ate=+0.54 vs true +0.67  (10s)
+r=001  pehe= 0.162  err=0.065  ate=+0.61 vs true +0.68  (10s)
+r=002  pehe= 0.186  err=0.116  ate=+0.57 vs true +0.69  (11s)
+r=003  pehe= 0.162  err=0.069  ate=+0.61 vs true +0.68  (11s)
+r=004  pehe= 0.165  err=0.075  ate=+0.60 vs true +0.67  (11s)
+══ SEMIREAL_law_race  native DoPFN  n=5 ══
+  pehe_raw   =    0.175 ±  0.008
+  err_raw    =    0.093 ±  0.015
+[2026-09-21 01:22:51] done  dopfn_native SEMIREAL_law_race

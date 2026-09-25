@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 00:39:00] dopfn_repro_1d_J100  harness_idx=0
+  DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J100_step150000.pt
+  data=/scratch/furkanbd/cmech_data_v2  out=/scratch/furkanbd/cmech_dumps/dopfn_repro_1d_J100
+  nodes=5 10 20 30 40 50  subsets=nonzero zero  N=1000
+===== [2026-09-21 00:39:00] n=5 subset=nonzero (inner task 0)
+[2026-09-21 00:39:00] task=0  model=dopfn_native  dataset=CMECH_n5_nonzero  N=1000
+  OUT=/scratch/furkanbd/cmech_dumps/dopfn_repro_1d_J100/N1000/dopfn_native/CMECH_n5_nonzero
+  UWYK_FIG34_DATA=/scratch/furkanbd/cmech_data_v2   context=1000
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J100_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  CMECH_n5_nonzero  n=100
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 0.528  err=0.094  ate=-0.12 vs true -0.02  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 0.063  err=0.041  ate=+0.41 vs true +0.37  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 1.543  err=1.514  ate=-0.02 vs true -1.53  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 0.192  err=0.137  ate=-0.21 vs true -0.35  (6s)
+  [density] cate_pred vs density mean: slope=0.999999 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 0.021  err=0.005  ate=+0.01 vs true +0.00  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe= 0.004  err=0.000  ate=+1.96 vs true +1.96  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe= 0.054  err=0.042  ate=+0.43 vs true +0.39  (8s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=007  pehe= 0.397  err=0.123  ate=+0.22 vs true +0.34  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=008  pehe= 0.033  err=0.015  ate=+0.02 vs true +0.00  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=009  pehe= 0.055  err=0.038  ate=-0.04 vs true -0.00  (10s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=010  pehe= 0.121  err=0.061  ate=-0.20 vs true -0.26  (10s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=011  pehe= 0.236  err=0.096  ate=+0.07 vs true -0.02  (11s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=012  pehe= 0.507  err=0.080  ate=-0.28 vs true -0.36  (12s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=013  pehe= 0.027  err=0.007  ate=-0.01 vs true +0.00  (12s)
+  [density] cate_pred vs density mean: slope=0.999999 R^2=1.000000  (slope~1 confirms raw borders)
+r=014  pehe= 0.023  err=0.001  ate=+0.00 vs true +0.01  (13s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=015  pehe= 1.602  err=0.665  ate=+0.85 vs true +0.18  (13s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=020  pehe= 0.084  err=0.041  ate=+0.04 vs true +0.00  (15s)
+  [density] cate_pred vs density mean: slope=0.999999 R^2=nan  (slope~1 confirms raw borders)
+  [density][WARN] the dumped density mean does not track cate_pred on this realization — its calibration numbers are suspect. Filter on density_scale_r2.
+r=021  pehe= 0.040  err=0.040  ate=-0.04 vs true +0.00  (15s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=022  pehe= 0.061  err=0.058  ate=+0.06 vs true +0.00  (16s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=023  pehe= 0.033  err=0.032  ate=-0.03 vs true +0.00  (17s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=024  pehe= 0.120  err=0.078  ate=+0.08 vs true +0.00  (17s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=025  pehe= 0.081  err=0.067  ate=+0.07 vs true +0.00  (18s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=026  pehe= 0.022  err=0.017  ate=-0.02 vs true +0.00  (18s)
+  [density] cate_pred vs density mean: slope=1 R^2=nan  (slope~1 confirms raw borders)
+  [density][WARN] the dumped density mean does not track cate_pred on this realization — its calibration numbers are suspect. Filter on density_scale_r2.
+r=027  pehe= 0.114  err=0.114  ate=-0.11 vs true +0.00  (19s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=028  pehe= 0.051  err=0.041  ate=-0.04 vs true +0.00  (20s)
+══ CMECH_n50_zero  native DoPFN  n=29 ══
+  pehe_raw   =    0.060 ±  0.013
+  err_raw    =    0.039 ±  0.010
+[2026-09-21 00:47:20] done  model=dopfn_native  dataset=CMECH_n50_zero
+[2026-09-21 00:47:20] dopfn_repro_1d_J100 done: failed_cells=0  npz=729

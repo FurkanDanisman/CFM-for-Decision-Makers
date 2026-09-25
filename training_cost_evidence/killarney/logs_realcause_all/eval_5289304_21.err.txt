@@ -1,0 +1,9 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+FATAL: CKPT_FN50 not found: /scratch/furkanbd/rpfn_bench_kit/checkpoints/step_50000_final.pt
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+FATAL: CKPT_FN50 not found: /scratch/furkanbd/rpfn_bench_kit/checkpoints/step_50000_final.pt

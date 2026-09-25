@@ -1,0 +1,41 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 04:35:12] TASK=1  DATASET=sales  VARIANT=logy
+[dopfn-semireal] loading dataset=sales
+  N_train=292  d=6  N_test=73  y_range=[598376.625, 2237258.000]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] Y-log: raw [598376.625, 2237258.000] → log-shifted [0, 14.310]
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on sales split 3/5 ===
+  PEHE(raw-mean):    984574.5463
+  eps_ATE(raw-mean): 0.7669
+  true_ATE:          +1187289.3750   ours_ATE: +276728.4366
+  runtime:           1.4s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/sales_split3_of5_logy.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:35:28] DONE sales / logy
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 04:35:12] TASK=1  DATASET=sales  VARIANT=logy
+[dopfn-semireal] loading dataset=sales
+  N_train=292  d=6  N_test=73  y_range=[598376.625, 2237258.000]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] Y-log: raw [598376.625, 2237258.000] → log-shifted [0, 14.310]
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on sales split 3/5 ===
+  PEHE(raw-mean):    984574.5463
+  eps_ATE(raw-mean): 0.7669
+  true_ATE:          +1187289.3750   ours_ATE: +276728.4366
+  runtime:           1.4s
+[save] /scratch/furkanbd/rpfn_bench_kit/results_dopfn_semireal/sales_split3_of5_logy.npz
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[warn] Do-PFN reference failed: TypeError: check_array() got an unexpected keyword argument 'ensure_all_finite'
+[2026-08-13 04:35:28] DONE sales / logy

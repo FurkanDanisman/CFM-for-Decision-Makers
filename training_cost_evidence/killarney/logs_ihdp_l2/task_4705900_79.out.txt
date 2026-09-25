@@ -1,0 +1,27 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-11 06:57:04] r=79  methods=ours_fn50
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_fn50_B500_v2
+[start] realization 79  methods=['ours_fn50']
+[truth] r=79  n_queries=75  sigma_scaled=0.2001
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 108.6s
+[l2 ] ours_fn50       y0=0.4094  y1=0.7333  tau=0.4753  ate=0.4656
+[pnt] ours_fn50       PEHE=1.5078  eps_ATE=0.3765  (true_ATE=+3.884, pred_ATE=+2.422)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_fn50_B500_v2.r079.npz
+[2026-08-11 06:59:00] DONE r=79
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-11 06:57:04] r=79  methods=ours_fn50
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_fn50_B500_v2
+[start] realization 79  methods=['ours_fn50']
+[truth] r=79  n_queries=75  sigma_scaled=0.2001
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 108.6s
+[l2 ] ours_fn50       y0=0.4094  y1=0.7333  tau=0.4753  ate=0.4656
+[pnt] ours_fn50       PEHE=1.5078  eps_ATE=0.3765  (true_ATE=+3.884, pred_ATE=+2.422)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_fn50_B500_v2.r079.npz
+[2026-08-11 06:59:00] DONE r=79

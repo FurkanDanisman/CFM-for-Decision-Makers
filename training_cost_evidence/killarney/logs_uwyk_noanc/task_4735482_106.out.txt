@@ -1,0 +1,35 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 05:41:53] TASK=106  DATASET=ACIC  REAL=6  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:53] --- variant=noanc ---
+[   0.4s] [noanc-only] loading ACIC r6
+[   1.7s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   3.3s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  81.6s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r006.npz  (PEHE=2.924  ATE=0.305)
+[2026-08-13 05:43:17] --- variant=anc ---
+[   0.3s] [anc-only] loading ACIC r6
+[   1.0s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   2.1s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[  80.1s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r006.npz  (PEHE=2.642  ATE=0.006)
+[2026-08-13 05:44:40] DONE task=106
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 05:41:53] TASK=106  DATASET=ACIC  REAL=6  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:53] --- variant=noanc ---
+[   0.4s] [noanc-only] loading ACIC r6
+[   1.7s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   3.3s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  81.6s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r006.npz  (PEHE=2.924  ATE=0.305)
+[2026-08-13 05:43:17] --- variant=anc ---
+[   0.3s] [anc-only] loading ACIC r6
+[   1.0s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   2.1s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[  80.1s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r006.npz  (PEHE=2.642  ATE=0.006)
+[2026-08-13 05:44:40] DONE task=106

@@ -1,0 +1,45 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 17:54:09] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v6b
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v6b/ACIC
+[bootstrap] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v6b  n=10
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  pehe= 4.796  L1= 1.855  ate= +0.002 vs true  +1.857  (1s)
+r=001  pehe= 3.849  L1= 3.765  ate= +0.914 vs true  +4.679  (1s)
+r=002  pehe= 3.930  L1= 3.759  ate= +0.993 vs true  +4.752  (1s)
+r=003  pehe= 5.863  L1= 3.235  ate= +1.445 vs true  +4.680  (2s)
+r=004  pehe= 5.403  L1= 2.877  ate= +0.433 vs true  +3.310  (2s)
+r=005  pehe= 3.053  L1= 2.292  ate= +0.599 vs true  +2.891  (2s)
+r=006  pehe= 4.340  L1= 3.192  ate= +0.394 vs true  +3.586  (3s)
+r=007  pehe= 2.412  L1= 1.518  ate= +0.092 vs true  +1.610  (3s)
+r=008  pehe= 3.322  L1= 2.567  ate= +1.160 vs true  +3.727  (3s)
+r=009  pehe= 7.775  L1= 3.889  ate= +0.833 vs true  +4.722  (4s)
+══ ACIC  UWYK-v6b  n=10 ══
+  pehe_raw   =    4.474 ±  0.495
+  err_l1     =    2.895 ±  0.261
+[2026-09-03 17:54:18] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-03 17:54:09] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v6b
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v6b/ACIC
+[bootstrap] UWYK RealCause  DATASET=ACIC  ANC_VARIANT=v6b  n=10
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  pehe= 4.796  L1= 1.855  ate= +0.002 vs true  +1.857  (1s)
+r=001  pehe= 3.849  L1= 3.765  ate= +0.914 vs true  +4.679  (1s)
+r=002  pehe= 3.930  L1= 3.759  ate= +0.993 vs true  +4.752  (1s)
+r=003  pehe= 5.863  L1= 3.235  ate= +1.445 vs true  +4.680  (2s)
+r=004  pehe= 5.403  L1= 2.877  ate= +0.433 vs true  +3.310  (2s)
+r=005  pehe= 3.053  L1= 2.292  ate= +0.599 vs true  +2.891  (2s)
+r=006  pehe= 4.340  L1= 3.192  ate= +0.394 vs true  +3.586  (3s)
+r=007  pehe= 2.412  L1= 1.518  ate= +0.092 vs true  +1.610  (3s)
+r=008  pehe= 3.322  L1= 2.567  ate= +1.160 vs true  +3.727  (3s)
+r=009  pehe= 7.775  L1= 3.889  ate= +0.833 vs true  +4.722  (4s)
+══ ACIC  UWYK-v6b  n=10 ══
+  pehe_raw   =    4.474 ±  0.495
+  err_l1     =    2.895 ±  0.261
+[2026-09-03 17:54:18] done

@@ -1,0 +1,60 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 19:08:47] task=2 model=dopfn_native dataset=CPS
+  OUT=/scratch/furkanbd/aurora3_kill/rc/dopfn_1d_botharms/dopfn_native/CPS
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/from_aurora/dopfn_1d_botharms_step150000.pt step=150000 variant=dopfn_1d_botharms (83 tensors)
+[bootstrap] native DoPFN  CPS  n=100
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe=12205.429  err=0.940  ate=-421.21 vs true -7074.78  (9s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe=11761.785  err=0.870  ate=-912.77 vs true -7008.79  (15s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00684 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe=11748.850  err=0.851  ate=-988.70 vs true -6613.78  (20s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00684 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe=11643.403  err=0.785  ate=-1512.64 vs true -7034.24  (26s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe=11324.413  err=0.731  ate=-1821.14 vs true -6772.13  (32s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00879 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe=11817.835  err=0.853  ate=-1053.27 vs true -7144.51  (37s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe=11785.687  err=0.835  ate=-1162.28 vs true -7030.41  (43s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/from_aurora/dopfn_1d_botharms_step150000.pt step=150000 variant=dopfn_1d_botharms (83 tensors)
+[bootstrap] native DoPFN  CPS  n=100
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00977 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe=12205.429  err=0.940  ate=-421.21 vs true -7074.78  (9s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe=11761.785  err=0.870  ate=-912.77 vs true -7008.79  (15s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00684 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe=11748.850  err=0.851  ate=-988.70 vs true -6613.78  (20s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00684 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe=11643.403  err=0.785  ate=-1512.64 vs true -7034.24  (26s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe=11324.413  err=0.731  ate=-1821.14 vs true -6772.13  (32s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00879 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe=11817.835  err=0.853  ate=-1053.27 vs true -7144.51  (37s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe=11785.687  err=0.835  ate=-1162.28 vs true -7030.41  (43s)

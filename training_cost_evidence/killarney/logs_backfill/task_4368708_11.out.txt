@@ -1,0 +1,47 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:29:35] shard=11/20  source=poly  variant=ancestral
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   ancestral
+[scan] already have UWYK-ancestral fields: 0
+[scan] non-matching filename:     0
+[scan] to process:                2832
+[shard] 11/20: 142 files
+[load] UWYK model…
+[progress] 25/142  ok=25 fail=0  rate=0.02/s  eta=121.5 min
+[progress] 50/142  ok=50 fail=0  rate=0.02/s  eta=74.9 min
+[progress] 75/142  ok=75 fail=0  rate=0.02/s  eta=46.9 min
+[progress] 100/142  ok=100 fail=0  rate=0.02/s  eta=30.1 min
+[progress] 125/142  ok=125 fail=0  rate=0.02/s  eta=12.5 min
+[progress] 142/142  ok=142 fail=0  rate=0.02/s  eta=0.0 min
+[done] processed 142 files: ok=142 fail=0
+[2026-07-24 10:18:31] DONE shard=11
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:29:35] shard=11/20  source=poly  variant=ancestral
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN
+  RESULTS_DIR=/scratch/furkanbd/rpfn_bench_kit/results_sweep
+  UWYK_CKPT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0
+[scan] found 5728 npz files
+[scan] skipped (other source):    2896
+[scan] variant:                   ancestral
+[scan] already have UWYK-ancestral fields: 0
+[scan] non-matching filename:     0
+[scan] to process:                2832
+[shard] 11/20: 142 files
+[load] UWYK model…
+[progress] 25/142  ok=25 fail=0  rate=0.02/s  eta=121.5 min
+[progress] 50/142  ok=50 fail=0  rate=0.02/s  eta=74.9 min
+[progress] 75/142  ok=75 fail=0  rate=0.02/s  eta=46.9 min
+[progress] 100/142  ok=100 fail=0  rate=0.02/s  eta=30.1 min
+[progress] 125/142  ok=125 fail=0  rate=0.02/s  eta=12.5 min
+[progress] 142/142  ok=142 fail=0  rate=0.02/s  eta=0.0 min
+[done] processed 142 files: ok=142 fail=0
+[2026-07-24 10:18:31] DONE shard=11

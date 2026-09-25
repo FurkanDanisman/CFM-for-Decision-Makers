@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-20 11:48:51] model=dopfn_repro_1d_J10 idx=0 bench=rc
+  DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt
+  OUT_ROOT=/scratch/furkanbd/dumps_all/dopfn_repro_1d_J10/rc
+  cells=0 1 2 3 4  (stride 5)
+===== [2026-09-20 11:48:51] dopfn_repro_1d_J10 / IHDP   (inner task 0)
+[2026-09-20 11:48:51] task=0 model=dopfn_native dataset=IHDP
+  OUT=/scratch/furkanbd/dumps_all/dopfn_repro_1d_J10/rc/dopfn_native/IHDP
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_1d_J10_step150000.pt step=150000 variant=dopfn_1d (83 tensors)
+[bootstrap] native DoPFN  IHDP  n=100
+[dopfn_native] checkpoint J differs from the released model; rebuilt 5 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (10, 768)
+    decoder_dict.standard.2.bias: (100,) -> (10,)
+    criterion.borders: (101,) -> (11,)
+    criterion.bucket_widths: (100,) -> (10,)
+    criterion.losses_per_bucket: (100,) -> (10,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 4.705  err=1.001  ate=+8.12 vs true +4.06  (4s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 4.900  err=1.050  ate=+8.64 vs true +4.21  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 4.425  err=0.913  ate=+7.77 vs true +4.06  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 3.346  err=0.452  ate=+5.82 vs true +4.01  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 2.765  err=0.284  ate=+2.98 vs true +4.16  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe= 4.019  err=0.913  ate=+7.52 vs true +3.93  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe= 5.171  err=1.172  ate=+8.72 vs true +4.02  (8s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=007  pehe= 2.995  err=0.498  ate=+5.33 vs true +3.56  (8s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=008  pehe=32.425  err=0.225  ate=+8.27 vs true +10.67  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=009  pehe= 7.034  err=0.190  ate=+6.31 vs true +5.30  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=010  pehe= 1.891  err=0.118  ate=+4.85 vs true +4.34  (10s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=011  pehe= 3.203  err=0.228  ate=+3.39 vs true +4.39  (11s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=012  pehe=31.155  err=0.256  ate=+10.26 vs true +8.17  (11s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=093  pehe=16579.010  err=0.275  ate=-8911.77 vs true -12286.78  (55s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00586 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=094  pehe=14236.147  err=0.269  ate=-10277.94 vs true -14065.55  (56s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00586 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=095  pehe=14058.703  err=0.329  ate=-9939.56 vs true -14813.21  (56s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00586 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=096  pehe=16973.846  err=0.270  ate=-9761.80 vs true -13366.58  (57s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=097  pehe=18966.428  err=0.393  ate=-8692.62 vs true -14324.00  (58s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00586 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=098  pehe=14434.254  err=0.229  ate=-9870.90 vs true -12801.23  (58s)
+  [density][WARN] dumped p @ bucket_means differs from criterion.mean() by 0.00781 -- the saved arrays do not reproduce the model's own estimator.
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=099  pehe=15900.715  err=0.249  ate=-10406.81 vs true -13852.33  (59s)
+══ PSID_bal  native DoPFN  n=100 ══
+  pehe_raw   = 16693.053 ± 159.922
+  err_raw    =    0.251 ±  0.008
+[2026-09-20 12:02:04] done  dopfn_native PSID_bal
+[2026-09-20 12:02:04] dopfn_repro_1d_J10/rc done: failed_cells=0  npz_written=410

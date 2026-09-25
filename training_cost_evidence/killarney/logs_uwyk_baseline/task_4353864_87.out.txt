@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 05:34:17] TASK=87  DATASET=IHDP  REAL=87  variant=baseline
+[   0.0s] [baseline-only] loading IHDP r87
+[   0.1s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.3s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  14.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r087.npz  (PEHE=3.974  ATE=0.999)
+[2026-07-23 05:34:35] DONE task=87
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 05:34:17] TASK=87  DATASET=IHDP  REAL=87  variant=baseline
+[   0.0s] [baseline-only] loading IHDP r87
+[   0.1s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.3s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  14.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/IHDP_r087.npz  (PEHE=3.974  ATE=0.999)
+[2026-07-23 05:34:35] DONE task=87

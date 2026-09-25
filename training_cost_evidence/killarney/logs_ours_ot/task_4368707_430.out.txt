@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 10:55:01] TASK=430  DATASET=PSIDbal  REAL=30  variant=ours-ot
+[   0.0s] [ot-only] loading PSIDbal r30
+[   0.8s] [ot-only] loading OURS
+[   1.3s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ 512.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r030.npz  (OT-mode ATE=-11624.938  OT-mean ATE=-9919.501)
+[2026-07-24 11:03:37] DONE task=430
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 10:55:01] TASK=430  DATASET=PSIDbal  REAL=30  variant=ours-ot
+[   0.0s] [ot-only] loading PSIDbal r30
+[   0.8s] [ot-only] loading OURS
+[   1.3s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ 512.2s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r030.npz  (OT-mode ATE=-11624.938  OT-mean ATE=-9919.501)
+[2026-07-24 11:03:37] DONE task=430

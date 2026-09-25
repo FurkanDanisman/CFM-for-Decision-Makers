@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:29:33] TASK=462  DATASET=PSIDbal  REAL=62  variant=baseline
+[   0.0s] [baseline-only] loading PSIDbal r62
+[   0.7s] [baseline-only] loading UWYK (baseline) ckpt
+[   1.5s] [baseline-only] inference (target-encoded T, zero adjacency)
+[  14.5s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r062.npz  (PEHE=20890.239  ATE=0.998)
+[2026-07-24 08:29:51] DONE task=462
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:29:33] TASK=462  DATASET=PSIDbal  REAL=62  variant=baseline
+[   0.0s] [baseline-only] loading PSIDbal r62
+[   0.7s] [baseline-only] loading UWYK (baseline) ckpt
+[   1.5s] [baseline-only] inference (target-encoded T, zero adjacency)
+[  14.5s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r062.npz  (PEHE=20890.239  ATE=0.998)
+[2026-07-24 08:29:51] DONE task=462

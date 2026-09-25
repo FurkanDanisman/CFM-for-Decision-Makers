@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-20 11:59:57] model=dopfn_repro_joint2d idx=0 bench=cs
+  DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt
+  OUT_ROOT=/scratch/furkanbd/dumps_all/dopfn_repro_joint2d/cs
+  cells=0 1 2 3 4 5 6 7  (stride 8)
+===== [2026-09-20 11:59:57] dopfn_repro_joint2d / d2   (inner task 0)
+[2026-09-20 11:59:57] task=0 model=dopfn_native shift-2 d2
+  CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift-2/d2  N=1000  N_QUERY=100
+=== dopfn_native  Observed_Confounder ===
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[scm_case_study_dataset] npz backend active (CASE_STUDY_DATA_ROOT=/scratch/furkanbd/rpfn_bench_kit/case_study_data/d_variation/shift-2/d2)
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  Observed_Confounder  n=100
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=1.05301 data_mean=-1.10563  edges_raw=[-3.7239, +2.8236]
+[dopfn_native][2d] joint: E[Y0]=-0.1497 E[Y1]=-2.1928 ATE=-2.0431  rho=+0.1898  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=-1.1056 sd=1.0525 range=[-4.0878, +1.8325]
+r=000  pehe= 0.287  err=0.167  ate=-2.04 vs true -2.21  (2s)
+r=001  pehe= 0.709  err=0.181  ate=-1.62 vs true -1.80  (2s)
+r=002  pehe= 0.263  err=0.101  ate=-2.31 vs true -2.20  (2s)
+r=003  pehe= 0.179  err=0.008  ate=-1.97 vs true -1.98  (2s)
+r=004  pehe= 0.217  err=0.175  ate=-1.57 vs true -1.75  (2s)
+r=005  pehe= 0.165  err=0.165  ate=-2.33 vs true -2.49  (3s)
+r=006  pehe= 0.148  err=0.026  ate=-2.52 vs true -2.55  (3s)
+r=007  pehe= 0.313  err=0.298  ate=-1.64 vs true -1.94  (3s)
+r=008  pehe= 0.347  err=0.041  ate=-2.22 vs true -2.18  (3s)
+r=009  pehe= 0.110  err=0.064  ate=-2.18 vs true -2.12  (3s)
+r=010  pehe= 0.290  err=0.055  ate=-2.14 vs true -2.08  (3s)
+r=011  pehe= 0.256  err=0.156  ate=-2.07 vs true -2.22  (3s)
+r=012  pehe= 0.162  err=0.155  ate=-1.55 vs true -1.70  (4s)
+r=013  pehe= 0.209  err=0.009  ate=-2.16 vs true -2.17  (4s)
+r=014  pehe= 0.179  err=0.168  ate=-2.65 vs true -2.48  (4s)
+r=015  pehe= 0.351  err=0.006  ate=-2.40 vs true -2.41  (4s)
+r=016  pehe= 0.138  err=0.012  ate=-1.97 vs true -1.96  (4s)
+r=017  pehe= 0.180  err=0.041  ate=-1.81 vs true -1.85  (4s)
+r=018  pehe= 0.288  err=0.068  ate=-2.11 vs true -2.05  (5s)
+r=019  pehe= 0.219  err=0.190  ate=-1.71 vs true -1.90  (5s)
+r=020  pehe= 0.252  err=0.242  ate=-2.05 vs true -2.29  (5s)
+r=021  pehe= 0.508  err=0.183  ate=-1.81 vs true -1.99  (5s)
+r=022  pehe= 0.214  err=0.095  ate=-1.89 vs true -1.98  (5s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=080  pehe= 0.064  err=0.063  ate=-0.02 vs true +0.05  (14s)
+r=081  pehe= 0.111  err=0.111  ate=-0.01 vs true -0.12  (14s)
+r=082  pehe= 0.019  err=0.006  ate=+0.01 vs true +0.02  (15s)
+r=083  pehe= 0.037  err=0.036  ate=+0.04 vs true +0.00  (15s)
+r=084  pehe= 0.135  err=0.095  ate=+0.03 vs true +0.13  (15s)
+r=085  pehe= 0.012  err=0.002  ate=-0.02 vs true -0.02  (15s)
+r=086  pehe= 0.076  err=0.024  ate=-0.02 vs true +0.00  (15s)
+r=087  pehe= 0.046  err=0.045  ate=-0.03 vs true +0.02  (15s)
+r=088  pehe= 0.257  err=0.073  ate=-0.06 vs true +0.01  (15s)
+r=089  pehe= 0.029  err=0.026  ate=-0.04 vs true -0.02  (16s)
+r=090  pehe= 0.078  err=0.078  ate=-0.01 vs true -0.08  (16s)
+r=091  pehe= 0.076  err=0.063  ate=-0.02 vs true +0.04  (16s)
+r=092  pehe= 0.104  err=0.095  ate=-0.05 vs true +0.04  (16s)
+r=093  pehe= 0.035  err=0.011  ate=-0.06 vs true -0.07  (16s)
+r=094  pehe= 0.033  err=0.014  ate=+0.01 vs true +0.03  (16s)
+r=095  pehe= 0.071  err=0.070  ate=-0.05 vs true +0.02  (17s)
+r=096  pehe= 0.049  err=0.045  ate=+0.03 vs true -0.02  (17s)
+r=097  pehe= 0.098  err=0.098  ate=-0.02 vs true +0.08  (17s)
+r=098  pehe= 0.035  err=0.024  ate=-0.00 vs true -0.03  (17s)
+r=099  pehe= 0.120  err=0.118  ate=+0.08 vs true -0.04  (17s)
+══ Frontdoor_Criterion  native DoPFN  n=100 ══
+  pehe_raw   =    0.085 ±  0.009
+  err_raw    =    0.056 ±  0.005
+[2026-09-20 12:16:40] done  dopfn_native shift-2 d50
+[2026-09-20 12:16:40] dopfn_repro_joint2d/cs done: failed_cells=0  npz_written=14400

@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 00:39:09] dopfn_repro_joint2d  harness_idx=0
+  DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt
+  data=/scratch/furkanbd/cmech_data_v2  out=/scratch/furkanbd/cmech_dumps/dopfn_repro_joint2d
+  nodes=5 10 20 30 40 50  subsets=nonzero zero  N=1000
+===== [2026-09-21 00:39:09] n=5 subset=nonzero (inner task 0)
+[2026-09-21 00:39:10] task=0  model=dopfn_native  dataset=CMECH_n5_nonzero  N=1000
+  OUT=/scratch/furkanbd/cmech_dumps/dopfn_repro_joint2d/N1000/dopfn_native/CMECH_n5_nonzero
+  UWYK_FIG34_DATA=/scratch/furkanbd/cmech_data_v2   context=1000
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  CMECH_n5_nonzero  n=100
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=0.0840044 data_mean=0.178452  edges_raw=[-0.0304, +0.4919]
+[dopfn_native][2d] joint: E[Y0]=+0.2014 E[Y1]=+0.1701 ATE=-0.0313  rho=+0.2258  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+0.1785 sd=0.0840 range=[-1.0000, +1.0000]
+r=000  pehe= 0.039  err=0.009  ate=-0.03 vs true -0.02  (5s)
+r=001  pehe= 0.046  err=0.041  ate=+0.41 vs true +0.37  (5s)
+r=002  pehe= 1.559  err=1.530  ate=-0.00 vs true -1.53  (5s)
+r=003  pehe= 0.160  err=0.114  ate=-0.24 vs true -0.35  (5s)
+r=004  pehe= 0.009  err=0.004  ate=+0.00 vs true +0.00  (5s)
+r=005  pehe= 0.323  err=0.322  ate=+1.64 vs true +1.96  (5s)
+r=006  pehe= 0.072  err=0.057  ate=+0.45 vs true +0.39  (6s)
+r=007  pehe= 0.286  err=0.193  ate=+0.15 vs true +0.34  (6s)
+r=008  pehe= 0.006  err=0.004  ate=+0.01 vs true +0.00  (6s)
+r=009  pehe= 0.028  err=0.026  ate=-0.03 vs true -0.00  (6s)
+r=010  pehe= 0.095  err=0.042  ate=-0.21 vs true -0.26  (6s)
+r=011  pehe= 0.219  err=0.034  ate=+0.01 vs true -0.02  (6s)
+r=012  pehe= 0.487  err=0.006  ate=-0.35 vs true -0.36  (6s)
+r=013  pehe= 0.019  err=0.003  ate=-0.00 vs true +0.00  (7s)
+r=014  pehe= 0.025  err=0.003  ate=+0.00 vs true +0.01  (7s)
+r=015  pehe= 0.447  err=0.177  ate=+0.01 vs true +0.18  (7s)
+r=016  pehe= 0.017  err=0.004  ate=-0.00 vs true -0.00  (7s)
+r=017  pehe= 0.139  err=0.047  ate=-0.10 vs true -0.14  (7s)
+r=018  pehe= 0.366  err=0.125  ate=-0.34 vs true -0.46  (7s)
+r=019  pehe= 0.010  err=0.006  ate=+0.00 vs true -0.01  (8s)
+r=020  pehe= 0.054  err=0.008  ate=+0.01 vs true +0.01  (8s)
+r=021  pehe= 0.209  err=0.176  ate=-0.09 vs true +0.08  (8s)
+r=022  pehe= 0.114  err=0.030  ate=-0.04 vs true -0.07  (8s)
+r=023  pehe= 0.191  err=0.175  ate=-0.07 vs true -0.25  (8s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=009  pehe= 0.002  err=0.001  ate=-0.00 vs true +0.00  (3s)
+r=010  pehe= 0.002  err=0.000  ate=+0.00 vs true +0.00  (4s)
+r=011  pehe= 0.005  err=0.002  ate=+0.00 vs true +0.00  (4s)
+r=012  pehe= 0.359  err=0.309  ate=-0.31 vs true +0.00  (4s)
+r=013  pehe= 0.004  err=0.004  ate=+0.00 vs true +0.00  (4s)
+r=014  pehe= 0.007  err=0.005  ate=-0.01 vs true +0.00  (4s)
+r=015  pehe= 0.241  err=0.176  ate=-0.18 vs true +0.00  (4s)
+r=016  pehe= 1.141  err=1.132  ate=+1.13 vs true +0.00  (5s)
+r=017  pehe= 0.156  err=0.073  ate=-0.07 vs true +0.00  (5s)
+r=018  pehe= 0.003  err=0.003  ate=-0.00 vs true +0.00  (5s)
+r=019  pehe= 0.025  err=0.017  ate=-0.02 vs true +0.00  (5s)
+r=020  pehe= 0.006  err=0.003  ate=+0.00 vs true +0.00  (5s)
+r=021  pehe= 0.050  err=0.050  ate=+0.05 vs true +0.00  (5s)
+r=022  pehe= 0.006  err=0.005  ate=-0.01 vs true +0.00  (5s)
+r=023  pehe= 0.024  err=0.022  ate=-0.02 vs true +0.00  (6s)
+r=024  pehe= 0.044  err=0.039  ate=+0.04 vs true +0.00  (6s)
+r=025  pehe= 0.253  err=0.235  ate=+0.24 vs true +0.00  (6s)
+r=026  pehe= 0.010  err=0.008  ate=-0.01 vs true +0.00  (6s)
+r=027  pehe= 0.064  err=0.064  ate=-0.06 vs true +0.00  (6s)
+r=028  pehe= 0.012  err=0.004  ate=+0.00 vs true +0.00  (6s)
+══ CMECH_n50_zero  native DoPFN  n=29 ══
+  pehe_raw   =    0.106 ±  0.043
+  err_raw    =    0.086 ±  0.040
+[2026-09-21 00:42:22] done  model=dopfn_native  dataset=CMECH_n50_zero
+[2026-09-21 00:42:22] dopfn_repro_joint2d done: failed_cells=0  npz=729

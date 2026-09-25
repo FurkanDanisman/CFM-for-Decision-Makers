@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 12:55:37] TASK=101  DATASET=ACIC  REAL=1  variant=noanc
+[   0.0s] [noanc-only] loading ACIC r1
+[   2.0s] [noanc-only] loading UWYK (noanc) ckpt
+[   2.9s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  82.8s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r001.npz  (PEHE=1.932  ATE=0.332)
+[2026-07-23 12:57:03] DONE task=101
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 12:55:37] TASK=101  DATASET=ACIC  REAL=1  variant=noanc
+[   0.0s] [noanc-only] loading ACIC r1
+[   2.0s] [noanc-only] loading UWYK (noanc) ckpt
+[   2.9s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  82.8s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/ACIC_r001.npz  (PEHE=1.932  ATE=0.332)
+[2026-07-23 12:57:03] DONE task=101

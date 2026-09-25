@@ -1,0 +1,58 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-10 15:47:41] DIAG_CMD=diagnose_correlation.py     --repo /scratch/furkanbd/rpfn_bench_kit/R-PFN     --causalpfn /scratch/furkanbd/rpfn_bench_kit/external/causalpfn     --dopfn /scratch/furkanbd/rpfn_bench_kit/external/dopfn     --checkpoint50 /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt     --checkpoint10 /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt     --realization 0     --malc-B 60     --n-eval 200     --malc-max-K 1
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN   CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn   DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+========================================================================
+[fn=50]  /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  cfg: J=100  num_features=50  edges=[-1.00, 1.00]  bin_width=0.0200
+  --- ρ from raw p_mat (transformer output, no MALC) ---
+  all queries                n= 75   mean=+0.033   median=+0.025   std=0.032   min=-0.012  max=+0.222
+  easy (small τ)             n= 37   mean=+0.031   median=+0.025   std=0.036   min=-0.012  max=+0.222
+  hard (large τ)             n= 38   mean=+0.035   median=+0.025   std=0.029   min=-0.005  max=+0.104
+  --- ρ from MALC-smoothed density (K=1) ---
+  all queries                n= 75   mean=+0.054   median=+0.067   std=0.136   min=-0.236  max=+0.413
+  easy (small τ)             n= 37   mean=+0.053   median=+0.051   std=0.146   min=-0.236  max=+0.413
+  hard (large τ)             n= 38   mean=+0.054   median=+0.078   std=0.128   min=-0.211  max=+0.325
+========================================================================
+[fn=10]  /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+  cfg: J=100  num_features=10  edges=[-1.00, 1.00]  bin_width=0.0200
+  --- ρ from raw p_mat (transformer output, no MALC) ---
+  all queries                n= 75   mean=+0.798   median=+0.795   std=0.053   min=+0.488  max=+0.872
+  easy (small τ)             n= 37   mean=+0.806   median=+0.822   std=0.069   min=+0.488  max=+0.872
+  hard (large τ)             n= 38   mean=+0.791   median=+0.785   std=0.031   min=+0.748  max=+0.866
+  --- ρ from MALC-smoothed density (K=1) ---
+  all queries                n= 75   mean=+0.939   median=+0.954   std=0.079   min=+0.574  max=+1.101
+  easy (small τ)             n= 37   mean=+0.943   median=+0.955   std=0.066   min=+0.722  max=+1.075
+  hard (large τ)             n= 38   mean=+0.934   median=+0.944   std=0.090   min=+0.574  max=+1.101
+Truth ρ on IHDP = 0 exactly (Hill 2011 uses independent noise per arm).
+[2026-08-10 15:49:13] DONE
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN   CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn   DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+========================================================================
+[fn=50]  /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+  cfg: J=100  num_features=50  edges=[-1.00, 1.00]  bin_width=0.0200
+  --- ρ from raw p_mat (transformer output, no MALC) ---
+  all queries                n= 75   mean=+0.033   median=+0.025   std=0.032   min=-0.012  max=+0.222
+  easy (small τ)             n= 37   mean=+0.031   median=+0.025   std=0.036   min=-0.012  max=+0.222
+  hard (large τ)             n= 38   mean=+0.035   median=+0.025   std=0.029   min=-0.005  max=+0.104
+  --- ρ from MALC-smoothed density (K=1) ---
+  all queries                n= 75   mean=+0.054   median=+0.067   std=0.136   min=-0.236  max=+0.413
+  easy (small τ)             n= 37   mean=+0.053   median=+0.051   std=0.146   min=-0.236  max=+0.413
+  hard (large τ)             n= 38   mean=+0.054   median=+0.078   std=0.128   min=-0.211  max=+0.325
+========================================================================
+[fn=10]  /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+  cfg: J=100  num_features=10  edges=[-1.00, 1.00]  bin_width=0.0200
+  --- ρ from raw p_mat (transformer output, no MALC) ---
+  all queries                n= 75   mean=+0.798   median=+0.795   std=0.053   min=+0.488  max=+0.872
+  easy (small τ)             n= 37   mean=+0.806   median=+0.822   std=0.069   min=+0.488  max=+0.872
+  hard (large τ)             n= 38   mean=+0.791   median=+0.785   std=0.031   min=+0.748  max=+0.866
+  --- ρ from MALC-smoothed density (K=1) ---
+  all queries                n= 75   mean=+0.939   median=+0.954   std=0.079   min=+0.574  max=+1.101
+  easy (small τ)             n= 37   mean=+0.943   median=+0.955   std=0.066   min=+0.722  max=+1.075
+  hard (large τ)             n= 38   mean=+0.934   median=+0.944   std=0.090   min=+0.574  max=+1.101
+Truth ρ on IHDP = 0 exactly (Hill 2011 uses independent noise per arm).
+[2026-08-10 15:49:13] DONE

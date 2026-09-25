@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 12:55:51] TASK=205  DATASET=CPS  REAL=5  variant=noanc
+[   0.0s] [noanc-only] loading CPS r5
+[   2.9s] [noanc-only] loading UWYK (noanc) ckpt
+[   3.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[ 260.5s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r005.npz  (PEHE=12992.697  ATE=1.090)
+[2026-07-23 13:00:14] DONE task=205
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 12:55:51] TASK=205  DATASET=CPS  REAL=5  variant=noanc
+[   0.0s] [noanc-only] loading CPS r5
+[   2.9s] [noanc-only] loading UWYK (noanc) ckpt
+[   3.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[ 260.5s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r005.npz  (PEHE=12992.697  ATE=1.090)
+[2026-07-23 13:00:14] DONE task=205

@@ -1,0 +1,27 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:12:39] model=uwyk_D_j32_nobin smoother=malc workers=16 benches=cs
+---- cs_uwyk_D_j32_nobin_Observed_Confounder ----
+[tau-smoother] MALC-1D ACTIVE  SmootherConfig(enabled=True, B=1000, K=1, seed=20180621, n_tau=4001, n_workers=16)
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000 ...)
+selector=Observed_Confounder
+variant=T (MALC B=1000 K=1)
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+  [uwyk1d-noanc] 2400 realization file(s) ...
+  [uwyk1d-noanc] realization 1/2400                    
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-24 23:12:39] model=uwyk_D_j32_nobin smoother=malc workers=16 benches=cs
+---- cs_uwyk_D_j32_nobin_Observed_Confounder ----
+[tau-smoother] MALC-1D ACTIVE  SmootherConfig(enabled=True, B=1000, K=1, seed=20180621, n_tau=4001, n_workers=16)
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000 ...)
+selector=Observed_Confounder
+variant=T (MALC B=1000 K=1)
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+  [uwyk1d-noanc] 2400 realization file(s) ...
+  [uwyk1d-noanc] realization 1/2400                    

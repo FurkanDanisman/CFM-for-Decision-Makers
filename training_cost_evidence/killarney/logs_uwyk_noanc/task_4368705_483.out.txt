@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 08:29:36] TASK=483  DATASET=PSIDbal  REAL=83  variant=noanc
+[   0.0s] [noanc-only] loading PSIDbal r83
+[   0.7s] [noanc-only] loading UWYK (noanc) ckpt
+[   1.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  13.7s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r083.npz  (PEHE=21744.247  ATE=0.887)
+[2026-07-24 08:29:53] DONE task=483
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 08:29:36] TASK=483  DATASET=PSIDbal  REAL=83  variant=noanc
+[   0.0s] [noanc-only] loading PSIDbal r83
+[   0.7s] [noanc-only] loading UWYK (noanc) ckpt
+[   1.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[  13.7s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSIDbal_r083.npz  (PEHE=21744.247  ATE=0.887)
+[2026-07-24 08:29:53] DONE task=483

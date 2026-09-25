@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-27 09:10:52] VARIANT=all
+  DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN   CAUSALPFN=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn   DOPFN=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  UWYK_SRC=/scratch/furkanbd/rpfn_bench_kit/external/uwyk/src
+>>> plot_ihdp_n10.py
+[load] OURS  J=100
+[data] IHDP r=0  N_context=200  n_queries=10  queries=[23, 11, 24, 8, 3, 37, 61, 67, 28, 19]
+[infer] done
+[malc] per-query p(τ) done
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC/ihdp_n10_joint.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC/ihdp_n10_marginals.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC-NAIVE/ihdp_n10_marginals.png
+[naive] per-query naive-independence p(τ) computed
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC/ihdp_n10_te.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC-NAIVE/ihdp_n10_te.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC/ihdp_n10_ot.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC-NAIVE/ihdp_n10_ot.png
+[summary — UWYK-2DMALC   (joint p(τ))]
+  true population ATE (scaled) = +0.633
+  mean-of-per-query-means      = +0.469
+  W2 barycenter mode           = +0.580
+  W2 barycenter mean           = +0.469
+[summary — UWYK-2DMALC-NAIVE  (independence-derived p(τ))]
+  true population ATE (scaled) = +0.633
+  mean-of-per-query-means      = -0.480
+  W2 barycenter mode           = -0.590
+  W2 barycenter mean           = -0.480
+[cache] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-2DMALC/cache.npz
+>>> plot_ihdp_n10_uwyk_noanc.py
+[load] UWYK No-Ancestral  num_features=50
+[data] IHDP r=0  N_context=200  queries=[23, 11, 24, 8, 3, 37, 61, 67, 28, 19]
+[predict] sampling 1024 draws per query per treatment
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-NOANC/ihdp_n10_marginals.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-NOANC/ihdp_n10_te.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-NOANC/ihdp_n10_ot.png
+[summary — UWYK-NOANC   (naive independence-derived p(τ))]
+  true population ATE (scaled) = +0.633
+  mean-of-per-query-means      = -0.013
+  W2 barycenter mode           = -0.005
+  W2 barycenter mean           = -0.013
+[cache] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-NOANC/cache.npz
+>>> plot_ihdp_n10_uwyk_noanc_comono.py
+[load] UWYK No-Ancestral  num_features=50
+[data] IHDP r=0  N_context=200  queries=[23, 11, 24, 8, 3, 37, 61, 67, 28, 19]
+[predict] sampling 1024 draws per query per treatment
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  mean-of-per-query-means      = +0.000
+  W2 barycenter mode           = -0.005
+  W2 barycenter mean           = +0.000
+[cache] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/UWYK-NOANC-COMONOTONIC/cache.npz
+>>> plot_ihdp_n10_marginals_compare.py
+[load] OURS  J=100
+[data] IHDP r=0  N_context=200  queries=[23, 11, 24, 8, 3, 37, 61, 67, 28, 19]
+[load] UWYK NoAnc  num_features=50
+[predict] sampling 1024 draws per query per treatment
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/MARGINALS-COMPARE/ihdp_n10_marginals_compare.png
+[cache] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/MARGINALS-COMPARE/cache.npz
+>>> plot_ihdp_n10_true.py
+[data] IHDP r=0  N_context=200  queries=[23, 11, 24, 8, 3, 37, 61, 67, 28, 19]
+[sigma] estimated σ (original units) = 0.998
+[sigma] σ_scaled = 0.1558
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/IHDP-TRUE-TE/ihdp_n10_marginals.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/IHDP-TRUE-TE/ihdp_n10_te.png
+[save] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/IHDP-TRUE-TE/ihdp_n10_ot.png
+[summary — IHDP-TRUE-TE]
+  true population ATE (scaled) = +0.633
+  mean-of-per-query-means      = +0.636
+  W2 barycenter mode           = +0.635
+  W2 barycenter mean           = +0.636
+[cache] /scratch/furkanbd/rpfn_bench_kit/R-PFN/benchmarks/plots/ihdp_n10/IHDP-TRUE-TE/cache.npz
+[2026-07-27 09:13:33] DONE

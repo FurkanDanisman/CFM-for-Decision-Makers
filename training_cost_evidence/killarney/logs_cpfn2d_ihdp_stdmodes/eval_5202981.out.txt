@@ -1,0 +1,57 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 03:49:25] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+  STD_MODE=winsor
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0027000_winsor
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+[bootstrap] STD_MODE=winsor
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-4.00,4.00]  bw_std=0.2500
+r=000  in=1.000  raw pehe= 0.726 err=0.007  |  full pehe= 0.727 err=0.008  (ate=+4.06, 1s)
+r=001  in=1.000  raw pehe= 0.679 err=0.009  |  full pehe= 0.679 err=0.009  (ate=+4.21, 1s)
+r=002  in=1.000  raw pehe= 0.892 err=0.056  |  full pehe= 0.897 err=0.056  (ate=+4.06, 1s)
+r=003  in=1.000  raw pehe= 0.841 err=0.069  |  full pehe= 0.841 err=0.069  (ate=+4.01, 1s)
+r=004  in=1.000  raw pehe= 0.813 err=0.014  |  full pehe= 0.813 err=0.014  (ate=+4.16, 1s)
+r=005  in=1.000  raw pehe= 0.941 err=0.063  |  full pehe= 0.942 err=0.064  (ate=+3.93, 1s)
+r=006  in=1.000  raw pehe= 0.557 err=0.007  |  full pehe= 0.558 err=0.007  (ate=+4.02, 1s)
+r=007  in=1.000  raw pehe= 0.967 err=0.003  |  full pehe= 0.967 err=0.003  (ate=+3.56, 1s)
+r=008  in=1.000  raw pehe=15.079 err=0.144  |  full pehe=12.474 err=0.115  (ate=+10.67, 1s)
+r=009  in=1.000  raw pehe= 1.222 err=0.015  |  full pehe= 1.216 err=0.016  (ate=+5.30, 1s)
+══ IHDP  STD_MODE=winsor  n=10  edges=[-4.0,4.0] ══
+  frac_ctx_in_edges      =    1.000 ±  0.000
+  pehe_raw               =    2.272 ±  1.424
+  err_raw                =    0.039 ±  0.014
+  pehe_full              =    2.011 ±  1.164
+  err_full               =    0.036 ±  0.012
+[2026-09-03 03:49:34] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-03 03:49:25] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+  STD_MODE=winsor
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0027000_winsor
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+[bootstrap] STD_MODE=winsor
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-4.00,4.00]  bw_std=0.2500
+r=000  in=1.000  raw pehe= 0.726 err=0.007  |  full pehe= 0.727 err=0.008  (ate=+4.06, 1s)
+r=001  in=1.000  raw pehe= 0.679 err=0.009  |  full pehe= 0.679 err=0.009  (ate=+4.21, 1s)
+r=002  in=1.000  raw pehe= 0.892 err=0.056  |  full pehe= 0.897 err=0.056  (ate=+4.06, 1s)
+r=003  in=1.000  raw pehe= 0.841 err=0.069  |  full pehe= 0.841 err=0.069  (ate=+4.01, 1s)
+r=004  in=1.000  raw pehe= 0.813 err=0.014  |  full pehe= 0.813 err=0.014  (ate=+4.16, 1s)
+r=005  in=1.000  raw pehe= 0.941 err=0.063  |  full pehe= 0.942 err=0.064  (ate=+3.93, 1s)
+r=006  in=1.000  raw pehe= 0.557 err=0.007  |  full pehe= 0.558 err=0.007  (ate=+4.02, 1s)
+r=007  in=1.000  raw pehe= 0.967 err=0.003  |  full pehe= 0.967 err=0.003  (ate=+3.56, 1s)
+r=008  in=1.000  raw pehe=15.079 err=0.144  |  full pehe=12.474 err=0.115  (ate=+10.67, 1s)
+r=009  in=1.000  raw pehe= 1.222 err=0.015  |  full pehe= 1.216 err=0.016  (ate=+5.30, 1s)
+══ IHDP  STD_MODE=winsor  n=10  edges=[-4.0,4.0] ══
+  frac_ctx_in_edges      =    1.000 ±  0.000
+  pehe_raw               =    2.272 ±  1.424
+  err_raw                =    0.039 ±  0.014
+  pehe_full              =    2.011 ±  1.164
+  err_full               =    0.036 ±  0.012
+[2026-09-03 03:49:34] done

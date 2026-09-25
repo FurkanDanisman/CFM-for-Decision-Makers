@@ -1,0 +1,41 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-07 15:06:11] METHOD=fn_50  DATASET=ACIC  OUT=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/ACIC
+[fn_50] dataset=ACIC  underlying_dataset=ACIC  flags=[]  extra_args=[]
+[bootstrap] device=cuda  ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt  out=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/ACIC
+[bootstrap] J=100  F=50  params=16,119,072
+══ ACIC  (n_realizations=10) ══
+  r=000  pehe=     4.109  ate_rel_err= 0.422  (2s)
+  r=001  pehe=     1.178  ate_rel_err= 0.231  (4s)
+  r=002  pehe=     0.293  ate_rel_err= 0.024  (5s)
+  r=003  pehe=     4.666  ate_rel_err= 0.155  (7s)
+  r=004  pehe=     4.043  ate_rel_err= 0.199  (9s)
+  r=005  pehe=     2.241  ate_rel_err= 0.417  (10s)
+  r=006  pehe=     3.079  ate_rel_err= 0.304  (12s)
+  r=007  pehe=     1.894  ate_rel_err= 0.024  (14s)
+  r=008  pehe=     2.034  ate_rel_err= 0.243  (15s)
+  r=009  pehe=     5.047  ate_rel_err= 0.050  (17s)
+ACIC summary   PEHE =      2.858 ±  0.500   ATE_rel_err = 0.207 ± 0.047
+[2026-09-07 15:06:33] done  METHOD=fn_50  DATASET=ACIC
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-07 15:06:11] METHOD=fn_50  DATASET=ACIC  OUT=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/ACIC
+[fn_50] dataset=ACIC  underlying_dataset=ACIC  flags=[]  extra_args=[]
+[bootstrap] device=cuda  ckpt=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt  out=/scratch/furkanbd/rpfn_bench_kit/results_realcause_all/fn_50/ACIC
+[bootstrap] J=100  F=50  params=16,119,072
+══ ACIC  (n_realizations=10) ══
+  r=000  pehe=     4.109  ate_rel_err= 0.422  (2s)
+  r=001  pehe=     1.178  ate_rel_err= 0.231  (4s)
+  r=002  pehe=     0.293  ate_rel_err= 0.024  (5s)
+  r=003  pehe=     4.666  ate_rel_err= 0.155  (7s)
+  r=004  pehe=     4.043  ate_rel_err= 0.199  (9s)
+  r=005  pehe=     2.241  ate_rel_err= 0.417  (10s)
+  r=006  pehe=     3.079  ate_rel_err= 0.304  (12s)
+  r=007  pehe=     1.894  ate_rel_err= 0.024  (14s)
+  r=008  pehe=     2.034  ate_rel_err= 0.243  (15s)
+  r=009  pehe=     5.047  ate_rel_err= 0.050  (17s)
+ACIC summary   PEHE =      2.858 ±  0.500   ATE_rel_err = 0.207 ± 0.047
+[2026-09-07 15:06:33] done  METHOD=fn_50  DATASET=ACIC

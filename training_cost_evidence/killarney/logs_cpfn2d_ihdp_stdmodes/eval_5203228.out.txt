@@ -1,0 +1,59 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 04:23:47] cpfn2d IHDP stdmode eval
+  CKPT=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+  STD_MODE=quantile  K_NN=0
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0027000_quantile
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+[bootstrap] STD_MODE=quantile  K_NN=0
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-4.00,4.00]  bw_std=0.2500
+r=000  in=1.000  raw= 0.717  full= 0.717  em= 0.717  (ate=+4.06, 0s)
+r=001  in=1.000  raw= 0.757  full= 0.758  em= 0.758  (ate=+4.21, 0s)
+r=002  in=1.000  raw= 0.903  full= 0.907  em= 0.903  (ate=+4.06, 1s)
+r=003  in=1.000  raw= 0.856  full= 0.856  em= 0.857  (ate=+4.01, 1s)
+r=004  in=1.000  raw= 0.776  full= 0.776  em= 0.776  (ate=+4.16, 1s)
+r=005  in=1.000  raw= 1.051  full= 1.054  em= 1.052  (ate=+3.93, 1s)
+r=006  in=1.000  raw= 0.600  full= 0.601  em= 0.600  (ate=+4.02, 1s)
+r=007  in=1.000  raw= 1.001  full= 1.001  em= 1.001  (ate=+3.56, 1s)
+r=008  in=1.000  raw= 7.761  full= 7.763  em= 7.761  (ate=+10.67, 1s)
+r=009  in=1.000  raw= 0.952  full= 0.952  em= 0.951  (ate=+5.30, 1s)
+══ IHDP  STD_MODE=quantile  n=10  edges=[-4.0,4.0] ══
+  frac_ctx_in_edges      =    1.000 ±  0.000
+  pehe_raw               =    1.537 ±  0.693
+  err_raw                =    0.068 ±  0.011
+  pehe_full              =    1.539 ±  0.693
+  err_full               =    0.068 ±  0.011
+  pehe_em                =    1.538 ±  0.693
+  err_em                 =    0.068 ±  0.011
+[2026-09-03 04:23:53] done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  STD_MODE=quantile  K_NN=0
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_cpfn2d_ihdp_stdmodes/step_checkpoints_run_step_0027000_quantile
+[bootstrap] ckpt=/scratch/furkanbd/rpfn_bench_kit/cpfn2d_smoke_e4_j32/step_checkpoints/run/step_0027000.pt
+[bootstrap] STD_MODE=quantile  K_NN=0
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+[bootstrap] J=32 F=99 edges=[-4.00,4.00]  bw_std=0.2500
+r=000  in=1.000  raw= 0.717  full= 0.717  em= 0.717  (ate=+4.06, 0s)
+r=001  in=1.000  raw= 0.757  full= 0.758  em= 0.758  (ate=+4.21, 0s)
+r=002  in=1.000  raw= 0.903  full= 0.907  em= 0.903  (ate=+4.06, 1s)
+r=003  in=1.000  raw= 0.856  full= 0.856  em= 0.857  (ate=+4.01, 1s)
+r=004  in=1.000  raw= 0.776  full= 0.776  em= 0.776  (ate=+4.16, 1s)
+r=005  in=1.000  raw= 1.051  full= 1.054  em= 1.052  (ate=+3.93, 1s)
+r=006  in=1.000  raw= 0.600  full= 0.601  em= 0.600  (ate=+4.02, 1s)
+r=007  in=1.000  raw= 1.001  full= 1.001  em= 1.001  (ate=+3.56, 1s)
+r=008  in=1.000  raw= 7.761  full= 7.763  em= 7.761  (ate=+10.67, 1s)
+r=009  in=1.000  raw= 0.952  full= 0.952  em= 0.951  (ate=+5.30, 1s)
+══ IHDP  STD_MODE=quantile  n=10  edges=[-4.0,4.0] ══
+  frac_ctx_in_edges      =    1.000 ±  0.000
+  pehe_raw               =    1.537 ±  0.693
+  err_raw                =    0.068 ±  0.011
+  pehe_full              =    1.539 ±  0.693
+  err_full               =    0.068 ±  0.011
+  pehe_em                =    1.538 ±  0.693
+  err_em                 =    0.068 ±  0.011
+[2026-09-03 04:23:53] done

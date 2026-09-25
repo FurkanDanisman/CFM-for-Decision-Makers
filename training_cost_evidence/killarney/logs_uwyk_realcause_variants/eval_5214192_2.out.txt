@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-03 17:36:07] UWYK RealCause  DATASET=CPS  ANC_VARIANT=v3a
+  UWYK_CKPT=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt
+  OUT=/scratch/furkanbd/rpfn_bench_kit/results_uwyk_realcause_v3a/CPS
+[bootstrap] UWYK RealCause  DATASET=CPS  ANC_VARIANT=v3a  n=100
+[uwyk] loading  ckpt=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt  cfg=/scratch/furkanbd/rpfn_bench_kit/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model_config.yaml  device=cuda
+r=000  pehe=11079.195  L1=4831.807  ate=-2242.972 vs true -7074.778  (1s)
+r=001  pehe=11568.218  L1=6364.688  ate=-644.099 vs true -7008.787  (2s)
+r=002  pehe=11780.277  L1=6208.076  ate=-405.701 vs true -6613.777  (3s)
+r=003  pehe=9904.276  L1=3228.361  ate=-3805.881 vs true -7034.242  (3s)
+r=004  pehe=11452.066  L1=4830.750  ate=-1941.381 vs true -6772.131  (4s)
+r=005  pehe=9685.347  L1=2490.489  ate=-4654.016 vs true -7144.505  (5s)
+r=006  pehe=10850.279  L1=4019.942  ate=-3010.471 vs true -7030.413  (5s)
+r=007  pehe=10757.167  L1=5030.504  ate=-1988.368 vs true -7018.873  (6s)
+r=008  pehe=10621.824  L1=4022.291  ate=-3248.526 vs true -7270.817  (7s)
+r=009  pehe=10002.735  L1=3011.672  ate=-3704.000 vs true -6715.671  (7s)
+r=010  pehe=10987.901  L1=4940.901  ate=-2448.277 vs true -7389.177  (8s)
+r=011  pehe=11694.894  L1=5738.252  ate=-1563.578 vs true -7301.830  (9s)
+r=012  pehe=10208.948  L1=3130.507  ate=-3407.354 vs true -6537.860  (9s)
+r=013  pehe=10960.035  L1=4068.217  ate=-2650.624 vs true -6718.840  (10s)
+r=014  pehe=11672.479  L1=5878.036  ate=-873.144 vs true -6751.181  (11s)
+r=015  pehe=11370.264  L1=4426.570  ate=-2211.278 vs true -6637.848  (12s)
+r=016  pehe=10986.264  L1=5166.466  ate=-1904.527 vs true -7070.993  (12s)
+r=017  pehe=13354.925  L1=7713.576  ate=+33.173 vs true -7680.403  (13s)
+r=018  pehe=11047.441  L1=4943.398  ate=-2223.642 vs true -7167.040  (14s)
+r=019  pehe=11482.175  L1=4920.275  ate=-2357.857 vs true -7278.133  (14s)
+r=020  pehe=11480.532  L1=5179.960  ate=-1732.374 vs true -6912.334  (15s)
+r=021  pehe=12632.666  L1=7631.920  ate=+336.440 vs true -7295.479  (16s)
+r=022  pehe=11304.244  L1=3992.705  ate=-2611.544 vs true -6604.250  (17s)
+r=023  pehe=11353.612  L1=4514.857  ate=-2047.989 vs true -6562.846  (17s)
+r=024  pehe=10896.057  L1=3210.044  ate=-3224.038 vs true -6434.082  (18s)
+r=025  pehe=11563.589  L1=5636.780  ate=-1722.201 vs true -7358.981  (19s)
+r=026  pehe=11406.695  L1=5077.668  ate=-1752.808 vs true -6830.476  (19s)
+r=027  pehe=11543.145  L1=5270.829  ate=-2082.737 vs true -7353.566  (20s)
+r=028  pehe=10863.720  L1=4113.021  ate=-2835.984 vs true -6949.005  (21s)
+r=029  pehe=10619.036  L1=4384.168  ate=-2995.628 vs true -7379.796  (21s)
+r=030  pehe=11687.970  L1=5707.751  ate=-1297.331 vs true -7005.082  (22s)
+r=031  pehe=12518.252  L1=6992.796  ate=-400.934 vs true -7393.729  (23s)
+r=032  pehe=11261.488  L1=5417.192  ate=-1577.755 vs true -6994.947  (24s)
+r=033  pehe=9896.896  L1=2408.240  ate=-4645.616 vs true -7053.855  (24s)
+r=034  pehe=11618.520  L1=5748.681  ate=-1609.654 vs true -7358.335  (25s)
+r=035  pehe=11271.406  L1=4649.957  ate=-2381.135 vs true -7031.091  (26s)
+r=036  pehe=11548.344  L1=5438.077  ate=-1347.766 vs true -6785.843  (26s)
+r=037  pehe=11213.852  L1=5890.042  ate=-1311.752 vs true -7201.794  (27s)
+r=038  pehe=11065.636  L1=4479.785  ate=-2461.476 vs true -6941.261  (28s)
+r=039  pehe=11558.266  L1=6219.374  ate=-1030.603 vs true -7249.977  (28s)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+r=079  pehe=11734.936  L1=5606.720  ate=-1539.218 vs true -7145.938  (57s)
+r=080  pehe=10907.374  L1=4075.991  ate=-3191.999 vs true -7267.990  (57s)
+r=081  pehe=11590.930  L1=5581.843  ate=-1094.015 vs true -6675.858  (58s)
+r=082  pehe=11541.072  L1=4410.618  ate=-2109.154 vs true -6519.771  (59s)
+r=083  pehe=11527.576  L1=5068.789  ate=-1580.059 vs true -6648.848  (60s)
+r=084  pehe=11255.004  L1=4930.087  ate=-2045.797 vs true -6975.884  (60s)
+r=085  pehe=12110.213  L1=6594.150  ate=-618.587 vs true -7212.737  (61s)
+r=086  pehe=10939.267  L1=4837.024  ate=-2453.157 vs true -7290.181  (62s)
+r=087  pehe=11952.155  L1=6794.793  ate=-472.113 vs true -7266.905  (62s)
+r=088  pehe=11980.778  L1=5902.500  ate=-1386.966 vs true -7289.465  (63s)
+r=089  pehe=11229.275  L1=5192.716  ate=-1731.100 vs true -6923.816  (64s)
+r=090  pehe=11152.390  L1=5580.152  ate=-1249.710 vs true -6829.863  (65s)
+r=091  pehe=10665.896  L1=3556.447  ate=-3598.310 vs true -7154.756  (65s)
+r=092  pehe=10908.900  L1=3786.776  ate=-2961.258 vs true -6748.034  (66s)
+r=093  pehe=10636.226  L1=4766.281  ate=-2406.557 vs true -7172.838  (67s)
+r=094  pehe=11044.255  L1=5351.004  ate=-1416.349 vs true -6767.354  (67s)
+r=095  pehe=11602.784  L1=5984.213  ate=-1070.707 vs true -7054.919  (68s)
+r=096  pehe=10759.592  L1=4302.051  ate=-2731.405 vs true -7033.456  (69s)
+r=097  pehe=10785.144  L1=4081.630  ate=-2650.572 vs true -6732.202  (69s)
+r=098  pehe=10557.923  L1=4314.421  ate=-2821.046 vs true -7135.467  (70s)
+r=099  pehe=9433.562  L1=1425.321  ate=-5395.439 vs true -6820.760  (71s)
+══ CPS  UWYK-v3a  n=100 ══
+  pehe_raw   = 11201.249 ± 64.407
+  err_l1     = 4941.160 ± 112.720
+[2026-09-03 17:37:27] done

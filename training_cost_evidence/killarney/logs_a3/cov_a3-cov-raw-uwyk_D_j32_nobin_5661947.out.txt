@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:11:43] model=uwyk_D_j32_nobin smoother=none workers=16 benches=rc cm cs
+---- rc_uwyk_D_j32_nobin_IHDP ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_D_j32_nobin
+selector=IHDP
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.9337  0.0687  0.0069 |    17.5324   18.1567 |    24.1983 |    3.6228
+uwyk1d-v3a           100 |   0.9365  0.1010  0.0101 |    16.1709   16.9372 |    23.4716 |    2.9322
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_D_j32_nobin_IHDP.npz (8 arrays)
+---- rc_uwyk_D_j32_nobin_ACIC ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_D_j32_nobin
+selector=ACIC
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc          10 |   0.9873  0.0213  0.0067 |    20.1877    6.1993 |    21.4739 |    1.9121
+uwyk1d-v3a            10 |   0.9923  0.0126  0.0040 |    19.3691    6.2478 |    20.1938 |    1.5563
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_D_j32_nobin_ACIC.npz (8 arrays)
+---- rc_uwyk_D_j32_nobin_CPS ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_D_j32_nobin
+selector=CPS
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.9217  0.0134  0.0013 | 45280.8821 1074.8561 | 49355.1772 | 7558.1988
+uwyk1d-v3a           100 |   0.9284  0.0128  0.0013 | 44945.9358 1125.1824 | 47959.6886 | 6895.2922
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_D_j32_nobin_CPS.npz (8 arrays)
+---- rc_uwyk_D_j32_nobin_PSID ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_D_j32_nobin
+selector=PSID
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.8229  0.0300  0.0030 | 54038.4687 2821.1564 | 126597.9814 | 12712.4224
+uwyk1d-v3a           100 |   0.8884  0.0254  0.0025 | 64790.5336 5853.6404 | 113427.1965 | 11729.6275
+[per-real] wrote /scratch/furkanbd/a3_cov/none/rc_uwyk_D_j32_nobin_PSID.npz (8 arrays)
+---- rc_uwyk_D_j32_nobin_PSID_bal ----
+roots=1  /scratch/furkanbd/aurora3_kill/rc/uwyk_D_j32_nobin
+selector=PSID_bal
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc         100 |   0.8489  0.0318  0.0032 | 55418.4134 3180.2843 | 117647.3214 | 12502.1628
+uwyk1d-v3a           100 |   0.9156  0.0236  0.0024 | 60445.4456 4019.1854 | 100468.9632 | 10698.6875
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.5426  0.3916  0.0080 |     2.6257    2.4394 |    17.0219 |    1.0621
+uwyk1d-v3a          2400 |   0.6747  0.3848  0.0079 |     2.6168    2.1583 |    11.6739 |    0.8226
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cs_uwyk_D_j32_nobin_Observed_Mediator_and_Confounder.npz (8 arrays)
+---- cs_uwyk_D_j32_nobin_Unobserved_Confounder ----
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000 ...)
+selector=Unobserved_Confounder
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.9865  0.0624  0.0013 |     5.3599    4.6141 |     5.4721 |    0.5049
+uwyk1d-v3a          2400 |   0.9954  0.0303  0.0006 |     4.1191    4.5215 |     4.1432 |    0.2642
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cs_uwyk_D_j32_nobin_Unobserved_Confounder.npz (8 arrays)
+---- cs_uwyk_D_j32_nobin_Frontdoor_Criterion ----
+roots=24  (/scratch/furkanbd/aurora3_kill/cs/uwyk_D_j32_nobin/shift0/d10/ctx1000 ...)
+selector=Frontdoor_Criterion
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+uwyk1d-noanc        2400 |   0.9858  0.0587  0.0012 |     2.5888    4.3098 |     2.6186 |    0.1110
+uwyk1d-v3a          2400 |   0.9859  0.0569  0.0012 |     2.4399    3.9130 |     2.4676 |    0.1059
+[per-real] wrote /scratch/furkanbd/a3_cov/none/cs_uwyk_D_j32_nobin_Frontdoor_Criterion.npz (8 arrays)
+[2026-09-24 23:18:30] done -> /scratch/furkanbd/a3_cov/none

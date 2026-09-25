@@ -1,0 +1,69 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-04 04:05:33] regenerating case-study pkls
+  DOPFN_ROOT=/scratch/furkanbd/rpfn_bench_kit/external/dopfn
+  OUT_DIR=/scratch/furkanbd/rpfn_bench_kit/external/dopfn/data
+  Y_NOISE_CORR=0.2  N_PER_CASE=100  SEQ_LEN=500
+[regen] out=/scratch/furkanbd/rpfn_bench_kit/external/dopfn/data/prior_sampling_rho02  rho=0.2  n_per_case=100  seq_len=500  num_features=3
+[regen] Observed_Confounder               i=  1/100  seed=43  sigma_eps=0.0098  cate_mean=+0.000  (4s)
+[regen] Observed_Confounder               i= 25/100  seed=67  sigma_eps=0.0104  cate_mean=-0.000  (4s)
+[regen] Observed_Confounder               i= 50/100  seed=92  sigma_eps=0.0099  cate_mean=+0.000  (4s)
+[regen] Observed_Confounder               i= 75/100  seed=117  sigma_eps=0.0104  cate_mean=-0.000  (4s)
+[regen] Observed_Confounder               i=100/100  seed=142  sigma_eps=0.0098  cate_mean=-0.000  (4s)
+[regen] Observed_Mediator                 i=  1/100  seed=43  sigma_eps=0.0094  cate_mean=-0.000  (4s)
+[regen] Observed_Mediator                 i= 25/100  seed=67  sigma_eps=0.0096  cate_mean=+0.001  (4s)
+[regen] Observed_Mediator                 i= 50/100  seed=92  sigma_eps=0.0101  cate_mean=+0.021  (5s)
+[regen] Observed_Mediator                 i= 75/100  seed=117  sigma_eps=0.0098  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator                 i=100/100  seed=142  sigma_eps=0.0094  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i= 25/100  seed=67  sigma_eps=0.0096  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i= 50/100  seed=92  sigma_eps=0.0098  cate_mean=-0.000  (6s)
+[regen] Observed_Mediator_and_Confounder  i= 75/100  seed=117  sigma_eps=0.0099  cate_mean=+0.000  (6s)
+[regen] Observed_Mediator_and_Confounder  i=100/100  seed=142  sigma_eps=0.0103  cate_mean=-0.000  (6s)
+[regen] Unobserved_Confounder             i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (6s)
+[regen] Unobserved_Confounder             i= 25/100  seed=67  sigma_eps=0.0098  cate_mean=-0.000  (6s)
+[regen] Unobserved_Confounder             i= 50/100  seed=92  sigma_eps=0.0103  cate_mean=+0.000  (6s)
+[regen] Unobserved_Confounder             i= 75/100  seed=117  sigma_eps=0.0105  cate_mean=-0.000  (7s)
+[regen] Unobserved_Confounder             i=100/100  seed=142  sigma_eps=0.0098  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 25/100  seed=67  sigma_eps=0.0097  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 50/100  seed=92  sigma_eps=0.0100  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 75/100  seed=117  sigma_eps=0.0096  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i=100/100  seed=142  sigma_eps=0.0102  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i=  1/100  seed=43  sigma_eps=0.0098  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i= 25/100  seed=67  sigma_eps=0.0104  cate_mean=-0.000  (8s)
+[regen] Backdoor_Criterion                i= 50/100  seed=92  sigma_eps=0.0099  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i= 75/100  seed=117  sigma_eps=0.0104  cate_mean=-0.000  (8s)
+[regen] Backdoor_Criterion                i=100/100  seed=142  sigma_eps=0.0098  cate_mean=-0.000  (8s)
+[regen] done (8s)
+[2026-09-04 04:05:43] regen done
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[regen] Observed_Mediator                 i= 50/100  seed=92  sigma_eps=0.0101  cate_mean=+0.021  (5s)
+[regen] Observed_Mediator                 i= 75/100  seed=117  sigma_eps=0.0098  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator                 i=100/100  seed=142  sigma_eps=0.0094  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i= 25/100  seed=67  sigma_eps=0.0096  cate_mean=+0.000  (5s)
+[regen] Observed_Mediator_and_Confounder  i= 50/100  seed=92  sigma_eps=0.0098  cate_mean=-0.000  (6s)
+[regen] Observed_Mediator_and_Confounder  i= 75/100  seed=117  sigma_eps=0.0099  cate_mean=+0.000  (6s)
+[regen] Observed_Mediator_and_Confounder  i=100/100  seed=142  sigma_eps=0.0103  cate_mean=-0.000  (6s)
+[regen] Unobserved_Confounder             i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (6s)
+[regen] Unobserved_Confounder             i= 25/100  seed=67  sigma_eps=0.0098  cate_mean=-0.000  (6s)
+[regen] Unobserved_Confounder             i= 50/100  seed=92  sigma_eps=0.0103  cate_mean=+0.000  (6s)
+[regen] Unobserved_Confounder             i= 75/100  seed=117  sigma_eps=0.0105  cate_mean=-0.000  (7s)
+[regen] Unobserved_Confounder             i=100/100  seed=142  sigma_eps=0.0098  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i=  1/100  seed=43  sigma_eps=0.0095  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 25/100  seed=67  sigma_eps=0.0097  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 50/100  seed=92  sigma_eps=0.0100  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i= 75/100  seed=117  sigma_eps=0.0096  cate_mean=+0.000  (7s)
+[regen] Frontdoor_Criterion               i=100/100  seed=142  sigma_eps=0.0102  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i=  1/100  seed=43  sigma_eps=0.0098  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i= 25/100  seed=67  sigma_eps=0.0104  cate_mean=-0.000  (8s)
+[regen] Backdoor_Criterion                i= 50/100  seed=92  sigma_eps=0.0099  cate_mean=+0.000  (8s)
+[regen] Backdoor_Criterion                i= 75/100  seed=117  sigma_eps=0.0104  cate_mean=-0.000  (8s)
+[regen] Backdoor_Criterion                i=100/100  seed=142  sigma_eps=0.0098  cate_mean=-0.000  (8s)
+[regen] done (8s)
+[2026-09-04 04:05:43] regen done

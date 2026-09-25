@@ -1,0 +1,65 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-16 06:44:14] r=1  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl
+[start] realization 1  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn']
+[truth] r=1  n_queries=481  sigma_scaled=0.0221
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 2736.1s
+[cache] saved ours_fn50 to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.ours_fn50_cache.npz
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 11.3s
+[cache] saved dopfn to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.dopfn_cache.npz
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 16.7s
+[cache] saved uwyk_noanc to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.uwyk_noanc_cache.npz
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 16.7s
+[cache] saved uwyk_anc to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.uwyk_anc_cache.npz
+[density-diag] saved r=1
+[l2 ] ours_fn50       y0=nan  y1=nan  tau=2.2109  ate=2.1725
+[KL_fwd] ours_fn50       y0=nan  y1=nan  tau=0.8939  ate=0.8741
+[KL_rev] ours_fn50       y0=nan  y1=nan  tau=5.7166  ate=9.2541
+[l2 ] dopfn           y0=3.1552  y1=3.1762  tau=2.5120  ate=2.4658
+[KL_fwd] dopfn           y0=1.5808  y1=1.6503  tau=1.2344  ate=1.2079
+[KL_rev] dopfn           y0=11.7412  y1=12.1778  tau=9.1445  ate=13.2656
+[l2 ] uwyk_noanc      y0=3.0892  y1=3.1344  tau=2.4681  ate=2.3989
+[KL_fwd] uwyk_noanc      y0=1.5174  y1=1.5331  tau=1.2252  ate=1.1727
+[KL_rev] uwyk_noanc      y0=10.8678  y1=11.8812  tau=9.0373  ate=12.8168
+[l2 ] uwyk_anc        y0=3.0606  y1=3.0586  tau=2.2692  ate=2.2258
+[KL_fwd] uwyk_anc        y0=1.4809  y1=1.4247  tau=0.9776  ate=0.9481
+[KL_rev] uwyk_anc        y0=10.0812  y1=9.6074  tau=6.7153  ate=10.1935
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.npz
+[2026-08-16 07:30:48] DONE r=1
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[dopfn] done in 11.3s
+[cache] saved dopfn to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.dopfn_cache.npz
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 16.7s
+[cache] saved uwyk_noanc to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.uwyk_noanc_cache.npz
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 16.7s
+[cache] saved uwyk_anc to /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.uwyk_anc_cache.npz
+[density-diag] saved r=1
+[l2 ] ours_fn50       y0=nan  y1=nan  tau=2.2109  ate=2.1725
+[KL_fwd] ours_fn50       y0=nan  y1=nan  tau=0.8939  ate=0.8741
+[KL_rev] ours_fn50       y0=nan  y1=nan  tau=5.7166  ate=9.2541
+[l2 ] dopfn           y0=3.1552  y1=3.1762  tau=2.5120  ate=2.4658
+[KL_fwd] dopfn           y0=1.5808  y1=1.6503  tau=1.2344  ate=1.2079
+[KL_rev] dopfn           y0=11.7412  y1=12.1778  tau=9.1445  ate=13.2656
+[l2 ] uwyk_noanc      y0=3.0892  y1=3.1344  tau=2.4681  ate=2.3989
+[KL_fwd] uwyk_noanc      y0=1.5174  y1=1.5331  tau=1.2252  ate=1.1727
+[KL_rev] uwyk_noanc      y0=10.8678  y1=11.8812  tau=9.0373  ate=12.8168
+[l2 ] uwyk_anc        y0=3.0606  y1=3.0586  tau=2.2692  ate=2.2258
+[KL_fwd] uwyk_anc        y0=1.4809  y1=1.4247  tau=0.9776  ate=0.9481
+[KL_rev] uwyk_anc        y0=10.0812  y1=9.6074  tau=6.7153  ate=10.1935
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_acic/out_malc1d_kl.r001.npz
+[2026-08-16 07:30:48] DONE r=1

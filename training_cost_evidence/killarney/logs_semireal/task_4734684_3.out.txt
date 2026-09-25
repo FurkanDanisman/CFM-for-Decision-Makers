@@ -1,0 +1,35 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 04:29:16] TASK=3  DATASET=law_race  VARIANT=logy
+[dopfn-semireal] loading dataset=law_race
+  N_train=1600  d=2  N_test=400  y_range=[-3.140, 2.780]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] Y-log: raw [-3.140, 2.780] → log-shifted [0, 1.934]
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 3 clusters (sizes: [599, 419, 582])
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on law_race split 1/5 ===
+  PEHE(raw-mean):    0.5204
+  eps_ATE(raw-mean): 0.7498
+  true_ATE:          +0.6742   ours_ATE: +0.1687
+  runtime:           6.2s
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 04:29:16] TASK=3  DATASET=law_race  VARIANT=logy
+[dopfn-semireal] loading dataset=law_race
+  N_train=1600  d=2  N_test=400  y_range=[-3.140, 2.780]
+[dopfn-semireal] loading OURS (dopfn_bb)
+[dopfn-semireal] OURS inference
+[ours_pipeline] Y-log: raw [-3.140, 2.780] → log-shifted [0, 1.934]
+[ours_pipeline] N_train=1600 > MAX_N_TRAIN=1000 → 3 clusters (sizes: [599, 419, 582])
+[ours_pipeline] skipping MALC pool (only raw-mean CATE will be reported)
+=== OURS (dopfn_bb) on law_race split 1/5 ===
+  PEHE(raw-mean):    0.5204
+  eps_ATE(raw-mean): 0.7498
+  true_ATE:          +0.6742   ours_ATE: +0.1687
+  runtime:           6.2s
+[dopfn-semireal] running Do-PFN reference (DoPFNRegressor.predict_cate)

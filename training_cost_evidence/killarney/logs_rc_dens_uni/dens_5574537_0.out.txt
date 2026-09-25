@@ -1,0 +1,55 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-21 01:21:53] task=0 model=dopfn_native dataset=SEMIREAL_sales
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_joint2d/dopfn_native/SEMIREAL_sales
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_sales  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=268142 data_mean=736578  edges_raw=[+69846.1106, +1737128.6514]
+[dopfn_native][2d] joint: E[Y0]=+664105.9612 E[Y1]=+1397706.9290 ATE=+733600.9678  rho=-0.0195  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+736578.0657 sd=267682.0318 range=[+598376.6250, +2317608.0000]
+r=000  pehe=549273.750  err=515513.625  ate=+733601.00 vs true +1249114.62  (6s)
+r=001  pehe=544127.188  err=527352.750  ate=+693595.62 vs true +1220948.38  (6s)
+r=002  pehe=622437.188  err=476344.500  ate=+710944.88 vs true +1187289.38  (6s)
+r=003  pehe=731019.062  err=664943.875  ate=+536544.62 vs true +1201488.50  (7s)
+r=004  pehe=535276.500  err=509071.438  ate=+743937.06 vs true +1253008.50  (7s)
+══ SEMIREAL_sales  native DoPFN  n=5 ══
+  pehe_raw   = 596426.738 ± 37074.004
+  err_raw    = 538645.238 ± 32687.864
+[2026-09-21 01:22:03] done  dopfn_native SEMIREAL_sales
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-09-21 01:21:53] task=0 model=dopfn_native dataset=SEMIREAL_sales
+  OUT=/scratch/furkanbd/semireal_dumps/dopfn_repro_joint2d/dopfn_native/SEMIREAL_sales
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] joint_2d: J=10 edges=[-2.4865, +3.7314] (training y-space)  query_treatment='nan'
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/R-PFN/Required_checkpoints/dopfn_repro_joint2d_step150000.pt step=150000 variant=joint_2d (83 tensors)
+[bootstrap] native DoPFN  SEMIREAL_sales  n=5
+[dopfn_native] checkpoint J differs from the released model; rebuilt 2 bin-shaped tensor(s):
+    decoder_dict.standard.2.weight: (100, 768) -> (113, 768)
+    decoder_dict.standard.2.bias: (100,) -> (113,)
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+[dopfn_native][2d] width-gated FullSupportBarDistribution: mean, median, mode, icdf, quantile, cdf, ucb
+[dopfn_native][2d] data_std=268142 data_mean=736578  edges_raw=[+69846.1106, +1737128.6514]
+[dopfn_native][2d] joint: E[Y0]=+664105.9612 E[Y1]=+1397706.9290 ATE=+733600.9678  rho=-0.0195  inner_mass=1.0000
+[dopfn_native][2d] observed y: mean=+736578.0657 sd=267682.0318 range=[+598376.6250, +2317608.0000]
+r=000  pehe=549273.750  err=515513.625  ate=+733601.00 vs true +1249114.62  (6s)
+r=001  pehe=544127.188  err=527352.750  ate=+693595.62 vs true +1220948.38  (6s)
+r=002  pehe=622437.188  err=476344.500  ate=+710944.88 vs true +1187289.38  (6s)
+r=003  pehe=731019.062  err=664943.875  ate=+536544.62 vs true +1201488.50  (7s)
+r=004  pehe=535276.500  err=509071.438  ate=+743937.06 vs true +1253008.50  (7s)
+══ SEMIREAL_sales  native DoPFN  n=5 ══
+  pehe_raw   = 596426.738 ± 37074.004
+  err_raw    = 538645.238 ± 32687.864
+[2026-09-21 01:22:03] done  dopfn_native SEMIREAL_sales

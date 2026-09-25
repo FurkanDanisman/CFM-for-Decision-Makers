@@ -1,0 +1,77 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 23:19:09] model=dopfn_1d_botharms smoother=none workers=16 benches=cm
+---- cm_dopfn_1d_botharms_n5 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n5_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n5.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n10 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n10_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n10.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n20 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n20_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n20.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n30 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n30_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n30.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n40 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n40_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n40.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n50 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n50_total (N=1000)
+variant=raw
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+---- cm_dopfn_1d_botharms_n30 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n30_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n30.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n40 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n40_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n40.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+---- cm_dopfn_1d_botharms_n50 ----
+roots=1  /scratch/furkanbd/aurora3_kill/cm_rho99/dopfn_1d_botharms/N1000
+selector=CMECH_n50_total (N=1000)
+variant=raw
+method            n_real | coverage      sd      se |     length        sd |    IS_0.05 |      CRPS
+--------------------------------------------------------------------------------------------------------
+dopfn_native           — | (no dumps)
+[per-real] NOTHING TO WRITE for /scratch/furkanbd/a3_cov/none/cm_dopfn_1d_botharms_n50.npz -- every cell scored 0 realizations. The stage did not fail, it found no usable data.
+[2026-09-24 23:19:10] done -> /scratch/furkanbd/a3_cov/none

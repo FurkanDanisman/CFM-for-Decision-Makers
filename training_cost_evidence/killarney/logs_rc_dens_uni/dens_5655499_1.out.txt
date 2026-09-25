@@ -1,0 +1,63 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-09-24 19:08:47] task=1 model=dopfn_native dataset=ACIC
+  OUT=/scratch/furkanbd/aurora3_kill/rc/dopfn_1d_botharms/dopfn_native/ACIC
+[sklearn-shim] check_array finite kwarg -> 'force_all_finite'
+[dopfn_native] instantiated on device=cuda
+[dopfn_native] DOPFN_CKPT=/scratch/furkanbd/rpfn_bench_kit/from_aurora/dopfn_1d_botharms_step150000.pt step=150000 variant=dopfn_1d_botharms (83 tensors)
+[bootstrap] native DoPFN  ACIC  n=10
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 4.238  err=0.595  ate=+0.75 vs true +1.86  (4s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 3.511  err=0.740  ate=+1.21 vs true +4.68  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 2.504  err=0.509  ate=+2.34 vs true +4.75  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 6.256  err=0.821  ate=+0.84 vs true +4.68  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 4.555  err=0.471  ate=+1.75 vs true +3.31  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe= 2.910  err=0.729  ate=+0.78 vs true +2.89  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe= 3.354  err=0.391  ate=+2.18 vs true +3.59  (8s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=007  pehe= 2.218  err=0.614  ate=+0.62 vs true +1.61  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=008  pehe= 2.542  err=0.244  ate=+2.82 vs true +3.73  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=009  pehe= 7.301  err=0.567  ate=+2.05 vs true +4.72  (10s)
+══ ACIC  native DoPFN  n=10 ══
+  pehe_raw   =    3.939 ±  0.534
+  err_raw    =    0.568 ±  0.055
+[2026-09-24 19:09:11] done  dopfn_native ACIC
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[dopfn_native] loaded DOPFN_CKPT weights into regressor.model_processed_ (100.0% key match; zeroed 0 absent bias tensors, 0 unexpected)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=000  pehe= 4.238  err=0.595  ate=+0.75 vs true +1.86  (4s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=001  pehe= 3.511  err=0.740  ate=+1.21 vs true +4.68  (5s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=002  pehe= 2.504  err=0.509  ate=+2.34 vs true +4.75  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=003  pehe= 6.256  err=0.821  ate=+0.84 vs true +4.68  (6s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=004  pehe= 4.555  err=0.471  ate=+1.75 vs true +3.31  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=005  pehe= 2.910  err=0.729  ate=+0.78 vs true +2.89  (7s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=006  pehe= 3.354  err=0.391  ate=+2.18 vs true +3.59  (8s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=007  pehe= 2.218  err=0.614  ate=+0.62 vs true +1.61  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=008  pehe= 2.542  err=0.244  ate=+2.82 vs true +3.73  (9s)
+  [density] cate_pred vs density mean: slope=1 R^2=1.000000  (slope~1 confirms raw borders)
+r=009  pehe= 7.301  err=0.567  ate=+2.05 vs true +4.72  (10s)
+══ ACIC  native DoPFN  n=10 ══
+  pehe_raw   =    3.939 ±  0.534
+  err_raw    =    0.568 ±  0.055
+[2026-09-24 19:09:11] done  dopfn_native ACIC

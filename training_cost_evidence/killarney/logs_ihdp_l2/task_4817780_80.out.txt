@@ -1,0 +1,65 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-16 07:01:55] r=80  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl
+[start] realization 80  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn']
+[truth] r=80  n_queries=75  sigma_scaled=0.0106
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 360.5s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 0.7s
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 12.8s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 12.9s
+[density-diag] saved r=80
+[l2 ] ours_fn50       y0=nan  y1=nan  tau=4.1103  ate=3.7713
+[KL_fwd] ours_fn50       y0=nan  y1=nan  tau=2.3793  ate=2.0959
+[KL_rev] ours_fn50       y0=nan  y1=nan  tau=20.0858  ate=21.2855
+[pnt] ours_fn50       PEHE(MALC)=16.4604  PEHE(raw)=16.5066    eps_ATE(MALC)=0.2517  eps_ATE(raw)=0.2374  (true_ATE=+8.743)
+[l2 ] dopfn           y0=4.9380  y1=4.3579  tau=4.1662  ate=3.8206
+[KL_fwd] dopfn           y0=2.8768  y1=2.0283  tau=2.7293  ate=2.2636
+[KL_rev] dopfn           y0=21.7818  y1=18.8844  tau=21.2583  ate=22.0265
+[pnt] dopfn           PEHE=25.0761  eps_ATE=1.0151  (true_ATE=+8.743, pred_ATE=+17.617)
+[l2 ] uwyk_noanc      y0=4.8021  y1=4.2800  tau=4.2471  ate=3.7992
+[KL_fwd] uwyk_noanc      y0=2.4214  y1=2.1343  tau=2.9219  ate=2.1354
+[KL_rev] uwyk_noanc      y0=19.4905  y1=19.4965  tau=22.3530  ate=21.4351
+[pnt] uwyk_noanc      PEHE=24.0779  eps_ATE=0.8333  (true_ATE=+8.743, pred_ATE=+1.458)
+[l2 ] uwyk_anc        y0=4.7566  y1=4.2699  tau=4.2224  ate=3.7551
+[KL_fwd] uwyk_anc        y0=2.3244  y1=2.0073  tau=2.7455  ate=2.0058
+[KL_rev] uwyk_anc        y0=18.3905  y1=19.3610  tau=21.7372  ate=20.7099
+[pnt] uwyk_anc        PEHE=22.6525  eps_ATE=0.5941  (true_ATE=+8.743, pred_ATE=+3.548)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl.r080.npz
+[2026-08-16 07:08:28] DONE r=80
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 12.8s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 12.9s
+[density-diag] saved r=80
+[l2 ] ours_fn50       y0=nan  y1=nan  tau=4.1103  ate=3.7713
+[KL_fwd] ours_fn50       y0=nan  y1=nan  tau=2.3793  ate=2.0959
+[KL_rev] ours_fn50       y0=nan  y1=nan  tau=20.0858  ate=21.2855
+[pnt] ours_fn50       PEHE(MALC)=16.4604  PEHE(raw)=16.5066    eps_ATE(MALC)=0.2517  eps_ATE(raw)=0.2374  (true_ATE=+8.743)
+[l2 ] dopfn           y0=4.9380  y1=4.3579  tau=4.1662  ate=3.8206
+[KL_fwd] dopfn           y0=2.8768  y1=2.0283  tau=2.7293  ate=2.2636
+[KL_rev] dopfn           y0=21.7818  y1=18.8844  tau=21.2583  ate=22.0265
+[pnt] dopfn           PEHE=25.0761  eps_ATE=1.0151  (true_ATE=+8.743, pred_ATE=+17.617)
+[l2 ] uwyk_noanc      y0=4.8021  y1=4.2800  tau=4.2471  ate=3.7992
+[KL_fwd] uwyk_noanc      y0=2.4214  y1=2.1343  tau=2.9219  ate=2.1354
+[KL_rev] uwyk_noanc      y0=19.4905  y1=19.4965  tau=22.3530  ate=21.4351
+[pnt] uwyk_noanc      PEHE=24.0779  eps_ATE=0.8333  (true_ATE=+8.743, pred_ATE=+1.458)
+[l2 ] uwyk_anc        y0=4.7566  y1=4.2699  tau=4.2224  ate=3.7551
+[KL_fwd] uwyk_anc        y0=2.3244  y1=2.0073  tau=2.7455  ate=2.0058
+[KL_rev] uwyk_anc        y0=18.3905  y1=19.3610  tau=21.7372  ate=20.7099
+[pnt] uwyk_anc        PEHE=22.6525  eps_ATE=0.5941  (true_ATE=+8.743, pred_ATE=+3.548)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl.r080.npz
+[2026-08-16 07:08:28] DONE r=80

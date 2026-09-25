@@ -1,0 +1,60 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[bootstrap] DEPLOY_ROOT=/scratch/furkanbd/rpfn_bench_kit  PWD=/scratch/furkanbd/rpfn_bench_kit
+[2026-08-27 17:10:37] job=5051731  repo=/scratch/furkanbd/rpfn_bench_kit/R-PFN  causalpfn=/scratch/furkanbd/rpfn_bench_kit/external/causalpfn
+  CHECKPOINT_DIR=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s   N_STEPS=262144
+  GPU class: L40s   worker count: 8
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA L40S
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=8  warmup=16
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[2026-08-27 17:12:25] SIGTERM — forwarding to trainer pid=1745425
+[signal] 15 — will save on next step boundary
+[BarDistribution2D] Fitting edges from 1048576 Y_obs values over 512 samples → y_min=-10.028744, y_max=15.954419
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+Resuming from /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s/step_13_interrupt.pt
+   step        loss          lr      wall
+──────────────────────────────────────────
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+  GPU class: L40s   worker count: 8
+────────────────────────────────────────────────────────────────────────
+Device:        cuda
+GPU:           NVIDIA L40S
+Precision:     bf16 autocast
+J:             32  (output_dim = 1037)
+Backbone:      TabDPTLongContext  ninp=384  nhid=768  nlayers=20  nhead=6
+Optimizer:     AdamWScheduleFree(lr=5.00e-04, wd=5.00e-02, betas=(0.98, 0.999), warmup_steps=1000)  grad_clip=1.0
+Training:      steps=262144  microbatch=32  grad_accum=8
+                effective_batch = 256
+Data:          BackdoorDGPMetaDataset  n_samples=2048  max_covariates=98
+Split:         [0.333, 0.666]  overlap_threshold=0.01
+Streaming:     workers=8  warmup=16
+Checkpoint:    dir=/scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s  every=2000  resume=True
+Logging:       every 100 steps
+────────────────────────────────────────────────────────────────────────
+[2026-08-27 17:12:25] SIGTERM — forwarding to trainer pid=1745425
+[signal] 15 — will save on next step boundary
+[BarDistribution2D] Fitting edges from 1048576 Y_obs values over 512 samples → y_min=-10.028744, y_max=15.954419
+[CausalPFN2DHead] backbone.head out_features = 1047  (using last 1037 as 2D-head logits, J=32)
+Model parameters: 18,852,353
+[compile] torch.compile(model.backbone, dynamic=True) enabled (compile_mode=backbone — loss stays eager)
+Resuming from /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_causalpfn2d_l40s/step_13_interrupt.pt
+   step        loss          lr      wall
+──────────────────────────────────────────

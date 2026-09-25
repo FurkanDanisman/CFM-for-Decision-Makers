@@ -1,0 +1,35 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 05:41:58] TASK=254  DATASET=CPS  REAL=54  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:58] --- variant=noanc ---
+[   0.7s] [noanc-only] loading CPS r54
+[   3.6s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   4.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[ 480.8s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r054.npz  (PEHE=13368.166  ATE=1.100)
+[2026-08-13 05:50:05] --- variant=anc ---
+[   0.4s] [anc-only] loading CPS r54
+[   3.4s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   3.9s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[ 398.3s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r054.npz  (PEHE=13156.400  ATE=1.103)
+[2026-08-13 05:56:46] DONE task=254
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 05:41:58] TASK=254  DATASET=CPS  REAL=54  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=1
+[2026-08-13 05:41:58] --- variant=noanc ---
+[   0.7s] [noanc-only] loading CPS r54
+[   3.6s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   4.5s] [noanc-only] inference (target-encoded T, zero adjacency)
+[ 480.8s] [noanc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r054.npz  (PEHE=13368.166  ATE=1.100)
+[2026-08-13 05:50:05] --- variant=anc ---
+[   0.4s] [anc-only] loading CPS r54
+[   3.4s] [anc-only] loading UWYK (anc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   3.9s] [anc-only] inference (target-encoded T, full-graph adjacency)
+[ 398.3s] [anc-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r054.npz  (PEHE=13156.400  ATE=1.103)
+[2026-08-13 05:56:46] DONE task=254

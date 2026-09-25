@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-13 06:11:54] TASK=309  DATASET=PSID  REAL=9  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=0
+[2026-08-13 06:11:54] --- variant=noanc ---
+[   0.4s] [noanc-only] loading PSID r9
+[   1.3s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   1.8s] [noanc-only] inference (target-encoded T, zero adjacency)
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-13 06:11:54] TASK=309  DATASET=PSID  REAL=9  VARIANTS=noanc anc  FORCE=1  MATCH_PAPER=0
+[2026-08-13 06:11:54] --- variant=noanc ---
+[   0.4s] [noanc-only] loading PSID r9
+[   1.3s] [noanc-only] loading UWYK (noanc) ckpt
+[warn] UWYK final_model_with_bardist.pt not found in /scratch/furkanbd/rpfn_bench_kit/external/uwyk/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0; falling back to best_model.pt
+[   1.8s] [noanc-only] inference (target-encoded T, zero adjacency)

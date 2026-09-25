@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 05:45:46] TASK=380  DATASET=PSID  REAL=80  variant=baseline
+[   0.0s] [baseline-only] loading PSID r80
+[   0.7s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  48.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r080.npz  (PEHE=21783.146  ATE=0.965)
+[2026-07-23 05:46:37] DONE task=380
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 05:45:46] TASK=380  DATASET=PSID  REAL=80  variant=baseline
+[   0.0s] [baseline-only] loading PSID r80
+[   0.7s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   1.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[  48.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r080.npz  (PEHE=21783.146  ATE=0.965)
+[2026-07-23 05:46:37] DONE task=380

@@ -1,0 +1,43 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-10 10:36:20] r=81  methods=ours_fn50,ours_fn10,uwyk_noanc,dopfn
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out
+[start] realization 81  methods=['ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn']
+[truth] r=81  n_queries=75  sigma_scaled=0.0231
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 260.7s
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+[ours] done in 193.5s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 0.6s
+[uwyk] loading checkpoint
+[uwyk] done in 25.8s
+[l2 ] ours_fn50     y0=3.1397  y1=2.8625  tau=2.6070  ate=2.3335
+[l2 ] ours_fn10     y0=3.2664  y1=3.4124  tau=3.6628  ate=2.6704
+[l2 ] dopfn         y0=3.1277  y1=2.8597  tau=2.5603  ate=2.4267
+[l2 ] uwyk_noanc    y0=3.4691  y1=2.7047  tau=2.7622  ate=2.5158
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out.r081.npz
+[2026-08-10 10:44:26] DONE r=81
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-08-10 10:36:20] r=81  methods=ours_fn50,ours_fn10,uwyk_noanc,dopfn
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out
+[start] realization 81  methods=['ours_fn50', 'ours_fn10', 'uwyk_noanc', 'dopfn']
+[truth] r=81  n_queries=75  sigma_scaled=0.0231
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 260.7s
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints_dopfn/step_50000_final.pt
+[ours] done in 193.5s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 0.6s
+[uwyk] loading checkpoint
+[uwyk] done in 25.8s
+[l2 ] ours_fn50     y0=3.1397  y1=2.8625  tau=2.6070  ate=2.3335
+[l2 ] ours_fn10     y0=3.2664  y1=3.4124  tau=3.6628  ate=2.6704
+[l2 ] dopfn         y0=3.1277  y1=2.8597  tau=2.5603  ate=2.4267
+[l2 ] uwyk_noanc    y0=3.4691  y1=2.7047  tau=2.7622  ate=2.5158
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out.r081.npz
+[2026-08-10 10:44:26] DONE r=81

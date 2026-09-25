@@ -1,0 +1,19 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-23 05:39:30] TASK=269  DATASET=CPS  REAL=69  variant=baseline
+[   0.0s] [baseline-only] loading CPS r69
+[   2.7s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   3.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[ 278.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r069.npz  (PEHE=12971.233  ATE=1.020)
+[2026-07-23 05:44:13] DONE task=269
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-23 05:39:30] TASK=269  DATASET=CPS  REAL=69  variant=baseline
+[   0.0s] [baseline-only] loading CPS r69
+[   2.7s] [baseline-only] loading UWYK-BASELINE (unconditional ckpt)
+[   3.2s] [baseline-only] UWYK-BASELINE inference (target-encoded T, zero adjacency)
+[ 278.4s] [baseline-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/CPS_r069.npz  (PEHE=12971.233  ATE=1.020)
+[2026-07-23 05:44:13] DONE task=269

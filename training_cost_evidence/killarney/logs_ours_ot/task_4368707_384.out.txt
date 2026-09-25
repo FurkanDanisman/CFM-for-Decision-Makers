@@ -1,0 +1,21 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-07-24 10:45:02] TASK=384  DATASET=PSID  REAL=84  variant=ours-ot
+[   0.0s] [ot-only] loading PSID r84
+[   0.8s] [ot-only] loading OURS
+[   1.1s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=2407 > MAX_N_TRAIN=1000 → 4 clusters (sizes: [972, 832, 81, 522])
+[ 600.4s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r084.npz  (OT-mode ATE=-4349.434  OT-mean ATE=-1963.226)
+[2026-07-24 10:55:06] DONE task=384
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[2026-07-24 10:45:02] TASK=384  DATASET=PSID  REAL=84  variant=ours-ot
+[   0.0s] [ot-only] loading PSID r84
+[   0.8s] [ot-only] loading OURS
+[   1.1s] [ot-only] rerunning OURS pipeline (needed for barycenter)
+[ours_pipeline] N_train=2407 > MAX_N_TRAIN=1000 → 4 clusters (sizes: [972, 832, 81, 522])
+[ 600.4s] [ot-only] merged into /scratch/furkanbd/rpfn_bench_kit/results/PSID_r084.npz  (OT-mode ATE=-4349.434  OT-mean ATE=-1963.226)
+[2026-07-24 10:55:06] DONE task=384

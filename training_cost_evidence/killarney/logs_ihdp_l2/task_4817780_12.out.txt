@@ -1,0 +1,65 @@
+##### HEAD (config, device, fresh-vs-resume) #####
+[2026-08-16 06:44:14] r=12  methods=ours_fn50,uwyk_noanc,uwyk_anc,dopfn
+  REPO=/scratch/furkanbd/rpfn_bench_kit/R-PFN  OUT=/scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl
+[start] realization 12  methods=['ours_fn50', 'uwyk_noanc', 'uwyk_anc', 'dopfn']
+[truth] r=12  n_queries=75  sigma_scaled=0.0079
+[ours] loading /scratch/furkanbd/rpfn_bench_kit/R-PFN/checkpoints/step_50000_final.pt
+[ours] done in 305.9s
+Changed model to be compatible with CPU, this is needed for the current version of PyTorch, see issue: https://github.com/pytorch/pytorch/issues/97128. The model will be slower if reused on GPU.
+[dopfn] done in 0.8s
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 15.2s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 15.1s
+[density-diag] saved r=12
+[l2 ] ours_fn50       y0=5.3905  y1=nan  tau=4.8378  ate=4.2436
+[KL_fwd] ours_fn50       y0=2.9213  y1=nan  tau=2.7556  ate=2.3360
+[KL_rev] ours_fn50       y0=22.8355  y1=nan  tau=22.2134  ate=22.4106
+[pnt] ours_fn50       PEHE(MALC)=23.5242  PEHE(raw)=23.5056    eps_ATE(MALC)=0.0558  eps_ATE(raw)=0.0792  (true_ATE=+8.168)
+[l2 ] dopfn           y0=5.4797  y1=6.0117  tau=4.8899  ate=4.2922
+[KL_fwd] dopfn           y0=3.3336  y1=3.0328  tau=3.1086  ate=2.5114
+[KL_rev] dopfn           y0=24.0792  y1=21.6343  tau=23.1789  ate=23.0887
+[pnt] dopfn           PEHE=37.3624  eps_ATE=1.7413  (true_ATE=+8.168, pred_ATE=+22.390)
+[l2 ] uwyk_noanc      y0=5.4321  y1=5.9689  tau=4.9341  ate=4.2374
+[KL_fwd] uwyk_noanc      y0=2.9590  y1=3.1650  tau=3.2057  ate=2.3291
+[KL_rev] uwyk_noanc      y0=22.7689  y1=21.8180  tau=23.7854  ate=22.2941
+[pnt] uwyk_noanc      PEHE=34.0270  eps_ATE=0.6074  (true_ATE=+8.168, pred_ATE=+3.207)
+[l2 ] uwyk_anc        y0=5.4392  y1=5.9051  tau=4.9300  ate=4.1972
+[KL_fwd] uwyk_anc        y0=2.9717  y1=3.0755  tau=3.1611  ate=2.1990
+[KL_rev] uwyk_anc        y0=22.5430  y1=21.5963  tau=23.5752  ate=21.7107
+[pnt] uwyk_anc        PEHE=32.6793  eps_ATE=0.3911  (true_ATE=+8.168, pred_ATE=+4.973)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl.r012.npz
+[2026-08-16 06:50:01] DONE r=12
+
+##### s/step rows (every 200th) #####
+
+##### tqdm rate samples #####
+
+##### TAIL (final step / DONE) #####
+[uwyk] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk] done in 15.2s
+[uwyk-anc] loading checkpoint
+[warn] UWYK final_model_with_bardist.pt not found; falling back to best_model.pt
+[uwyk-anc] done in 15.1s
+[density-diag] saved r=12
+[l2 ] ours_fn50       y0=5.3905  y1=nan  tau=4.8378  ate=4.2436
+[KL_fwd] ours_fn50       y0=2.9213  y1=nan  tau=2.7556  ate=2.3360
+[KL_rev] ours_fn50       y0=22.8355  y1=nan  tau=22.2134  ate=22.4106
+[pnt] ours_fn50       PEHE(MALC)=23.5242  PEHE(raw)=23.5056    eps_ATE(MALC)=0.0558  eps_ATE(raw)=0.0792  (true_ATE=+8.168)
+[l2 ] dopfn           y0=5.4797  y1=6.0117  tau=4.8899  ate=4.2922
+[KL_fwd] dopfn           y0=3.3336  y1=3.0328  tau=3.1086  ate=2.5114
+[KL_rev] dopfn           y0=24.0792  y1=21.6343  tau=23.1789  ate=23.0887
+[pnt] dopfn           PEHE=37.3624  eps_ATE=1.7413  (true_ATE=+8.168, pred_ATE=+22.390)
+[l2 ] uwyk_noanc      y0=5.4321  y1=5.9689  tau=4.9341  ate=4.2374
+[KL_fwd] uwyk_noanc      y0=2.9590  y1=3.1650  tau=3.2057  ate=2.3291
+[KL_rev] uwyk_noanc      y0=22.7689  y1=21.8180  tau=23.7854  ate=22.2941
+[pnt] uwyk_noanc      PEHE=34.0270  eps_ATE=0.6074  (true_ATE=+8.168, pred_ATE=+3.207)
+[l2 ] uwyk_anc        y0=5.4392  y1=5.9051  tau=4.9300  ate=4.1972
+[KL_fwd] uwyk_anc        y0=2.9717  y1=3.0755  tau=3.1611  ate=2.1990
+[KL_rev] uwyk_anc        y0=22.5430  y1=21.5963  tau=23.5752  ate=21.7107
+[pnt] uwyk_anc        PEHE=32.6793  eps_ATE=0.3911  (true_ATE=+8.168, pred_ATE=+4.973)
+[save] /scratch/furkanbd/rpfn_bench_kit/l2_ihdp/out_malc1d_kl.r012.npz
+[2026-08-16 06:50:01] DONE r=12
