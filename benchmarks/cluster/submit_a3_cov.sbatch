@@ -71,7 +71,12 @@ for B in $BENCHES; do
           run "rc_${MODEL}_${D}" --root "$PARENT/rc/$MODEL" --dataset "$D"
         done ;;
     cm) for N in $NODES; do
-          run "cm_${MODEL}_n${N}" --root "$PARENT/cm_rho99/$MODEL/N$CTX" \
+          # NOTE the root has NO /N$CTX: coverage_by_realization builds
+          # <root>/N<context>/<subdir>/CMECH_... itself (line ~96), so passing
+          # the N1000 level here makes it look under N1000/N1000 and score zero
+          # realizations while exiting 0. point_raw_em.py does NOT append it and
+          # therefore DOES want the suffix -- the two scripts differ.
+          run "cm_${MODEL}_n${N}" --root "$PARENT/cm_rho99/$MODEL" \
               --context "$CTX" --nodes "$N" --subset total
         done ;;
     cs) for C in $CASES; do
