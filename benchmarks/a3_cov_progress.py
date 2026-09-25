@@ -12,13 +12,17 @@ Model names contain underscores, so the filename is parsed from the END against
 the known selector lists rather than by splitting on '_'.
 """
 from __future__ import annotations
-import argparse, glob, os
+import argparse, glob, os, re
 
 RC = ["IHDP", "ACIC", "CPS", "PSID", "PSID_bal"]
 CM = [f"n{n}" for n in (5, 10, 20, 30, 40, 50)]
-CS = ["Observed_Confounder", "Backdoor_Criterion", "Observed_Mediator",
-      "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
-      "Frontdoor_Criterion"]
+CASES = ["Observed_Confounder", "Backdoor_Criterion", "Observed_Mediator",
+         "Observed_Mediator_and_Confounder", "Unobserved_Confounder",
+         "Frontdoor_Criterion"]
+CS_D = ["2", "3", "5", "10", "20", "30", "40", "50"]
+CS_SHIFT = ["0", "+2", "-2"]
+# A case-study "selector" is one CELL: 6 cases x 8 d x 3 shifts = 144.
+CS = [(d, c, s) for c in CASES for d in CS_D for s in CS_SHIFT]
 SEL = {"rc": RC, "cm": CM, "cs": CS}
 
 
@@ -28,7 +32,7 @@ def parse(stem):
     Matched from the right: PSID_bal and every case name contain underscores, so
     splitting left-to-right would attribute part of the selector to the model.
     """
-    for bench, sels in SEL.items():
+    for bench, sels in (("rc", RC), ("cm", CM)):
         if not stem.startswith(bench + "_"):
             continue
         rest = stem[len(bench) + 1:]
@@ -46,12 +50,28 @@ def main():
 
     found = {}
     for sm in a.smoothers:
+        # rc / cm: one flat file per selector
         for f in glob.glob(os.path.join(a.out, sm, "*.npz")):
             if os.path.getsize(f) == 0:
                 continue
             p = parse(os.path.basename(f)[:-4])
             if p:
                 found.setdefault((p[1], sm), {}).setdefault(p[0], set()).add(p[2])
+        # cs: one file PER CELL, perreal/<model>/<stage>__d<D>_<Case>__shift<S>.npz
+        # -- the layout final_table.py reads. Counted as cells, not cases, since
+        # a case is only complete when all its (shift, d) cells are.
+        for d in glob.glob(os.path.join(a.out, sm, "perreal", "*")):
+            if not os.path.isdir(d):
+                continue
+            model = os.path.basename(d)
+            for f in glob.glob(os.path.join(d, "*.npz")):
+                if os.path.getsize(f) == 0:
+                    continue
+                m = re.match(r"^[a-z]+__d(\d+)_(.+)__shift(\S+)\.npz$",
+                             os.path.basename(f))
+                if m:
+                    found.setdefault((model, sm), {}).setdefault(
+                        "cs", set()).add((m.group(1), m.group(2), m.group(3)))
 
     if not found:
         print(f"nothing under {a.out}/{{{','.join(a.smoothers)}}}/ yet")
@@ -72,8 +92,18 @@ def main():
     print()
     for (model, sm) in sorted(found):
         for b, sels in SEL.items():
-            miss = [s for s in sels if s not in found[(model, sm)].get(b, ())]
-            if miss:
+            have = found[(model, sm)].get(b, ())
+            miss = [s for s in sels if s not in have]
+            if not miss:
+                continue
+            if b == "cs":
+                by_case = {}
+                for d, c, sh in miss:
+                    by_case.setdefault(c, 0)
+                    by_case[c] += 1
+                txt = " ".join(f"{c}({n})" for c, n in sorted(by_case.items()))
+                print(f"  missing {model} [{sm}] cs cells: {txt}")
+            else:
                 print(f"  missing {model} [{sm}] {b}: {' '.join(miss)}")
     print()
 
