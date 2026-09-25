@@ -77,7 +77,7 @@ def main():
                     if r is None:
                         n_empty += 1
                         continue
-                    pehes.append(r["pehe"]); epss.append(r["eps_ate"])
+                    pehes.append(r["pehe"]); epss.append(r["eps"])
                     n_cells += 1; n_real += r["n"]
             if n_cells:
                 per_case[case] = dict(
