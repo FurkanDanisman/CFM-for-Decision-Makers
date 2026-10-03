@@ -1,5 +1,5 @@
 """Do-PFN prior worlds (training_dopfn_repro/prior.py, the prior dopfn_repro_joint2d was trained on).
-python gen_dopfn.py R out_root        (env DOPFN_SRC = Do-PFN repo root)
+python gen_dopfn.py R0:R1 out_root        (env DOPFN_SRC = Do-PFN repo root)
 """
 import os, sys
 import networkx as nx
@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../
 import training_dopfn_repro.prior as P
 from common import write_world, N_CTX, N_Q
 
-R, out = int(sys.argv[1]), sys.argv[2]
+(R0, R1), out = map(int, sys.argv[1].split(":")), sys.argv[2]
 SEED = 20261003
 cfg = P.PriorConfig(batch_size=1, on_nonfinite="resample")   # one world per draw; skip non-finite worlds
 
@@ -36,7 +36,7 @@ def arm_with_indep(scm, graph, t_key, value, shared_exogenous):
     return res
 P.sample_hyperparameters, P._propagate_arm = hp_recorder, arm_with_indep
 
-for r in range(R):
+for r in range(R0, R1):
     state["gen"] = torch.Generator().manual_seed(SEED + 7 * r + 1)   # separate stream: prior draws unchanged
     rec = P.sample_batch(SEED + r * 1_000, cfg)
     x, y = rec["x_obs"][:, 0], rec["y_obs"][:, 0]                    # (S, F+1), col 0 = treatment 0/1

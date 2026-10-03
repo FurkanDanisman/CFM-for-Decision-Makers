@@ -1,4 +1,4 @@
-"""UWYK prior worlds.   python gen_uwyk.py {1d,2d} R out_root      (UWYK src on PYTHONPATH)
+"""UWYK prior worlds.   python gen_uwyk.py {1d,2d} R0:R1 out_root      (UWYK src on PYTHONPATH)
 
 2d: the SCM prior graph2d_step_50000 was trained on (graph2d_scm_config.py), binary T.
 1d: the released UWYK 1D's own SCM prior (its best_model_config.yaml scm_config), with T binarized
@@ -18,12 +18,13 @@ sys.path.insert(0, os.path.join(REPO, "benchmarks", "context_sweep"))
 import scm_prior as SP
 from common import write_world, N_CTX, N_Q
 
-model, R, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+model, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = 20261003
 if model == "2d":
     from graph2d_scm_config import DEFAULT_SCM_CONFIG as scm_config
 else:
-    yml = os.path.join(REPO, "external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/"
+    uwyk = os.environ.get("UWYK", os.path.join(REPO, "external/uwyk_reproduce"))
+    yml = os.path.join(uwyk, "experiments/checkpoints/full_conditioned_model/"
                              "final_earlytest_full_conditioning_16773252.0/best_model_config.yaml")
     scm_config = yaml.safe_load(open(yml))["scm_config"]
 
@@ -51,7 +52,7 @@ def paired_with_indep(obs_scm, intv_scm, T, n_test, t0, t1):
     return res0, res1
 SP._propagate_paired = paired_with_indep
 
-for r in range(R):
+for r in range(R0, R1):
     state["seed"] = SEED + 7 * r + 1
     random.seed(SEED + r); np.random.seed(SEED + r)              # the sampler also reads these RNGs
     s = SP.generate_paired_sample_with_raw(scm_seed=SEED + r * 1_000, n_train=N_CTX, n_test=500,

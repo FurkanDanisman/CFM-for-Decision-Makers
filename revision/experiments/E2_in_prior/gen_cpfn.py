@@ -1,4 +1,4 @@
-"""CausalPFN prior worlds.   python gen_cpfn.py {1d,2d} R out_root      (env CAUSALPFN = repo root)
+"""CausalPFN prior worlds.   python gen_cpfn.py {1d,2d} R0:R1 out_root      (env CAUSALPFN = repo root)
 
 1d: the stock prior (eta0, eta1 independent), as cpfn1d_j1024_headrand was trained.
 2d: the stock prior with eta1 := eta0 (CPFN_SHARED_ARM_NOISE=1), as cpfn2d_j32_eta0_y01 was trained.
@@ -10,7 +10,7 @@ from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
 from common import write_world, N_CTX, N_Q
 
-model, R, out = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+model, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = 20261003
 
 # the training prior: train.py +experiment=simple_configuration -> train_meta_dataset (synthetic_backdoor)
@@ -32,18 +32,22 @@ def _record(x, *a, **k):
 
 
 def fresh_copy(eta0):
-    """eta0 / g0 * g': the same unit's eta_0 with g0 replaced by a fresh N(0,1)."""
-    for x, g in calls:
-        if x.numel() == eta0.numel():
-            factor = eta0 / (x * g)                            # per-unit deg-hetero factor
-            ok = (x * g).abs() > 1e-6 * (x * g).abs().max()
-            if ((factor[ok] > 0.69) & (factor[ok] < 1.01)).float().mean() > 0.99:
-                factor = torch.where(ok, factor, factor[ok].median())
-                return factor * x * torch.randn_like(eta0)
-    raise RuntimeError("eta_0 draw not found")
+    """eta0 / g0 * g': the same unit's eta_0 with g0 replaced by a fresh N(0,1).
+    The eta_0 call is the one whose a * g correlates with eta0 (the deg-hetero factor is in [0.7, 1]).
+    y0 - E_y0 is float32: when |E_y0| >> |eta_0| it is rounded, so the per-unit factor is clipped
+    to its known range [0.7, 1] (e.g. world 337: |E_y0| ~ 1.5e4, sd(eta_0) ~ 0.02)."""
+    best = max((c for c in calls if c[0].numel() == eta0.numel()),
+               key=lambda c: abs(float(torch.corrcoef(torch.stack([c[0] * c[1], eta0]))[0, 1].nan_to_num())))
+    x, g = best
+    z = x * g
+    if float(torch.corrcoef(torch.stack([z, eta0]))[0, 1].nan_to_num()) < 0.9:
+        raise RuntimeError("eta_0 draw not found")
+    ok = z.abs() > 1e-6 * z.abs().max()
+    factor = torch.where(ok, eta0 / z.where(ok, torch.ones_like(z)), torch.full_like(z, 0.85)).clamp(0.7, 1.0)
+    return factor * x * torch.randn_like(eta0)
 
 
-for r in range(R):
+for r in range(R0, R1):
     torch.manual_seed(SEED + r); random.seed(SEED + r); np.random.seed(SEED + r)
     calls.clear()
     torch.randn_like = _record
