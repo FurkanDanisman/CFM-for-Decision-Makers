@@ -2,14 +2,15 @@
 #SBATCH --job-name=e2-eval
 #SBATCH --output=logs_e2/eval_%a.out
 #SBATCH --error=logs_e2/eval_%a.err
-#SBATCH --time=03:00:00
+#SBATCH --time=24:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-59%6
+#SBATCH --array=0-5
 # E2 densities: the paper's per-model harnesses, unchanged, on the E2 worlds (DENSITY_DUMP=1).
-# Task id: model = id / 10, shard = id % 10 (100 worlds per shard).
-# Submit AFTER gen_e2 has finished (no dependency jobs):
+# One task per model; it runs the 10 shards (100 worlds each) in turn. A shard that already has
+# 100 dumps is skipped, so resubmitting a task resumes it.
+# Submit AFTER gen_e2 has finished (no dependency jobs). 6 tasks, one GPU each:
 #   E2_DATA=$SCRATCH/e2/data E2_DUMPS=$SCRATCH/e2/dumps sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
 set -euo pipefail
 mkdir -p logs_e2
@@ -22,14 +23,17 @@ UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlyt
 
 MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d)
 PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d)
-I=$(( SLURM_ARRAY_TASK_ID / 10 )); SHARD=$(( SLURM_ARRAY_TASK_ID % 10 ))
+I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
-export UWYK_FIG34_DATA="${E2_DATA:?}/${PRIORS[$I]}/shard$SHARD"
-export DATASET=CMECH_n5                       # all 100 queries of every world
-export OUT="${E2_DUMPS:?}/$MODEL/shard$SHARD" DENSITY_DUMP=1
-mkdir -p "$OUT"
+export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+
+for SHARD in 0 1 2 3 4 5 6 7 8 9; do
+export UWYK_FIG34_DATA="${E2_DATA:?}/${PRIORS[$I]}/shard$SHARD"
+export OUT="${E2_DUMPS:?}/$MODEL/shard$SHARD"
+mkdir -p "$OUT"
+if [ "$(ls "$OUT" | grep -c 'r[0-9][0-9][0-9]\.npz$')" -ge 100 ]; then echo "skip $OUT (done)"; continue; fi
 echo "[$(date '+%F %T')] model=$MODEL data=$UWYK_FIG34_DATA out=$OUT"
 
 case "$MODEL" in
@@ -57,4 +61,5 @@ case "$MODEL" in
       --density-dump 1 --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" \
       --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
 esac
+done
 echo "[$(date '+%F %T')] done"
