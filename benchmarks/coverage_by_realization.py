@@ -41,8 +41,42 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
-from cate_density_metrics import (METHODS, score_file, _resolve_dir,          # noqa: E402
+from cate_density_metrics import (METHODS, score_file, score_query,          # noqa: E402
+                                  _load_arrays, _resolve_dir,
                                   _configure_tau_smoother)
+
+
+def score_file_against(path, truth_dir, dataset, tag=None, coupling="indep",
+                       joint_coupling="learned"):
+    """score_file, but scored against <truth_dir>/<dataset>_r###.npz['delta'].
+
+    The dump's own truth is mu1 - mu0 on IHDP/ACIC. The truth file carries that
+    same tau beside the realized delta = y1 - y0, and the two must agree on every
+    query before delta is used: a mismatch means the queries are not the units
+    the truth file was built for, and scoring would silently pair a density with
+    another unit's outcome.
+    """
+    got = _load_arrays(path, tag, coupling, joint_coupling)
+    if got is None:
+        return None
+    atoms, pmfs, y_dump, _ = got
+    m = re.search(r"r(\d+)", os.path.basename(path))
+    tf = os.path.join(truth_dir, f"{dataset}_r{int(m.group(1)):03d}.npz")
+    with np.load(tf) as t:
+        tau, delta = t["tau"], t["delta"]
+    n = y_dump.size
+    if tau.size < n or not np.allclose(y_dump, tau[:n], rtol=1e-4, atol=1e-4):
+        raise SystemExit(f"[truth] {path}: dump truth != {tf} tau "
+                         f"(max |diff| {np.max(np.abs(y_dump - tau[:n])):.3g}); "
+                         f"queries are misaligned")
+    out = []
+    for q, pmf in enumerate(pmfs):
+        if q >= n:
+            break
+        if not np.isfinite(pmf).all() or pmf.sum() <= 0:
+            continue
+        out.append(score_query(atoms, pmf, float(delta[q])))
+    return out or None
 
 
 def _valid_set(path):
@@ -156,6 +190,9 @@ def main():
     ap.add_argument("--dump-per-real", default=None,
                     help="write per-realization arrays to this .npz "
                          "(keys <method>__<cover|length|is05|crps>)")
+    ap.add_argument("--truth-dir", default=None,
+                    help="score against realized delta from <dir>/<dataset>_r###.npz "
+                         "(revision E1, IHDP/ACIC) instead of the dump's truth")
     ap.add_argument("--tau-smoother", choices=["none", "malc"], default="none")
     ap.add_argument("--malc-B", type=int, default=1000)
     ap.add_argument("--malc-K", type=int, default=1)
@@ -199,8 +236,13 @@ def main():
             if _loud:
                 print(f"\r  [{label}] realization {_fi + 1}/{len(files)}"
                       f"{' ' * 20}", end="", flush=True)
-            got = score_file(f, a.tag if a.tag is not None else tag,
-                             a.coupling, a.joint_coupling)
+            if a.truth_dir:
+                got = score_file_against(f, a.truth_dir, a.dataset,
+                                         a.tag if a.tag is not None else tag,
+                                         a.coupling, a.joint_coupling)
+            else:
+                got = score_file(f, a.tag if a.tag is not None else tag,
+                                 a.coupling, a.joint_coupling)
             if not got:
                 continue
             for k in _KEYS:
