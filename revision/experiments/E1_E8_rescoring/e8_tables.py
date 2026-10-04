@@ -92,6 +92,8 @@ def main():
                     help="perreal files come from submit_hist.sbatch (hist interval, no MALC)")
     ap.add_argument("--rho99", action="store_true",
                     help="also tabulate ComplexMech rho > 0.99 (perreal labels rho99_<model>)")
+    ap.add_argument("--indep", action="store_true",
+                    help="RealCause only: 2D models with the coupling forced independent (indep__ files)")
     ap.add_argument("--coverage", action="store_true",
                     help="cells show coverage ± SE · length ± SE instead of |ĉ − 0.95|")
     a = ap.parse_args()
@@ -99,6 +101,8 @@ def main():
     SHOW_COV = a.coverage
     if a.hist:
         STAGES = ["raw"]                                   # files are named raw__*, intervals are hist
+    if a.indep:
+        STAGES = ["indep"]                                 # RealCause 2D, coupling forced independent
     os.makedirs(a.out_dir, exist_ok=True)
     rows, md = [], []
 
@@ -110,7 +114,7 @@ def main():
 
     def table(title, cols, getter):
         for stage in STAGES:
-            md.append(f"\n### {title} — {'hist' if a.hist else stage}\n")
+            md.append(f"\n### {title} — {('hist' if a.hist else '') + (' indep' if stage == 'indep' else '') or stage}\n")
             md.append("| model | " + " | ".join(c for c, _ in cols) + " |")
             md.append("|---|" + "---|" * len(cols))
             for name, *_ in MODELS:
@@ -179,7 +183,8 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["benchmark"])
         w.writeheader()
         w.writerows(rows)
-    with open(os.path.join(a.out_dir, "e8_coverage.md" if a.coverage else "e8_tables.md"), "w") as fh:
+    name = ("e8_coverage" if a.coverage else "e8_tables") + ("_indep" if a.indep else "")
+    with open(os.path.join(a.out_dir, name + ".md"), "w") as fh:
         fh.write("\n".join(md) + "\n")
     print(f"{len(rows)} slices -> {a.out_dir}")
     if MISSING:

@@ -5,13 +5,15 @@
 #SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
-#SBATCH --array=0-5
+#SBATCH --array=0-6
 # Every benchmark rescored with the hist interval (CDM_INTERVAL=hist: the exact tau distribution
 # of the predicted histogram), 1D and 2D models alike, no MALC. Reads the existing dumps only;
 # no model is run. Writes ONLY under $OUT, never into the dump folders.
 #   0  RealCause: IHDP, ACIC against realized delta (E1; truth rebuilt first); CPS, PSID, PSID_bal
 #   1  case study, shift -2     2  shift 0     3  shift +2
 #   4  ComplexMech, all rho     ($SCRATCH/cmech_dumps/<model>)
+#   6  RealCause, 2D models with the coupling forced independent (--joint-coupling indep):
+#      the same joint's two marginals combined as if independent; files indep__*
 #   5  ComplexMech, rho > 0.99  ($SCRATCH/cmech_dumps_rho99/<model>, data $SCRATCH/cmech_data_rho99;
 #      the paper's rho > 0.99 dumps, see benchmarks/cluster/submit_full_report.sbatch)
 # Output: $OUT/perreal/<label>/raw__*.npz (IHDP/ACIC under $OUT/perreal_e1), the layout e8_tables.py reads.
@@ -68,6 +70,19 @@ case "$SLURM_ARRAY_TASK_ID" in
          for c in $CASES; do
            score "$OUT/perreal/$lbl/raw__${d}_${c}__${sh}.npz" --root "$cell" --dataset "$c" --methods $meths
          done
+       done
+     done ;;
+  6) for row in "${ROOTS[@]}"; do
+       IFS='|' read -r lbl rc cs meths <<<"$row"
+       m2=""; for m in $meths; do case "$m" in graph2d-*|cpfn2d) m2="$m2 $m" ;; esac; done
+       [ "$lbl" = joint2d ] && m2="dopfn_native"                  # Do-PFN 2D (harness name)
+       [ -n "$m2" ] || continue
+       for ds in IHDP ACIC; do
+         score "$OUT/perreal_e1/$lbl/indep__${ds}__-.npz" --root "$rc" --dataset "$ds" --methods $m2 \
+               --truth-dir "$OUT/truth" --joint-coupling indep
+       done
+       for ds in CPS PSID PSID_bal; do
+         score "$OUT/perreal/$lbl/indep__${ds}__-.npz" --root "$rc" --dataset "$ds" --methods $m2 --joint-coupling indep
        done
      done ;;
   4|5) if [ "$SLURM_ARRAY_TASK_ID" = 4 ]; then base="$SCRATCH/cmech_dumps"; pre=""
