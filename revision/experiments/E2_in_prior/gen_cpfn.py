@@ -38,15 +38,14 @@ def _record(x, *a, **k):
 
 def fresh_copy(eta0):
     """eta0 / g0 * g': the same unit's eta_0 with g0 replaced by a fresh N(0,1).
-    The eta_0 call is the one whose a * g correlates with eta0 (the deg-hetero factor is in [0.7, 1]).
-    y0 - E_y0 is float32: when |E_y0| >> |eta_0| it is rounded, so the per-unit factor is clipped
-    to its known range [0.7, 1] (e.g. world 337: |E_y0| ~ 1.5e4, sd(eta_0) ~ 0.02)."""
-    best = max((c for c in calls if c[0].numel() == eta0.numel()),
-               key=lambda c: abs(float(torch.corrcoef(torch.stack([c[0] * c[1], eta0]))[0, 1].nan_to_num())))
-    x, g = best
-    z = x * g
-    if float(torch.corrcoef(torch.stack([z, eta0]))[0, 1].nan_to_num()) < 0.9:
+    get_sample's first unit-shaped randn_like call is eta_0's ("center the noises"; the table
+    generators only draw multi-column noise, and the treatment model runs after). The per-unit
+    deg-hetero factor eta0 / (a * g0) lies in [0.7, 1]; y0 - E_y0 is float32, so when |E_y0| >> |eta_0|
+    it is rounded (world 337: |E_y0| ~ 1e4; world 1391: ~ 2e11) and the factor is clipped to that range."""
+    if len(calls) < 2:
         raise RuntimeError("eta_0 draw not found")
+    x, g = calls[0]
+    z = x * g
     ok = z.abs() > 1e-6 * z.abs().max()
     factor = torch.where(ok, eta0 / z.where(ok, torch.ones_like(z)), torch.full_like(z, 0.85)).clamp(0.7, 1.0)
     return factor * x * torch.randn_like(eta0)
