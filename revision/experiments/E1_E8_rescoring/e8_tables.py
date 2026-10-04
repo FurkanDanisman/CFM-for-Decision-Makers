@@ -72,8 +72,15 @@ def load(files, method):
                 len=float(l.mean()), len_se=se(l))
 
 
+SHOW_COV = False                                       # --coverage: ĉ ± SE · length ± SE
+
+
 def cell(s):
-    return "—" if s is None else f"{s['dev']:.3f} ({s['se']:.3f}) · {s['len']:.3g}"
+    if s is None:
+        return "—"
+    if SHOW_COV:
+        return f"{s['cov']:.3f} ± {s['se']:.3f} · {s['len']:.3g} ± {s['len_se']:.2g}"
+    return f"{s['dev']:.3f} ({s['se']:.3f}) · {s['len']:.3g}"
 
 
 def main():
@@ -85,8 +92,11 @@ def main():
                     help="perreal files come from submit_hist.sbatch (hist interval, no MALC)")
     ap.add_argument("--rho99", action="store_true",
                     help="also tabulate ComplexMech rho > 0.99 (perreal labels rho99_<model>)")
+    ap.add_argument("--coverage", action="store_true",
+                    help="cells show coverage ± SE · length ± SE instead of |ĉ − 0.95|")
     a = ap.parse_args()
-    global STAGES
+    global STAGES, SHOW_COV
+    SHOW_COV = a.coverage
     if a.hist:
         STAGES = ["raw"]                                   # files are named raw__*, intervals are hist
     os.makedirs(a.out_dir, exist_ok=True)
@@ -107,7 +117,8 @@ def main():
                 md.append(f"| {name} | " + " | ".join(
                     cell(getter(name, stage, key)) for _, key in cols) + " |")
 
-    md.append("# E8 — |ĉ − 0.95| (MC SE over contexts) · mean 95% length\n")
+    md.append("# E8 — coverage ± SE · mean 95% length ± SE\n" if SHOW_COV else
+              "# E8 — |ĉ − 0.95| (MC SE over contexts) · mean 95% length\n")
     md.append("IHDP/ACIC scored against realized Δ = y1 − y0 (E1). "
               "ComplexMech is all-ρ. Case study d ∈ {5,…,50}.")
 
@@ -168,7 +179,7 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["benchmark"])
         w.writeheader()
         w.writerows(rows)
-    with open(os.path.join(a.out_dir, "e8_tables.md"), "w") as fh:
+    with open(os.path.join(a.out_dir, "e8_coverage.md" if a.coverage else "e8_tables.md"), "w") as fh:
         fh.write("\n".join(md) + "\n")
     print(f"{len(rows)} slices -> {a.out_dir}")
     if MISSING:
