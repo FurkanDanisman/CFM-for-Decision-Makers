@@ -78,7 +78,14 @@ def main():
     ap.add_argument("--perreal", required=True)
     ap.add_argument("--e1-perreal", required=True)
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--hist", action="store_true",
+                    help="perreal files come from submit_hist.sbatch (hist interval, no MALC)")
+    ap.add_argument("--rho99", action="store_true",
+                    help="also tabulate ComplexMech rho > 0.99 (perreal labels rho99_<model>)")
     a = ap.parse_args()
+    global STAGES
+    if a.hist:
+        STAGES = ["raw"]                                   # files are named raw__*, intervals are hist
     os.makedirs(a.out_dir, exist_ok=True)
     rows, md = [], []
 
@@ -90,7 +97,7 @@ def main():
 
     def table(title, cols, getter):
         for stage in STAGES:
-            md.append(f"\n### {title} — {stage}\n")
+            md.append(f"\n### {title} — {'hist' if a.hist else stage}\n")
             md.append("| model | " + " | ".join(c for c, _ in cols) + " |")
             md.append("|---|" + "---|" * len(cols))
             for name, *_ in MODELS:
@@ -141,6 +148,18 @@ def main():
                 add("ComplexMech", "all-rho", f"n{n}", name, stage, s)
     md.append("\n## ComplexMech (all ρ, N=1000, subset=total)")
     table("ComplexMech", [(f"n={n}", n) for n in NODES], lambda nm, st, k: cm[(nm, st, k)])
+
+    if a.rho99:
+        r9 = {}
+        for name, _, meth, clbl in MODELS:
+            for stage in STAGES:
+                for n in NODES:
+                    f = os.path.join(a.perreal, "rho99_" + clbl, f"{stage}__cmech_n{n}__-.npz")
+                    s = load([f], meth) if os.path.exists(f) else None
+                    r9[(name, stage, n)] = s
+                    add("ComplexMech", "rho>0.99", f"n{n}", name, stage, s)
+        md.append("\n## ComplexMech (ρ > 0.99, N=1000, subset=total)")
+        table("ComplexMech ρ>0.99", [(f"n={n}", n) for n in NODES], lambda nm, st, k: r9[(nm, st, k)])
 
     with open(os.path.join(a.out_dir, "e8_long.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["benchmark"])
