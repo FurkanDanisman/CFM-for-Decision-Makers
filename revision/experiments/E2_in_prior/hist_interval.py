@@ -36,3 +36,25 @@ if __name__ == "__main__":                                     # check against s
     d = (j + rng.random(cells.size)) * h - (i + rng.random(cells.size)) * h
     print("exact     ", np.round(interval_hist(atoms, S), 4))
     print("sampled   ", np.round(np.quantile(d, [0.025, 0.975]), 4))
+
+
+def hist_cdf(atoms, p, x):
+    """CDF of the same triangle mixture at points x (vectorised)."""
+    h = atoms[1] - atoms[0]
+    a = np.r_[atoms[0] - h, atoms, atoms[-1] + h]
+    S = np.r_[0.0, p / p.sum(), 0.0]
+    Fm = np.cumsum(S) - S / 2
+    x = np.asarray(x, dtype=np.float64)
+    m = np.clip(np.floor((x - a[0]) / h).astype(int), 0, len(a) - 2)
+    u = np.clip((x - a[m]) / h, 0.0, 1.0)
+    F = Fm[m] + S[m] * u + (S[m + 1] - S[m]) * u * u / 2
+    return np.where(x <= a[0], 0.0, np.where(x >= a[-1], 1.0, F))
+
+
+def hist_refine(atoms, p, m=16):
+    """The same triangle mixture as a histogram on a grid m times finer, spanning
+    [a_0 - h, a_K + h] (the full support). Returns (fine atom centres, fine pmf)."""
+    h = atoms[1] - atoms[0]
+    edges = np.linspace(atoms[0] - h, atoms[-1] + h, (len(atoms) + 1) * m + 1)
+    q = np.diff(hist_cdf(atoms, p, edges))
+    return (edges[:-1] + edges[1:]) / 2, np.maximum(q, 0.0) / max(q.sum(), 1e-300)

@@ -44,6 +44,16 @@ if _MALC_DIR not in sys.path:
 
 __all__ = ["edges_from_atoms", "smooth_tau_pmf", "SmootherConfig"]
 
+# MALC_INPUT=hist: MALC is fitted to the EXACT tau distribution of the predicted histogram
+# (each diagonal a triangle of half-width one bin, revision/experiments/E2_in_prior/hist_interval.py),
+# handed over as a histogram 16x finer than the atom lattice. Default (raw) keeps the original
+# input: each atom's mass jittered within its own bin, i.e. only half the true within-cell spread.
+_INPUT = os.environ.get("MALC_INPUT", "raw")
+if _INPUT == "hist":
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "revision", "experiments", "E2_in_prior"))
+    from hist_interval import hist_refine
+
 
 class SmootherConfig:
     """Knobs for variant T. Defaults match the agreed smoke-test settings."""
@@ -110,6 +120,9 @@ def smooth_tau_pmf(atoms, pmf, cfg: SmootherConfig, query_seed: int | None = Non
     tot = pmf.sum()
     if not np.isfinite(tot) or tot <= 0 or not np.isfinite(pmf).all():
         return atoms, pmf
+    if _INPUT == "hist":
+        atoms, pmf = hist_refine(atoms, pmf / tot)          # fallbacks below then return hist too
+        tot = 1.0
 
     edges = edges_from_atoms(atoms)
     seed = cfg.seed if query_seed is None else (cfg.seed + 1_000_003 * int(query_seed))

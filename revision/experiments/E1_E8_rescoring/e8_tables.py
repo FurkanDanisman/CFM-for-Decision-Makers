@@ -92,6 +92,8 @@ def main():
                     help="perreal files come from submit_hist.sbatch (hist interval, no MALC)")
     ap.add_argument("--rho99", action="store_true",
                     help="also tabulate ComplexMech rho > 0.99 (perreal labels rho99_<model>)")
+    ap.add_argument("--malc", action="store_true",
+                    help="MALC with hist input (submit_malc.sbatch, malc__ / indep_malc__ files)")
     ap.add_argument("--indep", action="store_true",
                     help="RealCause only: 2D models with the coupling forced independent (indep__ files)")
     ap.add_argument("--coverage", action="store_true",
@@ -99,10 +101,8 @@ def main():
     a = ap.parse_args()
     global STAGES, SHOW_COV
     SHOW_COV = a.coverage
-    if a.hist:
-        STAGES = ["raw"]                                   # files are named raw__*, intervals are hist
-    if a.indep:
-        STAGES = ["indep"]                                 # RealCause 2D, coupling forced independent
+    if a.hist or a.malc:                               # hist job: raw__ files (hist intervals)
+        STAGES = [("indep" if a.indep else "raw") if not a.malc else ("indep_malc" if a.indep else "malc")]
     os.makedirs(a.out_dir, exist_ok=True)
     rows, md = [], []
 
@@ -114,7 +114,10 @@ def main():
 
     def table(title, cols, getter):
         for stage in STAGES:
-            md.append(f"\n### {title} — {('hist' if a.hist else '') + (' indep' if stage == 'indep' else '') or stage}\n")
+            label = {"raw": "hist" if a.hist else "raw", "malc": "MALC (hist input)" if a.malc else "MALC",
+                     "indep": "hist, coupling forced independent",
+                     "indep_malc": "MALC (hist input), coupling forced independent"}.get(stage, stage)
+            md.append(f"\n### {title} — {label}\n")
             md.append("| model | " + " | ".join(c for c, _ in cols) + " |")
             md.append("|---|" + "---|" * len(cols))
             for name, *_ in MODELS:
@@ -183,7 +186,7 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["benchmark"])
         w.writeheader()
         w.writerows(rows)
-    name = ("e8_coverage" if a.coverage else "e8_tables") + ("_indep" if a.indep else "")
+    name = ("e8_coverage" if a.coverage else "e8_tables") + ("_malc" if a.malc else "") + ("_indep" if a.indep else "")
     with open(os.path.join(a.out_dir, name + ".md"), "w") as fh:
         fh.write("\n".join(md) + "\n")
     print(f"{len(rows)} slices -> {a.out_dir}")
