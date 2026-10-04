@@ -130,7 +130,8 @@ def main():
 
     ths = sorted(a.thresholds)
     variant = ("MALC B=%d K=%d" % (a.malc_B, a.malc_K)
-               if a.tau_smoother == "malc" else "raw")
+               if a.tau_smoother == "malc" else
+               "hist" if os.environ.get("CDM_INTERVAL") == "hist" else "raw")
     L = [f"## ComplexMech coverage vs arm-noise correlation  ({variant})", "",
          "| model | n | realizations | Cov (all) | Len (all) "
          + "".join(f"| N(rho>{t}) | Cov (rho>{t}) | Len (rho>{t}) " for t in ths)
