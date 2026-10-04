@@ -1,16 +1,20 @@
-"""CausalPFN prior worlds.   python gen_cpfn.py {1d,2d} R0:R1 out_root      (env CAUSALPFN = repo root)
+"""CausalPFN prior.   python gen_cpfn.py {1d,2d} {new,same} R0:R1 out_root      (env CAUSALPFN = repo root)
 
 1d: the stock prior (eta0, eta1 independent), as cpfn1d_j1024_headrand was trained.
 2d: the stock prior with eta1 := eta0 (CPFN_SHARED_ARM_NOISE=1), as cpfn2d_j32_eta0_y01 was trained.
+new : dataset r = world r, a fresh draw (a 2048-row table, as in training; first 1500 rows used).
+same: ONE world; one table of R1 * 1500 rows, dataset r = rows r*1500 .. r*1500+1499.
+      Rows of one table are i.i.d. units of the same world.
 """
 import os, random, sys
 import numpy as np
 import torch
 from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
-from common import write_world, N_CTX, N_Q
+from common import write_world, done, N_CTX, N_Q
 
-model, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
+model, mode, (R0, R1), out = sys.argv[1], sys.argv[2], map(int, sys.argv[3].split(":")), sys.argv[4]
+ROWS = N_CTX + N_Q
 SEED = 20261003
 
 # the training prior: train.py +experiment=simple_configuration -> train_meta_dataset (synthetic_backdoor)
@@ -27,7 +31,8 @@ calls = []
 _randn_like = torch.randn_like
 def _record(x, *a, **k):
     g = _randn_like(x, *a, **k)
-    calls.append((x.detach().double().reshape(-1), g.detach().double().reshape(-1)))
+    if x.numel() == prior.n_samples:                           # only unit-shaped draws (eta is one)
+        calls.append((x.detach().double().reshape(-1), g.detach().double().reshape(-1)))
     return g
 
 
@@ -47,7 +52,8 @@ def fresh_copy(eta0):
     return factor * x * torch.randn_like(eta0)
 
 
-for r in range(R0, R1):
+def draw(r):
+    """One table of prior.n_samples units: X, t, factual y, and the truths."""
     torch.manual_seed(SEED + r); random.seed(SEED + r); np.random.seed(SEED + r)
     calls.clear()
     torch.randn_like = _record
@@ -67,7 +73,22 @@ for r in range(R0, R1):
         eta0_new = fresh_copy(eta0)                            # same unit, same scale, fresh draw
         truths = {"delta_shared": tau,                         # (E1 + eta0) - (E0 + eta0) = tau
                   "delta_indep": tau + eta0_new - eta0}
+    return X, t, y, truths
 
-    q = slice(N_CTX, N_CTX + N_Q)
-    write_world(out, r, X[:N_CTX], t[:N_CTX], y[:N_CTX], X[q], {k: v[q] for k, v in truths.items()})
-    print(f"r={r} n_cov={X.shape[1]} treated={t[:N_CTX].mean():.2f}", flush=True)
+
+def write(r, X, t, y, truths, off=0):
+    c, q = slice(off, off + N_CTX), slice(off + N_CTX, off + ROWS)
+    write_world(out, r, X[c], t[c], y[c], X[q], {k: v[q] for k, v in truths.items()})
+    print(f"r={r} n_cov={X.shape[1]} treated={t[c].mean():.2f}", flush=True)
+
+
+if mode == "new":
+    for r in range(R0, R1):
+        if not done(out, r):
+            write(r, *draw(r))
+else:
+    prior.n_samples = R1 * ROWS                                # one world, R1 * 1500 i.i.d. units
+    X, t, y, truths = draw(0)
+    for r in range(R0, R1):
+        if not done(out, r):
+            write(r, X, t, y, truths, off=r * ROWS)

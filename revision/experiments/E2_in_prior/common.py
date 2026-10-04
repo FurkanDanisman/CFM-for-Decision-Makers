@@ -1,8 +1,21 @@
-"""Write one world in the ComplexMech npz format the paper's harnesses read, plus its truths."""
+"""Write one dataset in the ComplexMech npz format the paper's harnesses read, plus its truths.
+
+Two layouts, same files:
+  new-world run : dataset r = world r (a fresh draw from the prior)
+  same-world run: dataset r = the r-th observational set of ONE world
+"""
 import os
 import numpy as np
 
-N_CTX, N_Q, SHARD = 1000, 100, 100             # observational units, query units, worlds per shard
+N_CTX, N_Q, SHARD = 1000, 500, 100             # observational units, query units, datasets per shard
+
+
+def truth_path(root, r):
+    return os.path.join(root, "truths", f"r{r:03d}.npz")
+
+
+def done(root, r):
+    return os.path.exists(truth_path(root, r))                # written last, so it marks a complete dataset
 
 
 def write_world(root, r, X_ctx, T_ctx, Y_ctx, X_q, truths):
@@ -17,4 +30,4 @@ def write_world(root, r, X_ctx, T_ctx, Y_ctx, X_q, truths):
              X_train=f(X_ctx), T_train=f(T_ctx).reshape(-1), Y_train=f(Y_ctx).reshape(-1),
              X_test=f(X_q), true_cate=f(truths["delta_shared"]).reshape(-1),
              n_real_features=np.int64(X_ctx.shape[1]))
-    np.savez(os.path.join(root, "truths", f"r{r:03d}.npz"), **{k: f(v).reshape(-1) for k, v in truths.items()})
+    np.savez(truth_path(root, r), **{k: f(v).reshape(-1) for k, v in truths.items()})

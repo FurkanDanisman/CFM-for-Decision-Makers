@@ -7,11 +7,13 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --array=0-5
-# E2 densities: the paper's per-model harnesses, unchanged, on the E2 worlds (DENSITY_DUMP=1).
-# One task per model; it runs the 10 shards (100 worlds each) in turn. A shard that already has
-# 100 dumps is skipped, so resubmitting a task resumes it.
-# Submit AFTER gen_e2 has finished (no dependency jobs). 6 tasks, one GPU each:
-#   E2_DATA=$SCRATCH/e2/data E2_DUMPS=$SCRATCH/e2/dumps sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
+# E2: the paper's per-model harnesses, unchanged, on the E2 datasets (DENSITY_DUMP=1).
+# One task per model; it runs the shards (100 datasets each) in turn. After each shard the dumps
+# are reduced to per-query 95% intervals (score_shard.py) and deleted. A shard with a result file
+# is skipped, so resubmitting a task resumes it.
+# Submit AFTER generation has finished (no dependency jobs). 6 tasks, one GPU each:
+#   E2_DATA=$SCRATCH/e2/new/data  E2_RESULTS=$SCRATCH/e2/new/results  E2_SHARDS=100 sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
+#   E2_DATA=$SCRATCH/e2/same/data E2_RESULTS=$SCRATCH/e2/same/results E2_SHARDS=10  sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
 set -euo pipefail
 mkdir -p logs_e2
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
@@ -29,11 +31,12 @@ export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
-for SHARD in 0 1 2 3 4 5 6 7 8 9; do
+RES="${E2_RESULTS:?}/$MODEL"; mkdir -p "$RES"
+for (( SHARD = 0; SHARD < ${E2_SHARDS:?}; SHARD++ )); do
+[ -f "$RES/shard$SHARD.npz" ] && { echo "skip shard $SHARD (done)"; continue; }
 export UWYK_FIG34_DATA="${E2_DATA:?}/${PRIORS[$I]}/shard$SHARD"
-export OUT="${E2_DUMPS:?}/$MODEL/shard$SHARD"
-mkdir -p "$OUT"
-if [ "$(ls "$OUT" | grep -c 'r[0-9][0-9][0-9]\.npz$')" -ge 100 ]; then echo "skip $OUT (done)"; continue; fi
+export OUT="$RES/dumps_shard$SHARD"
+rm -rf "$OUT"; mkdir -p "$OUT"
 echo "[$(date '+%F %T')] model=$MODEL data=$UWYK_FIG34_DATA out=$OUT"
 
 case "$MODEL" in
@@ -61,5 +64,7 @@ case "$MODEL" in
       --density-dump 1 --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" \
       --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
 esac
+python "$REPO/revision/experiments/E2_in_prior/score_shard.py" "$OUT" "$RES/shard$SHARD.npz"
+rm -rf "$OUT"
 done
 echo "[$(date '+%F %T')] done"
