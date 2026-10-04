@@ -177,7 +177,21 @@ def wis_discrete(t, p, y, alphas=WIS_ALPHAS) -> float:
     return float(total / (len(alphas) + 0.5))
 
 
+# CDM_INTERVAL=hist: read the 95% interval from the exact tau distribution of the predicted
+# histogram (each cell flat, as the training losses define it), instead of placing each atom's
+# mass on a point. Same pmf, same atoms; only the read-out changes. Needs a uniform atom grid
+# (every loader path here produces one); otherwise falls back to the point rule.
+# See revision/experiments/E2_in_prior/hist_interval.py.
+_INTERVAL = os.environ.get("CDM_INTERVAL", "raw")
+if _INTERVAL == "hist":
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "revision", "experiments", "E2_in_prior"))
+    from hist_interval import interval_hist as _interval_hist
+
+
 def interval_95(t, p):
+    if _INTERVAL == "hist" and len(t) > 1 and np.allclose(np.diff(t), t[1] - t[0], rtol=1e-3):
+        return _interval_hist(np.asarray(t, dtype=np.float64), np.asarray(p, dtype=np.float64))
     F = np.cumsum(p)
     F[-1] = 1.0
     return _quantile(t, F, 0.025), _quantile(t, F, 0.975)
