@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 # E2 data, CPU only. Priors: 0 dopfn  1 uwyk_2d  2 uwyk_1d (binarized T)  3 cpfn_1d  4 cpfn_2d
-#                            5 uwyk_1dc (UWYK 1D's own prior, continuous T)
+#                            5 uwyk_1dc (UWYK 1D's own prior, continuous T)  6 dopfn_bb (new run, 1000 worlds: task 60)
 #   E2_RUN=new : 10,000 worlds per prior, 500 queries each. Task = prior * 10 + chunk of 1000 worlds.
 #                sbatch --array=0-59%6
 #   E2_RUN=same: ONE world per prior, 1000 observational sets, 500 fresh queries each. Task = prior.
@@ -40,5 +40,6 @@ case "$P" in
   3|4) M=$([ "$P" = 3 ] && echo 1d || echo 2d)
      PYTHONPATH="$CAUSALPFN/src:$REPO/benchmarks/uwyk_table1/shims" python gen_cpfn.py "$M" "$RUN" "$RANGE" "$OUT/cpfn_$M" ;;
   5) PYTHONPATH="$REPO:$UWYK/src" python gen_uwyk_cont.py "$RUN" "$RANGE" "$OUT/uwyk_1dc" ;;
+  6) DOPFN_SRC="$DEPLOY_ROOT/external/dopfn" python gen_dopfn_bb.py "$RANGE" "$OUT/dopfn_bb" ;;
 esac
 echo "[$(date '+%F %T')] done"

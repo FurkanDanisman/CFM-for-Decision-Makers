@@ -7,6 +7,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --array=0-6
+# Do-PFN-bb (task 7) has 1000 worlds: run it on its own with E2_SHARDS=10 --array=7.
 # E2: the paper's per-model harnesses, unchanged, on the E2 datasets (DENSITY_DUMP=1).
 # One task per model; it runs the shards (100 datasets each) in turn. After each shard the dumps
 # are reduced to per-query 95% intervals (score_shard.py) and deleted. A shard with a result file
@@ -23,8 +24,8 @@ export CAUSALPFN="$DEPLOY_ROOT/external/causalpfn" DOPFN_ROOT="$DEPLOY_ROOT/exte
 UWYK="$DEPLOY_ROOT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 
-MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont)
-PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc)
+MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb)
+PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
@@ -42,6 +43,10 @@ echo "[$(date '+%F %T')] model=$MODEL data=$UWYK_FIG34_DATA out=$OUT"
 case "$MODEL" in
   dopfn_native)
     python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
+  dopfn_bb)                                   # writes density_r###.npz next to --out
+    python -u "$REPO/benchmarks/l2_ihdp/eval_dopfn_bb_raw.py" --dataset "$DATASET" --out "$OUT/summary.npz" \
+      --repo "$REPO" --dopfn "$DOPFN_ROOT" --causalpfn "$CAUSALPFN" \
+      --checkpoint "$CK/dopfn_bb_j10_step_150000.pt" --n-realizations 100 ;;
   dopfn_joint2d)
     DOPFN_CKPT="$CK/dopfn_repro_joint2d_step150000.pt" \
       python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
