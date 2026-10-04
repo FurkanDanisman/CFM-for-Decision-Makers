@@ -18,7 +18,7 @@ def done(root, r):
     return os.path.exists(truth_path(root, r))                # written last, so it marks a complete dataset
 
 
-def write_world(root, r, X_ctx, T_ctx, Y_ctx, X_q, truths):
+def write_world(root, r, X_ctx, T_ctx, Y_ctx, X_q, truths, extra=None):
     """root/shard<k>/complexmech/5node/path_TY/hide_0.0/r###.npz  (harness input, k = r // SHARD)
        root/truths/r###.npz                                       (every truth, scored later)
     true_cate in the harness input is delta_shared; the scorer reads every truth from truths/."""
@@ -29,5 +29,5 @@ def write_world(root, r, X_ctx, T_ctx, Y_ctx, X_q, truths):
     np.savez(os.path.join(d, f"r{r:03d}.npz"),
              X_train=f(X_ctx), T_train=f(T_ctx).reshape(-1), Y_train=f(Y_ctx).reshape(-1),
              X_test=f(X_q), true_cate=f(truths["delta_shared"]).reshape(-1),
-             n_real_features=np.int64(X_ctx.shape[1]))
+             n_real_features=np.int64(X_ctx.shape[1]), **{k: f(v) for k, v in (extra or {}).items()})
     np.savez(truth_path(root, r), **{k: f(v).reshape(-1) for k, v in truths.items()})

@@ -103,7 +103,7 @@ def _parse_args():
                     help='UWYK config YAML. Default: full_conditioned_model/best_model_config.yaml.')
     p.add_argument('--anc-mode', default='v3b_only',
                     help='Adjacency variant. Default v3b_only emits BOTH v3b + noanc.')
-    p.add_argument('--t-encoding', default='target', choices=['binary', 'target'],
+    p.add_argument('--t-encoding', default='target', choices=['binary', 'target', 'continuous'],
                     help="'target' = feed T ← mean(Y|T) (matches UWYK dofm scripts). "
                          "'binary' = feed T ∈ {0,1}. Default: target.")
     p.add_argument('--eval-max-context', type=int, default=1000,

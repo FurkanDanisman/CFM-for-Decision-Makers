@@ -22,6 +22,9 @@ T_ENCODING (env, default 'binary'):
     'binary'  feed T ∈ {0,1} and query T_intv ∈ {0,1} — what OUR harness does
     'target'  feed T ← mean(Y|T) and query the two encoded values — what UWYK's
               own dofm_full_conditioning.py does
+    'continuous'  feed the raw continuous T and query each unit at its own two levels,
+              read from the dataset file (T_test0 / T_test1). Only for data that carry
+              them (revision/experiments/E2_in_prior/gen_uwyk_cont.py).
 Run both: the difference tells you how much of UWYK's reported gap is carried
 by the treatment encoding rather than by the graph.
 
@@ -54,7 +57,7 @@ os.environ.setdefault('CKPT', '')          # unused here; satisfies its env read
 CONFIG      = os.environ['CONFIG']
 CKPT        = os.environ['CKPT']
 T_ENCODING  = os.environ.get('T_ENCODING', 'binary')
-assert T_ENCODING in ('binary', 'target'), T_ENCODING
+assert T_ENCODING in ('binary', 'target', 'continuous'), T_ENCODING
 QUERY_CHUNK = int(os.environ.get('QUERY_CHUNK', '512'))
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -106,7 +109,8 @@ def cate_from_uwyk(w, X_tr, T_tr, Y_tr, X_te, adj, t0_val, t1_val,
         logits_chunks = [] if return_logits else None
         for s in range(0, X_te.shape[0], QUERY_CHUNK):
             Xq = X_te[s:s + QUERY_CHUNK]
-            Tq = np.full((Xq.shape[0], 1), tval, dtype=np.float32)
+            Tq = (np.full((Xq.shape[0], 1), tval, dtype=np.float32) if np.isscalar(tval)
+                  else np.asarray(tval[s:s + QUERY_CHUNK], dtype=np.float32).reshape(-1, 1))
             if return_logits:
                 # ONE forward pass → logits → mean derived from those logits.
                 l = np.asarray(w.predict(
@@ -173,6 +177,12 @@ def evaluate(realization, ds, w, F, apply_psid_balance):
         m1 = float(y_tr_raw[T_tr == 1].mean())
         T_feed = np.where(T_tr == 0, m0, m1).astype(np.float32).reshape(-1, 1)
         t0_val, t1_val = m0, m1
+    elif T_ENCODING == 'continuous':
+        # Raw T, as UWYK's training feeds it; per-query levels from the dataset file.
+        T_feed = T_tr.astype(np.float32).reshape(-1, 1)
+        with np.load(ds._paths[realization]) as _z:
+            t0_val, t1_val = _z['T_test0'], _z['T_test1']
+        assert t0_val.shape[0] == X_te.shape[0], 'per-query T levels do not match the queries'
     else:
         T_feed = T_tr.astype(np.float32).reshape(-1, 1)
         t0_val, t1_val = 0.0, 1.0

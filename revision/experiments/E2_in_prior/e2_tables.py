@@ -17,6 +17,7 @@ QS, SHARD = (10, 100, 500), 100
 MODELS = [("dopfn_native", "dopfn", ["delta_shared", "delta_indep"]),
           ("dopfn_joint2d", "dopfn", ["delta_shared", "delta_indep"]),
           ("uwyk1d", "uwyk_1d", ["delta_shared", "delta_indep"]),
+          ("uwyk1d_cont", "uwyk_1dc", ["delta_shared", "delta_indep"]),
           ("graph2d", "uwyk_2d", ["delta_shared", "delta_indep"]),
           ("cpfn1d", "cpfn_1d", ["delta_shared", "delta_indep", "tau"]),
           ("cpfn2d", "cpfn_2d", ["delta_shared", "delta_indep"])]

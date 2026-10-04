@@ -6,12 +6,12 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --array=0-5
+#SBATCH --array=0-6
 # E2: the paper's per-model harnesses, unchanged, on the E2 datasets (DENSITY_DUMP=1).
 # One task per model; it runs the shards (100 datasets each) in turn. After each shard the dumps
 # are reduced to per-query 95% intervals (score_shard.py) and deleted. A shard with a result file
 # is skipped, so resubmitting a task resumes it.
-# Submit AFTER generation has finished (no dependency jobs). 6 tasks, one GPU each:
+# Submit AFTER generation has finished (no dependency jobs). 7 tasks, one GPU each:
 #   E2_DATA=$SCRATCH/e2/new/data  E2_RESULTS=$SCRATCH/e2/new/results  E2_SHARDS=100 sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
 #   E2_DATA=$SCRATCH/e2/same/data E2_RESULTS=$SCRATCH/e2/same/results E2_SHARDS=10  sbatch R-PFN/revision/experiments/E2_in_prior/eval_e2.sbatch
 set -euo pipefail
@@ -23,8 +23,8 @@ export CAUSALPFN="$DEPLOY_ROOT/external/causalpfn" DOPFN_ROOT="$DEPLOY_ROOT/exte
 UWYK="$DEPLOY_ROOT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 
-MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d)
-PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d)
+MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont)
+PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
@@ -50,6 +50,11 @@ case "$MODEL" in
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
       --ckpt "$UWYK_CKPT_DIR/best_model.pt" --config "$UWYK_CKPT_DIR/best_model_config.yaml" \
       --anc-mode v3ab_only --t-encoding target --eval-max-context 1000 --eval-context-seed 43 ;;
+  uwyk1d_cont)                                # UWYK 1D on its own continuous-T prior
+    python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
+      --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+      --ckpt "$UWYK_CKPT_DIR/best_model.pt" --config "$UWYK_CKPT_DIR/best_model_config.yaml" \
+      --anc-mode v3ab_only --t-encoding continuous --eval-max-context 1000 --eval-context-seed 43 ;;
   graph2d)
     python -u "$REPO/realcause_eval/Table1/graph2d.py" --dataset "$DATASET" --outdir "$OUT" \
       --density-dump 1 --ckpt "$CK/graph2d_step_50000.pt" \

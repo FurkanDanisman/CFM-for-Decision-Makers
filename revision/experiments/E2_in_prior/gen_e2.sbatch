@@ -5,15 +5,16 @@
 #SBATCH --time=24:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-# E2 data, CPU only. Priors: 0 dopfn  1 uwyk_2d  2 uwyk_1d  3 cpfn_1d  4 cpfn_2d
+# E2 data, CPU only. Priors: 0 dopfn  1 uwyk_2d  2 uwyk_1d (binarized T)  3 cpfn_1d  4 cpfn_2d
+#                            5 uwyk_1dc (UWYK 1D's own prior, continuous T)
 #   E2_RUN=new : 10,000 worlds per prior, 500 queries each. Task = prior * 10 + chunk of 1000 worlds.
-#                sbatch --array=0-49%6
+#                sbatch --array=0-59%6
 #   E2_RUN=same: ONE world per prior, 1000 observational sets, 500 fresh queries each. Task = prior.
-#                sbatch --array=0-4
+#                sbatch --array=0-5
 # Finished datasets are skipped, so a task that times out is simply resubmitted.
 # Submit from the deploy root, e.g.
-#   E2_RUN=new  E2_DATA=$SCRATCH/e2/new/data  sbatch --array=0-49%6 R-PFN/revision/experiments/E2_in_prior/gen_e2.sbatch
-#   E2_RUN=same E2_DATA=$SCRATCH/e2/same/data sbatch --array=0-4    R-PFN/revision/experiments/E2_in_prior/gen_e2.sbatch
+#   E2_RUN=new  E2_DATA=$SCRATCH/e2/new/data  sbatch --array=0-59%6 R-PFN/revision/experiments/E2_in_prior/gen_e2.sbatch
+#   E2_RUN=same E2_DATA=$SCRATCH/e2/same/data sbatch --array=0-5    R-PFN/revision/experiments/E2_in_prior/gen_e2.sbatch
 set -euo pipefail
 mkdir -p logs_e2
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
@@ -38,5 +39,6 @@ case "$P" in
      PYTHONPATH="$REPO:$UWYK/src" python gen_uwyk.py "$M" "$RUN" "$RANGE" "$OUT/uwyk_$M" ;;
   3|4) M=$([ "$P" = 3 ] && echo 1d || echo 2d)
      PYTHONPATH="$CAUSALPFN/src:$REPO/benchmarks/uwyk_table1/shims" python gen_cpfn.py "$M" "$RUN" "$RANGE" "$OUT/cpfn_$M" ;;
+  5) PYTHONPATH="$REPO:$UWYK/src" python gen_uwyk_cont.py "$RUN" "$RANGE" "$OUT/uwyk_1dc" ;;
 esac
 echo "[$(date '+%F %T')] done"
