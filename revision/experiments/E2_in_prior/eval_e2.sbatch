@@ -2,7 +2,7 @@
 #SBATCH --job-name=e2-eval
 #SBATCH --output=logs_e2/eval_%a.out
 #SBATCH --error=logs_e2/eval_%a.err
-#SBATCH --time=24:00:00
+#SBATCH --time=03:00:00
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G

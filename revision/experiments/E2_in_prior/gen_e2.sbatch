@@ -2,7 +2,7 @@
 #SBATCH --job-name=e2-gen
 #SBATCH --output=logs_e2/gen_%x_%a.out
 #SBATCH --error=logs_e2/gen_%x_%a.err
-#SBATCH --time=24:00:00
+#SBATCH --time=03:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 # E2 data, CPU only. Priors: 0 dopfn  1 uwyk_2d  2 uwyk_1d (binarized T)  3 cpfn_1d  4 cpfn_2d
