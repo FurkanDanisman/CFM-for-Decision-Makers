@@ -37,6 +37,18 @@ MODELS = [
     ("UWYK 2D (v3a)",      "orig",    "graph2d-v3a",         "graph2d"),
     ("CausalPFN 1D",       "orig",    "cpfn1d",              "cpfn1d_j1024"),
     ("CausalPFN 2D",       "eta0",    "cpfn2d",              "cpfn2d_eta0"),
+    # appendix models (submit_hist_extra.sbatch): perreal label = model name
+    ("Do-PFN (matched label)",            "dopfn_1d_botharms",  "dopfn_native", "dopfn_1d_botharms"),
+    ("Do-PFN (matched resolution)",       "dopfn_repro_1d_J10", "dopfn_native", "dopfn_repro_1d_J10"),
+    ("UWYK No-Anc (matched label)",       "uwyk_C_botharms",    "uwyk1d-noanc", "uwyk_C_botharms"),
+    ("UWYK Anc (matched label)",          "uwyk_C_botharms",    "uwyk1d-v3a",   "uwyk_C_botharms"),
+    ("UWYK No-Anc (matched resolution)",  "uwyk_D_j32_nobin",   "uwyk1d-noanc", "uwyk_D_j32_nobin"),
+    ("UWYK Anc (matched resolution)",     "uwyk_D_j32_nobin",   "uwyk1d-v3a",   "uwyk_D_j32_nobin"),
+    ("UWYK-B No-Anc",                     "uwyk_bin",           "uwyk1d-noanc", "uwyk_bin"),
+    ("UWYK-B Anc",                        "uwyk_bin",           "uwyk1d-v3a",   "uwyk_bin"),
+    ("CausalPFN-C (matched label)",       "cpfn1d_botharms",    "cpfn1d",       "cpfn1d_botharms"),
+    ("CausalPFN-C (matched resolution)",  "cpfn1d_j32",         "cpfn1d",       "cpfn1d_j32"),
+    ("CausalPFN (two-stage, published)",  "cpfn_v0",            "cpfn1d",       "cpfn_v0"),
 ]
 RC_E1 = ["IHDP", "ACIC"]
 RC_OLD = ["CPS", "PSID", "PSID_bal"]
