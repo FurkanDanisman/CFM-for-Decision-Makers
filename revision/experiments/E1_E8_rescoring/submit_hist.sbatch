@@ -12,7 +12,8 @@
 #   0  RealCause: IHDP, ACIC against realized delta (E1; truth rebuilt first); CPS, PSID, PSID_bal
 #   1  case study, shift -2     2  shift 0     3  shift +2
 #   4  ComplexMech, all rho     ($SCRATCH/cmech_dumps/<model>)
-#   5  ComplexMech, rho > 0.99  (CMECH_RHO99=<root holding <model>/N1000/...>; skipped if unset)
+#   5  ComplexMech, rho > 0.99  ($SCRATCH/cmech_dumps_rho99/<model>, data $SCRATCH/cmech_data_rho99;
+#      the paper's rho > 0.99 dumps, see benchmarks/cluster/submit_full_report.sbatch)
 # Output: $OUT/perreal/<label>/raw__*.npz (IHDP/ACIC under $OUT/perreal_e1), the layout e8_tables.py reads.
 #   cd $KIT && sbatch R-PFN/revision/experiments/E1_E8_rescoring/submit_hist.sbatch
 set -uo pipefail
@@ -69,8 +70,7 @@ case "$SLURM_ARRAY_TASK_ID" in
        done
      done ;;
   4|5) if [ "$SLURM_ARRAY_TASK_ID" = 4 ]; then base="$SCRATCH/cmech_dumps"; pre=""
-       else [ -n "${CMECH_RHO99:-}" ] || { echo "CMECH_RHO99 unset: skipping rho > 0.99"; exit 0; }
-            base="$CMECH_RHO99"; pre="rho99_"; fi
+       else base="${CMECH_RHO99:-$SCRATCH/cmech_dumps_rho99}"; pre="rho99_"; fi
      for m in $CMECH_MODELS; do
        [ -d "$base/$m/N1000" ] || { echo "MISSING $base/$m/N1000"; FAILED=1; continue; }
        for n in 5 10 20 30 40 50; do
