@@ -38,9 +38,10 @@ score() {   # score <out npz> <cbr args...>   (skips finished files; logs next t
 }
 
 # label | RealCause root | case-study root | published methods in it
+# (Do-PFN 2D's dumps sit under the harness name dopfn_native; see benchmarks/cluster/inventory_models.sh)
 ROOTS=(
   "orig|$SCRATCH/rc_dens_uni|$SCRATCH/cs_dvar_dens|dopfn_native uwyk1d-noanc uwyk1d-v3a graph2d-noanc graph2d-v3a cpfn1d"
-  "joint2d|$SCRATCH/dumps_all/dopfn_repro_joint2d/rc|$SCRATCH/dumps_all/dopfn_repro_joint2d/cs|dopfn_repro_joint2d"
+  "joint2d|$SCRATCH/dumps_all/dopfn_repro_joint2d/rc|$SCRATCH/dumps_all/dopfn_repro_joint2d/cs|dopfn_native"
   "eta0|$SCRATCH/rc_dens_eta0|$SCRATCH/cs_dvar_eta0|cpfn2d"
 )
 CASES="Observed_Confounder Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion Backdoor_Criterion"

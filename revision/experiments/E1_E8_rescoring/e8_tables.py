@@ -27,7 +27,10 @@ import numpy as np
 # display | RealCause/case-study perreal label | method key | ComplexMech perreal label
 MODELS = [
     ("Do-PFN 1D",          "orig",    "dopfn_native",        "dopfn_native"),
-    ("Do-PFN 2D",          "joint2d", "dopfn_repro_joint2d", "dopfn_repro_joint2d"),
+    # dopfn_repro_joint2d runs through Do-PFN's own harness, so inside its dump roots
+    # (dumps_all/dopfn_repro_joint2d/{rc,cs}, cmech_dumps/dopfn_repro_joint2d) the method
+    # directory is named dopfn_native. The scorer reads the 2D joint from p_joint_scaled.
+    ("Do-PFN 2D",          "joint2d", "dopfn_native",        "dopfn_repro_joint2d"),
     ("UWYK 1D (noanc)",    "orig",    "uwyk1d-noanc",        "uwyk1d"),
     ("UWYK 1D (v3a)",      "orig",    "uwyk1d-v3a",          "uwyk1d"),
     ("UWYK 2D (noanc)",    "orig",    "graph2d-noanc",       "graph2d"),

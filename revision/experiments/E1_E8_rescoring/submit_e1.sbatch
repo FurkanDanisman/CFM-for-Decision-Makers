@@ -30,7 +30,7 @@ CBR="$REPO/benchmarks/coverage_by_realization.py"
 # label | RealCause dump root | published methods in it
 ROOTS=(
   "orig|$SCRATCH/rc_dens_uni|dopfn_native uwyk1d-noanc uwyk1d-v3a graph2d-noanc graph2d-v3a cpfn1d"
-  "joint2d|$SCRATCH/dumps_all/dopfn_repro_joint2d/rc|dopfn_repro_joint2d"
+  "joint2d|$SCRATCH/dumps_all/dopfn_repro_joint2d/rc|dopfn_native"
   "eta0|$SCRATCH/rc_dens_eta0|cpfn2d"
 )
 
