@@ -9,6 +9,7 @@
 # Stage 5: MALC (hist input) for the 262k Do-PFN 2D, identical settings to submit_malc.sbatch
 # (B=1000, K=1, n_tau=4001). A finished file is skipped, so a task that times out is just resubmitted.
 #   0-4 RealCause   5-9 RealCause, coupling forced independent   10-12 case study shift -2/0/+2   13 ComplexMech all rho
+#   14-31 case study split by (shift, d) = 14 + 6*shift + d_index, d = 5 10 20 30 40 50 (run in parallel; files done are skipped)
 #   cd $KIT && sbatch --account=aip-rgrosse R-PFN/revision/experiments/D262k/5_malc.sbatch
 set -uo pipefail
 mkdir -p logs_hist
@@ -47,6 +48,9 @@ elif [ $i -lt 13 ]; then sh=${SHIFTS[$(( i - 10 ))]}
        cell="$CS_OUT/$sh/d$d/ctx1000"; [ -d "$cell" ] || continue
        for c in $CASES; do score "$HIST/perreal/$NAME/malc__d${d}_${c}__${sh}.npz" --root "$cell" --dataset "$c" --methods dopfn_native; done
      done
+elif [ $i -ge 14 ]; then j=$(( i - 14 )); sh=${SHIFTS[$(( j / 6 ))]}; DS=(5 10 20 30 40 50); d=${DS[$(( j % 6 ))]}
+     cell="$CS_OUT/$sh/d$d/ctx1000"
+     for c in $CASES; do score "$HIST/perreal/$NAME/malc__d${d}_${c}__${sh}.npz" --root "$cell" --dataset "$c" --methods dopfn_native; done
 else for n in 5 10 20 30 40 50; do
        score "$HIST/perreal/$NAME/malc__cmech_n${n}__-.npz" --root "$CM_OUT" --nodes "$n" --subset total --context 1000
      done
