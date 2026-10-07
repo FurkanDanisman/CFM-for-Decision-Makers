@@ -16,6 +16,7 @@ QS, SHARD = (10, 100, 500), 100
 #        model          prior      truths
 MODELS = [("dopfn_native", "dopfn", ["delta_shared", "delta_indep"]),
           ("dopfn_joint2d", "dopfn", ["delta_shared", "delta_indep"]),
+          ("dopfn_joint2d_262k", "dopfn", ["delta_shared", "delta_indep"]),
           ("dopfn_bb", "dopfn_bb", ["delta_shared", "delta_indep"]),
           ("uwyk1d", "uwyk_1d", ["delta_shared", "delta_indep"]),
           ("uwyk1d_cont", "uwyk_1dc", ["delta_shared", "delta_indep"]),
