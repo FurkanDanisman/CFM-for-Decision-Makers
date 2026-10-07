@@ -11,7 +11,10 @@ python "$P" $A --out-dir $HIST/c_malc_indep --malc --indep 2>/dev/null && cp $HI
 cp "$SCRATCH/cm_point_allrho_d262.csv" "$D/cm_point_allrho.csv"
 [ -s "$SCRATCH/cm_point_rho99_d262.csv" ] && cp "$SCRATCH/cm_point_rho99_d262.csv" "$D/cm_point_rho99.csv"
 python "$REPO/revision/experiments/E2_in_prior/e2_tables.py" $SCRATCH/e2/new/data $SCRATCH/e2/new/results 1000,10000 > "$D/e2_new_world.txt"
-grep -E "model|dopfn_joint2d" "$D/e2_new_world.txt"
+python "$REPO/revision/experiments/E2_in_prior/e2_tables.py" $SCRATCH/e2/same/data $SCRATCH/e2/same/results 1000 > "$D/e2_same_world.txt"
+grep -E "model|dopfn_joint2d" "$D/e2_new_world.txt" "$D/e2_same_world.txt"
+J=5993031; echo "2D training: $(sacct -j $J -X -n --format=Elapsed) elapsed" | tee "$D/train_262k.txt"
+L=$(ls logs_dopfn_repro_2d/train_$J.out 2>/dev/null); [ -n "$L" ] && awk '$1 ~ /^[0-9]+$/ && NF>=5 {n++; s+=$4} END {printf "mean s/step over %d logged windows: %.4f\n", n, s/n}' "$L" | tee -a "$D/train_262k.txt"
 ls -la $D
 cd "$REPO" && git add revision/results/d262 && git commit -q -m "d262: all CSVs with IS and CRPS, rho99, MALC, E2, relative points" \
   && git pull -q --rebase --autostash && git push -q && git log --oneline -1
