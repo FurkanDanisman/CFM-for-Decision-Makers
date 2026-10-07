@@ -65,7 +65,7 @@ MISSING = []
 
 def load(files, method):
     """Per-realization cover and length for one method, concatenated over files."""
-    cov, ln = [], []
+    cov, ln, isc, crp = [], [], [], []
     for f in files:
         if not os.path.exists(f):
             MISSING.append(f)
@@ -77,13 +77,20 @@ def load(files, method):
                 continue
             cov.append(np.asarray(z[f"{method}__cover"], float).ravel())
             ln.append(np.asarray(z[f"{method}__length"], float).ravel())
+            # interval score (alpha=0.05) and CRPS, stored per realization by coverage_by_realization.py
+            nan = np.full(cov[-1].shape, np.nan)
+            isc.append(np.asarray(z[f"{method}__is05"], float).ravel() if f"{method}__is05" in z.files else nan)
+            crp.append(np.asarray(z[f"{method}__crps"], float).ravel() if f"{method}__crps" in z.files else nan)
     if not cov:
         return None
     c, l = np.concatenate(cov), np.concatenate(ln)
     n = c.size
     se = lambda v: float(v.std(ddof=1) / np.sqrt(n)) if n > 1 else float("nan")
+    i, r = np.concatenate(isc), np.concatenate(crp)
     return dict(n=n, cov=float(c.mean()), dev=abs(float(c.mean()) - 0.95), se=se(c),
-                len=float(l.mean()), len_se=se(l))
+                len=float(l.mean()), len_se=se(l),
+                is05=float(np.nanmean(i)) if np.isfinite(i).any() else float("nan"), is05_se=se(i),
+                crps=float(np.nanmean(r)) if np.isfinite(r).any() else float("nan"), crps_se=se(r))
 
 
 SHOW_COV = False                                       # --coverage: ĉ ± SE · length ± SE
@@ -124,7 +131,8 @@ def main():
         if s is not None:
             rows.append(dict(benchmark=bench, case=case, slice=sl, model=name, stage=stage,
                              n_real=s["n"], coverage=s["cov"], abs_dev=s["dev"], se=s["se"],
-                             length=s["len"], length_se=s["len_se"]))
+                             length=s["len"], length_se=s["len_se"],
+                             is05=s["is05"], is05_se=s["is05_se"], crps=s["crps"], crps_se=s["crps_se"]))
 
     def table(title, cols, getter):
         for stage in STAGES:
