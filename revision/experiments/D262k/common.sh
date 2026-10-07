@@ -11,4 +11,4 @@ HIST="$SCRATCH/hist"                           # scores land in $HIST/perreal{,_
 ACCOUNT="${ACCOUNT:-aip-rgrosse}"
 GRES="${GRES:-gpu:l40s:1}"
 TIME="${TIME:-3:00:00}"            # ComplexMech
-TIME_LONG="${TIME_LONG:-12:00:00}" # RealCause (5 datasets) and each case-study shift (6 d x 6 cases) in one job
+TIME_LONG="${TIME_LONG:-3:00:00}"  # RealCause (5 datasets) and each case-study shift (6 d x 6 cases) in one job
