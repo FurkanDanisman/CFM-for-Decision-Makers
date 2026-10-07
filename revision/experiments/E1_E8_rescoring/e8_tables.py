@@ -31,6 +31,8 @@ MODELS = [
     # (dumps_all/dopfn_repro_joint2d/{rc,cs}, cmech_dumps/dopfn_repro_joint2d) the method
     # directory is named dopfn_native. The scorer reads the 2D joint from p_joint_scaled.
     ("Do-PFN 2D",          "joint2d", "dopfn_native",        "dopfn_repro_joint2d"),
+    # the same 2D model trained to the published 1D budget (262,144 steps; revision/experiments/D262k)
+    ("Do-PFN 2D (262k)",   "dopfn_repro_joint2d_262k", "dopfn_native", "dopfn_repro_joint2d_262k"),
     ("UWYK 1D (noanc)",    "orig",    "uwyk1d-noanc",        "uwyk1d"),
     ("UWYK 1D (v3a)",      "orig",    "uwyk1d-v3a",          "uwyk1d"),
     ("UWYK 2D (noanc)",    "orig",    "graph2d-noanc",       "graph2d"),
