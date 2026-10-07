@@ -23,3 +23,12 @@ echo "== errors in finished jobs"
 for f in $(grep -l "model=$NAME" logs_dump1/d1_*.out logs_cmech_dump/cm_*.out 2>/dev/null) logs_hist/d262_*.out; do
   [ -f "$f" ] && grep -q "CELL FAILED\|ERROR\|Traceback\|failed_cells=[1-9]" "$f" && echo "   $f"
 done; echo "   (end)"
+echo "== extra stages (rho > 0.99, MALC, E2, relative points)"
+printf '   rho>0.99 dumps %s/729   hist %s/6   point csv %s\n' "$(find $SCRATCH/cmech_dumps_rho99/$NAME -name '*.npz' 2>/dev/null | wc -l)" \
+  "$(ls $HIST/perreal/rho99_$NAME/raw__cmech_n*.npz 2>/dev/null | wc -l)" "$([ -s $SCRATCH/cm_point_rho99_d262.csv ] && echo present || echo missing)"
+printf '   MALC: RealCause %s/5  indep %s/5  case study %s/108  ComplexMech %s/6\n' \
+  "$(ls $HIST/perreal_e1/$NAME/malc__*.npz $HIST/perreal/$NAME/malc__{CPS,PSID,PSID_bal}__-.npz 2>/dev/null | wc -l)" \
+  "$(ls $HIST/perreal_e1/$NAME/indep_malc__*.npz $HIST/perreal/$NAME/indep_malc__*.npz 2>/dev/null | wc -l)" \
+  "$(ls $HIST/perreal/$NAME/malc__d*_*.npz 2>/dev/null | wc -l)" "$(ls $HIST/perreal/$NAME/malc__cmech_n*.npz 2>/dev/null | wc -l)"
+printf '   E2 shards %s/100   relative point tables %s/226\n' "$(ls $SCRATCH/e2/new/results/dopfn_joint2d_262k/shard*.npz 2>/dev/null | wc -l)" \
+  "$(find $REPO/revision/results/d262/points_rel -name '*.md' 2>/dev/null | wc -l)"
