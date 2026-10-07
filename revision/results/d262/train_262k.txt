@@ -1,0 +1,2 @@
+2D training:   16:13:27  elapsed
+mean s/step over 5242 logged windows: 0.2227
