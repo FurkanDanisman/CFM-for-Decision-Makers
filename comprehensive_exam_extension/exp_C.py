@@ -24,7 +24,7 @@ sys.path.insert(0, HERE)
 from generation import _cell_seed, generate_realization  # noqa: E402
 
 CASES = ["Observed_Confounder", "Unobserved_Confounder"]   # order fixes the seeds (as in data/)
-G_FUNCS = ("sin", "sign", "cubic", "expsq", "sin3", "saw")
+G_FUNCS = ("sin", "sign", "cubic", "expsq", "sin3", "exp")
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 TARGETS = ("outcome", "treatment", "both")
 

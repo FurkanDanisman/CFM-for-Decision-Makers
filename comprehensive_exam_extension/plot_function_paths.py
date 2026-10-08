@@ -27,11 +27,9 @@ os.makedirs(a.out, exist_ok=True)
 
 TRAIN = {"x²": lambda x: x ** 2, "ReLU": lambda x: np.maximum(0, x), "tanh": np.tanh, "identity": lambda x: x}
 ALL_NEW = {"sin": np.sin, "sign": np.sign, "cubic": lambda x: x ** 3,
-           "expsq": lambda x: np.exp(-x ** 2 / 2), "sin3": lambda x: np.sin(3 * x), "exp": np.exp,
-           "saw": lambda x: x - 2 * np.floor((x + 1) / 2), "chirp": lambda x: np.sin(x ** 2)}
+           "expsq": lambda x: np.exp(-x ** 2 / 2), "sin3": lambda x: np.sin(3 * x), "exp": np.exp}
 LABEL = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)",
-         "exp": "exp(x)",
-         "saw": "x − 2⌊(x+1)/2⌋", "chirp": "sin(x²)"}
+         "exp": "exp(x)"}
 NEW = {k: ALL_NEW[k] for k in a.new}
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281"]

@@ -36,7 +36,7 @@ MIX_FUNCTIONS: Dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "cubic": lambda x: x ** 3,   # grows faster than any training function
     "expsq": lambda x: np.exp(-x ** 2 / 2),   # exp(-x^2/2): localized, returns to 0 on both sides
     "sin3": lambda x: np.sin(3 * x),           # sin(3x): high-frequency oscillation
-    "saw": lambda x: x - 2 * np.floor((x + 1) / 2),   # sawtooth x - 2 floor((x+1)/2): periodic with jumps
+    "exp": np.exp,                             # exp(x): one-sided exponential growth
 }
 
 

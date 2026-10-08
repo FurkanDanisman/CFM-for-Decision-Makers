@@ -35,7 +35,7 @@ plt.rcParams.update({"font.family": "serif", "font.serif": ["cmr10"], "mathtext.
 BOX, EDGE, RED = "#2e78b0", "#3c3c3c", "#e34948"
 CASES = {"Observed_Confounder": "OC", "Unobserved_Confounder": "UC"}
 TARGETS = ("outcome", "treatment", "both")
-G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)", "saw": "x − 2⌊(x+1)/2⌋"}
+G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)", "exp": "exp(x)"}
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 
 out_dir = "results/exp_C_1000/box"
