@@ -65,6 +65,7 @@ from eval_density_ate import (                                     # noqa: E402
     tau_densities, _normalise, wasserstein_barycenter_1d,
 )
 
+_trapz = getattr(np, 'trapezoid', None) or np.trapz      # numpy < 2.0 on the cluster
 N_Y0 = 4096                      # eval_density_tauC.N_Y0 default (tail quadrature)
 N_REAL = {'IHDP': 100, 'ACIC': 10}
 
@@ -267,7 +268,7 @@ def score_objects(family, kind, per_query, truth_w, scale_w):
 
     # ATE: eval_density_ate.run_realization's construction, verbatim operators.
     pt = tau_densities(family, kind, per_query, N_Y0)
-    tau_mass = np.trapezoid(pt, TAU_CENTERS, axis=1)
+    tau_mass = _trapz(pt, TAU_CENTERS, axis=1)
     p_ate = _normalise(wasserstein_barycenter_1d(pt, TAU_CENTERS))
     at = float(np.interp(truth_w['theta'], TAU_CENTERS, p_ate))
     nll_a = float('inf') if at <= 0 else float(work_to_raw_nll(-math.log(at), scale_w, 1))
