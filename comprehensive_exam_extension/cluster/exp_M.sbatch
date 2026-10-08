@@ -17,11 +17,13 @@
 #   GROUP=cf  sbatch --account=aip-rgrosse --job-name=examext-M-cf  .../cluster/exp_M.sbatch   # Causal forest (DML)
 #   GROUP=nn  sbatch --account=aip-rgrosse --job-name=examext-M-nn  .../cluster/exp_M.sbatch   # TARNet, DragonNet
 #
-# One-time setup on the login node (compute nodes have no internet): install tabpfn + econml in
-# the venv and download the TabPFN v2 weights into $DEPLOY_ROOT/tabpfn_cache (see exp_M.py).
+# Runs in its own venv ($DEPLOY_ROOT/venv_baselines: numpy<2, econml, tabpfn, torch) so the
+# Do-PFN venv is never touched. One-time setup on the login node (compute nodes have no
+# internet): create that venv and download the TabPFN v2 weights into $DEPLOY_ROOT/tabpfn_cache.
 # Env vars:
 #   GROUP      st | x | dml | cf | nn (required)
 #   OUT_ROOT   output dir (default: $SCRATCH/exam_ext/exp_M_100); results in $OUT_ROOT/$GROUP
+#   VENV       baseline venv (default: $DEPLOY_ROOT/venv_baselines)
 # Resumable: exp_M.py skips conditions already in its CSV, so if a job hits the time limit,
 # submitting the same command again continues where it stopped.
 set -euo pipefail
@@ -41,7 +43,9 @@ EXT="$REPO/comprehensive_exam_extension"
 OUT_ROOT="${OUT_ROOT:-$SCRATCH/exam_ext/exp_M_100}"
 GROUP="${GROUP:?set GROUP=st, x, dml, cf or nn}"
 
-source "$DEPLOY_ROOT/venv/bin/activate"
+VENV="${VENV:-$DEPLOY_ROOT/venv_baselines}"
+[ -f "$VENV/bin/activate" ] || { echo "FATAL: baseline venv $VENV missing" >&2; exit 1; }
+source "$VENV/bin/activate"
 # one thread per worker process; TabPFN weights from the pre-downloaded cache, never the network
 export PYTHONUNBUFFERED=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export TABPFN_MODEL_CACHE_DIR="$DEPLOY_ROOT/tabpfn_cache" HF_HUB_OFFLINE=1
