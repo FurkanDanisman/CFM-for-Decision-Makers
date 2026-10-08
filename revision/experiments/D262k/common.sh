@@ -1,6 +1,14 @@
 # Do-PFN 2D trained to the published 1D budget (262,144 steps), evaluated as an ADDED model.
 # Every output goes under its own name; nothing of the 150k model is touched.
-NAME=dopfn_repro_joint2d_262k
+NAME="${D262_NAME:-dopfn_repro_joint2d_262k}"
+# The _t1 model is the same checkpoint with Do-PFN's inference temperature OFF (softmax_temperature=0;
+# the released config divides every output by 0.8). The name and the switch must go together.
+#   export D262_NAME=dopfn_repro_joint2d_262k_t1 DOPFN_SOFTMAX_TEMP=0
+case "$NAME" in
+  *_t1) [ "${DOPFN_SOFTMAX_TEMP:-}" = 0 ] || { echo "FATAL: $NAME needs DOPFN_SOFTMAX_TEMP=0"; exit 1; } ;;
+  *)    [ -z "${DOPFN_SOFTMAX_TEMP:-}" ] || { echo "FATAL: DOPFN_SOFTMAX_TEMP set for $NAME"; exit 1; } ;;
+esac
+export DOPFN_SOFTMAX_TEMP
 KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
 REPO="$KIT/R-PFN"
 CKPT="$REPO/Required_checkpoints/dopfn_repro_joint2d_step262144.pt"

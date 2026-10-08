@@ -1160,6 +1160,7 @@ def evaluate(realization, ds, model, J, F, apply_psid_balance):
             _dens_keys[f'p_y0_scaled_{mode}'] = p_y0.astype(np.float32)
             _dens_keys[f'p_y1_scaled_{mode}'] = p_y1.astype(np.float32)
             _dens_keys[f'p_joint_scaled_{mode}'] = p_joint.astype(np.float32)
+            _dens_keys[f'logits_2d_{mode}'] = logits_np.astype(np.float32)   # full head: cells, regions, tails
 
     out = {
         'dataset': DATASET,

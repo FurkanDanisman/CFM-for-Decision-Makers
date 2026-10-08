@@ -502,6 +502,12 @@ def _neutralise_criterion_summaries(crit):
                        for d in dists)
             if n_bins is None or int(logits_list[0].shape[-1]) == n_bins or not same:
                 return orig_avg(self, dists, logits_list)
+            if len(logits_list) == 1:
+                # One member (Do-PFN's config): return the head output itself. The cell and
+                # region blocks are softmaxed separately downstream, so this changes nothing
+                # there, and it keeps the 4 tail-scale parameters as the model emitted them
+                # (a log_softmax over all 113 would shift them by the log-normaliser).
+                return logits_list[0]
             lp = torch.stack([torch.log_softmax(l.double(), -1) for l in logits_list], 0)
             return (torch.logsumexp(lp, 0) - math.log(len(logits_list))).to(logits_list[0].dtype)
         cls.average_bar_distributions_into_this = _avg
@@ -616,6 +622,11 @@ def _predict_joint2d(model, X_test_full, y_train=None):
     dens = dict(
         edges=edges_raw.astype(np.float32),
         p_joint_scaled=p_mat.astype(np.float32),
+        # full head output (J*J cells, 9 regions, 4 tail scales) on the training grid, for
+        # tail-aware densities (NLL): raw y = train y * data_std + data_mean
+        logits_2d=logits.astype(np.float32),
+        grid_edges_train=np.asarray(_CKPT_EDGES, dtype=np.float32),
+        data_std=np.float32(data_std), data_mean=np.float32(data_mean),
         y_shift=np.float32(0.0),
         y_scale=np.float32(1.0),                     # edges already in raw units
     )
