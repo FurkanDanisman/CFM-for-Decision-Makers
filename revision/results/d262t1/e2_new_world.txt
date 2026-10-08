@@ -1,0 +1,5 @@
+coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q
+model          truth             R=1000 Q=10    R=1000 Q=100    R=1000 Q=500    R=10000 Q=10   R=10000 Q=100   R=10000 Q=500        length
+dopfn_joint2d_262k delta_shared    0.943 (0.006)   0.943 (0.006)   0.944 (0.006)   0.944 (0.002)   0.944 (0.002)   0.944 (0.002) 1.55 (0.01)
+dopfn_joint2d_262k delta_indep     0.841 (0.008)   0.839 (0.008)   0.838 (0.008)   0.843 (0.003)   0.844 (0.002)   0.845 (0.002) 1.55 (0.01)
+               (10000 datasets scored; non-finite length: [])
