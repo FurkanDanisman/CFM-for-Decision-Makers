@@ -204,6 +204,9 @@ try:
         model = DoPFNRegressor()
         model.device = _device
     print(f'[dopfn_native] instantiated on device={_device}', flush=True)
+    if os.environ.get('DOPFN_SOFTMAX_TEMP', ''):      # Do-PFN's config divides outputs by exp(log 0.8)
+        model.softmax_temperature = float(os.environ['DOPFN_SOFTMAX_TEMP'])
+        print(f'[dopfn_native] softmax_temperature={model.softmax_temperature} (DOPFN_SOFTMAX_TEMP)', flush=True)
     if os.environ.get('DOPFN_FP32', '0') == '1':      # diagnostic: full-precision inference
         model.fp16_inference = False
         print('[dopfn_native] fp16_inference=False (DOPFN_FP32=1)', flush=True)
@@ -579,6 +582,8 @@ def _predict_joint2d(model, X_test_full, y_train=None):
 
     if not getattr(_predict_joint2d, '_said', False):
         _predict_joint2d._said = True
+        print(f'[dopfn_native][2d] softmax_temperature at predict: '
+              f'{getattr(model, "softmax_temperature", None)}', flush=True)
         print(f'[dopfn_native][2d] data_std={data_std:.6g} data_mean={data_mean:.6g}  '
               f'edges_raw=[{edges_raw[0]:+.4f}, {edges_raw[-1]:+.4f}]', flush=True)
         # Separate "the joint is placed correctly" from "the model predicts tau
