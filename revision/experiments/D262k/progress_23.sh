@@ -3,7 +3,7 @@
 #   bash R-PFN/revision/experiments/D262k/progress_23.sh <jobid> [model name]
 # Dumps: 35 cells (RealCause 5, case studies 3 shifts x 6 d, ComplexMech 6 nodes x 2 subsets).
 # Scoring: 119 files (RealCause 5, case studies 3 x 6 x 6, ComplexMech 6 nodes).
-J="${1:?job id}"; NAME="${2:-dopfn_repro_1d_J10_262k_t1}"
+J="${1:?job id}"; NAME="${2:-dopfn_repro_1d_J10_262k_t1}"   # matched label: dopfn_1d_botharms_262k_t1
 LOG="/scratch/furkanbd/rpfn_bench_kit/logs_hist/t262_1d_eval_$J.out"
 [ -f "$LOG" ] || { echo "no log $LOG"; exit 1; }
 started=$(grep -c "^===== " "$LOG")
