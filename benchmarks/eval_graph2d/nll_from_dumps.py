@@ -249,12 +249,43 @@ def _tau_at(family, kind, obj, t):
     return float(TAU_1D[family](f0, f1, t)[0])
 
 
-def score_objects(family, kind, per_query, truth_w, scale_w):
+MALC = None          # eval_density_tauC_malcT, imported in main() when --malc-b > 0
+
+
+def _malc_tau(family, kind, obj, label, r, q, t_star):
+    """MALC-T tau density for one query, exactly as eval_density_tauC_malcT.run_query:
+    (density at tau*, density on TAU_CENTERS, fell_back). Fallback to the raw density
+    when the fit fails or tau* is outside the fit's hull (counted, never dropped)."""
+    M = MALC
+    if kind == 'joint':
+        b = M.joint_bundle(obj)
+    else:
+        f0, f1 = obj
+        if family == 'uwyk':
+            b = M.product_bundle(f0, f1, raw_density=lambda t: uwyk_tau_density(f0, f1, t, n_y0=N_Y0))
+        elif family == 'dopfn':
+            b = M.product_bundle(f0, f1, raw_density=lambda t: dopfn_tau_density(f0, f1, t),
+                                 uniform_bins=M.DOPFN_MALC_BINS)
+        else:
+            b = M.causalpfn_bundle(f0, f1)
+    seed = (M.MALC_SEED + r * 1_000_003 + q * 1009 + M.seed_slot(label) * 31) % (2 ** 31 - 1)
+    density_at, _, _, _, _, ok = M.smooth_interior(b['S'], b['bw'], b['w0'], seed)
+    t = np.array([t_star])
+    if ok:
+        interior = float(density_at(t)[0])
+        d_star = interior + float(b['tail'](t)[0])
+        if interior > 0.0 and np.isfinite(d_star) and d_star > 0.0:
+            return d_star, density_at(TAU_CENTERS) + b['tail'](TAU_CENTERS), False
+    return float(np.atleast_1d(b['raw'](t))[0]), b['raw'](TAU_CENTERS), True
+
+
+def score_objects(family, kind, per_query, truth_w, scale_w, label=None, r=None):
     """Raw-unit NLLs from objects on the working axis. truth_w: dict of working-axis
     mu0, mu1, tau_star, theta. Returns (row dict, per-query arrays)."""
     mu0, mu1, ts = truth_w['mu0'], truth_w['mu1'], truth_w['tau_star']
     Q = len(per_query)
     d0, d1, dt = np.empty(Q), np.empty(Q), np.empty(Q)
+    grids, fb = [None] * Q, np.zeros(Q, dtype=bool)
     for q, obj in enumerate(per_query):
         y = np.array([mu0[q], mu1[q]])
         if kind == 'joint':
@@ -262,13 +293,17 @@ def score_objects(family, kind, per_query, truth_w, scale_w):
         else:
             p0, p1 = obj[0].density(y), obj[1].density(y)
         d0[q], d1[q] = p0[0], p1[1]
-        dt[q] = _tau_at(family, kind, obj, ts[q])
+        if MALC is None:
+            dt[q] = _tau_at(family, kind, obj, ts[q])
+        else:
+            dt[q], grids[q], fb[q] = _malc_tau(family, kind, obj, label, r, q, ts[q])
     with np.errstate(divide='ignore', invalid='ignore'):
         nll_y = work_to_raw_nll(-(np.log(d0) + np.log(d1)), scale_w, 2)
         nll_t = work_to_raw_nll(-np.log(dt), scale_w, 1)
 
-    # ATE: eval_density_ate.run_realization's construction, verbatim operators.
-    pt = tau_densities(family, kind, per_query, N_Y0)
+    # ATE: eval_density_ate.run_realization's construction, verbatim operators. With MALC the
+    # per-query grids are the post-fallback MALC-T densities (eval_density_tauC_malcT.ate_metrics).
+    pt = tau_densities(family, kind, per_query, N_Y0) if MALC is None else np.stack(grids)
     tau_mass = np.trapezoid(pt, TAU_CENTERS, axis=1)
     p_ate = _normalise(wasserstein_barycenter_1d(pt, TAU_CENTERS))
     at = float(np.interp(truth_w['theta'], TAU_CENTERS, p_ate))
@@ -278,7 +313,7 @@ def score_objects(family, kind, per_query, truth_w, scale_w):
     row = dict(L_y0y1=float(np.mean(nll_y)), L_tau=float(np.mean(nll_t)), L_ate=nll_a, Q=Q,
                n_nonfinite_y0y1=int(bad_y.sum()), n_nonfinite_tau=int(bad_t.sum()),
                nonfinite_ate=int(not np.isfinite(nll_a)),
-               tau_grid_mass_min=float(tau_mass.min()))
+               tau_grid_mass_min=float(tau_mass.min()), n_malc_fallback=int(fb.sum()))
     return row, dict(nll_y=nll_y, nll_t=nll_t)
 
 
@@ -302,7 +337,7 @@ def _work(task):
     family, kind, pq = build_objects(fmt, mode, z, shift_w, scale_w)
     if len(pq) != cate.size:
         raise RuntimeError(f'{label} r={r}: {len(pq)} density rows vs {cate.size} queries')
-    row, _ = score_objects(family, kind, pq, tw, scale_w)
+    row, _ = score_objects(family, kind, pq, tw, scale_w, label=label, r=r)
     row.update(model=label, realization=r, dataset=ds, working_shift=shift_w,
                working_scale=scale_w, seconds=round(time.time() - t0, 1), dump=path)
     return row
@@ -336,6 +371,8 @@ def summarize(df, labels):
             cells.append(f'{v.mean():.4f} ± {se:.4f}')
         nf = (f'{int(d.n_nonfinite_y0y1.sum())} / {int(d.n_nonfinite_tau.sum())} / '
               f'{int(d.nonfinite_ate.sum())}')
+        if 'n_malc_fallback' in d and d.n_malc_fallback.sum() > 0:
+            nf += f' (MALC fallback to raw: {int(d.n_malc_fallback.sum())} of {int(d.Q.sum())} queries)'
         lines.append(f'| {lab} | {len(d)} | ' + ' | '.join(cells) + f' | {nf} |')
     return '\n'.join(lines)
 
@@ -346,6 +383,9 @@ def main():
     ap.add_argument('--out-csv', required=True)
     ap.add_argument('--out-md', default='', help='append the summary table here')
     ap.add_argument('--workers', type=int, default=1)
+    ap.add_argument('--malc-b', type=int, default=0,
+                    help='> 0: L_tau and L_ATE from MALC-T (K=1) with this many bootstrap draws; '
+                         'L_{Y0+Y1} stays native (Table 22)')
     ap.add_argument('--models', default='', help='comma-separated row labels (default all 8)')
     ap.add_argument('--realizations', default='',
                     help='e.g. 0-4; default and REQUIRED for the paper: the full set')
@@ -358,6 +398,13 @@ def main():
                         help=f'default {tmpl} ({{SCRATCH}} from env, {{ds}} = dataset)')
     a = ap.parse_args()
     ds = a.dataset
+    if a.malc_b > 0:                                   # the module reads its settings at import
+        global MALC
+        os.environ.update(MALC_B=str(a.malc_b), MALC_K='1', N_Y0=str(N_Y0))
+        os.environ.setdefault('DUMPS', '')
+        import eval_density_tauC_malcT as MALC         # noqa: E402
+        print(f'[nll] MALC-T: B={MALC.MALC_B} K={MALC.MALC_K} n_tau={MALC.MALC_N_TAU} '
+              f'dopfn rebin={MALC.DOPFN_MALC_BINS}', flush=True)
     scratch = os.environ.get('SCRATCH', '')
 
     expected = set(range(N_REAL[ds]))
@@ -413,7 +460,7 @@ def main():
     df.to_csv(a.out_csv, index=False)
     table = summarize(df, [m[0] for m in wanted])
     head = (f'### {ds}: NLL in raw outcome units, mean ± SE over '
-            f'{len(expected)} realizations')
+            f'{len(expected)} realizations' + (f' (MALC-T, B={a.malc_b}, K=1)' if a.malc_b else ''))
     print('\n' + head + '\n' + table, flush=True)
     if a.out_md:
         with open(a.out_md, 'a') as fh:
