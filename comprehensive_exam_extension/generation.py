@@ -309,8 +309,9 @@ class _SampledSCM:
         for n in nodes:
             if n.kind == "root_normal":
                 self._root[n.name] = rd.normal(0.0, self.exo_std, size=N)
-            elif n.kind == "root_bernoulli":
-                self._root[n.name] = (rd.random(N) < 0.5).astype(np.float64)
+            elif n.kind == "root_bernoulli":   # randomized treatment; P(T=1) = treat_frac
+                self._root[n.name] = (rd.random(N) < (self.treat_frac if n.is_treatment else 0.5)
+                                      ).astype(np.float64)
             elif n.kind == "structural":
                 p = len(n.parents)
                 bound = 1.0 / np.sqrt(p) if p > 0 else 1.0   # Kaiming (fan_in)
@@ -434,9 +435,10 @@ def generate_realization(case_study: str, n_context: int, seed: int,
     mix_target and treat_frac (see _SampledSCM). `data_seed` draws the data from a
     separate stream (same SCM, new data); `consts` fixes the SCM constants.
     Recording perturbations (0 = off; the SCM and its draws are unchanged by all three):
-      cov_k       the observed confounder C is recorded in cov_k equal-probability categories
-                  of N(0, exo_std^2), each coded by its bin mean; cate = the unit's CATE
-                  averaged over C within its category (other variables, e.g. U, kept).
+      cov_k       every observed covariate is recorded in cov_k equal-probability categories,
+                  each coded by its bin mean (root: of N(0, exo_std^2); structural: cut on
+                  this data set); cate = the unit's CATE averaged over each covariate's
+                  exogenous term within its category (other variables, e.g. U, kept).
       extra_cols  this many irrelevant columns z ~ N(0, exo_std^2) appended to X, drawn from
                   a separate stream (no edges in or out).
       out_k       the outcome is recorded in out_k equal-probability categories of the
@@ -458,18 +460,53 @@ def generate_realization(case_study: str, n_context: int, seed: int,
     T, Y, cate = obs[scm.t_name], obs[scm.y_name], mu_1 - mu_0
 
     if cov_k:
-        edges, means, quad = _gauss_bins(int(cov_k), scm.exo_std)
-        c_true = scm._root["C"]
-        b = np.searchsorted(edges, c_true)
+        # Every observed covariate is recorded in cov_k categories (coded by bin means); the
+        # target averages the unit's CATE over each covariate's exogenous term within its
+        # recorded category, everything else kept. Root covariates: equal-probability bins of
+        # N(0, exo_std^2). Structural covariates (e.g. a mediator): bins cut on this data set,
+        # exogenous term = its Gaussian noise, truncated to the bin.
+        import itertools
+        from scipy import stats
+        k = int(cov_k)
+        by_name = {n.name: n for n in nodes}
+        n_quad = 64 if len(feature_names) == 1 else 16
         X = X.copy()
-        X[:, feature_names.index("C")] = means[b]
-        acc = np.zeros(n_context)
-        for q in range(quad.shape[1]):
-            scm._root["C"] = quad[b, q]
+        grids = []   # (store, name, (N, n_quad) values of the exogenous term)
+        for j, name in enumerate(feature_names):
+            n = by_name[name]
+            if n.kind == "root_normal":
+                edges, means, quad = _gauss_bins(k, scm.exo_std, n_quad)
+                b = np.searchsorted(edges, scm._root[name])
+                X[:, j] = means[b]
+                grids.append((scm._root, name, quad[b]))
+                continue
+            if any(p in feature_names for p in n.parents):
+                raise NotImplementedError(f"{name}: a recorded covariate with a recorded parent")
+            if scm.noise_dist != "gaussian" or scm.hetero_gamma != 0.0:
+                raise NotImplementedError("cov_k on a structural covariate needs Gaussian noise")
+            v = obs[name]
+            edges = np.quantile(v, np.arange(1, k) / k)
+            b = np.searchsorted(edges, v)
+            if np.bincount(b, minlength=k).min() == 0:
+                raise ValueError("empty covariate category; resample")
+            X[:, j] = np.array([v[b == i].mean() for i in range(k)])[b]
+            sig = scm.noise_std * (scm.noise_scale if scm._targeted(n) else 1.0)
+            g = v - scm._noise[name]                      # noiseless mechanism at the observed parents
+            lo = (np.r_[-np.inf, edges][b] - g) / sig
+            hi = (np.r_[edges, np.inf][b] - g) / sig
+            u = (np.arange(n_quad) + 0.5) / n_quad
+            grids.append((scm._noise, name, sig * stats.truncnorm.ppf(u[None, :], lo[:, None], hi[:, None])))
+        saved = [(store, name, store[name]) for store, name, _ in grids]
+        acc, cnt = np.zeros(n_context), 0
+        for qs in itertools.product(range(n_quad), repeat=len(grids)):
+            for (store, name, vals), q in zip(grids, qs):
+                store[name] = vals[:, q]
             acc += (scm.forward(do_T=1.0, y_noiseless=True)[scm.y_name]
                     - scm.forward(do_T=0.0, y_noiseless=True)[scm.y_name])
-        scm._root["C"] = c_true
-        cate = acc / quad.shape[1]
+            cnt += 1
+        for store, name, val in saved:
+            store[name] = val
+        cate = acc / cnt
     if out_k:
         if scm.noise_dist != "gaussian" or scm.hetero_gamma != 0.0:
             raise NotImplementedError("out_k needs the in-prior Gaussian outcome noise")

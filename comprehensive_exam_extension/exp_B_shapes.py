@@ -25,7 +25,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from generation import _cell_seed, generate_realization  # noqa: E402
 
-CASES = ["Observed_Confounder", "Unobserved_Confounder"]   # order fixes the seeds (as in data/)
+# position in ALL_CASES fixes the seeds (OC, UC first, as in data/); --cases picks a subset
+ALL_CASES = ["Observed_Confounder", "Unobserved_Confounder", "Observed_Mediator",
+             "Observed_Mediator_and_Confounder", "Backdoor_Criterion", "Frontdoor_Criterion"]
 FAMILIES = {
     "gamma": ("k", (16, 8, 4, 2, 1)),
     "bimodal": ("a", (1, 1.5, 2, 2.5, 3)),
@@ -41,6 +43,7 @@ p.add_argument("--r-start", type=int, default=0, help="first realization (to ext
 p.add_argument("--families", nargs="*", default=None, help="subset of families (to split work)")
 p.add_argument("--no-baseline", action="store_true", help="skip the in-prior condition")
 p.add_argument("--seed-base", type=int, default=0)
+p.add_argument("--cases", nargs="+", default=ALL_CASES[:2], choices=ALL_CASES)
 p.add_argument("--scale", choices=("scaled", "unscaled"), required=True)
 p.add_argument("--out", required=True)
 a = p.parse_args()
@@ -101,7 +104,8 @@ if os.path.exists(csv):
     done = set(zip(prev.case, prev.dial, prev.level, prev.target))
 
 for dial, name, level, target, kw in conditions():
-    for case_idx, case in enumerate(CASES):
+    for case in a.cases:
+        case_idx = ALL_CASES.index(case)
         if (case, dial, level, target) in done:
             continue
         for r in range(a.r_start, a.n_real):

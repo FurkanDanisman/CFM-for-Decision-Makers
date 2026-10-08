@@ -23,7 +23,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from generation import _cell_seed, generate_realization  # noqa: E402
 
-CASES = ["Observed_Confounder", "Unobserved_Confounder"]   # order fixes the seeds (as in data/)
+# position in ALL_CASES fixes the seeds (OC, UC first, as in data/); --cases picks a subset
+ALL_CASES = ["Observed_Confounder", "Unobserved_Confounder", "Observed_Mediator",
+             "Observed_Mediator_and_Confounder", "Backdoor_Criterion", "Frontdoor_Criterion"]
 G_FUNCS = ("sin", "sign", "cubic", "expsq", "sin3", "exp")
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 TARGETS = ("outcome", "treatment", "both")
@@ -33,12 +35,14 @@ p.add_argument("--n", type=int, default=200)
 p.add_argument("--n-real", type=int, default=100, help="realizations r < n-real")
 p.add_argument("--r-start", type=int, default=0, help="first realization (to extend an earlier run)")
 p.add_argument("--g-funcs", nargs="*", default=None, help="subset of g (to split work)")
+p.add_argument("--targets", nargs="+", default=list(TARGETS), choices=TARGETS)
 p.add_argument("--no-baseline", action="store_true", help="skip the in-prior condition")
 p.add_argument("--condition-index", type=int, default=None,
                help="run only this condition (0 = in-prior, 1..54 = g x lambda x target); "
                     "default SLURM_ARRAY_TASK_ID if --list-conditions is not given and it is set")
 p.add_argument("--list-conditions", action="store_true", help="print the number of conditions and exit")
 p.add_argument("--seed-base", type=int, default=0)
+p.add_argument("--cases", nargs="+", default=ALL_CASES[:2], choices=ALL_CASES)
 p.add_argument("--out", default="results/exp_C")
 a = p.parse_args()
 out = os.path.abspath(a.out)
@@ -60,7 +64,7 @@ def conditions():
         if a.g_funcs and g not in a.g_funcs:
             continue
         for lam in LAMBDAS:
-            for target in TARGETS:
+            for target in a.targets:
                 yield g, "lambda", lam, target, dict(mix_g=g, mix_lambda=lam, mix_target=target)
 
 
@@ -102,7 +106,8 @@ if a.list_conditions:
 if a.condition_index is not None:
     CONDS = [CONDS[a.condition_index]]
 for dial, name, level, target, kw in CONDS:
-    for case_idx, case in enumerate(CASES):
+    for case in a.cases:
+        case_idx = ALL_CASES.index(case)
         if (case, dial, level, target) in done:
             continue
         for r in range(a.r_start, a.n_real):
