@@ -1,5 +1,8 @@
 """E2 tables from the per-shard intervals.
-python e2_tables.py DATA_ROOT RESULTS_ROOT R_LIST
+python e2_tables.py DATA_ROOT RESULTS_ROOT R_LIST [RERUN_ROOT]
+
+RERUN_ROOT (optional): shards re-evaluated for the same model; only the non-finite interval
+bounds of RESULTS_ROOT are filled from it, everything finite is kept.
 
 One replication = one dataset: its first Q queries are scored against each truth and the hits
 averaged within the dataset. Coverage = mean over the first R datasets; SE = sd / sqrt(R).
@@ -12,6 +15,7 @@ import numpy as np
 
 data_root, res_root = sys.argv[1], sys.argv[2]
 R_LIST = [int(x) for x in sys.argv[3].split(",")]
+rerun_root = sys.argv[4] if len(sys.argv) > 4 else None
 QS, SHARD = (10, 100, 500), 100
 #        model          prior      truths
 MODELS = [("dopfn_native", "dopfn", ["delta_shared", "delta_indep"]),
@@ -32,7 +36,16 @@ for model, prior, truths in MODELS:
     for f in glob.glob(os.path.join(res_root, model, "shard*.npz")):
         k = int(re.search(r"shard(\d+)\.npz$", f).group(1))
         z = np.load(f)
+        fill = {}
+        g = os.path.join(rerun_root, model, os.path.basename(f)) if rerun_root else ""
+        if g and os.path.exists(g):
+            zr = np.load(g)
+            fill = {int(i): (lo, hi) for i, lo, hi in zip(zr["idx"], zr["lo"], zr["hi"])}
         for i, lo, hi, y in zip(z["idx"], z["lo"], z["hi"], z["y_dump"]):
+            if int(i) in fill:
+                bad = ~(np.isfinite(lo) & np.isfinite(hi))
+                lo, hi = lo.copy(), hi.copy()
+                lo[bad], hi[bad] = fill[int(i)][0][bad], fill[int(i)][1][bad]
             r = k * SHARD + int(i)
             tr = np.load(os.path.join(data_root, prior, "truths", f"r{r:03d}.npz"))
             assert np.allclose(y, tr["delta_shared"], rtol=1e-4, atol=1e-5), f"{model} r={r}: dump/truth mismatch"

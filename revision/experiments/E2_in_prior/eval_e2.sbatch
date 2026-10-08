@@ -35,7 +35,8 @@ source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
 
 RES="${E2_RESULTS:?}/$MODEL"; mkdir -p "$RES"
-for (( SHARD = 0; SHARD < ${E2_SHARDS:?}; SHARD++ )); do
+# E2_SHARD_LIST (optional, space-separated) runs only those shards instead of 0..E2_SHARDS-1.
+for SHARD in ${E2_SHARD_LIST:-$(seq 0 $(( ${E2_SHARDS:?} - 1 )))}; do
 [ -f "$RES/shard$SHARD.npz" ] && { echo "skip shard $SHARD (done)"; continue; }
 export UWYK_FIG34_DATA="${E2_DATA:?}/${PRIORS[$I]}/shard$SHARD"
 export OUT="$RES/dumps_shard$SHARD"

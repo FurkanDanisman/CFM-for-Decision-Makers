@@ -10,7 +10,7 @@ python "$P" $A --out-dir $HIST/c_malc       --malc --rho99 2>/dev/null && cp $HI
 python "$P" $A --out-dir $HIST/c_malc_indep --malc --indep 2>/dev/null && cp $HIST/c_malc_indep/e8_long.csv $D/malc_indep.csv
 cp "$SCRATCH/cm_point_allrho_d262.csv" "$D/cm_point_allrho.csv"
 [ -s "$SCRATCH/cm_point_rho99_d262.csv" ] && cp "$SCRATCH/cm_point_rho99_d262.csv" "$D/cm_point_rho99.csv"
-python "$REPO/revision/experiments/E2_in_prior/e2_tables.py" $SCRATCH/e2/new/data $SCRATCH/e2/new/results 1000,10000 > "$D/e2_new_world.txt"
+python "$REPO/revision/experiments/E2_in_prior/e2_tables.py" $SCRATCH/e2/new/data $SCRATCH/e2/new/results 1000,10000 $SCRATCH/e2/new/results_rerun > "$D/e2_new_world.txt"
 python "$REPO/revision/experiments/E2_in_prior/e2_tables.py" $SCRATCH/e2/same/data $SCRATCH/e2/same/results 1000 > "$D/e2_same_world.txt"
 grep -E "model|dopfn_joint2d" "$D/e2_new_world.txt" "$D/e2_same_world.txt"
 J=5993031; echo "2D training: $(sacct -j $J -X -n --format=Elapsed) elapsed" | tee "$D/train_262k.txt"
