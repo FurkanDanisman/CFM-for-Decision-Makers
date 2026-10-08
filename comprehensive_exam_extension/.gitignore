@@ -1,0 +1,7 @@
+# generated data and results (regenerate with generation.py / exp_*.py)
+data/
+data_seeds/
+results/
+*.log
+# Do-PFN weights (too large for git; linked from the cluster's Do-PFN checkout)
+dopfn/artifacts/
