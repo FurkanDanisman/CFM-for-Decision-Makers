@@ -33,6 +33,8 @@ MODELS = [
     ("Do-PFN 2D",          "joint2d", "dopfn_native",        "dopfn_repro_joint2d"),
     # the same 2D model trained to the published 1D budget (262,144 steps; revision/experiments/D262k)
     ("Do-PFN 2D (262k)",   "dopfn_repro_joint2d_262k", "dopfn_native", "dopfn_repro_joint2d_262k"),
+    # the 262k model again with Do-PFN's inference temperature off (softmax_temperature = 0; D262k stage 15)
+    ("Do-PFN 2D (262k, T=1)", "dopfn_repro_joint2d_262k_t1", "dopfn_native", "dopfn_repro_joint2d_262k_t1"),
     ("UWYK 1D (noanc)",    "orig",    "uwyk1d-noanc",        "uwyk1d"),
     ("UWYK 1D (v3a)",      "orig",    "uwyk1d-v3a",          "uwyk1d"),
     ("UWYK 2D (noanc)",    "orig",    "graph2d-noanc",       "graph2d"),

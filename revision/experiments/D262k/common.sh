@@ -9,6 +9,7 @@ case "$NAME" in
   *)    [ -z "${DOPFN_SOFTMAX_TEMP:-}" ] || { echo "FATAL: DOPFN_SOFTMAX_TEMP set for $NAME"; exit 1; } ;;
 esac
 export DOPFN_SOFTMAX_TEMP
+TAG=d262; case "$NAME" in *_t1) TAG=d262t1 ;; esac   # suffix of derived files (csv, results folder)
 KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
 REPO="$KIT/R-PFN"
 CKPT="$REPO/Required_checkpoints/dopfn_repro_joint2d_step262144.pt"

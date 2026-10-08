@@ -23,5 +23,5 @@ for n in 5 10 20 30 40 50; do
     --tau-smoother none --dump-per-real "$o" > "${o%.npz}.md" 2> "${o%.npz}.err" || echo "ERROR ${o%.npz}.err"
 done
 python -u "$REPO/benchmarks/cmech_point_total.py" --dumps "$SCRATCH/cmech_dumps_rho99" --data "$SCRATCH/cmech_data_rho99" \
-  --nodes 5 10 20 30 40 50 --csv "$SCRATCH/cm_point_rho99_d262.csv"
+  --nodes 5 10 20 30 40 50 --csv "$SCRATCH/cm_point_rho99_${TAG}.csv"
 echo "done"
