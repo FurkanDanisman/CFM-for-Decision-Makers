@@ -35,7 +35,7 @@ plt.rcParams.update({"font.family": "serif", "font.serif": ["cmr10"], "mathtext.
 BOX, EDGE, RED = "#2e78b0", "#3c3c3c", "#e34948"
 CASES = {"Observed_Confounder": "OC", "Unobserved_Confounder": "UC"}
 TARGETS = ("outcome", "treatment", "both")
-G_FUNCS = {"sin": "sin", "sign": "sign", "cubic": "cubic"}
+G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)"}
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 
 out_dir = "results/exp_C_1000/box"
@@ -44,7 +44,9 @@ for case, tag in CASES.items():
     df = df_all[df_all.case == case]
     iod = df[df.dial == "in_prior"].mse_cate.values
     for target in TARGETS:
-        fig, axes = plt.subplots(1, 3, figsize=(16, 4.8), sharey=True)
+        fig, grid = plt.subplots(2, 3, figsize=(16, 9), sharey=True)
+        axes = grid.ravel()[:5]
+        grid.ravel()[5].axis("off")
         top, bot = 0.0, np.inf
         for ax, (g, title) in zip(axes, G_FUNCS.items()):
             data = [iod] + [df[(df.dial == g) & (df.level == lam) & (df.target == target)].mse_cate.values
@@ -69,7 +71,8 @@ for case, tag in CASES.items():
         for ax in axes:
             ax.set_yscale("log")
             ax.set_ylim(max(bot, 1e-6) / 2, top * 8)
-        axes[0].set_ylabel("MSE (CATE)", fontsize=12)
+        for ax in grid[:, 0]:
+            ax.set_ylabel("MSE (CATE)", fontsize=12)
         axes[0].legend(handles=[Patch(facecolor=RED, edgecolor=EDGE, label="IOD (in-prior function)"),
                                 Patch(facecolor=BOX, edgecolor=EDGE, label="OOD function"),
                                 plt.Line2D([], [], color=RED, ls="--", lw=1.4, label="IOD median")],

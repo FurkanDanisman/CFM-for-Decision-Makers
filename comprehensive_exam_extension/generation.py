@@ -34,6 +34,8 @@ MIX_FUNCTIONS: Dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "sin": np.sin,       # non-monotone, periodic
     "sign": np.sign,     # non-smooth (a step)
     "cubic": lambda x: x ** 3,   # grows faster than any training function
+    "expsq": lambda x: np.exp(-x ** 2 / 2),   # exp(-x^2/2): localized, returns to 0 on both sides
+    "sin3": lambda x: np.sin(3 * x),           # sin(3x): high-frequency oscillation
 }
 
 
