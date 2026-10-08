@@ -128,10 +128,12 @@ def _uwyk_affine(f: UWYK1D, factor, offset) -> UWYK1D:
 # Dump readers -> per-query density objects on the working axis
 # ---------------------------------------------------------------------------
 def _realization_files(root):
-    """{r: path} for every *r<digits>.npz under root (rNNN / IHDP_rNNN / ACIC_rNN)."""
+    """{r: path} for every dump under root (rNNN / IHDP_rNNN / ACIC_rNN)."""
     out = {}
     for p in glob.glob(os.path.join(root, '*.npz')):
-        m = re.search(r'(?:^|_)r(\d+)\.npz$', os.path.basename(p))
+        # dump names only: rNNN.npz (Do-PFN) or <DATASET>_rNNN.npz; other files share the folder
+        # (e.g. malc_ci_B100_K1_E2001_r000.npz) and must not be read as dumps
+        m = re.fullmatch(r'(?:IHDP_|ACIC_)?r(\d+)\.npz', os.path.basename(p))
         if not m:
             continue
         r = int(m.group(1))
