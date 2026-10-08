@@ -25,7 +25,7 @@ print("checkpoint:", p["variant"], "num_buckets", p["spec"]["num_buckets"], "ste
 assert p["variant"] == "dopfn_1d" and p["spec"]["num_buckets"] == 10 and b.get("step") == 262144, "wrong checkpoint"
 PY
 mkdir -p logs_hist
-sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time="${TIME:-12:00:00}" --cpus-per-task=16 --mem=96G \
+sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time="${TIME:-3:00:00}" --cpus-per-task=16 --mem=96G \
   --job-name=t262-1d-eval -o logs_hist/t262_1d_eval_%j.out --export=ALL \
   --wrap "bash $D/23_run_1d_262k.sh"
 echo "submitted $NAME (one job); log: $KIT/logs_hist/t262_1d_eval_<jobid>.out"
