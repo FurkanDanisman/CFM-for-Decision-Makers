@@ -37,7 +37,7 @@ INK, MUTED, GRID, RED = "#0b0b0b", "#52514e", "#e6e5e1", "#e34948"
 
 ref = np.random.default_rng(0).normal(0, a.input_sd, 200_000)
 x = np.linspace(-2.5 * a.input_sd, 2.5 * a.input_sd, 2001)
-fig, axes = plt.subplots(len(TRAIN), len(NEW), figsize=(13, 13), sharex=True)
+fig, axes = plt.subplots(len(TRAIN), len(NEW), figsize=(4.4 * len(NEW), 13), sharex=True)
 for i, (fn, f) in enumerate(TRAIN.items()):
     for j, (gn, g) in enumerate(NEW.items()):
         ax = axes[i, j]

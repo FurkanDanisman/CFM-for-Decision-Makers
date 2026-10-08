@@ -35,7 +35,7 @@ plt.rcParams.update({"font.family": "serif", "font.serif": ["cmr10"], "mathtext.
 BOX, EDGE, RED = "#2e78b0", "#3c3c3c", "#e34948"
 CASES = {"Observed_Confounder": "OC", "Unobserved_Confounder": "UC"}
 TARGETS = ("outcome", "treatment", "both")
-G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)", "exp": "exp(x)"}
+G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": r"$x^3$", "expsq": r"exp($-x^2/2$)", "sin3": "sin(3x)"}
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 
 out_dir = "results/exp_C_1000/box"
@@ -66,8 +66,10 @@ for case, tag in CASES.items():
             ax.tick_params(direction="in", top=True, right=True, labelsize=11, labelleft=True)
             ax.set_title(f"OOD - {title}", fontsize=14)
             ax.set_xlabel(rf"$\lambda$ (0 = in-prior function, 1 = {title})", fontsize=12)
+        for ax in axes[len(G_FUNCS):]:
+            ax.set_visible(False)
         # log y (errors span ~3 orders of magnitude across g); shared, with headroom for the legend
-        for ax in axes:
+        for ax in axes[:len(G_FUNCS)]:
             ax.set_yscale("log")
             ax.set_ylim(max(bot, 1e-6) / 2, top * 8)
         for ax in grid[:, 0]:

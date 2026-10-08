@@ -231,8 +231,14 @@ class _SampledSCM:
                  noise_standardize: bool = True,
                  hetero_gamma: float = 0.0, noise_target: str = "all",
                  mix_g: str = "", mix_lambda: float = 0.0, mix_target: str = "outcome",
+                 treat_frac: float = 0.5,
                  rng_data: np.random.Generator | None = None, consts: dict | None = None):
         self.nodes = nodes
+        # Treated fraction: T = 1{score > its (1 - treat_frac) sample quantile}; 0.5 = the
+        # in-prior median split.
+        if not 0.0 < treat_frac < 1.0:
+            raise ValueError(f"treat_frac must be in (0, 1), got {treat_frac}")
+        self.treat_frac = float(treat_frac)
         self.t_name = next(n.name for n in nodes if n.is_treatment)
         self.y_name = next(n.name for n in nodes if n.is_outcome)
         self.N = int(N)
@@ -379,7 +385,8 @@ class _SampledSCM:
                     lin = self._linear(n, values)
                     cont = self._f(n, lin) + self._eps(n, lin)
                     if self._t_threshold is None:
-                        self._t_threshold = float(np.median(cont))
+                        self._t_threshold = float(np.median(cont) if self.treat_frac == 0.5
+                                                  else np.quantile(cont, 1.0 - self.treat_frac))
                     values[n.name] = (cont > self._t_threshold).astype(np.float64)
             elif n.kind in ("root_normal", "root_bernoulli"):
                 values[n.name] = self._root[n.name]
@@ -405,15 +412,36 @@ def scm_constants(case_study: str, seed: int, n_ref: int = 100_000, ref_seed: in
     return scm.constants()
 
 
+def _gauss_bins(k: int, sd: float, n_quad: int = 64):
+    """Equal-probability bins of N(0, sd^2): cut points, bin means, and per bin n_quad
+    equal-probability quadrature points (midpoints in probability)."""
+    from scipy import stats
+    edges = sd * stats.norm.ppf(np.arange(1, k) / k)
+    lo, hi = np.r_[-np.inf, edges] / sd, np.r_[edges, np.inf] / sd
+    means = sd * (stats.norm.pdf(lo) - stats.norm.pdf(hi)) * k
+    u = (np.arange(k)[:, None] + (np.arange(n_quad)[None, :] + 0.5) / n_quad) / k
+    return edges, means, sd * stats.norm.ppf(u)
+
+
 def generate_realization(case_study: str, n_context: int, seed: int,
                          cate_shift: float = 0.0,
                          noise_scale: float = 1.0, data_seed: int | None = None,
-                         consts: dict | None = None, **noise_kw) -> Realization:
+                         consts: dict | None = None, cov_k: int = 0, extra_cols: int = 0,
+                         out_k: int = 0, **noise_kw) -> Realization:
     """Sample one SCM realization. Raises ValueError on non-finite draws
     (nonlinearity blow-up) so the caller can resample with another seed.
-    `noise_kw`: noise_dist, noise_param, hetero_gamma, noise_target, and
-    mix_g, mix_lambda, mix_target (see _SampledSCM). `data_seed` draws the data from a
-    separate stream (same SCM, new data); `consts` fixes the SCM constants."""
+    `noise_kw`: noise_dist, noise_param, hetero_gamma, noise_target, mix_g, mix_lambda,
+    mix_target and treat_frac (see _SampledSCM). `data_seed` draws the data from a
+    separate stream (same SCM, new data); `consts` fixes the SCM constants.
+    Recording perturbations (0 = off; the SCM and its draws are unchanged by all three):
+      cov_k       the observed confounder C is recorded in cov_k equal-probability categories
+                  of N(0, exo_std^2), each coded by its bin mean; cate = the unit's CATE
+                  averaged over C within its category (other variables, e.g. U, kept).
+      extra_cols  this many irrelevant columns z ~ N(0, exo_std^2) appended to X, drawn from
+                  a separate stream (no edges in or out).
+      out_k       the outcome is recorded in out_k equal-probability categories of the
+                  observed Y (cut on this data set), each coded by its sample bin mean;
+                  cate = E[Y_k | do(1)] - E[Y_k | do(0)] over the Gaussian outcome noise."""
     nodes = build_dag(case_study)
     rng = np.random.default_rng(seed)
     rng_data = None if data_seed is None else np.random.default_rng(data_seed)
@@ -428,6 +456,41 @@ def generate_realization(case_study: str, n_context: int, seed: int,
     X = (np.stack([obs[name] for name in feature_names], axis=-1)
          if feature_names else np.zeros((n_context, 0)))
     T, Y, cate = obs[scm.t_name], obs[scm.y_name], mu_1 - mu_0
+
+    if cov_k:
+        edges, means, quad = _gauss_bins(int(cov_k), scm.exo_std)
+        c_true = scm._root["C"]
+        b = np.searchsorted(edges, c_true)
+        X = X.copy()
+        X[:, feature_names.index("C")] = means[b]
+        acc = np.zeros(n_context)
+        for q in range(quad.shape[1]):
+            scm._root["C"] = quad[b, q]
+            acc += (scm.forward(do_T=1.0, y_noiseless=True)[scm.y_name]
+                    - scm.forward(do_T=0.0, y_noiseless=True)[scm.y_name])
+        scm._root["C"] = c_true
+        cate = acc / quad.shape[1]
+    if out_k:
+        if scm.noise_dist != "gaussian" or scm.hetero_gamma != 0.0:
+            raise NotImplementedError("out_k needs the in-prior Gaussian outcome noise")
+        from scipy import stats
+        edges = np.quantile(Y, np.arange(1, out_k) / out_k)
+        b = np.searchsorted(edges, Y)
+        if np.bincount(b, minlength=out_k).min() == 0:
+            raise ValueError("empty outcome category; resample")
+        means = np.array([Y[b == j].mean() for j in range(out_k)])
+        cuts = np.r_[-np.inf, edges, np.inf]
+        sig = scm.noise_std * scm.noise_scale
+
+        def rec_mean(mu):
+            return np.diff(stats.norm.cdf((cuts[None, :] - mu[:, None]) / sig), axis=1) @ means
+
+        Y, mu_0, mu_1 = means[b], rec_mean(mu_0), rec_mean(mu_1)
+        cate = mu_1 - mu_0
+    if extra_cols:
+        z = np.random.default_rng([int(seed), 7919]).normal(0.0, scm.exo_std, (n_context, int(extra_cols)))
+        X = np.concatenate([X, z], axis=1)
+        feature_names = feature_names + [f"z{j + 1}" for j in range(int(extra_cols))]
 
     for arr in (X, T, Y, mu_0, mu_1):
         if not np.all(np.isfinite(arr)):
