@@ -44,7 +44,7 @@ import pandas as pd
 # native-vs-joint2d, and dopfn_bb is a different checkpoint.
 PAIRS = [
     ("Do-PFN",         ("dopfn_native",)),
-    ("Do-PFN 2D",      ("dopfn_repro_joint2d_262k", "dopfn_repro_joint2d", "dopfn_bb")),   # 262k = published 1D budget
+    ("Do-PFN 2D",      ("dopfn_repro_joint2d_262k_t1", "dopfn_repro_joint2d_262k", "dopfn_repro_joint2d", "dopfn_bb")),   # 262k = published 1D budget; _t1 = temperature off
     ("UWYK No-Anc",    ("uwyk1d-noanc", "uwyk_noanc")),
     ("UWYK No-Anc 2D", ("graph2d-noanc", "graph2d_noanc")),
     ("UWYK Anc",       ("uwyk1d-v3a", "uwyk_v3a")),

@@ -52,6 +52,7 @@ ROOTS = [
     ("J100",     "dumps_all/dopfn_repro_1d_J100/rc", "dumps_all/dopfn_repro_1d_J100/cs", "dopfn_repro_1d_J100"),
     ("joint2d",  "dumps_all/dopfn_repro_joint2d/rc", "dumps_all/dopfn_repro_joint2d/cs", "dopfn_repro_joint2d"),
     ("joint2d_262k", "dumps_all/dopfn_repro_joint2d_262k/rc", "dumps_all/dopfn_repro_joint2d_262k/cs", "dopfn_repro_joint2d_262k"),
+    ("joint2d_262k_t1", "dumps_all/dopfn_repro_joint2d_262k_t1/rc", "dumps_all/dopfn_repro_joint2d_262k_t1/cs", "dopfn_repro_joint2d_262k_t1"),
     ("j32",      "dumps_all/cpfn1d_j32/rc",       "dumps_all/cpfn1d_j32/cs",        "cpfn1d_j32"),
     ("botharms", "dumps_all/cpfn1d_botharms/rc",  "dumps_all/cpfn1d_botharms/cs",   "cpfn1d_botharms"),
     ("cpfn_v0",  "dumps_all/cpfn_v0/rc",          "dumps_all/cpfn_v0/cs",           "cpfn_v0"),
