@@ -23,6 +23,9 @@ Model groups (one cluster job each):
 Do-PFN's errors on the same data sets are in the Exp B/C/F per_dataset.csv files (join on
 condition and r). Scored on the test half: MSE_CATE and Rel. ATE error, as for Do-PFN.
 Resumable: (condition, model) pairs already in the CSV are skipped.
+A model that cannot be fit on a data set (e.g. TabPFN when every feature it sees is constant,
+or a causal-forest cross-fit fold with no treated unit) is recorded as failed: NaN errors and
+the exception in the `error` column; failures are counted per condition in the log.
 """
 import argparse
 import os
@@ -231,13 +234,19 @@ def run(task):
     perm = np.random.default_rng(seed).permutation(len(Y))
     tr, te = perm[: len(Y) // 2], perm[len(Y) // 2:]
     out = []
+    ate = tau[te].mean()
     for model in GROUPS[a.group]:
-        tau_hat = np.asarray(MODELS[model](X[tr], T[tr], Y[tr], X[te], seed), dtype=np.float64).ravel()
-        ate = tau[te].mean()
+        try:
+            tau_hat = np.asarray(MODELS[model](X[tr], T[tr], Y[tr], X[te], seed), dtype=np.float64).ravel()
+        except Exception as err:   # the model cannot be fit on this data set: recorded as failed (NaN)
+            out.append(dict(case=CASE, row=row, dial=dial, level=level, r=r, seed=seed, model=model,
+                            mse_cate=np.nan, rel_ate=np.nan, ate=float(ate), ate_hat=np.nan,
+                            error=f"{type(err).__name__}: {err}"[:200]))
+            continue
         out.append(dict(case=CASE, row=row, dial=dial, level=level, r=r, seed=seed, model=model,
                         mse_cate=float(np.mean((tau_hat - tau[te]) ** 2)),
                         rel_ate=float(abs(tau_hat.mean() - ate) / abs(ate)) if ate != 0 else np.nan,
-                        ate=float(ate), ate_hat=float(tau_hat.mean())))
+                        ate=float(ate), ate_hat=float(tau_hat.mean()), error=""))
     return out
 
 
@@ -257,5 +266,7 @@ if __name__ == "__main__":
         new = [x for chunk in res for x in chunk]
         rows += new
         pd.DataFrame(rows).to_csv(csv, index=False)
-        d = pd.DataFrame(new).groupby("model").mse_cate.median()
-        print(f"{row:10s} {dial:8s} {level:<6g} " + "  ".join(f"{m}={v:.4g}" for m, v in d.items()), flush=True)
+        g = pd.DataFrame(new).groupby("model").mse_cate
+        d, nfail = g.median(), g.apply(lambda s: int(s.isna().sum()))
+        print(f"{row:10s} {dial:8s} {level:<6g} " + "  ".join(f"{m}={v:.4g} (failed {nfail[m]})"
+                                                             for m, v in d.items()), flush=True)
