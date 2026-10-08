@@ -1,23 +1,27 @@
 #!/bin/bash
 #SBATCH --job-name=examext-C
 #SBATCH --account=def-rgrosse
-#SBATCH --output=logs_exam_ext/C_%A_%a.out
-#SBATCH --error=logs_exam_ext/C_%A_%a.err
-#SBATCH --time=01:30:00
-#SBATCH --cpus-per-task=4
+#SBATCH --output=logs_exam_ext/C_%x_%j.out
+#SBATCH --error=logs_exam_ext/C_%x_%j.err
+#SBATCH --time=03:00:00
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
 
-# Experiment C of the exam extension (exp_C.py) with 1000 data sets per level: one array task
-# per condition (0 = in-prior, 1..54 = g x lambda x target), both case studies, r = 0..999.
+# Experiment C of the exam extension (exp_C.py) with 1000 data sets per level. ONE job per
+# new function g (no arrays): all 18 conditions of that g (6 lambda x 3 targets) run stacked in
+# the job, both case studies, r = 0..999. The in-prior baseline runs inside the G=sin job.
 #
-#   sbatch --array=0-54 comprehensive_exam_extension/cluster/exp_C.sbatch
-#   (condition count: python exp_C.py --list-conditions)
+#   G=sin   sbatch --account=aip-rgrosse --job-name=examext-C-sin   .../cluster/exp_C.sbatch
+#   G=sign  sbatch --account=aip-rgrosse --job-name=examext-C-sign  .../cluster/exp_C.sbatch
+#   G=cubic sbatch --account=aip-rgrosse --job-name=examext-C-cubic .../cluster/exp_C.sbatch
 #
 # Env vars:
-#   OUT_ROOT   output dir (default: $SCRATCH/exam_ext/exp_C_1000); one sub-folder per task
+#   G          sin | sign | cubic (required)
+#   OUT_ROOT   output dir (default: $SCRATCH/exam_ext/exp_C_1000); results in $OUT_ROOT/$G
 #   DOPFN_ROOT upstream Do-PFN checkout holding artifacts/ (default: $DEPLOY_ROOT/external/dopfn);
 #              its weights are linked into the extension's dopfn/artifacts if missing.
-# A finished task is skipped on resubmit (exp_C.py skips conditions already in its CSV).
+# Resumable: exp_C.py skips (condition, case) pairs already in its CSV, so if a job hits the
+# time limit, submitting the same command again continues where it stopped.
 set -euo pipefail
 mkdir -p logs_exam_ext
 
@@ -34,7 +38,9 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 EXT="$REPO/comprehensive_exam_extension"
 OUT_ROOT="${OUT_ROOT:-$SCRATCH/exam_ext/exp_C_1000}"
 DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
-TASK="${SLURM_ARRAY_TASK_ID:-0}"
+G="${G:?set G=sin, G=sign or G=cubic}"
+BASELINE_FLAG=""
+[ "$G" = "sin" ] || BASELINE_FLAG="--no-baseline"
 
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}"
@@ -46,6 +52,6 @@ for f in dopfn_config.pkl dopfn_model.pkl model_submitit_0ccc_id_171b69db_epoch_
     [ -e "$ART/$f" ] || { echo "FATAL: $ART/$f missing (DOPFN_ROOT=$DOPFN_ROOT)" >&2; exit 1; }
 done
 
-echo "[$(date '+%F %T')] exp_C condition=$TASK out=$OUT_ROOT/task_$TASK"
-python -u "$EXT/exp_C.py" --n 200 --n-real 1000 --condition-index "$TASK" --out "$OUT_ROOT/task_$TASK"
+echo "[$(date '+%F %T')] exp_C g=$G out=$OUT_ROOT/$G"
+python -u "$EXT/exp_C.py" --n 200 --n-real 1000 --g-funcs "$G" $BASELINE_FLAG --out "$OUT_ROOT/$G"
 echo "[$(date '+%F %T')] done"

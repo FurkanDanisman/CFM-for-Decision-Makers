@@ -5,7 +5,7 @@ per figure, one legend in the top-left panel. One figure per (case study, equati
 6 figures, each with one panel per new function g.
 
 Merges realizations 0-99 (results/exp_C), any local extension (results/exp_C_ext/*) and the
-cluster run (results/exp_C_1000_cluster/task_*, copied back from $SCRATCH/exam_ext/exp_C_1000)
+cluster run (results/exp_C_1000_cluster/<g>/, copied back from $SCRATCH/exam_ext/exp_C_1000)
 into results/exp_C_1000/per_dataset.csv first.
 
     python plot_exp_C_box.py
@@ -22,7 +22,7 @@ from matplotlib.patches import Patch
 
 KEY = ["case", "dial", "level", "target", "r"]
 parts = ["results/exp_C/per_dataset.csv"] + sorted(glob.glob("results/exp_C_ext/*/per_dataset.csv")) \
-    + sorted(glob.glob("results/exp_C_1000_cluster/task_*/per_dataset.csv"))   # cluster run (r = 0..999)
+    + sorted(glob.glob("results/exp_C_1000_cluster/*/per_dataset.csv"))   # cluster run (r = 0..999)
 df_all = pd.concat([pd.read_csv(p) for p in parts if os.path.exists(p)], ignore_index=True)
 df_all = df_all.drop_duplicates(KEY).sort_values(KEY)
 os.makedirs("results/exp_C_1000", exist_ok=True)
