@@ -398,6 +398,8 @@ def main():
     ap.add_argument('--out-csv', required=True)
     ap.add_argument('--out-md', default='', help='append the summary table here')
     ap.add_argument('--workers', type=int, default=1)
+    ap.add_argument('--dopfn-malc-bins', type=int, default=256,
+                    help='uniform bins Do-PFN 1D arms are rebinned to before MALC (MALC needs equal widths)')
     ap.add_argument('--malc-b', type=int, default=0,
                     help='> 0: L_tau and L_ATE from MALC-T (K=1) with this many bootstrap draws; '
                          'L_{Y0+Y1} stays native (Table 22)')
@@ -415,7 +417,8 @@ def main():
     ds = a.dataset
     if a.malc_b > 0:                                   # the module reads its settings at import
         global MALC
-        os.environ.update(MALC_B=str(a.malc_b), MALC_K='1', N_Y0=str(N_Y0), MALC_INPUT='hist')
+        os.environ.update(MALC_B=str(a.malc_b), MALC_K='1', N_Y0=str(N_Y0), MALC_INPUT='hist',
+                          DOPFN_MALC_BINS=str(a.dopfn_malc_bins))
         os.environ.setdefault('DUMPS', '')
         import eval_density_tauC_malcT as MALC         # noqa: E402
         import tau_smoother
