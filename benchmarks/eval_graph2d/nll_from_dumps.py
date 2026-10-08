@@ -269,13 +269,28 @@ def _malc_tau(family, kind, obj, label, r, q, t_star):
         else:
             b = M.causalpfn_bundle(f0, f1)
     seed = (M.MALC_SEED + r * 1_000_003 + q * 1009 + M.seed_slot(label) * 31) % (2 ** 31 - 1)
-    density_at, _, _, _, _, ok = M.smooth_interior(b['S'], b['bw'], b['w0'], seed)
+    # MALC input = the histogram's EXACT tau law (MALC_INPUT=hist, as in the calibration tables):
+    # smooth_tau_pmf refines the diagonal sums into the triangle mixture itself. Same steps as
+    # eval_density_tauC_malcT.smooth_interior, except the failure test: with hist input the smoother
+    # hands back the refined hist pmf on failure, so a fit is recognised by its n_tau-point grid.
+    S = np.asarray(b['S'], np.float64).reshape(-1)
+    m = float(S.sum())
+    J = (S.size + 1) // 2
+    atoms = np.arange(-(J - 1), J, dtype=np.float64) * b['bw']
     t = np.array([t_star])
-    if ok:
-        interior = float(density_at(t)[0])
-        d_star = interior + float(b['tail'](t)[0])
-        if interior > 0.0 and np.isfinite(d_star) and d_star > 0.0:
-            return d_star, density_at(TAU_CENTERS) + b['tail'](TAU_CENTERS), False
+    if np.isfinite(m) and m > 0 and np.isfinite(S).all():
+        cfg = M.SmootherConfig(enabled=True, B=M.MALC_B, K=M.MALC_K, seed=int(seed),
+                               n_tau=M.MALC_N_TAU, n_workers=1)
+        grid, pmf = M.smooth_tau_pmf(atoms, S / m, cfg)
+        if grid.size == M.MALC_N_TAU and (pmf > 0).any():
+            dens = pmf / float(grid[1] - grid[0]) * (b['w0'] * m)
+            at = lambda x: np.interp(np.atleast_1d(x), grid, dens, left=0.0, right=0.0)
+            interior = float(at(t)[0])
+            d_star = interior + float(b['tail'](t)[0])
+            if interior > 0.0 and np.isfinite(d_star) and d_star > 0.0:
+                return d_star, at(TAU_CENTERS) + b['tail'](TAU_CENTERS), False
+    # Fit failed, or tau* outside the fit's support: the histogram's own exact tau density
+    # (b['raw'] is the closed-form triangle mixture + tails, i.e. the hist law, not point masses).
     return float(np.atleast_1d(b['raw'](t))[0]), b['raw'](TAU_CENTERS), True
 
 
@@ -372,7 +387,7 @@ def summarize(df, labels):
         nf = (f'{int(d.n_nonfinite_y0y1.sum())} / {int(d.n_nonfinite_tau.sum())} / '
               f'{int(d.nonfinite_ate.sum())}')
         if 'n_malc_fallback' in d and d.n_malc_fallback.sum() > 0:
-            nf += f' (MALC fallback to raw: {int(d.n_malc_fallback.sum())} of {int(d.Q.sum())} queries)'
+            nf += f' (MALC fallback to the hist density: {int(d.n_malc_fallback.sum())} of {int(d.Q.sum())} queries)'
         lines.append(f'| {lab} | {len(d)} | ' + ' | '.join(cells) + f' | {nf} |')
     return '\n'.join(lines)
 
@@ -400,11 +415,13 @@ def main():
     ds = a.dataset
     if a.malc_b > 0:                                   # the module reads its settings at import
         global MALC
-        os.environ.update(MALC_B=str(a.malc_b), MALC_K='1', N_Y0=str(N_Y0))
+        os.environ.update(MALC_B=str(a.malc_b), MALC_K='1', N_Y0=str(N_Y0), MALC_INPUT='hist')
         os.environ.setdefault('DUMPS', '')
         import eval_density_tauC_malcT as MALC         # noqa: E402
+        import tau_smoother
+        assert tau_smoother._INPUT == 'hist', 'MALC input must be the hist distribution'
         print(f'[nll] MALC-T: B={MALC.MALC_B} K={MALC.MALC_K} n_tau={MALC.MALC_N_TAU} '
-              f'dopfn rebin={MALC.DOPFN_MALC_BINS}', flush=True)
+              f'input={tau_smoother._INPUT} dopfn rebin={MALC.DOPFN_MALC_BINS}', flush=True)
     scratch = os.environ.get('SCRATCH', '')
 
     expected = set(range(N_REAL[ds]))
@@ -460,7 +477,7 @@ def main():
     df.to_csv(a.out_csv, index=False)
     table = summarize(df, [m[0] for m in wanted])
     head = (f'### {ds}: NLL in raw outcome units, mean ± SE over '
-            f'{len(expected)} realizations' + (f' (MALC-T, B={a.malc_b}, K=1)' if a.malc_b else ''))
+            f'{len(expected)} realizations' + (f' (MALC-T on the hist input, B={a.malc_b}, K=1)' if a.malc_b else ''))
     print('\n' + head + '\n' + table, flush=True)
     if a.out_md:
         with open(a.out_md, 'a') as fh:
