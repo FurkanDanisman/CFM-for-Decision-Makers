@@ -94,6 +94,8 @@ def main():
     ap.add_argument("--csv", default=None,
                     help="also write tidy long-form rows for plotting")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--roots", nargs="+", default=None,
+                    help="only these ROOTS labels (default: all)")
     ap.add_argument("--workers", type=int,
                     default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1") or 1),
                     help="parallel worker processes (default: $SLURM_CPUS_PER_TASK)")
@@ -106,6 +108,8 @@ def main():
         lambda: {"pehe2": [], "l1": [], "rel": [], "cells": 0, "reals": 0}))
     tasks = []
     for label, rc, cs, single in ROOTS:
+        if a.roots and label not in a.roots:
+            continue
         root = os.path.join(SC, cs)
         if not os.path.isdir(root):
             continue
