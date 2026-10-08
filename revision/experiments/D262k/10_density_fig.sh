@@ -1,0 +1,20 @@
+#!/bin/bash
+# Stage 10: only the IHDP density figure (ihdp_r0_ate_2x4.png) with the 262k Do-PFN 2D, no title.
+#   cd $KIT && IHDP_DENS_ROOT=<root with <model>/IHDP/*.npz> sbatch --account=aip-rgrosse --time=1:00:00 \
+#        --cpus-per-task=8 --mem=64G -o logs_hist/d262_dens_%j.out \
+#        --wrap "bash R-PFN/revision/experiments/D262k/10_density_fig.sh"
+set -uo pipefail
+KIT="${KIT:-$PWD}"; source "$KIT/R-PFN/revision/experiments/D262k/common.sh"
+source "$KIT/venv/bin/activate"; export PYTHONUNBUFFERED=1
+export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+SRC="${IHDP_DENS_ROOT:?IHDP_DENS_ROOT required}"
+F="$REPO/revision/results/d262/figures"; mkdir -p "$F"
+ls "$RC_OUT/dopfn_native/IHDP" >/dev/null || { echo "no 262k IHDP dumps in $RC_OUT/dopfn_native/IHDP"; exit 1; }
+V="$SCRATCH/ihdp_dens_d262_view"; rm -rf "$V"; mkdir -p "$V"
+for m in "$SRC"/*; do ln -s "$m" "$V/$(basename "$m")"; done
+rm -f "$V/dopfn_repro_joint2d" "$V/dopfn_joint2d" "$V/dopfn_bb"
+ln -s "$RC_OUT/dopfn_native" "$V/dopfn_repro_joint2d"
+python -u "$REPO/benchmarks/plots/plot_ate_density_2x4.py" --root "$V" --dataset IHDP --realization 0 \
+  --repo "$REPO" --out "$F/ihdp_r0_ate_2x4.png" || exit 1
+cd "$REPO" && git add revision/results/d262/figures/ihdp_r0_ate_2x4.png \
+  && git commit -q -m "d262: IHDP density figure with the 262k Do-PFN 2D" && git push -q && echo pushed

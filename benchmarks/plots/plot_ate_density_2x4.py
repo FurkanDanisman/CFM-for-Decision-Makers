@@ -183,9 +183,7 @@ def main():
                 for ax in row:
                     ax.set_xlim(xlo, xhi)
 
-    fig.suptitle(f"{a.dataset}, realization {a.realization} — per-query CATE "
-                 f"(faint) and ATE (bold); dashed = true ATE", fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.tight_layout()
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     fig.savefig(a.out, dpi=150, bbox_inches="tight")
     print("wrote", a.out)

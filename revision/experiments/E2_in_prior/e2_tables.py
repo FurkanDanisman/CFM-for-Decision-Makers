@@ -5,7 +5,7 @@ One replication = one dataset: its first Q queries are scored against each truth
 averaged within the dataset. Coverage = mean over the first R datasets; SE = sd / sqrt(R).
   new-world run : datasets are worlds    -> R_LIST e.g. 1000,10000
   same-world run: datasets of one world  -> R_LIST e.g. 1000
-Q = 10, 100, 500. length = median over datasets of (mean interval length / sd of context outcomes).
+Q = 10, 100, 500. length = mean (SE) over datasets of (mean interval length / sd of context outcomes).
 """
 import glob, os, re, sys
 import numpy as np
@@ -26,7 +26,7 @@ MODELS = [("dopfn_native", "dopfn", ["delta_shared", "delta_indep"]),
 
 cols = [(R, Q) for R in R_LIST for Q in QS]
 print("coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q")
-print(f"{'model':14s} {'truth':13s} " + " ".join(f"{f'R={R} Q={Q}':>15s}" for R, Q in cols) + f" {'length':>7s}")
+print(f"{'model':14s} {'truth':13s} " + " ".join(f"{f'R={R} Q={Q}':>15s}" for R, Q in cols) + f" {'length':>13s}")
 for model, prior, truths in MODELS:
     rows = {}                                                  # global dataset index -> (lo, hi)
     for f in glob.glob(os.path.join(res_root, model, "shard*.npz")):
@@ -49,6 +49,7 @@ for model, prior, truths in MODELS:
                           for r in use])
             cell = f"{c.mean():.3f} ({c.std(ddof=1) / np.sqrt(c.size):.3f})" if len(use) == R else "n/a"
             line += f"{cell:>15s} "
-        length = np.median([np.mean(rows[r][1] - rows[r][0]) / rows[r][3] for r in order])
-        print(line + f"{length:7.2f}")
-    print(f"{'':14s} ({len(order)} datasets scored)")
+        L = np.array([np.mean(rows[r][1] - rows[r][0]) / rows[r][3] for r in order])
+        print(line + f"{L.mean():.2f} ({L.std(ddof=1) / np.sqrt(L.size):.2f})")
+    bad = [r for r in order if not np.isfinite(np.mean(rows[r][1] - rows[r][0]))]
+    print(f"{'':14s} ({len(order)} datasets scored; non-finite length: {bad[:20]})")
