@@ -35,7 +35,7 @@ plt.rcParams.update({"font.family": "serif", "font.serif": ["cmr10"], "mathtext.
 BOX, EDGE, RED = "#2e78b0", "#3c3c3c", "#e34948"
 CASES = {"Observed_Confounder": "OC", "Unobserved_Confounder": "UC"}
 TARGETS = ("outcome", "treatment", "both")
-G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)"}
+G_FUNCS = {"sin": "sin(x)", "sign": "sign(x)", "cubic": "x³", "expsq": "exp(−x²/2)", "sin3": "sin(3x)", "saw": "x − 2⌊(x+1)/2⌋"}
 LAMBDAS = (0.1, 0.2, 0.3, 0.5, 0.75, 1.0)
 
 out_dir = "results/exp_C_1000/box"
@@ -45,8 +45,7 @@ for case, tag in CASES.items():
     iod = df[df.dial == "in_prior"].mse_cate.values
     for target in TARGETS:
         fig, grid = plt.subplots(2, 3, figsize=(16, 9), sharey=True)
-        axes = grid.ravel()[:5]
-        grid.ravel()[5].axis("off")
+        axes = grid.ravel()
         top, bot = 0.0, np.inf
         for ax, (g, title) in zip(axes, G_FUNCS.items()):
             data = [iod] + [df[(df.dial == g) & (df.level == lam) & (df.target == target)].mse_cate.values

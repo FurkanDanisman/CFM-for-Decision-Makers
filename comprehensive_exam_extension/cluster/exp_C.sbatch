@@ -16,9 +16,10 @@
 #   G=cubic sbatch --account=aip-rgrosse --job-name=examext-C-cubic .../cluster/exp_C.sbatch
 #   G=expsq sbatch --account=aip-rgrosse --job-name=examext-C-expsq .../cluster/exp_C.sbatch   # exp(-x^2/2)
 #   G=sin3  sbatch --account=aip-rgrosse --job-name=examext-C-sin3  .../cluster/exp_C.sbatch   # sin(3x)
+#   G=saw   sbatch --account=aip-rgrosse --job-name=examext-C-saw   .../cluster/exp_C.sbatch   # x - 2 floor((x+1)/2)
 #
 # Env vars:
-#   G          sin | sign | cubic | expsq | sin3 (required)
+#   G          sin | sign | cubic | expsq | sin3 | saw (required)
 #   OUT_ROOT   output dir (default: $SCRATCH/exam_ext/exp_C_1000); results in $OUT_ROOT/$G
 #   DOPFN_ROOT upstream Do-PFN checkout holding artifacts/ (default: $DEPLOY_ROOT/external/dopfn);
 #              its weights are linked into the extension's dopfn/artifacts if missing.
@@ -40,7 +41,7 @@ REPO="${REPO:-$DEPLOY_ROOT/R-PFN}"
 EXT="$REPO/comprehensive_exam_extension"
 OUT_ROOT="${OUT_ROOT:-$SCRATCH/exam_ext/exp_C_1000}"
 DOPFN_ROOT="${DOPFN_ROOT:-$DEPLOY_ROOT/external/dopfn}"
-G="${G:?set G=sin, sign, cubic, expsq or sin3}"
+G="${G:?set G=sin, sign, cubic, expsq, sin3 or saw}"
 BASELINE_FLAG=""
 [ "$G" = "sin" ] || BASELINE_FLAG="--no-baseline"
 
