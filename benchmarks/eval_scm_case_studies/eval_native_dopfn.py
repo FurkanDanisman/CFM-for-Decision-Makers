@@ -204,6 +204,9 @@ try:
         model = DoPFNRegressor()
         model.device = _device
     print(f'[dopfn_native] instantiated on device={_device}', flush=True)
+    if os.environ.get('DOPFN_FP32', '0') == '1':      # diagnostic: full-precision inference
+        model.fp16_inference = False
+        print('[dopfn_native] fp16_inference=False (DOPFN_FP32=1)', flush=True)
 finally:
     os.chdir(_prev_cwd)
 
@@ -518,6 +521,12 @@ def _predict_joint2d(model, X_test_full, y_train=None):
     Xq[:, 0] = float('nan') if _QUERY_T == 'nan' else 0.0
     fq = model.predict_full(torch.from_numpy(Xq.astype(np.float32)))
     logits = np.asarray(fq['logits'], dtype=np.float64)          # (N_q, J*J+13)
+    _bad = ~np.isfinite(logits).all(axis=1)
+    if _bad.any():
+        print(f'[dopfn_native][2d][WARN] non-finite logits in {int(_bad.sum())}/{len(_bad)} queries: '
+              f'nan={int(np.isnan(logits).any(axis=1).sum())} inf={int(np.isinf(logits).any(axis=1).sum())} '
+              f'first={np.flatnonzero(_bad)[:8].tolist()}  finite |logit| max={np.nanmax(np.abs(logits[np.isfinite(logits)])):.4g}',
+              flush=True)
     J = int(_J2D)
     need = J * J + 13
     if logits.shape[-1] != need:
