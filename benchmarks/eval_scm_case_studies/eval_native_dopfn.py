@@ -13,7 +13,7 @@ Env vars:
   MAX_REAL    optional cap
 """
 from __future__ import annotations
-import argparse, os, sys, time
+import argparse, math, os, sys, time
 import numpy as np
 import torch
 
@@ -482,6 +482,27 @@ def _neutralise_criterion_summaries(crit):
 
         setattr(cls, name, _make(orig))
         patched.append(name)
+
+    # predict_full's 'logits' are log(mean over ensemble members of softmax over ALL
+    # outputs), computed in fp32: anything ~103 below the largest output underflows to
+    # log(0) = -inf. On the 2-D head the 113 outputs also carry the tail-scale
+    # parameters, which can sit far above the cell logits; then every cell is -inf and
+    # the joint is NaN. Same quantity via log_softmax / logsumexp, which cannot
+    # underflow; width-gated like the rest, and only for the equal-borders branch
+    # (the one predict_full takes here), so 1-D calls run the original code.
+    orig_avg = getattr(cls, 'average_bar_distributions_into_this', None)
+    if callable(orig_avg):
+        def _avg(self, dists, logits_list):
+            nb = getattr(self, 'borders', None)
+            n_bins = (int(nb.shape[0]) - 1) if nb is not None else None
+            same = all(len(d.borders) == len(nb) and bool((d.borders.to(nb.device) == nb).all())
+                       for d in dists)
+            if n_bins is None or int(logits_list[0].shape[-1]) == n_bins or not same:
+                return orig_avg(self, dists, logits_list)
+            lp = torch.stack([torch.log_softmax(l.double(), -1) for l in logits_list], 0)
+            return (torch.logsumexp(lp, 0) - math.log(len(logits_list))).to(logits_list[0].dtype)
+        cls.average_bar_distributions_into_this = _avg
+        patched.append('average_bar_distributions_into_this')
     cls._j2d_patched = True
     print(f'[dopfn_native][2d] width-gated {cls.__name__}: {", ".join(patched)}',
           flush=True)
