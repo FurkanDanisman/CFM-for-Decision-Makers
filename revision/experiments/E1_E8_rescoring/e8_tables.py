@@ -44,6 +44,8 @@ MODELS = [
     # appendix models (submit_hist_extra.sbatch): perreal label = model name
     ("Do-PFN (matched label)",            "dopfn_1d_botharms",  "dopfn_native", "dopfn_1d_botharms"),
     ("Do-PFN (matched resolution)",       "dopfn_repro_1d_J10", "dopfn_native", "dopfn_repro_1d_J10"),
+    # the matched-resolution model trained to 262,144 steps, temperature off (D262k stages 20, 23)
+    ("Do-PFN (matched resolution, 262k, T=1)", "dopfn_repro_1d_J10_262k_t1", "dopfn_native", "dopfn_repro_1d_J10_262k_t1"),
     ("UWYK No-Anc (matched label)",       "uwyk_C_botharms",    "uwyk1d-noanc", "uwyk_C_botharms"),
     ("UWYK Anc (matched label)",          "uwyk_C_botharms",    "uwyk1d-v3a",   "uwyk_C_botharms"),
     ("UWYK No-Anc (matched resolution)",  "uwyk_D_j32_nobin",   "uwyk1d-noanc", "uwyk_D_j32_nobin"),
