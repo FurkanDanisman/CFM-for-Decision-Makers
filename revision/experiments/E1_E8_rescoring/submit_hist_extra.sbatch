@@ -47,6 +47,8 @@ ROWS=(
   "uwyk_D_j32_nobin|$A/rc/uwyk_D_j32_nobin|$A/cs/uwyk_D_j32_nobin|$S/aurora3_allrho/cm_rho99/uwyk_D_j32_nobin|$A/cm_rho99/uwyk_D_j32_nobin|uwyk1d-noanc uwyk1d-v3a"
   "dopfn_1d_botharms|$A/rc/dopfn_1d_botharms|$A/cs/dopfn_1d_botharms|$S/aurora3_allrho/cm_rho99/dopfn_1d_botharms|$A/cm_rho99/dopfn_1d_botharms|dopfn_native"
 )
+# HIST_ROWS (one row in the format above) scores just that model instead: task 0, 1-3 (its 3 shifts), 25, 26
+[ -n "${HIST_ROWS:-}" ] && ROWS=("$HIST_ROWS")
 CASES="Observed_Confounder Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion Backdoor_Criterion"
 SHIFTS=(shift-2 shift0 shift+2)
 i=$SLURM_ARRAY_TASK_ID
