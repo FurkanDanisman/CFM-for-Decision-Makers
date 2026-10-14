@@ -80,8 +80,16 @@ def regenerate(cfg, uwyk, sampler, r, n_test):
 
 def one(rec, cap, f, K):
     z = np.load(f, allow_pickle=True)
-    y0s, y1s = np.asarray(z["Y_do0_raw"], float), np.asarray(z["Y_do1_raw"], float)
-    regen_ok = (np.allclose(rec["Y_do0_raw"], y0s, atol=1e-5) and np.allclose(rec["Y_do1_raw"], y1s, atol=1e-5))
+    # Older files store only the processed outcomes; processing is deterministic given the seed, so an exact
+    # match of the processed arrays checks the regeneration. Y's node is then found from the raw arrays the
+    # regenerated record carries.
+    if "Y_do0_raw" in z.files:
+        regen_ok = (np.allclose(rec["Y_do0_raw"], z["Y_do0_raw"], atol=1e-5)
+                    and np.allclose(rec["Y_do1_raw"], z["Y_do1_raw"], atol=1e-5))
+    else:
+        regen_ok = (np.allclose(rec["Y_do0"], z["Y_do0"], atol=1e-5)
+                    and np.allclose(rec["Y_do1"], z["Y_do1"], atol=1e-5))
+    y0s, y1s = np.asarray(rec["Y_do0_raw"], float), np.asarray(rec["Y_do1_raw"], float)
     intv, n, r0, r1 = cap
     B2 = 2 * n
     y = next((v for v in r0 if np.allclose(r0[v].reshape(-1).numpy(), y0s, atol=1e-5)
@@ -129,7 +137,7 @@ def main():
         files = {int(os.path.basename(p)[1:-4]): p for p in glob.glob(os.path.join(cell, "r*.npz"))}
         if not files:
             continue
-        n_test = int(np.load(files[min(files)])["Y_do0_raw"].size)
+        n_test = int(np.load(files[min(files)])["Y_do0"].size)
         # run_sweep: ONE sampler per cell, realizations generated in order r = 0, 1, ... (the sampler carries
         # state between realizations, so every realization up to the last needed one is regenerated)
         sampler = uwyk[0](cfg["scm_config"], seed=SEED_BASE * 31 + 17)
@@ -158,7 +166,7 @@ def main():
         w.writerows([{k: r.get(k, "") for k in keys} for r in rows])
     md = ["# True ρ(x) on ComplexMech, pre-treatment realizations (exact, from UWYK's generator)", "",
           "ρ(x) = corr(Y(1), Y(0) | X = x) by redrawing only Y's noise (shared across arms). `verified` = "
-          "regenerated outcomes equal the stored ones AND Y's mechanism reproduces them; only those are summarised. "
+          "regenerated outcomes equal the stored ones (processed arrays when the file has no raw ones) AND Y's mechanism reproduces them; only those are summarised. "
           "ρ per realization = median over its query units; `deterministic` = units where no noise reaches Y.", "",
           "| n | pre-treatment realizations | verified | ρ median (min, max) over realizations | "
           "share of units with ρ > 0.99 | deterministic units |", "|---|---|---|---|---|---|"]
