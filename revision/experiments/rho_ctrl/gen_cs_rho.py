@@ -14,9 +14,11 @@ Adaptive filling per (scenario, d, shift): the knob is drawn uniformly from the 
 still short of `per-cell`, the dataset goes to the bin its computed rho falls in (dropped if that bin is
 full or rho < -0.5), until every bin has `per-cell` datasets.
 
-Layout (the paper's npz backend reads it unchanged; extra keys are ignored by the harness):
-    OUT_ROOT/bin{0,1,2}/shift{S}/d{D}/{Case}/N{N}/{Case}_{r}.npz
-    extra keys: delta (N,) realized ITE Y(1) - Y(0), rho_knob, rho_true (dataset median), rho_true_q (Q,)
+Layout (the paper's npz backend reads it unchanged, CASE_STUDY_DATA_ROOT=OUT_ROOT/bin{b}; extra keys are
+ignored by the harness): all d and shifts of one (bin, scenario) in one folder, so one harness call covers them:
+    OUT_ROOT/bin{0,1,2}/{Case}/N{N}/{Case}_{k}.npz
+    extra keys: d, shift, delta (N,) realized ITE Y(1) - Y(0), rho_knob, rho_true (dataset median), rho_true_q (Q,)
+Run it once into an empty OUT_ROOT (no resume).
 """
 import argparse
 import json
@@ -141,9 +143,7 @@ def make(case, d, N, seed, shift, rho_knob):
 
 def fill_cell(out, case, case_idx, d, shift_s, N, per_cell, max_tries=2000):
     shift = float(shift_s)
-    have = [len([f for f in os.listdir(os.path.join(out, f"bin{b}", f"shift{shift_s}", f"d{d}", case, f"N{N}"))])
-            if os.path.isdir(os.path.join(out, f"bin{b}", f"shift{shift_s}", f"d{d}", case, f"N{N}")) else 0
-            for b in range(3)]
+    have = [0, 0, 0]
     rng = np.random.default_rng([SEED_BASE, case_idx, d, int(shift * 10) + 100, N])
     tries = dropped = 0
     while min(have) < per_cell and tries < max_tries:
@@ -159,9 +159,11 @@ def fill_cell(out, case, case_idx, d, shift_s, N, per_cell, max_tries=2000):
         if b is None or have[b] >= per_cell:
             dropped += 1
             continue
-        cell = os.path.join(out, f"bin{b}", f"shift{shift_s}", f"d{d}", case, f"N{N}")
+        cell = os.path.join(out, f"bin{b}", case, f"N{N}")      # one folder per (bin, scenario): every d, shift
         os.makedirs(cell, exist_ok=True)
-        np.savez_compressed(os.path.join(cell, f"{case}_{have[b]}.npz"), **rec)
+        k = len([f for f in os.listdir(cell) if f.endswith(".npz")])
+        rec.update(d=np.int32(d), shift=np.float32(shift))
+        np.savez_compressed(os.path.join(cell, f"{case}_{k}.npz"), **rec)
         have[b] += 1
     return have, tries, dropped
 
