@@ -57,6 +57,12 @@ ROOTS = [
     ("botharms", "dumps_all/cpfn1d_botharms/rc",  "dumps_all/cpfn1d_botharms/cs",   "cpfn1d_botharms"),
     ("cpfn_v0",  "dumps_all/cpfn_v0/rc",          "dumps_all/cpfn_v0/cs",           "cpfn_v0"),
     ("uwyk_bin", "dumps_all/uwyk_bin/rc",         "dumps_all/uwyk_bin/cs",          "uwyk_bin"),
+    # ablation models (roots as in revision/experiments/E1_E8_rescoring/submit_hist_extra.sbatch ROWS and
+    # revision/experiments/D262k/23_eval_1d_262k.sh); used by D262k stage 27 (ablation point estimates)
+    ("uwyk_C_botharms",  "aurora3_kill/rc/uwyk_C_botharms",  "aurora3_kill/cs/uwyk_C_botharms",  "uwyk_C_botharms"),
+    ("uwyk_D_j32_nobin", "aurora3_kill/rc/uwyk_D_j32_nobin", "aurora3_kill/cs/uwyk_D_j32_nobin", "uwyk_D_j32_nobin"),
+    ("dopfn_repro_1d_J10_262k_t1", "dumps_all/dopfn_repro_1d_J10_262k_t1/rc", "dumps_all/dopfn_repro_1d_J10_262k_t1/cs", "dopfn_repro_1d_J10_262k_t1"),
+    ("dopfn_1d_botharms_262k_t1",  "dumps_all/dopfn_1d_botharms_262k_t1/rc",  "dumps_all/dopfn_1d_botharms_262k_t1/cs",  "dopfn_1d_botharms_262k_t1"),
 ]
 
 _ROW = re.compile(r"^\|\s*([A-Za-z0-9_\-]+)\s*\|\s*(\d+)\s*\|(.*)\|\s*$")
