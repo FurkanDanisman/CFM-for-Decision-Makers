@@ -1,0 +1,205 @@
+benchmark,setting,model,variant,pehe,pehe_se,eps_ate,eps_se
+RealCause,IHDP,Do-PFN,matched label,5.279600,0.807400,0.515900,0.232300
+RealCause,ACIC,Do-PFN,matched label,3.871800,0.516900,0.570100,0.030000
+RealCause,CPS,Do-PFN,matched label,11144.770800,31.608600,0.632300,0.009200
+RealCause,PSID,Do-PFN,matched label,16804.712000,162.737400,0.369700,0.008600
+RealCause,PSID_bal,Do-PFN,matched label,16770.192900,164.865800,0.273000,0.009900
+RealCause,IHDP,Do-PFN,matched resolution,6.248700,0.705400,0.693000,0.150100
+RealCause,ACIC,Do-PFN,matched resolution,3.974800,0.552900,0.575600,0.053300
+RealCause,CPS,Do-PFN,matched resolution,11959.777900,19.329300,0.792500,0.003800
+RealCause,PSID,Do-PFN,matched resolution,16686.107600,155.715400,0.176400,0.007700
+RealCause,PSID_bal,Do-PFN,matched resolution,17437.388100,156.743000,0.145000,0.008700
+RealCause,IHDP,Do-PFN,2D,5.720500,0.806200,0.596000,0.192100
+RealCause,ACIC,Do-PFN,2D,3.648600,0.619400,0.524900,0.114900
+RealCause,CPS,Do-PFN,2D,11120.805100,22.657500,0.528100,0.006200
+RealCause,PSID,Do-PFN,2D,15843.951700,157.046200,0.103200,0.008100
+RealCause,PSID_bal,Do-PFN,2D,16355.902300,157.328600,0.175800,0.010600
+RealCause,IHDP,UWYK No-Anc,matched label,7.292700,0.845600,0.796800,0.014900
+RealCause,ACIC,UWYK No-Anc,matched label,4.736400,0.444000,0.931600,0.019700
+RealCause,CPS,UWYK No-Anc,matched label,12786.413600,17.885900,0.992400,0.001100
+RealCause,PSID,UWYK No-Anc,matched label,22892.910000,129.763000,1.011800,0.000300
+RealCause,PSID_bal,UWYK No-Anc,matched label,21704.945400,134.714400,0.907000,0.004100
+RealCause,IHDP,UWYK No-Anc,matched resolution,6.190600,0.723400,0.680600,0.029500
+RealCause,ACIC,UWYK No-Anc,matched resolution,3.157700,0.459400,0.467600,0.062700
+RealCause,CPS,UWYK No-Anc,matched resolution,12270.864000,36.833200,0.956500,0.006500
+RealCause,PSID,UWYK No-Anc,matched resolution,22448.306000,135.965800,1.001700,0.003500
+RealCause,PSID_bal,UWYK No-Anc,matched resolution,22287.282000,129.571500,0.938500,0.003100
+RealCause,IHDP,UWYK No-Anc,2D,4.507500,0.626500,0.375300,0.087600
+RealCause,ACIC,UWYK No-Anc,2D,2.742700,0.473900,0.133500,0.041500
+RealCause,CPS,UWYK No-Anc,2D,12299.180400,30.682000,0.876000,0.006700
+RealCause,PSID,UWYK No-Anc,2D,21426.072700,145.421600,0.848900,0.011900
+RealCause,PSID_bal,UWYK No-Anc,2D,20039.146100,141.251700,0.676400,0.008600
+RealCause,IHDP,UWYK Anc,matched label,7.136400,0.850300,0.761500,0.016900
+RealCause,ACIC,UWYK Anc,matched label,4.660100,0.462400,0.904700,0.017200
+RealCause,CPS,UWYK Anc,matched label,12860.336200,17.277200,1.007800,0.000900
+RealCause,PSID,UWYK Anc,matched label,22966.596500,129.935100,1.006700,0.000400
+RealCause,PSID_bal,UWYK Anc,matched label,20570.641200,145.279500,0.761700,0.007300
+RealCause,IHDP,UWYK Anc,matched resolution,5.147100,0.664000,0.485000,0.029300
+RealCause,ACIC,UWYK Anc,matched resolution,2.547600,0.333800,0.246600,0.064900
+RealCause,CPS,UWYK Anc,matched resolution,11369.965200,46.335800,0.756500,0.010800
+RealCause,PSID,UWYK Anc,matched resolution,22542.947200,162.261600,0.955700,0.010300
+RealCause,PSID_bal,UWYK Anc,matched resolution,20711.677700,142.966900,0.756400,0.009100
+RealCause,IHDP,UWYK Anc,2D,4.304900,0.623000,0.325400,0.077300
+RealCause,ACIC,UWYK Anc,2D,2.722200,0.468100,0.116900,0.034000
+RealCause,CPS,UWYK Anc,2D,12474.770100,28.086500,0.914700,0.005500
+RealCause,PSID,UWYK Anc,2D,21849.774800,136.258600,0.902700,0.009500
+RealCause,PSID_bal,UWYK Anc,2D,21466.858100,140.856900,0.864400,0.006300
+RealCause,IHDP,CausalPFN-C,matched label,0.779400,0.128500,0.065100,0.018700
+RealCause,ACIC,CausalPFN-C,matched label,1.440200,0.230400,0.089500,0.018800
+RealCause,CPS,CausalPFN-C,matched label,10064.668000,179.135800,0.354000,0.041600
+RealCause,PSID,CausalPFN-C,matched label,15523.374200,174.248900,0.435500,0.013900
+RealCause,PSID_bal,CausalPFN-C,matched label,16394.101300,247.712400,0.512700,0.021800
+RealCause,IHDP,CausalPFN-C,matched resolution,0.816400,0.124400,0.059800,0.005800
+RealCause,ACIC,CausalPFN-C,matched resolution,1.159600,0.157900,0.045700,0.010100
+RealCause,CPS,CausalPFN-C,matched resolution,10058.640000,179.511600,0.358400,0.041400
+RealCause,PSID,CausalPFN-C,matched resolution,17538.952900,265.722400,0.625700,0.022500
+RealCause,PSID_bal,CausalPFN-C,matched resolution,17038.740700,379.988700,0.495200,0.030900
+RealCause,IHDP,CausalPFN-C,2D,1.200500,0.104700,0.070900,0.014400
+RealCause,ACIC,CausalPFN-C,2D,1.263800,0.204000,0.090200,0.017800
+RealCause,CPS,CausalPFN-C,2D,10902.481300,175.789600,0.389100,0.040300
+RealCause,PSID,CausalPFN-C,2D,15557.251600,212.160900,0.252800,0.015900
+RealCause,PSID_bal,CausalPFN-C,2D,16769.431900,310.083700,0.334200,0.024900
+CaseStudy,Observed_Confounder,Do-PFN,matched label,0.576218,0.011680,0.492974,0.016776
+CaseStudy,Observed_Mediator,Do-PFN,matched label,0.658758,0.019390,0.389209,0.009679
+CaseStudy,Observed_Mediator_and_Confounder,Do-PFN,matched label,0.740297,0.015445,0.607074,0.016610
+CaseStudy,Unobserved_Confounder,Do-PFN,matched label,0.608767,0.011623,0.564533,0.018965
+CaseStudy,Frontdoor_Criterion,Do-PFN,matched label,0.145311,0.003652,0.811104,0.027179
+CaseStudy,Backdoor_Criterion,Do-PFN,matched label,0.158698,0.004671,0.917146,0.035172
+CaseStudy,Observed_Confounder,Do-PFN,matched resolution,1.366721,0.027903,1.181352,0.047610
+CaseStudy,Observed_Mediator,Do-PFN,matched resolution,0.977838,0.018623,2.153646,0.107648
+CaseStudy,Observed_Mediator_and_Confounder,Do-PFN,matched resolution,1.628824,0.027132,1.436213,0.054848
+CaseStudy,Unobserved_Confounder,Do-PFN,matched resolution,1.252757,0.023857,1.270957,0.052044
+CaseStudy,Frontdoor_Criterion,Do-PFN,matched resolution,0.419550,0.010710,2.122324,0.074581
+CaseStudy,Backdoor_Criterion,Do-PFN,matched resolution,0.452132,0.012133,2.335101,0.087333
+CaseStudy,Observed_Confounder,Do-PFN,2D,0.319058,0.007738,0.392654,0.019538
+CaseStudy,Observed_Mediator,Do-PFN,2D,0.297068,0.014689,0.189999,0.007950
+CaseStudy,Observed_Mediator_and_Confounder,Do-PFN,2D,0.465487,0.013045,0.459005,0.017013
+CaseStudy,Unobserved_Confounder,Do-PFN,2D,0.358204,0.008538,0.454395,0.019570
+CaseStudy,Frontdoor_Criterion,Do-PFN,2D,0.124386,0.003519,0.805535,0.030007
+CaseStudy,Backdoor_Criterion,Do-PFN,2D,0.137824,0.004187,0.949844,0.037608
+CaseStudy,Observed_Confounder,UWYK No-Anc,matched label,1.195025,0.018317,0.752673,0.006274
+CaseStudy,Observed_Mediator,UWYK No-Anc,matched label,1.353181,0.020557,0.865442,0.006441
+CaseStudy,Observed_Mediator_and_Confounder,UWYK No-Anc,matched label,1.365853,0.020029,0.876797,0.005832
+CaseStudy,Unobserved_Confounder,UWYK No-Anc,matched label,1.188380,0.018263,0.740116,0.006404
+CaseStudy,Frontdoor_Criterion,UWYK No-Anc,matched label,0.077085,0.002318,0.328354,0.007513
+CaseStudy,Backdoor_Criterion,UWYK No-Anc,matched label,0.077213,0.002111,0.362217,0.007962
+CaseStudy,Observed_Confounder,UWYK No-Anc,matched resolution,0.721924,0.011891,0.485620,0.005474
+CaseStudy,Observed_Mediator,UWYK No-Anc,matched resolution,1.354086,0.020689,0.849858,0.006682
+CaseStudy,Observed_Mediator_and_Confounder,UWYK No-Anc,matched resolution,1.297356,0.019094,0.825507,0.005581
+CaseStudy,Unobserved_Confounder,UWYK No-Anc,matched resolution,0.729065,0.011585,0.518483,0.008803
+CaseStudy,Frontdoor_Criterion,UWYK No-Anc,matched resolution,0.080170,0.002370,0.364983,0.007407
+CaseStudy,Backdoor_Criterion,UWYK No-Anc,matched resolution,0.082070,0.002207,0.406240,0.008737
+CaseStudy,Observed_Confounder,UWYK No-Anc,2D,0.258430,0.004295,0.395034,0.020106
+CaseStudy,Observed_Mediator,UWYK No-Anc,2D,0.165356,0.003538,0.109991,0.001689
+CaseStudy,Observed_Mediator_and_Confounder,UWYK No-Anc,2D,0.330025,0.005159,0.417683,0.019653
+CaseStudy,Unobserved_Confounder,UWYK No-Anc,2D,0.274905,0.004612,0.413291,0.020817
+CaseStudy,Frontdoor_Criterion,UWYK No-Anc,2D,0.181341,0.004284,1.023555,0.031819
+CaseStudy,Backdoor_Criterion,UWYK No-Anc,2D,0.199966,0.004947,1.206810,0.040303
+CaseStudy,Observed_Confounder,UWYK Anc,matched label,1.174120,0.017950,0.742639,0.006126
+CaseStudy,Observed_Mediator,UWYK Anc,matched label,1.348052,0.020504,0.861652,0.006443
+CaseStudy,Observed_Mediator_and_Confounder,UWYK Anc,matched label,1.338136,0.019610,0.865980,0.005597
+CaseStudy,Unobserved_Confounder,UWYK Anc,matched label,1.185043,0.018153,0.741856,0.006313
+CaseStudy,Frontdoor_Criterion,UWYK Anc,matched label,0.080839,0.002324,0.376151,0.007654
+CaseStudy,Backdoor_Criterion,UWYK Anc,matched label,0.078443,0.002115,0.371258,0.008093
+CaseStudy,Observed_Confounder,UWYK Anc,matched resolution,0.246661,0.005518,0.234819,0.010637
+CaseStudy,Observed_Mediator,UWYK Anc,matched resolution,1.326220,0.020437,0.834560,0.006705
+CaseStudy,Observed_Mediator_and_Confounder,UWYK Anc,matched resolution,1.206342,0.018679,0.767649,0.006299
+CaseStudy,Unobserved_Confounder,UWYK Anc,matched resolution,0.330269,0.008939,0.334883,0.016163
+CaseStudy,Frontdoor_Criterion,UWYK Anc,matched resolution,0.078846,0.002461,0.323666,0.007600
+CaseStudy,Backdoor_Criterion,UWYK Anc,matched resolution,0.134393,0.005141,0.594547,0.018111
+CaseStudy,Observed_Confounder,UWYK Anc,2D,0.264115,0.004948,0.299631,0.011367
+CaseStudy,Observed_Mediator,UWYK Anc,2D,0.132895,0.002139,0.085500,0.000923
+CaseStudy,Observed_Mediator_and_Confounder,UWYK Anc,2D,0.345015,0.005200,0.422090,0.019419
+CaseStudy,Unobserved_Confounder,UWYK Anc,2D,0.269087,0.004466,0.425230,0.022006
+CaseStudy,Frontdoor_Criterion,UWYK Anc,2D,0.196905,0.004271,1.062385,0.033370
+CaseStudy,Backdoor_Criterion,UWYK Anc,2D,0.143112,0.003978,0.760321,0.023210
+CaseStudy,Observed_Confounder,CausalPFN-C,matched label,0.187239,0.006455,0.111348,0.008428
+CaseStudy,Observed_Mediator,CausalPFN-C,matched label,0.512161,0.009470,0.359099,0.005210
+CaseStudy,Observed_Mediator_and_Confounder,CausalPFN-C,matched label,0.693735,0.015114,0.618169,0.025209
+CaseStudy,Unobserved_Confounder,CausalPFN-C,matched label,0.360003,0.010782,0.416362,0.022183
+CaseStudy,Frontdoor_Criterion,CausalPFN-C,matched label,0.158359,0.006800,0.323592,0.016038
+CaseStudy,Backdoor_Criterion,CausalPFN-C,matched label,0.155455,0.006645,0.296147,0.012771
+CaseStudy,Observed_Confounder,CausalPFN-C,matched resolution,0.191601,0.006849,0.144149,0.012680
+CaseStudy,Observed_Mediator,CausalPFN-C,matched resolution,1.172249,0.022910,0.751601,0.009988
+CaseStudy,Observed_Mediator_and_Confounder,CausalPFN-C,matched resolution,0.912281,0.020295,0.692963,0.029542
+CaseStudy,Unobserved_Confounder,CausalPFN-C,matched resolution,0.354052,0.011107,0.461690,0.025487
+CaseStudy,Frontdoor_Criterion,CausalPFN-C,matched resolution,0.158162,0.006762,0.362456,0.018321
+CaseStudy,Backdoor_Criterion,CausalPFN-C,matched resolution,0.156920,0.006807,0.366400,0.019733
+CaseStudy,Observed_Confounder,CausalPFN-C,2D,0.208475,0.006798,0.294492,0.017810
+CaseStudy,Observed_Mediator,CausalPFN-C,2D,0.464862,0.012599,0.323890,0.006800
+CaseStudy,Observed_Mediator_and_Confounder,CausalPFN-C,2D,0.475548,0.012634,0.512668,0.018129
+CaseStudy,Unobserved_Confounder,CausalPFN-C,2D,0.394350,0.011665,0.536151,0.027935
+CaseStudy,Frontdoor_Criterion,CausalPFN-C,2D,0.202190,0.006966,0.787980,0.026532
+CaseStudy,Backdoor_Criterion,CausalPFN-C,2D,0.213677,0.007489,0.894871,0.028580
+ComplexMech,5,Do-PFN,matched label,0.297983,0.048303,0.664882,0.207084
+ComplexMech,10,Do-PFN,matched label,0.313899,0.038026,0.772800,0.199016
+ComplexMech,20,Do-PFN,matched label,0.257077,0.019414,0.512044,0.050954
+ComplexMech,30,Do-PFN,matched label,0.264040,0.023827,0.443821,0.047634
+ComplexMech,40,Do-PFN,matched label,0.182316,0.018112,0.379581,0.037346
+ComplexMech,50,Do-PFN,matched label,0.231172,0.025094,0.472733,0.056949
+ComplexMech,5,Do-PFN,matched resolution,1.445879,0.158829,3.464431,0.524226
+ComplexMech,10,Do-PFN,matched resolution,1.482594,0.133763,4.219378,0.441406
+ComplexMech,20,Do-PFN,matched resolution,0.788969,0.070984,2.341575,0.275153
+ComplexMech,30,Do-PFN,matched resolution,0.666200,0.058640,2.218626,0.292588
+ComplexMech,40,Do-PFN,matched resolution,0.448022,0.037903,1.540280,0.189978
+ComplexMech,50,Do-PFN,matched resolution,0.439800,0.062680,1.665505,0.452751
+ComplexMech,5,Do-PFN,2D,0.186220,0.020839,0.341950,0.036612
+ComplexMech,10,Do-PFN,2D,0.202951,0.020650,0.389995,0.060046
+ComplexMech,20,Do-PFN,2D,0.204161,0.019357,0.362424,0.034924
+ComplexMech,30,Do-PFN,2D,0.236561,0.024041,0.402391,0.036640
+ComplexMech,40,Do-PFN,2D,0.160444,0.017112,0.377058,0.061237
+ComplexMech,50,Do-PFN,2D,0.222062,0.025952,0.477496,0.096483
+ComplexMech,5,UWYK No-Anc,matched label,0.318319,0.035954,0.596217,0.037432
+ComplexMech,10,UWYK No-Anc,matched label,0.286775,0.028182,0.636343,0.038603
+ComplexMech,20,UWYK No-Anc,matched label,0.241380,0.022540,0.502691,0.037403
+ComplexMech,30,UWYK No-Anc,matched label,0.256005,0.026276,0.458306,0.039168
+ComplexMech,40,UWYK No-Anc,matched label,0.172022,0.021189,0.353799,0.036192
+ComplexMech,50,UWYK No-Anc,matched label,0.216343,0.025425,0.382029,0.039229
+ComplexMech,5,UWYK No-Anc,matched resolution,0.286293,0.034385,0.518634,0.037959
+ComplexMech,10,UWYK No-Anc,matched resolution,0.274543,0.028656,0.582506,0.038683
+ComplexMech,20,UWYK No-Anc,matched resolution,0.233327,0.022189,0.455087,0.035215
+ComplexMech,30,UWYK No-Anc,matched resolution,0.252370,0.026120,0.441340,0.037612
+ComplexMech,40,UWYK No-Anc,matched resolution,0.166669,0.020821,0.315628,0.032047
+ComplexMech,50,UWYK No-Anc,matched resolution,0.210456,0.025274,0.351593,0.035749
+ComplexMech,5,UWYK No-Anc,2D,0.172734,0.019803,0.331029,0.041237
+ComplexMech,10,UWYK No-Anc,2D,0.189622,0.017957,0.333620,0.042551
+ComplexMech,20,UWYK No-Anc,2D,0.191609,0.018598,0.320433,0.060828
+ComplexMech,30,UWYK No-Anc,2D,0.228229,0.022845,0.347044,0.045345
+ComplexMech,40,UWYK No-Anc,2D,0.149209,0.016134,0.264759,0.034910
+ComplexMech,50,UWYK No-Anc,2D,0.196865,0.023290,0.341498,0.045797
+ComplexMech,5,UWYK Anc,matched label,0.307584,0.034610,0.573901,0.035642
+ComplexMech,10,UWYK Anc,matched label,0.282505,0.027886,0.618810,0.037380
+ComplexMech,20,UWYK Anc,matched label,0.239365,0.022358,0.492431,0.036610
+ComplexMech,30,UWYK Anc,matched label,0.255184,0.026159,0.454142,0.038965
+ComplexMech,40,UWYK Anc,matched label,0.171837,0.021149,0.353057,0.035787
+ComplexMech,50,UWYK Anc,matched label,0.216302,0.025390,0.383932,0.038945
+ComplexMech,5,UWYK Anc,matched resolution,0.206023,0.026062,0.345162,0.038361
+ComplexMech,10,UWYK Anc,matched resolution,0.214577,0.020370,0.416112,0.034266
+ComplexMech,20,UWYK Anc,matched resolution,0.213811,0.020503,0.363385,0.031393
+ComplexMech,30,UWYK Anc,matched resolution,0.240940,0.024147,0.396718,0.036928
+ComplexMech,40,UWYK Anc,matched resolution,0.160376,0.020169,0.270312,0.029130
+ComplexMech,50,UWYK Anc,matched resolution,0.203267,0.024434,0.300217,0.033159
+ComplexMech,5,UWYK Anc,2D,0.169605,0.020146,0.300490,0.035875
+ComplexMech,10,UWYK Anc,2D,0.183184,0.018015,0.277539,0.038599
+ComplexMech,20,UWYK Anc,2D,0.195518,0.019506,0.297402,0.039820
+ComplexMech,30,UWYK Anc,2D,0.228134,0.023953,0.297332,0.032424
+ComplexMech,40,UWYK Anc,2D,0.149711,0.016650,0.239754,0.031631
+ComplexMech,50,UWYK Anc,2D,0.196278,0.023626,0.318482,0.042696
+ComplexMech,5,CausalPFN-C,matched label,0.218145,0.024899,0.425971,0.049303
+ComplexMech,10,CausalPFN-C,matched label,0.231296,0.020426,0.498994,0.065256
+ComplexMech,20,CausalPFN-C,matched label,0.232047,0.020164,0.488702,0.057905
+ComplexMech,30,CausalPFN-C,matched label,0.256591,0.024466,0.539077,0.066868
+ComplexMech,40,CausalPFN-C,matched label,0.169249,0.018377,0.352693,0.040451
+ComplexMech,50,CausalPFN-C,matched label,0.211997,0.023877,0.342517,0.042085
+ComplexMech,5,CausalPFN-C,matched resolution,0.225509,0.026183,0.415199,0.046688
+ComplexMech,10,CausalPFN-C,matched resolution,0.234707,0.023372,0.538727,0.068157
+ComplexMech,20,CausalPFN-C,matched resolution,0.219376,0.019672,0.424762,0.049648
+ComplexMech,30,CausalPFN-C,matched resolution,0.255824,0.024866,0.499980,0.067046
+ComplexMech,40,CausalPFN-C,matched resolution,0.168182,0.019226,0.337169,0.044693
+ComplexMech,50,CausalPFN-C,matched resolution,0.211990,0.024503,0.341996,0.046099
+ComplexMech,5,CausalPFN-C,2D,0.196760,0.022659,0.342714,0.039213
+ComplexMech,10,CausalPFN-C,2D,0.213495,0.018900,0.472471,0.064319
+ComplexMech,20,CausalPFN-C,2D,0.217921,0.019222,0.424702,0.064846
+ComplexMech,30,CausalPFN-C,2D,0.254837,0.023113,0.483091,0.056237
+ComplexMech,40,CausalPFN-C,2D,0.171124,0.016473,0.391169,0.059327
+ComplexMech,50,CausalPFN-C,2D,0.225228,0.024186,0.409874,0.049105
