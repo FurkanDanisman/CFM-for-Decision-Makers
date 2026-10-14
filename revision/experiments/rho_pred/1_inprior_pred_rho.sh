@@ -11,7 +11,7 @@ SELF="$KIT/R-PFN/revision/experiments/rho_pred/1_inprior_pred_rho.sh"
 
 if [ "${1:-}" != run ]; then
   cd "$KIT" && mkdir -p logs_rho_pred
-  sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time="${RP_TIME:-3:00:00}" --cpus-per-task=4 --mem=32G \
+  sbatch --export=ALL --account=aip-rgrosse --gres=gpu:l40s:1 --time="${RP_TIME:-3:00:00}" --cpus-per-task=4 --mem=32G \
     --job-name=rho-pred-prior -o logs_rho_pred/inprior_%j.out --wrap "KIT=$KIT bash $SELF run"
   exit $?
 fi
@@ -29,10 +29,11 @@ export PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}
 nvidia-smi --query-gpu=name --format=csv,noheader || true
 
 #        model                prior dir
-for pair in "dopfn2d:dopfn" "graph2d:uwyk_2d" "cpfn2d:cpfn_2d"; do
+# RP_PAIRS / RP_SHARDS restrict a rerun (e.g. RP_PAIRS="graph2d:uwyk_2d" RP_SHARDS=0); RP_KEEP=1 keeps the dumps
+for pair in ${RP_PAIRS:-"dopfn2d:dopfn" "graph2d:uwyk_2d" "cpfn2d:cpfn_2d"}; do
   MODEL=${pair%%:*}; PRIOR=${pair##*:}
   mkdir -p "$RES/$MODEL"
-  for SHARD in $(seq 0 9); do
+  for SHARD in ${RP_SHARDS:-$(seq 0 9)}; do
     [ -f "$RES/$MODEL/shard$SHARD.npz" ] && { echo "skip $MODEL shard $SHARD"; continue; }
     export UWYK_FIG34_DATA="$DATA/$PRIOR/shard$SHARD"
     export OUT="$RES/$MODEL/dumps_shard$SHARD"
@@ -53,7 +54,8 @@ for pair in "dopfn2d:dopfn" "graph2d:uwyk_2d" "cpfn2d:cpfn_2d"; do
           --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
     esac
     python "$REPO/revision/experiments/rho_pred/pred_rho_shard.py" "$OUT" "$RES/$MODEL/shard$SHARD.npz"
-    rm -rf "$OUT"
+    echo "[$(date '+%F %T')] $MODEL shard $SHARD: $(ls "$OUT" | grep -c 'r[0-9][0-9][0-9]\.npz$') dumps"
+    [ "${RP_KEEP:-0}" = 1 ] || rm -rf "$OUT"
   done
 done
 python "$REPO/revision/experiments/rho_pred/summarize_inprior.py" "$RES" "$REPO/revision/results/d262t1/rho_pred_inprior"
