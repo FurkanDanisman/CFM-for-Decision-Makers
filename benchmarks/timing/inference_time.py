@@ -58,7 +58,45 @@ MODELS = {
     'uwyk2d':  ('UWYK No-Anc 2D', 'uwyk2d',  'noanc'),
     'cpfn1d':  ('CausalPFN-C',    'cpfn1d',  None),
     'cpfn2d':  ('CausalPFN-C 2D', 'cpfn2d',  None),
+    # ablation and re-trained rows of tab:train_cost: the base model's harness, flags and timing code, only the
+    # checkpoint (and, where the model was trained so, the treatment encoding) changed; the settings are those of
+    # the runs in the paper (revision/experiments/D262k/23_*, benchmarks/cluster/submit_aurora3_all.sh,
+    # benchmarks/cluster/cmech_models.sh)
+    'dopfn1d_mr':  ('Do-PFN, matched resolution',      'dopfn1d', None),
+    'dopfn1d_ml':  ('Do-PFN, matched labels',          'dopfn1d', None),
+    'uwyk1d_bin':  ('UWYK 1D binary',                  'uwyk1d',  'noanc'),
+    'uwyk1d_mr':   ('UWYK, matched resolution',        'uwyk1d',  'noanc'),
+    'uwyk1d_ml':   ('UWYK, matched labels',            'uwyk1d',  'noanc'),
+    'cpfn_v0':     ('CausalPFN two-stage (published)', 'cpfn1d',  None),
+    'cpfn1d_mr':   ('CausalPFN-C, matched resolution', 'cpfn1d',  None),
+    'cpfn1d_ml':   ('CausalPFN-C, matched labels',     'cpfn1d',  None),
 }
+# variant key -> base key whose harness, environment and timing code it uses
+BASE = {'dopfn1d_mr': 'dopfn1d', 'dopfn1d_ml': 'dopfn1d', 'uwyk1d_bin': 'uwyk1d', 'uwyk1d_mr': 'uwyk1d',
+        'uwyk1d_ml': 'uwyk1d', 'cpfn_v0': 'cpfn1d', 'cpfn1d_mr': 'cpfn1d', 'cpfn1d_ml': 'cpfn1d'}
+
+
+def variant_overrides(key, a):
+    """(env overrides, checkpoint files) of a variant row, or ({}, []) for a base row."""
+    ck, aur = os.path.join(a.repo, 'Required_checkpoints'), os.path.join(a.kit, 'from_aurora')
+    d262 = os.path.join(a.kit, 'checkpoints_dopfn_repro_262k')
+    if key in ('dopfn1d_mr', 'dopfn1d_ml'):              # 262k, temperature off (D262k stage 23)
+        c = os.path.join(d262, 'dopfn_1d' if key == 'dopfn1d_mr' else 'dopfn_1d_botharms', 'step_262144_final.pt')
+        return dict(DOPFN_CKPT=c, DOPFN_SOFTMAX_TEMP='0'), [c]
+    if key == 'uwyk1d_bin':                               # cmech_models.sh uwyk_bin
+        c, f = os.path.join(ck, 'uwyk_bin_step50000.pt'), os.path.join(ck, 'uwyk_USED_IN_RESULTS_best_model_config.yaml')
+        return dict(CKPT=c, CONFIG=f, T_ENCODING='binary'), [c, f]
+    if key == 'uwyk1d_mr':                                # submit_aurora3_all.sh uwyk_D_j32_nobin
+        c, f = os.path.join(aur, 'uwyk_D_j32_nobin_step50000.pt'), os.path.join(aur, 'uwyk_D_j32_config.yaml')
+        return dict(CKPT=c, CONFIG=f, T_ENCODING='target'), [c, f]
+    if key == 'uwyk1d_ml':                                # submit_aurora3_all.sh uwyk_C_botharms
+        c, f = os.path.join(aur, 'uwyk_C_botharms_step50000.pt'), os.path.join(aur, 'best_model_config.yaml')
+        return dict(CKPT=c, CONFIG=f, T_ENCODING='binary'), [c, f]
+    if key in ('cpfn_v0', 'cpfn1d_mr', 'cpfn1d_ml'):      # cmech_models.sh cpfn_v0 / cpfn1d_j32 / cpfn1d_botharms
+        c = os.path.join(ck, {'cpfn_v0': 'cpfn_v0_original.pt', 'cpfn1d_mr': 'cpfn1d_j32_step50000.pt',
+                              'cpfn1d_ml': 'cpfn1d_botharms_step50000.pt'}[key])
+        return dict(CKPT=c), [c]
+    return {}, []
 
 # Every variable any of the six harnesses reads. Cleared before each child so nothing
 # leaks from the calling shell (e.g. common.sh exports DOPFN_SOFTMAX_TEMP=0) into a
@@ -78,7 +116,12 @@ _HARNESS_ENV = ('DOPFN_CKPT', 'DOPFN_SOFTMAX_TEMP', 'DOPFN_FP32', 'DOPFN_QUERY_T
 # ---------------------------------------------------------------------------
 def model_env(key, a, out_dir):
     """Harness script + environment, mirroring submit_realcause_density_unified.sbatch
-    and the realcause_eval/Table1 wrapper of each model."""
+    and the realcause_eval/Table1 wrapper of each model (a variant: its base model's, with its overrides)."""
+    if key in BASE:
+        script, ckpts, env = model_env(BASE[key], a, out_dir)
+        over, files = variant_overrides(key, a)
+        env.update(over)
+        return script, [c for c in ckpts if c not in (a.cpfn1d_ckpt,)] + files, env
     env = {k: v for k, v in os.environ.items() if k not in _HARNESS_ENV}
     # unified sbatch: exported for every model
     env.update(DATASET=DATASET, OUT=out_dir, DENSITY_DUMP='1', SKIP_EM='1', COMPILE='0',
@@ -387,7 +430,7 @@ def time_step(fn, gpu, n_warmup, n_rep):
 def run_child(a):
     key = a.child
     label, fmt, mode = MODELS[key]
-    forward, n_context, check = setup_child(key, a.harness)
+    forward, n_context, check = setup_child(BASE.get(key, key), a.harness)
 
     # The scorer, imported only now so the harness set up sys.path exactly as in its own run.
     N = _import_file(os.path.join(a.repo, 'benchmarks', 'eval_graph2d', 'nll_from_dumps.py'),

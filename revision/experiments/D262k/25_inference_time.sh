@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stage 25: inference time of the six RealCause models (IHDP r0) -> revision/results/d262t1/inference_time.{csv,md}.
+# Stage 25: inference time of every model of tab:train_cost (IHDP r0): the six main models plus the ablation and re-trained rows -> revision/results/d262t1/inference_time.{csv,md}.
 # ONE GPU job; the six models run sequentially (benchmarks/timing/inference_time.py), then the results are pushed.
 #   cd $KIT && git -C R-PFN pull --rebase && bash R-PFN/revision/experiments/D262k/25_inference_time.sh
 # The same file is the job body: sbatch --wrap runs "bash <this file> run" (never `source` under sh).
@@ -27,5 +27,5 @@ nvidia-smi --query-gpu=name --format=csv,noheader
 python -u "$REPO/benchmarks/timing/inference_time.py" --kit "$KIT" --repo "$REPO" --out-dir "$O" \
   --work-dir "$SCRATCH/inference_time_work" --dopfn2d-ckpt "$CKPT" || echo "inference_time.py exited non-zero (see log)"
 cd "$REPO" && git add revision/results/d262t1/inference_time.* \
-  && git commit -q -m "d262t1: inference time of the six RealCause models (IHDP r0)" \
+  && git commit -q -m "d262t1: inference time of every tab:train_cost model (IHDP r0)" \
   && git pull -q --rebase && git push -q && echo pushed
