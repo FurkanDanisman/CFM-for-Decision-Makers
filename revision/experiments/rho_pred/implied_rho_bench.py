@@ -1,6 +1,7 @@
 """Predicted (implied) cross-world correlation of the 2D heads on the benchmarks, from their dumped joints.
 python implied_rho_bench.py OUT_PREFIX SPEC [SPEC ...]
-    SPEC = "model|benchmark|root|tag"   (tag = '' for the primary joint, or e.g. v3a for p_joint_scaled_v3a)
+    SPEC = "model|benchmark|root|tag|must"   (tag = '' for the primary joint, or e.g. v3a for p_joint_scaled_v3a;
+                                             must = a path component every file must contain, '' for none)
 
 Every *r###.npz under root (recursively) that holds a joint is read; per query rho_pred is computed exactly as
 for the in-prior figure (pred_rho_shard.rho_from_joint: correlation of the predicted joint on the interior grid,
@@ -81,9 +82,9 @@ def true_rho(f, bench, root):
 def main(out, specs):
     rows = []
     for spec in specs:
-        model, bench, root, tag = (spec.split("|") + [""])[:4]
+        model, bench, root, tag, must = (spec.split("|") + ["", ""])[:5]
         files = [f for f in glob.glob(os.path.join(root, "**", "*r[0-9][0-9]*.npz"), recursive=True)
-                 if "summary" not in os.path.basename(f)]
+                 if "summary" not in os.path.basename(f) and (not must or must in f.split(os.sep))]
         n_ok = 0
         for f in sorted(files):
             try:

@@ -21,11 +21,11 @@ python -u "$REPO/revision/experiments/rho_pred/implied_rho_bench.py" "$O/rho_pre
   "Do-PFN 2D|RealCause|$S/dumps_all/dopfn_repro_joint2d_262k_t1/rc|" \
   "Do-PFN 2D|CaseStudy|$S/dumps_all/dopfn_repro_joint2d_262k_t1/cs|" \
   "Do-PFN 2D|ComplexMech|$S/cmech_dumps/dopfn_repro_joint2d_262k_t1|" \
-  "UWYK 2D No-Anc|RealCause|$S/rc_dens_uni/graph2d|" \
-  "UWYK 2D No-Anc|CaseStudy|$S/cs_dvar_dens|" \
+  "UWYK 2D No-Anc|RealCause|$S/rc_dens_uni||graph2d" \
+  "UWYK 2D No-Anc|CaseStudy|$S/cs_dvar_dens||graph2d" \
   "UWYK 2D No-Anc|ComplexMech|$S/cmech_dumps/graph2d|" \
-  "CausalPFN-C 2D|RealCause|$S/rc_dens_eta0|" \
-  "CausalPFN-C 2D|CaseStudy|$S/cs_dvar_eta0|" \
+  "CausalPFN-C 2D|RealCause|$S/rc_dens_eta0||cpfn2d_pooled" \
+  "CausalPFN-C 2D|CaseStudy|$S/cs_dvar_eta0||cpfn2d_pooled" \
   "CausalPFN-C 2D|ComplexMech|$S/cmech_dumps/cpfn2d_eta0|" \
   "Do-PFN 2D|rho_ctrl_cs|$C/dopfn2d/cs|" "Do-PFN 2D|rho_ctrl_cm|$C/dopfn2d/cm|" \
   "UWYK 2D No-Anc|rho_ctrl_cs|$C/graph2d/cs|" "UWYK 2D No-Anc|rho_ctrl_cm|$C/graph2d/cm|" \
