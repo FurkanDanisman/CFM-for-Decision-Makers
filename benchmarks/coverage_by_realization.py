@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "UWYK_Fig3_4"))
 
 from cate_density_metrics import (METHODS, score_file, score_query,          # noqa: E402
                                   _load_arrays, _resolve_dir,
-                                  _configure_tau_smoother)
+                                  _configure_tau_smoother, coupling_mode)
 
 
 def score_file_against(path, truth_dir, dataset, tag=None, coupling="indep",
@@ -172,11 +172,9 @@ def main():
     # forced-independent ablation could only be run under the POOLED mean, so the
     # 2D heads' RealCause indep columns would use a different aggregation from
     # every other coverage number in the same table.
-    ap.add_argument("--coupling", default="indep",
-                    choices=["indep", "comonotonic"],
+    ap.add_argument("--coupling", default="indep", type=coupling_mode,
                     help="how 1D heads turn two marginals into p(tau).")
-    ap.add_argument("--joint-coupling", default="learned",
-                    choices=["learned", "indep", "comonotonic"],
+    ap.add_argument("--joint-coupling", default="learned", type=coupling_mode,
                     help="2D heads: 'learned' uses the anti-diagonal projection; "
                          "'indep' rebuilds tau from the joint's own marginals "
                          "under rho = 0. RealCause-only ablation.")

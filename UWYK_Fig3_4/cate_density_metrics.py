@@ -130,6 +130,114 @@ def tau_pmf_comonotonic(p0: np.ndarray, p1: np.ndarray, J: int) -> np.ndarray:
     return out / tot if tot > 0 else out
 
 
+# ── coupling sensitivity (revision v2, E1/E2) ────────────────────────────────
+# Extra ways to turn two marginals on one grid into an ITE interval, for the 1D
+# heads (--coupling) and for the 2D heads' own marginals (--joint-coupling):
+#   gauss:<rho>  Gaussian copula with correlation rho (rho = 0 / 1 use the exact
+#                indep / comonotonic pmfs; other values a fixed-seed Monte Carlo).
+#   band         coupling-free under rho >= 0: union of the gauss intervals over
+#                rho in {0, .25, .5, .75, 1}.
+#   makarov      coupling-free, no assumption: the Makarov bounds on the CDF of
+#                Y1 - Y0 (valid for every coupling of the two marginals).
+# band / makarov are INTERVALS, not densities: the pmf handed on is the
+# independent one (so mean / CRPS stay defined), and score_query reads the
+# interval from _IV_OVERRIDE (keyed by the pmf object) instead of from the pmf.
+_IV_OVERRIDE = {}
+_GAUSS_M = int(os.environ.get("COUPLING_MC", "20000"))
+_BAND_RHOS = (0.0, 0.25, 0.5, 0.75, 1.0)
+_MAKAROV_MAXBINS = int(os.environ.get("MAKAROV_MAXBINS", "256"))
+
+
+def tau_pmf_gauss(p0, p1, J, rho, seed=0):
+    """Gaussian copula with correlation rho, pushed through the difference map."""
+    if abs(rho) < 1e-12:
+        return tau_pmf_indep(p0, p1)
+    if rho >= 1 - 1e-12:
+        return tau_pmf_comonotonic(p0, p1, J)
+    from scipy.special import ndtr
+    p0 = np.asarray(p0, dtype=np.float64); p1 = np.asarray(p1, dtype=np.float64)
+    F0 = np.cumsum(p0); F0 /= F0[-1]
+    F1 = np.cumsum(p1); F1 /= F1[-1]
+    rng = np.random.default_rng(seed)
+    z0 = rng.standard_normal(_GAUSS_M)
+    z1 = rho * z0 + np.sqrt(1.0 - rho * rho) * rng.standard_normal(_GAUSS_M)
+    i = np.minimum(np.searchsorted(F0, ndtr(z0), side="left"), J - 1)
+    j = np.minimum(np.searchsorted(F1, ndtr(z1), side="left"), J - 1)
+    out = np.bincount((j - i) + (J - 1), minlength=2 * J - 1).astype(np.float64)
+    return out / out.sum()
+
+
+def makarov_interval(atoms, p0, p1, J, level=0.95):
+    """95% interval for Y1 - Y0 valid for EVERY coupling of p0 and p1.
+
+    Integer offsets m = j - i on the common grid. With F(-1) = 0,
+        P(D <= m) >= L(m) = max(0, max_j F1(j) - F0(j - m - 1))
+        P(D <= m) <= U(m) = 1 - max(0, max_j F0(j - m - 1) - F1(j))
+    lo = first m with U(m) >= a/2, hi = first m with L(m) >= 1 - a/2, so
+    P(D < lo) <= a/2 and P(D > hi) <= a/2 whatever the coupling. Grids finer than
+    MAKAROV_MAXBINS are merged first: merging only widens the interval (still valid).
+    """
+    a = 1.0 - level
+    p0 = np.asarray(p0, dtype=np.float64); p1 = np.asarray(p1, dtype=np.float64)
+    f = max(1, int(np.ceil(J / _MAKAROV_MAXBINS)))
+    if f > 1:
+        pad = (-J) % f
+        p0 = np.pad(p0, (0, pad)).reshape(-1, f).sum(1)
+        p1 = np.pad(p1, (0, pad)).reshape(-1, f).sum(1)
+    K = p0.size
+    F0 = np.cumsum(p0); F0 /= F0[-1]
+    F1 = np.cumsum(p1); F1 /= F1[-1]
+    F0p = np.concatenate([np.zeros(K + 1), F0, np.ones(K + 1)])  # F0p[s + K + 1] = F0(s)
+    m = np.arange(-(K - 1), K)                                  # coarse offsets
+    jj = np.arange(K)
+    S = F0p[(jj[None, :] - m[:, None] - 1) + K + 1]             # F0(j - m - 1), (2K-1, K)
+    L = np.maximum(0.0, (F1[None, :] - S).max(1))
+    U = 1.0 - np.maximum(0.0, (S - F1[None, :]).max(1))
+    k_lo = int(np.argmax(U >= a / 2.0)) if (U >= a / 2.0).any() else 0
+    k_hi = int(np.argmax(L >= 1.0 - a / 2.0)) if (L >= 1.0 - a / 2.0).any() else len(m) - 1
+    w = float(atoms[1] - atoms[0])                               # fine-grid offset width
+    # coarse offset m spans fine offsets [m*f - (f-1), m*f + (f-1)]: take the outer ends
+    lo = (m[k_lo] * f - (f - 1)) * w
+    hi = (m[k_hi] * f + (f - 1)) * w
+    return float(max(lo, atoms[0])), float(min(hi, atoms[-1]))
+
+
+def _couple(p0, p1, J, atoms, mode):
+    """pmfs over tau for every query under coupling `mode` (see block comment)."""
+    n = p0.shape[0]
+    if mode == "comonotonic":
+        return [tau_pmf_comonotonic(p0[q], p1[q], J) for q in range(n)]
+    if mode == "indep":
+        return [tau_pmf_indep(p0[q], p1[q]) for q in range(n)]
+    if mode.startswith("gauss:"):
+        rho = float(mode.split(":", 1)[1])
+        return [tau_pmf_gauss(p0[q], p1[q], J, rho, seed=q) for q in range(n)]
+    if mode in ("band", "makarov"):
+        out = []
+        for q in range(n):
+            pm = tau_pmf_indep(p0[q], p1[q])
+            if mode == "makarov":
+                iv = makarov_interval(atoms, p0[q], p1[q], J)
+            else:
+                ivs = [interval_95(atoms, tau_pmf_gauss(p0[q], p1[q], J, r, seed=q))
+                       for r in _BAND_RHOS]
+                iv = (min(v[0] for v in ivs), max(v[1] for v in ivs))
+            _IV_OVERRIDE[id(pm)] = iv
+            out.append(pm)
+        return out
+    raise ValueError(f"unknown coupling {mode!r}")
+
+
+def coupling_mode(s):
+    """argparse type: indep | comonotonic | gauss:<rho> | band | makarov."""
+    if s in ("indep", "comonotonic", "band", "makarov", "learned"):
+        return s
+    if s.startswith("gauss:"):
+        float(s.split(":", 1)[1])
+        return s
+    raise ValueError(s)
+
+
 # ── scoring rules ─────────────────────────────────────────────────────────────
 
 def _quantile(t: np.ndarray, F: np.ndarray, q: float) -> float:
@@ -198,7 +306,8 @@ def interval_95(t, p):
 
 
 def score_query(t, p, y):
-    lo, hi = interval_95(t, p)
+    _ov = _IV_OVERRIDE.get(id(p))
+    lo, hi = _ov if _ov is not None else interval_95(t, p)
     # Predictive mean and sd are carried alongside the scores as a units check.
     # A density living on the wrong scale still produces finite CRPS/coverage,
     # it just looks like a very bad model — so the only way to tell a broken
@@ -408,6 +517,7 @@ def _rebin_nonuniform(parms, edges, n_out=None, eps=_REBIN_TRIM):
 
 def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned"):
     """(atoms, pmf generator, y_true, n_q) for one realization npz, or None."""
+    _IV_OVERRIDE.clear()
     with np.load(path, allow_pickle=True) as z:
         # Density keys must match the REQUESTED tag. Falling back to the
         # un-suffixed key when a tag is asked for produced two identical rows
@@ -476,12 +586,7 @@ def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned")
                 _m1 = joint.sum(axis=1)          # (n_q, J)  marginal of Y1
                 _m0 = _m0 / np.maximum(_m0.sum(axis=1, keepdims=True), 1e-300)
                 _m1 = _m1 / np.maximum(_m1.sum(axis=1, keepdims=True), 1e-300)
-                if joint_coupling == "comonotonic":
-                    pmfs = [tau_pmf_comonotonic(_m0[q], _m1[q], J)
-                            for q in range(joint.shape[0])]
-                else:
-                    pmfs = [tau_pmf_indep(_m0[q], _m1[q])
-                            for q in range(joint.shape[0])]
+                pmfs = _couple(_m0, _m1, J, atoms, joint_coupling)
         elif p0 is not None and p1 is not None and p0.ndim == 2:
             J = p0.shape[-1]
             # Per-arm standardisation: the two arms live on DIFFERENT affine
@@ -502,11 +607,7 @@ def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned")
                         _g, (p0, p1) = _rb
                         J = p0.shape[-1]
                         atoms = tau_atoms(J, float(_g[1] - _g[0])) * y_scale
-                        pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
-                                 for q in range(p0.shape[0])]
-                                if coupling == "comonotonic" else
-                                [tau_pmf_indep(p0[q], p1[q])
-                                 for q in range(p0.shape[0])])
+                        pmfs = _couple(p0, p1, J, atoms, coupling)
                         _LAST_J["_J"] = int(len(atoms))
                         return atoms, pmfs, y_true, len(pmfs)
             _e = (np.asarray(z["edges"], dtype=np.float64).reshape(-1)
@@ -519,11 +620,7 @@ def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned")
                         _c, (p0, p1) = _rb
                         J = p0.shape[-1]
                         atoms = tau_atoms(J, float(_c[1] - _c[0])) * y_scale
-                        pmfs = ([tau_pmf_comonotonic(p0[q], p1[q], J)
-                                 for q in range(p0.shape[0])]
-                                if coupling == "comonotonic" else
-                                [tau_pmf_indep(p0[q], p1[q])
-                                 for q in range(p0.shape[0])])
+                        pmfs = _couple(p0, p1, J, atoms, coupling)
                         _LAST_J["_J"] = int(len(atoms))
                         return atoms, pmfs, y_true, len(pmfs)
             _pa = all(k in z.files for k in
@@ -536,11 +633,7 @@ def _load_arrays_raw(path, tag=None, coupling="indep", joint_coupling="learned")
                 atoms, p0, p1 = _per_arm_common_grid(z, p0, p1, J)
             else:
                 atoms = tau_atoms(J, _bin_width(z, J)) * y_scale
-            if coupling == "comonotonic":
-                pmfs = [tau_pmf_comonotonic(p0[q], p1[q], J)
-                        for q in range(p0.shape[0])]
-            else:
-                pmfs = [tau_pmf_indep(p0[q], p1[q]) for q in range(p0.shape[0])]
+            pmfs = _couple(p0, p1, J, atoms, coupling)
         else:
             return None
     _LAST_J["_J"] = int(len(atoms))
@@ -826,8 +919,7 @@ def _parse():
                     choices=["nonzero", "zero", "total"])
     ap.add_argument("--max-real", type=int, default=None,
                     help="cap realizations per method (quick look)")
-    ap.add_argument("--coupling", default="indep",
-                    choices=["indep", "comonotonic"],
+    ap.add_argument("--coupling", default="indep", type=coupling_mode,
                     help="how 1D heads turn two marginals into p(tau). "
                          "indep = convolution (widest); comonotonic = quantile "
                          "coupling (narrowest). 2D heads ignore this. On this "
@@ -861,8 +953,7 @@ def _parse():
                          "uwyk / uwyk_v3a / uwyk_noanc / graph2d / dopfn_* "
                          "where METHODS expects uwyk1d + tags. Overrides "
                          "--methods and --skip.")
-    ap.add_argument("--joint-coupling", default="learned",
-                    choices=["learned", "indep", "comonotonic"],
+    ap.add_argument("--joint-coupling", default="learned", type=coupling_mode,
                     help="how 2D heads turn their joint into p(tau). "
                          "learned = anti-diagonal projection, using the "
                          "dependence the head represents (default). "
