@@ -28,6 +28,14 @@ for p in (os.path.join(REPO, "UWYK_Fig3_4"), os.path.join(REPO, "realcause_eval"
           os.path.join(REPO, "revision", "experiments", "E2_in_prior")):
     sys.path.insert(0, p)
 from cate_density_metrics import _query_pmfs, interval_95     # noqa: E402
+import cate_density_metrics as _cdm                            # noqa: E402
+
+# Coupling runs (revision v2, E1/E2): COUPLING applies to the 1D models, JOINT_COUPLING to the 2D models
+# (cate_density_metrics: comonotonic | gauss:<rho> | makarov | indep). When either is set, only the models of
+# that kind are scored, point metrics are skipped (they do not depend on the coupling), and makarov intervals
+# are read from the scorer's per-query override. Unset: the original behaviour, bit for bit.
+COUPLING = os.environ.get("COUPLING", "")
+JOINT_COUPLING = os.environ.get("JOINT_COUPLING", "")
 from hist_interval import interval_hist                       # noqa: E402
 from point_raw_em import cate_for_file                        # noqa: E402
 
@@ -62,9 +70,27 @@ def truth_cm(D, b, k):
     return tc, tc, tc
 
 
-def score_file(f, tag, delta, tau, dump_truth):
+def score_file(f, tag, delta, tau, dump_truth, is2d=False):
     """(c, length, IS, sqrt_pehe, eps_ate) for one dump, or None if it has no usable density."""
     out = [np.nan] * 5
+    if COUPLING or JOINT_COUPLING:
+        got = _cdm._load_arrays(f, tag, COUPLING or "indep", JOINT_COUPLING or "learned")
+        if got is None:
+            return out
+        atoms, pmfs, _, _ = got
+        assert len(pmfs) == delta.size, f"{f}: {len(pmfs)} densities vs {delta.size} queries"
+        uni = np.allclose(np.diff(atoms), atoms[1] - atoms[0], rtol=1e-3)
+        iv = []
+        for p in pmfs:
+            ov = _cdm._IV_OVERRIDE.get(id(p))
+            iv.append(ov if ov is not None else (interval_hist(atoms, np.asarray(p)) if uni
+                                                 else interval_95(atoms, np.asarray(p))))
+        iv = np.asarray(iv, dtype=float)
+        lo, hi = iv[:, 0], iv[:, 1]
+        out[0] = float(np.mean((lo <= delta) & (delta <= hi)))
+        out[1] = float(np.mean(hi - lo))
+        out[2] = float(np.mean((hi - lo) + (2 / A) * np.maximum(0, lo - delta) + (2 / A) * np.maximum(0, delta - hi)))
+        return out
     got = cate_for_file(f, tag, "raw")
     if got is not None:
         th = np.asarray(got[0], float).ravel()
@@ -106,13 +132,16 @@ def main(D, out):
     per = {}                                                    # (bench, model) -> {bin: [rows]}
     for bench, b, rel, truth in cells(D):
         for label, mdir, tag in MODELS:
+            is2d = "2D" in label
+            if (COUPLING and is2d) or (JOINT_COUPLING and not is2d):
+                continue
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, rel, "*r[0-9]*.npz")), key=rid)
             if not files:                                       # model not evaluated (yet)
                 continue
             rows = []
             for f in files:
                 delta, tau, dump_truth = truth(rid(f))
-                rows.append(score_file(f, tag, delta, tau, dump_truth))
+                rows.append(score_file(f, tag, delta, tau, dump_truth, is2d))
             per.setdefault((bench, label), {})[b] = rows
             print(f"{bench:24s} bin{b} {label:16s} {len(rows)} dumps", flush=True)
     recs = []
