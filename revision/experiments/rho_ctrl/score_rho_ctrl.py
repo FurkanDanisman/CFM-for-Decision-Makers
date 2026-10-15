@@ -36,7 +36,8 @@ BINS = ("[-0.5, 0)", "[0, 0.5)", "[0.5, 1]")
 MODELS = [("Do-PFN", "dopfn1d", None), ("Do-PFN 2D", "dopfn2d", None),
           ("UWYK No-Anc", "uwyk1d", "noanc"), ("UWYK Anc", "uwyk1d", "v3a"),
           ("UWYK 2D No-Anc", "graph2d", "noanc"), ("UWYK 2D Anc", "graph2d", "v3a"),
-          ("CausalPFN-C", "cpfn1d", None), ("CausalPFN-C 2D", "cpfn2d", None)]
+          ("CausalPFN-C", "cpfn1d", None), ("CausalPFN-C (matched resolution)", "cpfn1d_j32", None),
+          ("CausalPFN-C 2D", "cpfn2d", None)]
 CASES = ("Observed_Confounder", "Backdoor_Criterion", "Frontdoor_Criterion", "Unobserved_Confounder")
 
 
@@ -106,6 +107,8 @@ def main(D, out):
     for bench, b, rel, truth in cells(D):
         for label, mdir, tag in MODELS:
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, rel, "*r[0-9]*.npz")), key=rid)
+            if not files:                                       # model not evaluated (yet)
+                continue
             rows = []
             for f in files:
                 delta, tau, dump_truth = truth(rid(f))

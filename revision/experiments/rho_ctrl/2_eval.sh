@@ -5,15 +5,16 @@
 #   IHDP, ACIC   : submit_realcause_density_unified.sbatch settings, data in the E2 format (DATASET=CMECH_n5)
 #   ComplexMech  : the main ComplexMech / E2 settings (UWYK models --eval-max-context 1000 --eval-context-seed 43)
 # Checkpoints are the paper's: released Do-PFN; Do-PFN 2D 262k with temperature off; UWYK best_model;
-# graph2d_step_50000; cpfn1d_j1024_headrand_step_50000; cpfn2d_j32_eta0_y01_step50000.
+# graph2d_step_50000; cpfn1d_j1024_headrand_step_50000; cpfn1d_j32_step50000 (matched resolution);
+# cpfn2d_j32_eta0_y01_step50000.
 #   cd $KIT && git -C R-PFN pull --rebase && for m in dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d; do
 #     bash R-PFN/revision/experiments/rho_ctrl/2_eval.sh $m; done
 # A cell (benchmark, bin, scenario) whose dump count equals its dataset count is skipped: resubmitting resumes.
 set -uo pipefail
 KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"
 SELF="$KIT/R-PFN/revision/experiments/rho_ctrl/2_eval.sh"
-MODEL="${1:?model: dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d}"
-case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d) ;; *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
+MODEL="${1:?model: dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn1d_j32 cpfn2d}"
+case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn1d_j32|cpfn2d) ;; *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
 if [ "${2:-}" != run ]; then
   cd "$KIT" && mkdir -p logs_rho_ctrl
   sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time="${RC_TIME:-3:00:00}" --cpus-per-task=4 --mem=32G \
@@ -59,6 +60,9 @@ run_model() {
     cpfn1d)
       python -u "$REPO/realcause_eval/Table1/cpfn1d.py" --dataset "$DS" --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn1d_j1024_headrand_step_50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
+    cpfn1d_j32)                                      # matched resolution: the 1D baseline at the 2D grid (J=32)
+      python -u "$REPO/realcause_eval/Table1/cpfn1d.py" --dataset "$DS" --outdir "$OUTD" --density-dump 1 \
+        --ckpt "$CK/cpfn1d_j32_step50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
     cpfn2d)
       python -u "$REPO/realcause_eval/Table1/cpfn2d.py" --dataset "$DS" --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
