@@ -108,7 +108,7 @@ _HARNESS_ENV = ('DOPFN_CKPT', 'DOPFN_SOFTMAX_TEMP', 'DOPFN_FP32', 'DOPFN_QUERY_T
                 'DENSITY_DUMP', 'MAX_REAL', 'OUT', 'DATASET', 'REPO', 'QUERY_CHUNK',
                 'MATCH_UWYK_PADDING', 'T_INTV_OVERRIDE', 'EVAL_DIAG', 'BIAS_EDGE_SCALE',
                 'PROPAGATE_ANC', 'INDEP_FEATURES', 'PSID_BAL_SEED', 'CPFN_V0_LOCAL',
-                'ALLOW_SCALING_MISMATCH', 'ANC_VARIANT')
+                'ALLOW_SCALING_MISMATCH', 'ANC_VARIANT', 'IT_VARIANT')
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +121,7 @@ def model_env(key, a, out_dir):
         script, ckpts, env = model_env(BASE[key], a, out_dir)
         over, files = variant_overrides(key, a)
         env.update(over)
+        env['IT_VARIANT'] = key
         return script, [c for c in ckpts if c not in (a.cpfn1d_ckpt,)] + files, env
     env = {k: v for k, v in os.environ.items() if k not in _HARNESS_ENV}
     # unified sbatch: exported for every model
@@ -293,8 +294,9 @@ def setup_child(key, harness):
         reg = D.model
         dopfn_root, cwd0 = os.environ['DOPFN_ROOT'], os.getcwd()
         if key == 'dopfn1d':
-            if D._IS_2D or D._DOPFN_CKPT:
-                raise SystemExit('dopfn1d must run the released Do-PFN (no DOPFN_CKPT)')
+            # the released Do-PFN, or (IT_VARIANT: the 1D ablation rows) a 1D checkpoint of the same model
+            if D._IS_2D or (D._DOPFN_CKPT and not os.environ.get('IT_VARIANT')):
+                raise SystemExit('dopfn1d must run the released Do-PFN (no DOPFN_CKPT) or a 1D ablation checkpoint')
             calls = []
             orig = reg.predict_full                       # bound method
             reg.predict_full = _recorder(calls, orig)     # instance attribute shadows it
