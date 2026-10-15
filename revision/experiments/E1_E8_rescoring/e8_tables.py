@@ -122,6 +122,9 @@ def main():
                     help="MALC with hist input (submit_malc.sbatch, malc__ / indep_malc__ files)")
     ap.add_argument("--indep", action="store_true",
                     help="RealCause only: 2D models with the coupling forced independent (indep__ files)")
+    ap.add_argument("--stages", nargs="+", default=None,
+                    help="file prefixes to tabulate instead of raw/malc, e.g. the coupling runs of "
+                         "revision/experiments/coupling (comonotonic gauss_-0.5 ... joint_makarov)")
     ap.add_argument("--coverage", action="store_true",
                     help="cells show coverage ± SE · length ± SE instead of |ĉ − 0.95|")
     a = ap.parse_args()
@@ -129,6 +132,8 @@ def main():
     SHOW_COV = a.coverage
     if a.hist or a.malc:                               # hist job: raw__ files (hist intervals)
         STAGES = [("indep" if a.indep else "raw") if not a.malc else ("indep_malc" if a.indep else "malc")]
+    if a.stages:
+        STAGES = list(a.stages)
     os.makedirs(a.out_dir, exist_ok=True)
     rows, md = [], []
 
