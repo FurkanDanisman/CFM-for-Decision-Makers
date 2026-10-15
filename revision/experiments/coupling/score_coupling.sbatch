@@ -41,8 +41,8 @@ ROOTS=(
   "$T1|$SCRATCH/dumps_all/$T1/rc|$SCRATCH/dumps_all/$T1/cs||dopfn_native"
   "eta0|$SCRATCH/rc_dens_eta0|$SCRATCH/cs_dvar_eta0||cpfn2d"
 )
-C1="comonotonic gauss:-0.5 gauss:0.5 band makarov"
-C2="indep band makarov"
+C1="${C1:-comonotonic gauss:-0.5 gauss:0.5 band makarov}"
+C2="${C2:-indep band makarov}"
 CASES="Observed_Confounder Observed_Mediator Observed_Mediator_and_Confounder Unobserved_Confounder Frontdoor_Criterion Backdoor_Criterion"
 CM1="dopfn_native uwyk1d cpfn1d_j1024"
 CM2="graph2d cpfn2d_eta0 $T1"
@@ -95,7 +95,7 @@ run_coupling() {
 echo "[$(date '+%F %T')] part=$PART  out=$OUT"
 PIDS=()
 for c in $C1; do run_coupling 1 "$c" > "$KIT/logs_coupling/${PART}_1d_$(fn "$c").log" 2>&1 & PIDS+=($!); done
-for c in $C2; do run_coupling 2 "$c" > "$KIT/logs_coupling/${PART}_2d_$(fn "$c").log" 2>&1 & PIDS+=($!); done
+[ -n "$C2" ] && for c in $C2; do run_coupling 2 "$c" > "$KIT/logs_coupling/${PART}_2d_$(fn "$c").log" 2>&1 & PIDS+=($!); done
 FAILED=0; for p in "${PIDS[@]}"; do wait "$p" || FAILED=1; done
 grep -h "coupling .* done" "$KIT"/logs_coupling/${PART}_*.log
 echo "[$(date '+%F %T')] part $PART done (failed=$FAILED)"

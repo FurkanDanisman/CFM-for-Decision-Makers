@@ -68,6 +68,6 @@ export -f pair
 
 echo "[$(date '+%F %T')] part=$PART"
 for m in $(echo "$ROWS" | cut -d'|' -f1 | grep .); do
-  for c in comonotonic gauss:-0.5 gauss:0.5 makarov; do echo "$m $c"; done
+  for c in ${CPL:-comonotonic gauss:-0.5 gauss:0.5 makarov}; do echo "$m $c"; done
 done | xargs -P 16 -L 1 bash -c 'pair "$0" "$1"'
 echo "[$(date '+%F %T')] part $PART done"

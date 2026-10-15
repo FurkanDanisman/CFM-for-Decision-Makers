@@ -199,6 +199,13 @@ def makarov_interval(atoms, p0, p1, J, level=0.95):
     # coarse offset m spans fine offsets [m*f - (f-1), m*f + (f-1)]: take the outer ends
     lo = (m[k_lo] * f - (f - 1)) * w
     hi = (m[k_hi] * f + (f - 1)) * w
+    if _INTERVAL == "hist":
+        # Read-out of the paper (CDM_INTERVAL=hist): each outcome is flat within its cell, so a mass at
+        # offset k spreads over [(k-1)w, (k+1)w]. Under every coupling, P(D < lo - w) <= P(offset < k_lo)
+        # <= a/2 and P(D > hi + w) <= a/2, so one cell more on each side keeps the bound valid; it then
+        # contains the hist interval of every coupling of the same marginals. (Point read-out: unchanged.)
+        lo, hi = lo - w, hi + w
+        return float(lo), float(hi)
     return float(max(lo, atoms[0])), float(min(hi, atoms[-1]))
 
 
