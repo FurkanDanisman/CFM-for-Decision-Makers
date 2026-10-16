@@ -27,6 +27,7 @@ for (m, st, b, c, sl), r in V.items():
     if ref and float(r["coverage"]) < float(ref["coverage"]) - 1e-9:
         bad += 1; print("MAKAROV BELOW INDEP:", m, b, c, sl, r["coverage"], ref["coverage"])
 print("makarov invariant violations:", bad)
-PY; cut -d, -f5 "$O/coupling.csv" | sort | uniq -c
+PY
+cut -d, -f5 "$O/coupling.csv" | sort | uniq -c
 cd "$REPO" && git add revision/results/d262t1/coupling.csv && git commit -q -m "d262t1: coupling sensitivity (E1/E2) long table" \
   && git pull -q --rebase && git push -q && echo pushed
