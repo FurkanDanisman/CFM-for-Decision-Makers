@@ -12,6 +12,10 @@ Twins only (binary outcome, ITE in {-1, 0, 1}): each query's ITE density is read
   For a single-outcome model the ITE density is its two marginals combined as independent, exactly as in
   every interval of the paper; for a 2D model it is the learned joint.
 Reported: mean (SE over datasets). IHDP: 50 datasets per setting; Twins: 11 query blocks of one dataset.
+
+Coupling runs (as for the paper's coupling tables): with COUPLING = comonotonic | gauss:<rho> set, only the 1D
+models are scored, their two marginals combined under that coupling instead of independently; the point metrics
+are skipped (they do not depend on the coupling).
 """
 import csv
 import glob
@@ -25,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "rho_ctrl"))
 import score_rho_ctrl as S                                     # noqa: E402  (sets sys.path for the scorer)
 from cate_density_metrics import _query_pmfs                   # noqa: E402
+import cate_density_metrics as _cdm                            # noqa: E402
 
 MODELS = [m for m in S.MODELS if m[1] != "cpfn1d_j32"]          # the paper's main models
 RHOS = ("1", "0.75", "0.5", "0.25", "0")
@@ -40,10 +45,16 @@ def truth(D, rel, k):
 
 
 def binary_scores(f, tag, delta):
-    got = _query_pmfs(f, tag)
-    if got is None:
-        return np.nan, np.nan
-    atoms, pmfs, _ = got
+    if S.COUPLING:
+        got = _cdm._load_arrays(f, tag, S.COUPLING, "learned")
+        if got is None:
+            return np.nan, np.nan
+        atoms, pmfs = got[0], np.asarray([np.asarray(p, float) for p in got[1]])
+    else:
+        got = _query_pmfs(f, tag)
+        if got is None:
+            return np.nan, np.nan
+        atoms, pmfs, _ = got
     assert pmfs.shape[0] == delta.size, f"{f}: {pmfs.shape[0]} densities vs {delta.size} queries"
     a = np.asarray(atoms, float)
     P = np.stack([pmfs[:, a < -0.5].sum(1), pmfs[:, np.abs(a) <= 0.5].sum(1), pmfs[:, a > 0.5].sum(1)], 1)
@@ -66,6 +77,8 @@ def main(D, out):
     recs = []
     for bench, setting, data_rel, dump_rel in cells():
         for label, mdir, tag in MODELS:
+            if S.COUPLING and "2D" in label:
+                continue
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, dump_rel, "*r[0-9]*.npz")), key=rid)
             if not files:
                 continue
@@ -94,7 +107,8 @@ def main(D, out):
         w = csv.DictWriter(fh, fieldnames=keys); w.writeheader(); w.writerows(recs)
     f3 = lambda r, k: "—" if not np.isfinite(r.get(k, np.nan)) else (
         f"{r[k]:.3f} ({r[k + '_se']:.3f})" if np.isfinite(r.get(k + "_se", np.nan)) else f"{r[k]:.3f}")
-    md = ["# Bodik's IHDP-ρ and Twins (CLeaR 2026), the paper's models", "",
+    md = ["# Bodik's IHDP-ρ and Twins (CLeaR 2026), the paper's models"
+          + (f" — 1D marginals combined under {S.COUPLING}" if S.COUPLING else ""), "",
           "Intervals scored against the realized ITE; √PEHE and ε_ATE against μ1 − μ0 (IHDP) or the realized ITE "
           "(Twins). Mean (SE over datasets).", ""]
     for bench in dict.fromkeys(r["benchmark"] for r in recs):

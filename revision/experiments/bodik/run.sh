@@ -4,7 +4,8 @@
 #   step 2 (GPU, ONE job per model, after step 1 has finished; parts ihdp_a, twins, ihdp_b in turn):
 #        for m in dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d; do bash run.sh eval $m; done
 #      (a single part: bash run.sh eval <model> <ihdp_a | twins | ihdp_b>)
-#   step 3 (CPU, after step 2):  bash run.sh score        -> pushes revision/results/d262t1/bodik.{csv,md}
+#   step 3 (CPU, after step 2):  bash run.sh score        -> pushes revision/results/d262t1/bodik.{csv,md}, and
+#        bodik_{comonotonic,gauss_-0.5,gauss_0.5}.{csv,md}: the 1D models with their marginals under those couplings
 # Every step resubmits safely: finished datasets / cells are skipped. Run from anywhere; KIT is the bench kit.
 # The model calls and checkpoints are those of revision/experiments/rho_ctrl/2_eval.sh (the paper's models:
 # released Do-PFN; Do-PFN 2D 262k, temperature off; UWYK best_model; graph2d_step_50000;
@@ -44,7 +45,15 @@ if [ "$STEP" = score ]; then
   export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
   O="$REPO/revision/results/d262t1"; mkdir -p "$O"
   python -u "$HERE/score_bodik.py" "$D" "$O/bodik" || { echo "score_bodik.py failed; nothing pushed"; exit 1; }
-  cd "$REPO" && git add revision/results/d262t1/bodik.csv revision/results/d262t1/bodik.md \
+  # the 1D models' marginals under other couplings (the paper's coupling tables; rho = 0 is the main run above)
+  PIDS=()
+  for c in comonotonic gauss:-0.5 gauss:0.5; do
+    n="bodik_$(echo "$c" | tr ':' '_')"
+    COUPLING="$c" python -u "$HERE/score_bodik.py" "$D" "$O/$n" > "$KIT/logs_bodik/$n.log" 2>&1 & PIDS+=($!)
+  done
+  F=0; for p in "${PIDS[@]}"; do wait "$p" || F=1; done
+  [ "$F" = 0 ] || echo "WARN: a coupling run failed (logs_bodik/bodik_*.log)"
+  cd "$REPO" && git add revision/results/d262t1/bodik*.csv revision/results/d262t1/bodik*.md \
     && git commit -q -m "d262t1: Bodik IHDP-rho and Twins results" && git pull -q --rebase && git push -q && echo pushed
   exit $?
 fi
