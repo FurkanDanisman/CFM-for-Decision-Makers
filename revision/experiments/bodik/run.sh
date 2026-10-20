@@ -1,9 +1,9 @@
 #!/bin/bash
 # Bodik's IHDP-rho and Twins datasets (CLeaR 2026), scored with the paper's models. Inference only, no training.
 #   step 1 (CPU, once):        bash run.sh gen
-#   step 2 (GPU, per model and part, after step 1 has finished):
-#        for m in dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d; do for p in ihdp_a ihdp_b twins; do
-#          bash run.sh eval $m $p; done; done
+#   step 2 (GPU, ONE job per model, after step 1 has finished; parts ihdp_a, twins, ihdp_b in turn):
+#        for m in dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d; do bash run.sh eval $m; done
+#      (a single part: bash run.sh eval <model> <ihdp_a | twins | ihdp_b>)
 #   step 3 (CPU, after step 2):  bash run.sh score        -> pushes revision/results/d262t1/bodik.{csv,md}
 # Every step resubmits safely: finished datasets / cells are skipped. Run from anywhere; KIT is the bench kit.
 # The model calls and checkpoints are those of revision/experiments/rho_ctrl/2_eval.sh (the paper's models:
@@ -20,7 +20,7 @@ if [ "${RUN:-}" != 1 ]; then
   case "$STEP" in
     gen)   sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=16G --job-name=bodik-gen \
              -o logs_bodik/gen_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen" ;;
-    eval)  M="${2:?model}" P="${3:?part: ihdp_a | ihdp_b | twins}"
+    eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
     score) sbatch --account=aip-rgrosse --time=2:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-score \
@@ -50,7 +50,7 @@ if [ "$STEP" = score ]; then
 fi
 
 # ---- eval
-MODEL="${2:?model}"; PART="${3:?part}"
+MODEL="${2:?model}"; PARTS="${3:-all}"; [ "$PARTS" = all ] && PARTS="ihdp_a twins ihdp_b"
 case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d) ;; *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
 export CAUSALPFN="$KIT/external/causalpfn" DOPFN_ROOT="$KIT/external/dopfn"
 UWYK="$KIT/external/uwyk_reproduce"
@@ -104,6 +104,7 @@ cells() {
   esac
 }
 
+for PART in $PARTS; do
 while read -r SRC DST; do
   IN="$D/$SRC/shard0/complexmech/5node/path_TY/hide_0.0"
   n_in=$(ls "$IN" 2>/dev/null | grep -c '\.npz$' || true)
@@ -117,3 +118,4 @@ while read -r SRC DST; do
   echo "[$(date '+%F %T')] $MODEL $DST: $(ndump "$O") dumps"
 done < <(cells)
 echo "[$(date '+%F %T')] done $MODEL $PART"
+done
