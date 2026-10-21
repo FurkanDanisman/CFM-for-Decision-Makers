@@ -6,8 +6,10 @@
 #      the appendix models (ablations, published CausalPFN, UWYK-B), the same way:
 #        for m in dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml cpfn_v0 uwyk_bin; do bash run.sh eval $m; done
 #      (a single part: bash run.sh eval <model> <ihdp_a | twins | ihdp_b>)
-#   step 3 (CPU, after step 2):  bash run.sh score        -> pushes revision/results/d262t1/bodik.{csv,md}, and
-#        bodik_{comonotonic,gauss_-0.5,gauss_0.5}.{csv,md}: the 1D models with their marginals under those couplings
+#   step 3 (CPU, after step 2, four jobs in parallel):
+#        for c in none comonotonic gauss:-0.5 gauss:0.5; do bash run.sh score $c; done
+#   step 4 (after all four):     bash run.sh score merge  -> pushes revision/results/d262t1/bodik{,_comonotonic,
+#        _gauss_-0.5,_gauss_0.5}.{csv,md} (the last three: the 1D models with their marginals under that coupling)
 # Every step resubmits safely: finished datasets / cells are skipped. Run from anywhere; KIT is the bench kit.
 # The model calls and checkpoints are those of revision/experiments/rho_ctrl/2_eval.sh (the paper's models:
 # released Do-PFN; Do-PFN 2D 262k, temperature off; UWYK best_model; graph2d_step_50000;
@@ -26,8 +28,14 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
-    score) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=16 --mem=96G --job-name=bodik-score \
-             -o logs_bodik/score_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score" ;;
+    score) C="${2:-none}"                          # none | comonotonic | gauss:-0.5 | gauss:0.5 | merge
+           if [ "$C" = merge ]; then
+             sbatch --account=aip-rgrosse --time=0:30:00 --cpus-per-task=2 --mem=16G --job-name=bodik-merge \
+               -o logs_bodik/merge_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score merge"
+           else
+             sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=16 --mem=96G --job-name="bodik-score-$C" \
+               -o "logs_bodik/score_$(echo "$C" | tr ':' '_')_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF score $C"
+           fi ;;
     *) echo "FATAL: unknown step $STEP"; exit 1 ;;
   esac
   exit $?
@@ -43,14 +51,26 @@ if [ "$STEP" = gen ]; then
 fi
 
 if [ "$STEP" = score ]; then
-  # One job, every (model directory, coupling) as its own process, 16 at a time, then one merge per coupling.
-  # Coupling "" = the main results (all models; 2D with their learned joint, 1D independent); the others
-  # rescore the 1D models only, with their marginals under that coupling.
+  # ONE job per coupling ("none" = the main results: all models, 2D with their learned joint, 1D independent;
+  # the others rescore the 1D models with their marginals under that coupling). Inside a job every model
+  # directory is its own process (at most 15, all at once on 16 CPUs). Finished parts are skipped on resubmit.
+  # When all four jobs are done: bash run.sh score merge  (merges, pushes revision/results/d262t1/bodik*).
+  C="${2:-none}"
   export OMP_NUM_THREADS=1
   export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
   O="$REPO/revision/results/d262t1"; P="$D/score_parts"; mkdir -p "$O" "$P" "$KIT/logs_bodik/score"
   DIRS1="dopfn1d uwyk1d cpfn1d dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml cpfn_v0 uwyk_bin"
   DIRS2="dopfn2d graph2d cpfn2d"
+  if [ "$C" = merge ]; then
+    want=$(( 1 + $(echo $DIRS1 $DIRS2 | wc -w) + 3 * $(echo $DIRS1 | wc -w) ))
+    have=$(ls "$P"/*.csv 2>/dev/null | wc -l)
+    [ "$have" = "$want" ] || { echo "FATAL: $have of $want parts finished; resubmit the missing coupling jobs first"; exit 1; }
+    python -u "$HERE/score_bodik.py" merge "$O/bodik" "$P"/none__*.csv
+    for c in comonotonic gauss_-0.5 gauss_0.5; do python -u "$HERE/score_bodik.py" merge "$O/bodik_$c" "$P"/${c}__*.csv; done
+    cd "$REPO" && git add revision/results/d262t1/bodik*.csv revision/results/d262t1/bodik*.md \
+      && git commit -q -m "d262t1: Bodik IHDP-rho and Twins results (all models, 2x2 Twins tables)" && git pull -q --rebase && git push -q && echo pushed
+    exit $?
+  fi
   part() {   # part <coupling or "none"> <model dir or observed>
     local c="$1" m="$2" n; n="$(echo "$c" | tr ':' '_')__$m"
     [ -s "$P/$n.csv" ] && return 0
@@ -61,14 +81,13 @@ if [ "$STEP" = score ]; then
     fi || echo "FAILED $n (logs_bodik/score/$n.log)"
   }
   export -f part; export D P KIT HERE
-  { echo "none observed"; for m in $DIRS1 $DIRS2; do echo "none $m"; done
-    for c in comonotonic gauss:-0.5 gauss:0.5; do for m in $DIRS1; do echo "$c $m"; done; done; } \
-    | xargs -P 16 -L 1 bash -c 'part "$0" "$1"'
-  python -u "$HERE/score_bodik.py" merge "$O/bodik" "$P"/none__*.csv
-  for c in comonotonic gauss_-0.5 gauss_0.5; do python -u "$HERE/score_bodik.py" merge "$O/bodik_$c" "$P"/${c}__*.csv; done
-  cd "$REPO" && git add revision/results/d262t1/bodik*.csv revision/results/d262t1/bodik*.md \
-    && git commit -q -m "d262t1: Bodik IHDP-rho and Twins results (all models, 2x2 Twins tables)" && git pull -q --rebase && git push -q && echo pushed
-  exit $?
+  if [ "$C" = none ]; then
+    { echo "none observed"; for m in $DIRS1 $DIRS2; do echo "none $m"; done; }
+  else
+    for m in $DIRS1; do echo "$C $m"; done
+  fi | xargs -P 16 -L 1 bash -c 'part "$0" "$1"'
+  echo "[$(date '+%F %T')] coupling $C done: $(ls "$P"/$(echo "$C" | tr ':' '_')__*.csv 2>/dev/null | wc -l) parts"
+  exit 0
 fi
 
 # ---- eval
