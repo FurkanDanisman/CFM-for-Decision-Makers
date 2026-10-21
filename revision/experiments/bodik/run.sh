@@ -28,6 +28,8 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
+    readouts) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-ro \
+             -o logs_bodik/readouts_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF readouts" ;;
     cf)    sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-cf \
              -o logs_bodik/cf_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF cf" ;;
     twins) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=16 --mem=64G --job-name=bodik-twins \
@@ -51,6 +53,16 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" MKL_NUM_THREADS="${SLURM_CPUS
 
 if [ "$STEP" = gen ]; then
   python -u "$HERE/make_worlds.py" "$D" && echo "[$(date '+%F %T')] gen done"
+  exit $?
+fi
+
+if [ "$STEP" = readouts ]; then
+  # Twins, Bodik's task, read-out A (Bodik's: histogram mean, quantiles on bin edges) and B (split at 1/2).
+  export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+  O="$REPO/revision/results/d262t1"; mkdir -p "$O"
+  python -u "$HERE/bodik_cf_readouts.py" "$D" "$O/bodik_twins_readouts" || { echo "failed"; exit 1; }
+  cd "$REPO" && git add revision/results/d262t1/bodik_twins_readouts.csv revision/results/d262t1/bodik_twins_readouts.md \
+    && git commit -q -m "d262t1: Bodik Twins, read-outs A (Bodik's) and B" && git pull -q --rebase && git push -q && echo pushed
   exit $?
 fi
 
