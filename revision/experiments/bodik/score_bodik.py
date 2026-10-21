@@ -71,6 +71,33 @@ def _above(e, thr=0.5):
     return np.clip((hi - thr) / (hi - lo), 0.0, 1.0)              # share of each bin at or above thr
 
 
+def _q_above(z, p, arm, tag):
+    """P(Y_arm >= 1/2) per query from one arm's dumped pmf (n_q, J or K+2)."""
+    e = np.asarray(z["edges"], dtype=np.float64).reshape(-1) if "edges" in z.files else None
+    J = p.shape[-1]
+    p = p / p.sum(1, keepdims=True)
+    if e is None or e.size == J + 1:                          # one probability per bin
+        return (p * _above(_edges(z, J, arm))).sum(1)
+    if e.size == J - 1:                                       # UWYK bar distribution: [left tail, K bars, right tail]
+        from scipy.special import expit
+        from scipy.stats import norm
+        sc = float(z["y_scale"]) if "y_scale" in z.files else 1.0
+        sh = float(z["y_shift"]) if "y_shift" in z.files else 0.0
+        thr = (0.5 - sh) / sc                                 # the threshold in the dump's scaled units
+        sfx = f"_{tag}" if tag and f"sL_raw_{arm}_{tag}" in z.files else ""
+        soft = lambda x: np.logaddexp(0.0, x)                 # softplus, as in density_common.UWYK1D
+        fl = float(z["scale_floor"])
+        sL = float(z["base_s_left"]) * (soft(np.asarray(z[f"sL_raw_{arm}{sfx}"], np.float64)) + fl)
+        sR = float(z["base_s_right"]) * (soft(np.asarray(z[f"sR_raw_{arm}{sfx}"], np.float64)) + fl)
+        lo, hi = e[:-1], e[1:]
+        bars = (p[:, 1:-1] * np.clip((hi - thr) / (hi - lo), 0.0, 1.0)).sum(1)
+        # half-normal tails: left mass lies below e[0], decaying with scale sL; right mass above e[-1] with sR
+        left = np.where(e[0] > thr, 2 * norm.cdf((e[0] - thr) / sL) - 1, 0.0)
+        right = np.where(e[-1] >= thr, 1.0, 2 * norm.sf((thr - e[-1]) / sR))
+        return bars + p[:, 0] * left + p[:, -1] * right
+    raise SystemExit(f"unrecognised density layout: {J} probabilities, {e.size} edges")
+
+
 def table_2x2(f, tag):
     """(n_q, 4) predicted P(Y0, Y1) in the order 00, 01, 10, 11, or None."""
     with np.load(f, allow_pickle=True) as z:
@@ -88,9 +115,7 @@ def table_2x2(f, tag):
             return np.stack([1 - p11 - p10 - p01, p01, p10, p11], 1)
         if p0 is None or p1 is None:
             return None
-        J = p0.shape[-1]
-        q0 = (p0 / p0.sum(1, keepdims=True) * _above(_edges(z, J, 0))).sum(1)
-        q1 = (p1 / p1.sum(1, keepdims=True) * _above(_edges(z, J, 1))).sum(1)
+        q0, q1 = _q_above(z, p0, 0, tag), _q_above(z, p1, 1, tag)
     q0, q1 = np.clip(q0, 1e-9, 1 - 1e-9), np.clip(q1, 1e-9, 1 - 1e-9)
     if not S.COUPLING:
         p11 = q0 * q1
