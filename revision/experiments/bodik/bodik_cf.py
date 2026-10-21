@@ -10,8 +10,9 @@ The conditional distribution of Y_cf:
     2D models: the learned joint, conditioned on the factual twin's outcome, i.e. on the event Y_f >= 1/2
                (dead) or < 1/2 (alive) on its grid, the bin containing 1/2 split linearly;
     1D models: their predicted marginal of the counterfactual arm (under independence y_f carries no information).
-Outcomes are put in raw units (y = scaled * y_scale + y_shift); UWYK's 1D bar distribution
-[left tail, K bars, right tail] keeps its half-normal tails. Twins d = 10 and d = 1, all 11 query blocks pooled.
+The outcome is 0/1, so each prediction is read as P = P(other twin dies), the probability above 1/2 (the split of
+score_bodik.table_2x2, every model's grid in raw units, UWYK's half-normal tails included); Yhat_cf = P and the 95%
+interval is {0} if P < 2.5%, {1} if P > 97.5%, else {0, 1}. Twins d = 10 and d = 1, all 11 query blocks pooled.
 """
 import csv
 import glob
@@ -121,6 +122,21 @@ def cf_distribution(f, tag, t, yf):
         return mean, lo, hi
 
 
+def binary_p(f, tag, t, yf):
+    """P(other twin dies | known twin's outcome, x) per query, from the model's 2 x 2 table of the pair (the split at
+    1/2 of score_bodik.table_2x2: 2D = learned joint, 1D = product of marginals, so the known twin changes nothing)."""
+    sys.path.insert(0, HERE)
+    import score_bodik as SB
+    P = SB.table_2x2(f, tag)
+    P = np.clip(P, 1e-12, 1.0); P = P / P.sum(1, keepdims=True)
+    M = P.reshape(-1, 2, 2)                                      # M[q, y0, y1]
+    q = np.arange(t.size); kf = np.rint(yf).astype(int)
+    # known = heavier (t = 1): condition on y1 = kf, predict y0;  known = lighter: condition on y0 = kf, predict y1
+    num = np.where(t == 1, M[q, 1, kf], M[q, kf, 1])
+    den = np.where(t == 1, M[q, :, kf].sum(1), M[q, kf, :].sum(1))
+    return num / den
+
+
 def main(D, out):
     recs = []
     for d in (10, 1):
@@ -128,33 +144,36 @@ def main(D, out):
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, "twins", f"d{d}", "*r[0-9]*.npz")))
             if not files:
                 continue
-            Y, M, L, U = [], [], [], []
+            Y, Pd = [], []
             for f in files:
                 k = int(re.search(r"r(\d+)\.npz$", f).group(1))
                 z = np.load(os.path.join(D, "twins", f"d{d}", "truths", f"r{k:03d}.npz"))
                 t = np.rint(z["t_test"]).astype(int)
                 y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
                 yf, ycf = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
-                m, lo, hi = cf_distribution(f, tag, t, yf)
-                Y.append(ycf); M.append(m); L.append(lo); U.append(hi)
-            Y, M, L, U = map(np.concatenate, (Y, M, L, U))
-            IS = (U - L) + (2 / A) * np.maximum(0, L - Y) + (2 / A) * np.maximum(0, Y - U)
-            cov = float(np.mean((L <= Y) & (Y <= U)))
-            recs.append(dict(setting=f"d={d}", model=label, n=Y.size, mse=float(np.mean((M - Y) ** 2)),
-                             abs_cov_err=abs(cov - 0.95), coverage=cov, length=float(np.mean(U - L)),
-                             IS=float(IS.mean())))
+                Pd.append(binary_p(f, tag, t, yf)); Y.append(ycf)
+            Y, P = np.concatenate(Y), np.clip(np.concatenate(Pd), 0.0, 1.0)
+            lo = np.where(P > 1 - A / 2, 1.0, 0.0)               # interval on {0, 1}: {0}, {1} or {0, 1}
+            hi = np.where(P < A / 2, 0.0, 1.0)
+            IS = (hi - lo) + (2 / A) * np.maximum(0, lo - Y) + (2 / A) * np.maximum(0, Y - hi)
+            cov = float(np.mean((lo <= Y) & (Y <= hi)))
+            recs.append(dict(setting=f"d={d}", model=label, n=Y.size, mse=float(np.mean((P - Y) ** 2)),
+                             abs_cov_err=abs(cov - 0.95), coverage=cov, length=float(np.mean(hi - lo)),
+                             IS=float(IS.mean()), share_0=float(np.mean(hi == 0)), share_1=float(np.mean(lo == 1))))
             r = recs[-1]
             print(f"d={d:2d} {label:34s} MSE {r['mse']:.4f}  |c-0.95| {r['abs_cov_err']:.3f}  length {r['length']:.3f}  "
                   f"IS {r['IS']:.3f}", flush=True)
     with open(out + ".csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(recs[0])); w.writeheader(); w.writerows(recs)
     md = ["# Twins: Bodik's counterfactual prediction (predict the other twin given x and the known twin)", "",
-          "2D: learned joint conditioned on the known twin's outcome; 1D: the other arm's marginal (independence). "
-          "95% interval. Lower is better.", "",
-          "| setting | model | n | MSE | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ |", "|---|---|---|---|---|---|---|---|"]
+          "P = P(other twin dies): the model's probability above 1/2 (2D: learned joint conditioned on the known twin; "
+          "1D: the other arm's marginal). MSE = mean (P - outcome)^2. 95% interval on {0, 1}: {0} if P < 2.5%, "
+          "{1} if P > 97.5%, else {0, 1}. Lower is better.", "",
+          "| setting | model | n | MSE | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | share {0} | share {1} |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
     for r in recs:
         md.append(f"| {r['setting']} | {r['model']} | {r['n']} | {r['mse']:.4f} | {r['abs_cov_err']:.3f} | "
-                  f"{r['coverage']:.3f} | {r['length']:.3f} | {r['IS']:.3f} |")
+                  f"{r['coverage']:.3f} | {r['length']:.3f} | {r['IS']:.3f} | {r['share_0']:.3f} | {r['share_1']:.3f} |")
     open(out + ".md", "w").write("\n".join(md) + "\n")
     print(f"wrote {out}.csv / .md")
 
