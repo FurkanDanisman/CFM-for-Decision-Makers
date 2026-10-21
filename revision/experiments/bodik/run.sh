@@ -28,6 +28,8 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
+    cf)    sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-cf \
+             -o logs_bodik/cf_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF cf" ;;
     twins) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=16 --mem=64G --job-name=bodik-twins \
              -o logs_bodik/twins_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF twins" ;;
     score) C="${2:-none}"                          # none | comonotonic | gauss:-0.5 | gauss:0.5 | merge
@@ -49,6 +51,17 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" MKL_NUM_THREADS="${SLURM_CPUS
 
 if [ "$STEP" = gen ]; then
   python -u "$HERE/make_worlds.py" "$D" && echo "[$(date '+%F %T')] gen done"
+  exit $?
+fi
+
+if [ "$STEP" = cf ]; then
+  # Twins, Bodik's task: predict the other twin given x and the known twin (2D: joint conditioned on it;
+  # 1D: the other arm's marginal). Pushes revision/results/d262t1/bodik_twins_cf.{csv,md}.
+  O="$REPO/revision/results/d262t1"; mkdir -p "$O"
+  python -u "$HERE/bodik_cf.py" "$D" "$O/bodik_twins_cf" || { echo "bodik_cf.py failed"; exit 1; }
+  cd "$REPO" && git add revision/results/d262t1/bodik_twins_cf.csv revision/results/d262t1/bodik_twins_cf.md \
+    && git commit -q -m "d262t1: Bodik Twins counterfactual prediction (MSE, coverage, length, IS_0.05)" \
+    && git pull -q --rebase && git push -q && echo pushed
   exit $?
 fi
 
