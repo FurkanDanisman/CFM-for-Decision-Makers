@@ -231,10 +231,12 @@ cells() {
     twins)                                          # his d = 10 and d = 1 (d = 71 is not reported)
       for d in 10 1; do echo "twins/d$d twins/d$d"; done ;;
     twins_bodik)                                    # Bodik's setup: Do-PFN / CausalPFN-C full context, UWYK 1000 x 10
-      case "$MODEL" in
-        uwyk*|graph2d) echo "twins_sub/d10 twins_sub/d10" ;;
-        *)             echo "twins_full/d10 twins_full/d10" ;;
-      esac ;;
+      for d in 10 1; do
+        case "$MODEL" in
+          uwyk*|graph2d) echo "twins_sub/d$d twins_sub/d$d" ;;
+          *)             echo "twins_full/d$d twins_full/d$d" ;;
+        esac
+      done ;;
     *) echo "FATAL: unknown part $PART" >&2; exit 1 ;;
   esac
 }

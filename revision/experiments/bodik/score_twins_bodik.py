@@ -34,9 +34,9 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
 NB = 6                                                           # query blocks per context
 
 
-def per_query(D, part, f, tag, is2d):
+def per_query(D, part, f, tag, is2d, d=10):
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
-    z = np.load(os.path.join(D, part, "d10", "truths", f"r{k:03d}.npz"))
+    z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
     t = np.rint(z["t_test"]).astype(int)
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
@@ -51,11 +51,11 @@ def per_query(D, part, f, tag, is2d):
 def main(D, out):
     names = ("mse", "coverage", "length", "IS", "crps")
     recs = []
-    for label, mdir, tag, part in MODELS:
-        files = sorted(glob.glob(os.path.join(D, "dumps", mdir, f"twins_{part}", "d10", "*r[0-9]*.npz")))
+    for d, (label, mdir, tag, part) in [(d, m) for d in (10, 1) for m in MODELS]:
+        files = sorted(glob.glob(os.path.join(D, "dumps", mdir, f"twins_{part}", f"d{d}", "*r[0-9]*.npz")))
         if not files:
-            print("missing", label); continue
-        got = [per_query(D, f"twins_{part}", f, tag, "2D" in label) for f in files]
+            print("missing", label, d); continue
+        got = [per_query(D, f"twins_{part}", f, tag, "2D" in label, d) for f in files]
         if part == "full":
             V = np.concatenate([v for _, v in got])
             m, se = V.mean(0), V.std(0, ddof=1) / np.sqrt(V.shape[0])
@@ -67,22 +67,22 @@ def main(D, out):
             M = np.array([np.concatenate(v).mean(0) for v in draws.values()])   # metric per context draw
             m, se = M.mean(0), M.std(0, ddof=1) / np.sqrt(M.shape[0])
             n = f"{M.shape[0]} draws"
-        r = dict(model=label, context="all 11,984" if part == "full" else "1000, 10 draws", n=n)
+        r = dict(setting=f"d={d}", model=label, context="all 11,984" if part == "full" else "1000, 10 draws", n=n)
         for j, nm in enumerate(names):
             r[nm], r[nm + "_se"] = float(m[j]), float(se[j])
         r["abs_cov_err"] = abs(r["coverage"] - 0.95)
         recs.append(r)
-        print(f"{label:34s} " + "  ".join(f"{nm} {r[nm]:.4f}±{r[nm + '_se']:.4f}" for nm in names), flush=True)
+        print(f"d={d:2d} {label:34s} " + "  ".join(f"{nm} {r[nm]:.4f}±{r[nm + '_se']:.4f}" for nm in names), flush=True)
     with open(out + ".csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(recs[0])); w.writeheader(); w.writerows(recs)
     f = lambda r, k: f"{r[k]:.4f} ± {r[k + '_se']:.4f}"
-    md = ["# Twins (d = 10) in Bodik's setup: predict the other twin, every family queried", "",
+    md = ["# Twins (d = 10 and d = 1) in Bodik's setup: predict the other twin, every family queried", "",
           "Do-PFN / CausalPFN-C: context = all families (± over families). UWYK: context = 1000 random families, "
           "10 draws (mean ± SE over draws). 2D: learned joint conditioned on the known twin; 1D: the other arm's "
           "marginal. Lower is better (coverage: closest to 0.95).", "",
-          "| model | context | MSE | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | CRPS |", "|---|---|---|---|---|---|---|---|"]
+          "| setting | model | context | MSE | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | CRPS |", "|---|---|---|---|---|---|---|---|---|"]
     for r in recs:
-        md.append(f"| {r['model']} | {r['context']} | {f(r, 'mse')} | {r['abs_cov_err']:.3f} | {f(r, 'coverage')} | "
+        md.append(f"| {r['setting']} | {r['model']} | {r['context']} | {f(r, 'mse')} | {r['abs_cov_err']:.3f} | {f(r, 'coverage')} | "
                   f"{f(r, 'length')} | {f(r, 'IS')} | {f(r, 'crps')} |")
     open(out + ".md", "w").write("\n".join(md) + "\n")
     print(f"wrote {out}.csv / .md")

@@ -122,7 +122,8 @@ def twins_bodik(out, d=10, n_sub=10, block=2000):
 if __name__ == "__main__":
     out = sys.argv[1]
     if "--twins-bodik" in sys.argv:
-        twins_bodik(out)
+        for d_ in (10, 1):
+            twins_bodik(out, d=d_)
     else:
         ihdp(out)
         twins(out)
