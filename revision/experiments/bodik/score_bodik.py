@@ -35,7 +35,15 @@ import score_rho_ctrl as S                                     # noqa: E402  (se
 from cate_density_metrics import _query_pmfs                   # noqa: E402
 import cate_density_metrics as _cdm                            # noqa: E402
 
-MODELS = [m for m in S.MODELS if m[1] != "cpfn1d_j32"]          # the paper's main models
+MODELS = [m for m in S.MODELS if m[1] != "cpfn1d_j32"] + [     # the paper's main models, then its appendix models
+    ("Do-PFN (matched resolution)", "dopfn1d_mr", None), ("Do-PFN (matched label)", "dopfn1d_ml", None),
+    ("UWYK No-Anc (matched resolution)", "uwyk1d_mr", "noanc"), ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a"),
+    ("UWYK No-Anc (matched label)", "uwyk1d_ml", "noanc"), ("UWYK Anc (matched label)", "uwyk1d_ml", "v3a"),
+    ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None), ("CausalPFN-C (matched label)", "cpfn1d_ml", None),
+    ("CausalPFN (published two-stage)", "cpfn_v0", None),
+    ("UWYK-B No-Anc", "uwyk_bin", "noanc"), ("UWYK-B Anc", "uwyk_bin", "v3a")]
+ONLY_DIR = os.environ.get("ONLY_DIR", "")                     # score one model directory only (parallel parts)
+CELLS4 = ("00", "01", "10", "11")                              # (Y0, Y1): both survive, heavier dies, lighter dies, both die
 RHOS = ("1", "0.75", "0.5", "0.25", "0")
 
 
@@ -100,14 +108,15 @@ def table_2x2(f, tag):
 
 
 def pair_scores(f, tag, y0, y1):
+    """(log score, Brier, mean predicted P(00), P(01), P(10), P(11)) of one dump."""
     P = table_2x2(f, tag)
     if P is None:
-        return np.nan, np.nan
+        return (np.nan,) * 6
     assert P.shape[0] == y0.size, f"{f}: {P.shape[0]} tables vs {y0.size} queries"
     P = np.clip(P, 0.0, 1.0); P = P / P.sum(1, keepdims=True)
     k = (np.rint(y0).astype(int) * 2 + np.rint(y1).astype(int))
     return (float(-np.mean(np.log(np.maximum(P[np.arange(k.size), k], 1e-6)))),
-            float(np.mean(((P - np.eye(4)[k]) ** 2).sum(1))))
+            float(np.mean(((P - np.eye(4)[k]) ** 2).sum(1)))) + tuple(float(v) for v in P.mean(0))
 
 
 def cells():
@@ -115,27 +124,37 @@ def cells():
         for d in (10, 1):
             for r in RHOS:
                 yield label, f"d={d}, ρ={r}", f"{mode}/d{d}/rho{r}", f"{mode}/d{d}/rho{r}"
-    for d in (71, 10, 1):
+    for d in (10, 1):
         yield "Twins", f"d={d}", f"twins/d{d}", f"twins/d{d}"
+
+
+def observed_2x2(D, rel):
+    k = []
+    for f in sorted(glob.glob(os.path.join(D, rel, "truths", "r*.npz"))):
+        z = np.load(f); k.append(np.rint(z["y0"]).astype(int) * 2 + np.rint(z["y1"]).astype(int))
+    k = np.concatenate(k)
+    return np.bincount(k, minlength=4) / k.size
 
 
 def main(D, out):
     recs = []
     for bench, setting, data_rel, dump_rel in cells():
+        if bench == "Twins" and ONLY_DIR in ("", "observed"):
+            o = observed_2x2(D, data_rel)                       # the data's own 2 x 2 table, for the md
+            recs.append(dict(benchmark=bench, setting=setting, model="observed",
+                             **{f"P{c}": float(v) for c, v in zip(CELLS4, o)}))
         for label, mdir, tag in MODELS:
-            if S.COUPLING and "2D" in label:
+            if (S.COUPLING and "2D" in label) or (ONLY_DIR and mdir != ONLY_DIR):     # ONLY_DIR=observed: no model
                 continue
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, dump_rel, "*r[0-9]*.npz")), key=rid)
             if not files:
                 continue
-            truth_rel = data_rel if not (bench == "Twins" and setting == "d=71" and mdir in ("uwyk1d", "graph2d")) \
-                else "twins/d71_u50"
             rows, bins = [], []
             for f in files:
-                delta, tau, dump_truth = truth(D, truth_rel, rid(f))
+                delta, tau, dump_truth = truth(D, data_rel, rid(f))
                 rows.append(S.score_file(f, tag, delta, tau, dump_truth, "2D" in label))
                 if bench == "Twins":
-                    tz = np.load(os.path.join(D, truth_rel, "truths", f"r{rid(f):03d}.npz"))
+                    tz = np.load(os.path.join(D, data_rel, "truths", f"r{rid(f):03d}.npz"))
                     bins.append(pair_scores(f, tag, tz["y0"].astype(float), tz["y1"].astype(float)))
             R = np.array(rows, float)
             rec = dict(benchmark=bench, setting=setting, model=label)
@@ -145,33 +164,56 @@ def main(D, out):
                     rec["n"] = n; rec["abs_cov_err"] = abs(m - 0.95) if n else np.nan
             if bins:
                 B = np.array(bins, float)
-                for j, name in enumerate(("log_score", "brier")):
+                for j, name in enumerate(("log_score", "brier") + tuple(f"P{c}" for c in CELLS4)):
                     m, se, _ = S.ms(B[:, j]); rec[name] = m; rec[name + "_se"] = se
             recs.append(rec)
-            print(f"{bench:28s} {setting:14s} {label:16s} {len(files)} dumps", flush=True)
+            print(f"{bench:28s} {setting:14s} {label:34s} {len(files)} dumps", flush=True)
+    write(out, recs)
+
+
+def write(out, recs):
     keys = list(dict.fromkeys(k for r in recs for k in r))
     with open(out + ".csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=keys); w.writeheader(); w.writerows(recs)
-    f3 = lambda r, k: "—" if not np.isfinite(r.get(k, np.nan)) else (
-        f"{r[k]:.3f} ({r[k + '_se']:.3f})" if np.isfinite(r.get(k + "_se", np.nan)) else f"{r[k]:.3f}")
+    num = lambda r, k: float(r.get(k, np.nan)) if r.get(k, "") not in ("", None) else np.nan
+    f3 = lambda r, k: "—" if not np.isfinite(num(r, k)) else (
+        f"{num(r, k):.3f} ({num(r, k + '_se'):.3f})" if np.isfinite(num(r, k + "_se")) else f"{num(r, k):.3f}")
+    order = {m[0]: i for i, m in enumerate(MODELS)}
     md = ["# Bodik's IHDP-ρ and Twins (CLeaR 2026), the paper's models"
           + (f" — 1D marginals combined under {S.COUPLING}" if S.COUPLING else ""), "",
-          "Intervals scored against the realized ITE; √PEHE and ε_ATE against μ1 − μ0 (IHDP) or the realized ITE "
-          "(Twins). Mean (SE over datasets).", ""]
+          "IHDP-ρ: intervals scored against the realized ITE; √PEHE and ε_ATE against μ1 − μ0. Twins: the predicted "
+          "2×2 table of the pair P(Y0, Y1 | x) against both twins' observed outcomes (log score, Brier) and its mean "
+          "cells (00 both survive, 01 heavier twin dies, 10 lighter twin dies, 11 both die). Mean (SE over datasets).", ""]
     for bench in dict.fromkeys(r["benchmark"] for r in recs):
-        tw = bench == "Twins"
-        md += [f"## {bench}", "",
-               "| setting | model | n | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | √PEHE | ε_ATE |" + (" 2×2 log score | 2×2 Brier |" if tw else ""),
-               "|---|---|---|---|---|---|---|---|---|" + ("---|---|" if tw else "")]
-        for r in recs:
-            if r["benchmark"] == bench:
-                md.append(f"| {r['setting']} | {r['model']} | {r['n']} | {r['abs_cov_err']:.3f} | {f3(r, 'coverage')} | "
-                          f"{f3(r, 'length')} | {f3(r, 'IS')} | {f3(r, 'sqrt_pehe')} | {f3(r, 'eps_ate')} |"
-                          + (f" {f3(r, 'log_score')} | {f3(r, 'brier')} |" if tw else ""))
+        rs = sorted([r for r in recs if r["benchmark"] == bench],
+                    key=lambda r: (r["setting"], -1 if r["model"] == "observed" else order.get(r["model"], 99)))
+        if bench == "Twins":
+            md += [f"## {bench}", "", "| setting | model | 2×2 log score | 2×2 Brier | P(00) | P(01) | P(10) | P(11) |",
+                   "|---|---|---|---|---|---|---|---|"]
+            for r in rs:
+                md.append(f"| {r['setting']} | {r['model']} | {f3(r, 'log_score')} | {f3(r, 'brier')} | "
+                          + " | ".join(f"{num(r, 'P' + c):.3f}" for c in CELLS4) + " |")
+        else:
+            md += [f"## {bench}", "", "| setting | model | n | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | √PEHE | ε_ATE |",
+                   "|---|---|---|---|---|---|---|---|---|"]
+            for r in rs:
+                md.append(f"| {r['setting']} | {r['model']} | {r['n']} | {num(r, 'abs_cov_err'):.3f} | {f3(r, 'coverage')} | "
+                          f"{f3(r, 'length')} | {f3(r, 'IS')} | {f3(r, 'sqrt_pehe')} | {f3(r, 'eps_ate')} |")
         md.append("")
     open(out + ".md", "w").write("\n".join(md) + "\n")
     print(f"wrote {out}.csv / .md ({len(recs)} rows)")
 
 
+def merge(out, parts):
+    recs = []
+    for p in parts:
+        with open(p) as fh:
+            recs += list(csv.DictReader(fh))
+    write(out, recs)
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    if sys.argv[1] == "merge":                                 # python score_bodik.py merge OUT_PREFIX part.csv ...
+        merge(sys.argv[2], sys.argv[3:])
+    else:
+        main(sys.argv[1], sys.argv[2])

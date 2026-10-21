@@ -3,6 +3,8 @@
 #   step 1 (CPU, once):        bash run.sh gen
 #   step 2 (GPU, ONE job per model, after step 1 has finished; parts ihdp_a, twins, ihdp_b in turn):
 #        for m in dopfn1d dopfn2d uwyk1d graph2d cpfn1d cpfn2d; do bash run.sh eval $m; done
+#      the appendix models (ablations, published CausalPFN, UWYK-B), the same way:
+#        for m in dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml cpfn_v0 uwyk_bin; do bash run.sh eval $m; done
 #      (a single part: bash run.sh eval <model> <ihdp_a | twins | ihdp_b>)
 #   step 3 (CPU, after step 2):  bash run.sh score        -> pushes revision/results/d262t1/bodik.{csv,md}, and
 #        bodik_{comonotonic,gauss_-0.5,gauss_0.5}.{csv,md}: the 1D models with their marginals under those couplings
@@ -24,7 +26,7 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
-    score) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-score \
+    score) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=16 --mem=96G --job-name=bodik-score \
              -o logs_bodik/score_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score" ;;
     *) echo "FATAL: unknown step $STEP"; exit 1 ;;
   esac
@@ -41,26 +43,39 @@ if [ "$STEP" = gen ]; then
 fi
 
 if [ "$STEP" = score ]; then
+  # One job, every (model directory, coupling) as its own process, 16 at a time, then one merge per coupling.
+  # Coupling "" = the main results (all models; 2D with their learned joint, 1D independent); the others
+  # rescore the 1D models only, with their marginals under that coupling.
   export OMP_NUM_THREADS=1
   export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
-  O="$REPO/revision/results/d262t1"; mkdir -p "$O"
-  python -u "$HERE/score_bodik.py" "$D" "$O/bodik" || { echo "score_bodik.py failed; nothing pushed"; exit 1; }
-  # the 1D models' marginals under other couplings (the paper's coupling tables; rho = 0 is the main run above)
-  PIDS=()
-  for c in comonotonic gauss:-0.5 gauss:0.5; do
-    n="bodik_$(echo "$c" | tr ':' '_')"
-    COUPLING="$c" python -u "$HERE/score_bodik.py" "$D" "$O/$n" > "$KIT/logs_bodik/$n.log" 2>&1 & PIDS+=($!)
-  done
-  F=0; for p in "${PIDS[@]}"; do wait "$p" || F=1; done
-  [ "$F" = 0 ] || echo "WARN: a coupling run failed (logs_bodik/bodik_*.log)"
+  O="$REPO/revision/results/d262t1"; P="$D/score_parts"; mkdir -p "$O" "$P" "$KIT/logs_bodik/score"
+  DIRS1="dopfn1d uwyk1d cpfn1d dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml cpfn_v0 uwyk_bin"
+  DIRS2="dopfn2d graph2d cpfn2d"
+  part() {   # part <coupling or "none"> <model dir or observed>
+    local c="$1" m="$2" n; n="$(echo "$c" | tr ':' '_')__$m"
+    [ -s "$P/$n.csv" ] && return 0
+    if [ "$c" = none ]; then
+      ONLY_DIR="$m" python -u "$HERE/score_bodik.py" "$D" "$P/$n" > "$KIT/logs_bodik/score/$n.log" 2>&1
+    else
+      COUPLING="$c" ONLY_DIR="$m" python -u "$HERE/score_bodik.py" "$D" "$P/$n" > "$KIT/logs_bodik/score/$n.log" 2>&1
+    fi || echo "FAILED $n (logs_bodik/score/$n.log)"
+  }
+  export -f part; export D P KIT HERE
+  { echo "none observed"; for m in $DIRS1 $DIRS2; do echo "none $m"; done
+    for c in comonotonic gauss:-0.5 gauss:0.5; do for m in $DIRS1; do echo "$c $m"; done; done; } \
+    | xargs -P 16 -L 1 bash -c 'part "$0" "$1"'
+  python -u "$HERE/score_bodik.py" merge "$O/bodik" "$P"/none__*.csv
+  for c in comonotonic gauss_-0.5 gauss_0.5; do python -u "$HERE/score_bodik.py" merge "$O/bodik_$c" "$P"/${c}__*.csv; done
   cd "$REPO" && git add revision/results/d262t1/bodik*.csv revision/results/d262t1/bodik*.md \
-    && git commit -q -m "d262t1: Bodik IHDP-rho and Twins results" && git pull -q --rebase && git push -q && echo pushed
+    && git commit -q -m "d262t1: Bodik IHDP-rho and Twins results (all models, 2x2 Twins tables)" && git pull -q --rebase && git push -q && echo pushed
   exit $?
 fi
 
 # ---- eval
 MODEL="${2:?model}"; PARTS="${3:-all}"; [ "$PARTS" = all ] && PARTS="ihdp_a twins ihdp_b"
-case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d) ;; *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
+case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d|dopfn1d_mr|dopfn1d_ml|uwyk1d_mr|uwyk1d_ml|cpfn1d_mr|cpfn1d_ml|cpfn_v0|uwyk_bin) ;;
+  *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
+AUR="$KIT/from_aurora"; D262="$KIT/checkpoints_dopfn_repro_262k"
 export CAUSALPFN="$KIT/external/causalpfn" DOPFN_ROOT="$KIT/external/dopfn"
 UWYK="$KIT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
@@ -90,6 +105,29 @@ run_model() {   # run_model <outdir>   (dataset CMECH_n5 read from $UWYK_FIG34_D
     cpfn1d)
       python -u "$REPO/realcause_eval/Table1/cpfn1d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn1d_j1024_headrand_step_50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
+    dopfn1d_mr|dopfn1d_ml)                         # appendix ablations: 262k Do-PFN 1D, temperature off
+      local V=dopfn_1d; [ "$MODEL" = dopfn1d_ml ] && V=dopfn_1d_botharms
+      DOPFN_CKPT="$D262/$V/step_262144_final.pt" DOPFN_SOFTMAX_TEMP=0 \
+        python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset CMECH_n5 ;;
+    uwyk1d_mr|uwyk1d_ml|uwyk_bin)                  # UWYK matched resolution (D) / matched label (C) / binary (UWYK-B)
+      local C K E A
+      case "$MODEL" in
+        uwyk1d_mr) K="$AUR/uwyk_D_j32_nobin_step50000.pt"; C="$AUR/uwyk_D_j32_config.yaml"; E=target; A=v3a_only ;;
+        uwyk1d_ml) K="$AUR/uwyk_C_botharms_step50000.pt"; C="$AUR/best_model_config.yaml"; E=binary; A=v3a_only ;;
+        uwyk_bin)  K="$CK/uwyk_bin_step50000.pt"; C="$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml"; E=binary; A=v3ab_only ;;
+      esac
+      ANC_MODE=$A python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset CMECH_n5 --outdir "$OUTD" \
+        --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" --ckpt "$K" --config "$C" \
+        --anc-mode "$A" --t-encoding "$E" ;;
+    cpfn1d_mr|cpfn1d_ml|cpfn_v0)                   # CausalPFN-C matched resolution / matched label / published two-stage
+      local K
+      case "$MODEL" in
+        cpfn1d_mr) K="$CK/cpfn1d_j32_step50000.pt" ;;
+        cpfn1d_ml) K="$CK/cpfn1d_botharms_step50000.pt" ;;
+        cpfn_v0)   K="$CK/cpfn_v0_original.pt" ;;
+      esac
+      python -u "$REPO/realcause_eval/Table1/cpfn1d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
+        --ckpt "$K" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
     cpfn2d)
       python -u "$REPO/realcause_eval/Table1/cpfn2d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
@@ -101,14 +139,8 @@ cells() {
   case "$PART" in
     ihdp_a|ihdp_b)
       for d in 10 1; do for r in 1 0.75 0.5 0.25 0; do echo "$PART/d$d/rho$r $PART/d$d/rho$r"; done; done ;;
-    twins)
-      for d in 71 10 1; do
-        if [ "$d" = 71 ] && { [ "$MODEL" = uwyk1d ] || [ "$MODEL" = graph2d ]; }; then
-          echo "twins/d71_u50 twins/d71"          # UWYK takes at most 50 covariates: its first 50
-        else
-          echo "twins/d$d twins/d$d"
-        fi
-      done ;;
+    twins)                                          # his d = 10 and d = 1 (d = 71 is not reported)
+      for d in 10 1; do echo "twins/d$d twins/d$d"; done ;;
     *) echo "FATAL: unknown part $PART" >&2; exit 1 ;;
   esac
 }
