@@ -24,7 +24,7 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
-    score) sbatch --account=aip-rgrosse --time=2:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-score \
+    score) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-score \
              -o logs_bodik/score_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score" ;;
     *) echo "FATAL: unknown step $STEP"; exit 1 ;;
   esac
