@@ -87,7 +87,42 @@ def twins(out):
               flush=True)
 
 
+def twins_bodik(out, d=10, n_sub=10, block=2000):
+    """Twins in Bodik's setup: every family queried (11,984), d = 10.
+      twins_full/d10   context = ALL families (the full data, as he fits on); queries in blocks of `block`
+      twins_sub/d10    context = a random 1000 families (treated share kept), n_sub draws; dataset r = draw * n_blocks
+                       + block, every draw querying every family
+    """
+    z = np.load(os.path.join(HERE, "bodik_twins.npz"))
+    X, T = z["X"].astype(np.float64)[:, :d], z["T"].astype(np.float64)
+    y0, y1 = z["Y0"].astype(np.float64), z["Y1"].astype(np.float64)
+    yf = np.where(T == 1, y1, y0)
+    allq = np.arange(T.size)
+    blocks = [allq[s:s + block] for s in range(0, T.size, block)]
+    tr = lambda q: {"delta_shared": (y1 - y0)[q], "cate": (y1 - y0)[q], "y0": y0[q], "y1": y1[q], "t_test": T[q]}
+    root = os.path.join(out, "twins_full", f"d{d}")
+    for k, q in enumerate(blocks):
+        if not done(root, k):
+            write_world(root, k, X, T, yf, X[q], tr(q))
+    print(f"{root}: context {T.size} (all), {len(blocks)} query blocks", flush=True)
+    root = os.path.join(out, "twins_sub", f"d{d}")
+    it, ic = np.flatnonzero(T == 1), np.flatnonzero(T == 0)
+    n_t = int(round(TW_CTX * it.size / T.size))
+    for s_ in range(n_sub):
+        rng = np.random.default_rng([SEED, 4, s_])
+        ctx = np.concatenate([rng.choice(it, n_t, replace=False), rng.choice(ic, TW_CTX - n_t, replace=False)])
+        rng.shuffle(ctx)
+        for b, q in enumerate(blocks):
+            k = s_ * len(blocks) + b
+            if not done(root, k):
+                write_world(root, k, X[ctx], T[ctx], yf[ctx], X[q], tr(q))
+    print(f"{root}: {n_sub} context draws of {TW_CTX} x {len(blocks)} query blocks", flush=True)
+
+
 if __name__ == "__main__":
     out = sys.argv[1]
-    ihdp(out)
-    twins(out)
+    if "--twins-bodik" in sys.argv:
+        twins_bodik(out)
+    else:
+        ihdp(out)
+        twins(out)

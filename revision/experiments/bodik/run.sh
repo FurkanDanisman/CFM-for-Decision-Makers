@@ -28,6 +28,10 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
+    gen_twins) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=16G --job-name=bodik-gen-tw \
+             -o logs_bodik/gen_twins_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen_twins" ;;
+    score_twins_bodik) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-tw-score \
+             -o logs_bodik/score_twins_bodik_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_bodik" ;;
     readouts) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-ro \
              -o logs_bodik/readouts_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF readouts" ;;
     cf)    sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-cf \
@@ -50,6 +54,20 @@ fi
 REPO="$KIT/R-PFN"; CK="$REPO/Required_checkpoints"; HERE="$REPO/revision/experiments/bodik"
 cd "$KIT"; source venv/bin/activate
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" PYTHONUNBUFFERED=1
+
+if [ "$STEP" = gen_twins ]; then
+  python -u "$HERE/make_worlds.py" "$D" --twins-bodik && echo "[$(date '+%F %T')] gen_twins done"
+  exit $?
+fi
+
+if [ "$STEP" = score_twins_bodik ]; then
+  export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+  O="$REPO/revision/results/d262t1"; mkdir -p "$O"
+  python -u "$HERE/score_twins_bodik.py" "$D" "$O/bodik_twins_bodiksetup" || { echo "failed"; exit 1; }
+  cd "$REPO" && git add revision/results/d262t1/bodik_twins_bodiksetup.csv revision/results/d262t1/bodik_twins_bodiksetup.md \
+    && git commit -q -m "d262t1: Twins in Bodik's setup (all families queried)" && git pull -q --rebase && git push -q && echo pushed
+  exit $?
+fi
 
 if [ "$STEP" = gen ]; then
   python -u "$HERE/make_worlds.py" "$D" && echo "[$(date '+%F %T')] gen done"
@@ -212,6 +230,11 @@ cells() {
       for d in 10 1; do for r in 1 0.75 0.5 0.25 0; do echo "$PART/d$d/rho$r $PART/d$d/rho$r"; done; done ;;
     twins)                                          # his d = 10 and d = 1 (d = 71 is not reported)
       for d in 10 1; do echo "twins/d$d twins/d$d"; done ;;
+    twins_bodik)                                    # Bodik's setup: Do-PFN / CausalPFN-C full context, UWYK 1000 x 10
+      case "$MODEL" in
+        uwyk*|graph2d) echo "twins_sub/d10 twins_sub/d10" ;;
+        *)             echo "twins_full/d10 twins_full/d10" ;;
+      esac ;;
     *) echo "FATAL: unknown part $PART" >&2; exit 1 ;;
   esac
 }
