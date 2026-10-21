@@ -28,6 +28,8 @@ if [ "${RUN:-}" != 1 ]; then
     eval)  M="${2:?model}" P="${3:-all}"
            sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=48G \
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
+    twins) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=16 --mem=64G --job-name=bodik-twins \
+             -o logs_bodik/twins_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF twins" ;;
     score) C="${2:-none}"                          # none | comonotonic | gauss:-0.5 | gauss:0.5 | merge
            if [ "$C" = merge ]; then
              sbatch --account=aip-rgrosse --time=0:30:00 --cpus-per-task=2 --mem=16G --job-name=bodik-merge \
@@ -47,6 +49,31 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" MKL_NUM_THREADS="${SLURM_CPUS
 
 if [ "$STEP" = gen ]; then
   python -u "$HERE/make_worlds.py" "$D" && echo "[$(date '+%F %T')] gen done"
+  exit $?
+fi
+
+if [ "$STEP" = twins ]; then
+  # Twins only, every (coupling, model) part in parallel in ONE job, then merged and pushed as bodik_twins*.
+  export OMP_NUM_THREADS=1 TWINS_ONLY=1
+  export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+  O="$REPO/revision/results/d262t1"; P="$D/score_parts_twins"; rm -rf "$P"; mkdir -p "$O" "$P" "$KIT/logs_bodik/twins"
+  DIRS1="dopfn1d uwyk1d cpfn1d dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml cpfn_v0 uwyk_bin"
+  DIRS2="dopfn2d graph2d cpfn2d"
+  tpart() {
+    local c="$1" m="$2" n; n="$(echo "$c" | tr ':' '_')__$m"
+    if [ "$c" = none ]; then ONLY_DIR="$m" python -u "$HERE/score_bodik.py" "$D" "$P/$n" > "$KIT/logs_bodik/twins/$n.log" 2>&1
+    else COUPLING="$c" ONLY_DIR="$m" python -u "$HERE/score_bodik.py" "$D" "$P/$n" > "$KIT/logs_bodik/twins/$n.log" 2>&1
+    fi || echo "FAILED $n (logs_bodik/twins/$n.log)"
+  }
+  export -f tpart; export D P KIT HERE
+  { echo "none observed"; for m in $DIRS1 $DIRS2; do echo "none $m"; done
+    for c in comonotonic gauss:-0.5 gauss:0.5; do for m in $DIRS1; do echo "$c $m"; done; done; } \
+    | xargs -P 16 -L 1 bash -c 'tpart "$0" "$1"'
+  python -u "$HERE/score_bodik.py" merge "$O/bodik_twins" "$P"/none__*.csv
+  for c in comonotonic gauss_-0.5 gauss_0.5; do python -u "$HERE/score_bodik.py" merge "$O/bodik_twins_$c" "$P"/${c}__*.csv; done
+  cd "$REPO" && git add revision/results/d262t1/bodik_twins*.csv revision/results/d262t1/bodik_twins*.md \
+    && git commit -q -m "d262t1: Bodik Twins, pair score split into factual and counterfactual-given-factual" \
+    && git pull -q --rebase && git push -q && echo pushed
   exit $?
 fi
 

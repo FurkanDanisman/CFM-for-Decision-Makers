@@ -42,7 +42,8 @@ MODELS = [m for m in S.MODELS if m[1] != "cpfn1d_j32"] + [     # the paper's mai
     ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None), ("CausalPFN-C (matched label)", "cpfn1d_ml", None),
     ("CausalPFN (published two-stage)", "cpfn_v0", None),
     ("UWYK-B No-Anc", "uwyk_bin", "noanc"), ("UWYK-B Anc", "uwyk_bin", "v3a")]
-ONLY_DIR = os.environ.get("ONLY_DIR", "")                     # score one model directory only (parallel parts)
+ONLY_DIR = os.environ.get("ONLY_DIR", "")
+TWINS_ONLY = os.environ.get("TWINS_ONLY", "") == "1"           # rescore Twins only (minutes, not hours)                     # score one model directory only (parallel parts)
 CELLS4 = ("00", "01", "10", "11")                              # (Y0, Y1): both survive, heavier dies, lighter dies, both die
 RHOS = ("1", "0.75", "0.5", "0.25", "0")
 
@@ -132,16 +133,31 @@ def table_2x2(f, tag):
     return np.stack([1 - q0 - q1 + p11, q1 - p11, q0 - p11, p11], 1)
 
 
-def pair_scores(f, tag, y0, y1):
-    """(log score, Brier, mean predicted P(00), P(01), P(10), P(11)) of one dump."""
+PAIR_KEYS = ("log_score", "brier", "log_factual", "log_cf", "brier_cf") + tuple(f"P{c}" for c in CELLS4)
+
+
+def pair_scores(f, tag, y0, y1, t):
+    """One dump's scores of the pair (PAIR_KEYS). The 2 x 2 log score splits exactly into the factual twin's part
+    and the counterfactual twin's given the factual one:
+        -log P(y0, y1 | x) = -log P(y_f | x) - log P(y_cf | y_f, x)
+    The second is the retrospective counterfactual prediction of the observed pair (Bodik's task on Twins); under
+    independence P(y_cf | y_f) = P(y_cf), so only a joint can use the factual outcome."""
     P = table_2x2(f, tag)
     if P is None:
-        return (np.nan,) * 6
+        return (np.nan,) * len(PAIR_KEYS)
     assert P.shape[0] == y0.size, f"{f}: {P.shape[0]} tables vs {y0.size} queries"
-    P = np.clip(P, 0.0, 1.0); P = P / P.sum(1, keepdims=True)
-    k = (np.rint(y0).astype(int) * 2 + np.rint(y1).astype(int))
-    return (float(-np.mean(np.log(np.maximum(P[np.arange(k.size), k], 1e-6)))),
-            float(np.mean(((P - np.eye(4)[k]) ** 2).sum(1)))) + tuple(float(v) for v in P.mean(0))
+    P = np.clip(P, 1e-12, 1.0); P = P / P.sum(1, keepdims=True)
+    a, b, t = np.rint(y0).astype(int), np.rint(y1).astype(int), np.rint(t).astype(int)
+    k, q = a * 2 + b, np.arange(a.size)
+    M = P.reshape(-1, 2, 2)                                      # M[q, y0, y1]
+    pc = M[q, a, b]
+    pf = np.where(t == 1, M[q, :, b].sum(1), M[q, a, :].sum(1))   # P(factual twin's outcome)
+    p_cf1 = np.where(t == 1, M[q, 1, b] / M[q, :, b].sum(1), M[q, a, 1] / M[q, a, :].sum(1))   # P(y_cf = 1 | y_f)
+    ycf = np.where(t == 1, a, b)
+    L = lambda p: -np.log(np.maximum(p, 1e-6))
+    return (float(np.mean(L(pc))), float(np.mean(((P - np.eye(4)[k]) ** 2).sum(1))),
+            float(np.mean(L(pf))), float(np.mean(L(pc / pf))), float(np.mean((p_cf1 - ycf) ** 2))) \
+        + tuple(float(v) for v in P.mean(0))
 
 
 def cells():
@@ -164,6 +180,8 @@ def observed_2x2(D, rel):
 def main(D, out):
     recs = []
     for bench, setting, data_rel, dump_rel in cells():
+        if TWINS_ONLY and bench != "Twins":
+            continue
         if bench == "Twins" and ONLY_DIR in ("", "observed"):
             o = observed_2x2(D, data_rel)                       # the data's own 2 x 2 table, for the md
             recs.append(dict(benchmark=bench, setting=setting, model="observed",
@@ -180,7 +198,7 @@ def main(D, out):
                 rows.append(S.score_file(f, tag, delta, tau, dump_truth, "2D" in label))
                 if bench == "Twins":
                     tz = np.load(os.path.join(D, data_rel, "truths", f"r{rid(f):03d}.npz"))
-                    bins.append(pair_scores(f, tag, tz["y0"].astype(float), tz["y1"].astype(float)))
+                    bins.append(pair_scores(f, tag, tz["y0"].astype(float), tz["y1"].astype(float), tz["t_test"].astype(float)))
             R = np.array(rows, float)
             rec = dict(benchmark=bench, setting=setting, model=label)
             for j, name in enumerate(("coverage", "length", "IS", "sqrt_pehe", "eps_ate")):
@@ -189,7 +207,7 @@ def main(D, out):
                     rec["n"] = n; rec["abs_cov_err"] = abs(m - 0.95) if n else np.nan
             if bins:
                 B = np.array(bins, float)
-                for j, name in enumerate(("log_score", "brier") + tuple(f"P{c}" for c in CELLS4)):
+                for j, name in enumerate(PAIR_KEYS):
                     m, se, _ = S.ms(B[:, j]); rec[name] = m; rec[name + "_se"] = se
             recs.append(rec)
             print(f"{bench:28s} {setting:14s} {label:34s} {len(files)} dumps", flush=True)
@@ -213,11 +231,13 @@ def write(out, recs):
         rs = sorted([r for r in recs if r["benchmark"] == bench],
                     key=lambda r: (r["setting"], -1 if r["model"] == "observed" else order.get(r["model"], 99)))
         if bench == "Twins":
-            md += [f"## {bench}", "", "| setting | model | 2×2 log score | 2×2 Brier | P(00) | P(01) | P(10) | P(11) |",
-                   "|---|---|---|---|---|---|---|---|"]
+            md += [f"## {bench}", "",
+                   "Log score of the pair = factual twin + counterfactual twin given the factual one (exact split).", "",
+                   "| setting | model | 2×2 log score | 2×2 Brier | log, factual | log, cf given factual | Brier, cf given factual "
+                   "| P(00) | P(01) | P(10) | P(11) |", "|---|---|---|---|---|---|---|---|---|---|---|"]
             for r in rs:
-                md.append(f"| {r['setting']} | {r['model']} | {f3(r, 'log_score')} | {f3(r, 'brier')} | "
-                          + " | ".join(f"{num(r, 'P' + c):.3f}" for c in CELLS4) + " |")
+                md.append(f"| {r['setting']} | {r['model']} | {f3(r, 'log_score')} | {f3(r, 'brier')} | {f3(r, 'log_factual')} | "
+                          f"{f3(r, 'log_cf')} | {f3(r, 'brier_cf')} | " + " | ".join(f"{num(r, 'P' + c):.3f}" for c in CELLS4) + " |")
         else:
             md += [f"## {bench}", "", "| setting | model | n | |ĉ − 0.95| | ĉ | length | IS₀.₀₅ | √PEHE | ε_ATE |",
                    "|---|---|---|---|---|---|---|---|---|"]
