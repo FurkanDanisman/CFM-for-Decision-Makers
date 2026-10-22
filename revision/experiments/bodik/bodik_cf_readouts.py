@@ -33,7 +33,7 @@ A = 0.05
 K2 = np.sqrt(2 / np.pi)
 
 
-def cond_hist(f, tag, t, yf):
+def cond_hist(f, tag, t, yf, ld_off=False):
     """Per query: edges E (n, K+1), masses W (n, K), tails T (n, 4) = (pL, sL, pR, sR) in raw units; and the 2D axis
     check (None for 1D)."""
     with np.load(f, allow_pickle=True) as z:
@@ -58,6 +58,8 @@ def cond_hist(f, tag, t, yf):
                     continue
                 a = _above(e[arm_f])
                 wf = np.where(yf[sel, None] >= 0.5, a[None, :], 1 - a[None, :])
+                if ld_off:                                       # LD=Off: the other arm's marginal of the joint
+                    wf = np.ones_like(wf)
                 M = J[sel] if arm_f == 0 else np.transpose(J[sel], (0, 2, 1))   # [q, known bin, other bin]
                 W[sel] = np.einsum("qi,qij->qj", wf, M)
                 E[sel] = e[1 - arm_f]

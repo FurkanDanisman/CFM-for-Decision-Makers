@@ -105,7 +105,7 @@ def load(f, tag):
     return z, g
 
 
-def run_file(f, tag, t, yf, ycf, mode, rho=0.0):
+def run_file(f, tag, t, yf, ycf, mode, rho=0.0, ld_off=False):
     z, g = load(f, tag)
     es = np.asarray(z["edges"], np.float64).reshape(-1)
     s0, m0 = _map(z, 0); s1, m1 = _map(z, 1)
@@ -123,6 +123,8 @@ def run_file(f, tag, t, yf, ycf, mode, rho=0.0):
             J = joint[sel]; J = J / J.sum((1, 2), keepdims=True)
             a = _above(e[arm_f])
             wf = np.where(died[:, None], a[None, :], 1 - a[None, :])
+            if ld_off:
+                wf = np.ones_like(wf)
             M = J if arm_f == 0 else np.transpose(J, (0, 2, 1))
             W = np.einsum("qi,qij->qj", wf, M); W = W / W.sum(1, keepdims=True)
             zt = (np.zeros(sel.size), np.ones(sel.size), np.zeros(sel.size), np.ones(sel.size))

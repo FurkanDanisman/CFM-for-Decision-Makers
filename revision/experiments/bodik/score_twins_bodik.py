@@ -30,19 +30,22 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
           ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub"),
           ("UWYK No-Anc (matched resolution)", "uwyk1d_mr", "noanc", "sub"),
-          ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub")]
+          ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub"),
+          # the 2D models with their learned dependence switched off (rho = 0): their own marginal of the other twin
+          ("Do-PFN 2D (ρ = 0)", "dopfn2d", None, "full"), ("CausalPFN-C 2D (ρ = 0)", "cpfn2d", None, "full"),
+          ("UWYK 2D No-Anc (ρ = 0)", "graph2d", "noanc", "sub"), ("UWYK 2D Anc (ρ = 0)", "graph2d", "v3a", "sub")]
 NB = 6                                                           # query blocks per context
 
 
-def per_query(D, part, f, tag, is2d, d=10):
+def per_query(D, part, f, tag, is2d, d=10, ld_off=False):
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
     z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
     t = np.rint(z["t_test"]).astype(int)
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
-    E, W, T, _ = R.cond_hist(f, tag, t, yf)
+    E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
     mean, L, U = R.readouts(E, W, T)["A"]
-    _, crps = B.run_file(f, tag, t, yf, y, "2d" if is2d else "1d", 0.0)
+    _, crps = B.run_file(f, tag, t, yf, y, "2d" if is2d else "1d", 0.0, ld_off=ld_off)
     cov = ((L <= y + 1e-9) & (y <= U + 1e-9)).astype(float)
     IS = (U - L) + 40 * np.maximum(0, L - y) + 40 * np.maximum(0, y - U)
     return k, np.stack([(mean - y) ** 2, cov, U - L, IS, crps], 1)
@@ -55,7 +58,7 @@ def main(D, out):
         files = sorted(glob.glob(os.path.join(D, "dumps", mdir, f"twins_{part}", f"d{d}", "*r[0-9]*.npz")))
         if not files:
             print("missing", label, d); continue
-        got = [per_query(D, f"twins_{part}", f, tag, "2D" in label, d) for f in files]
+        got = [per_query(D, f"twins_{part}", f, tag, "2D" in label, d, ld_off="ρ = 0" in label) for f in files]
         if part == "full":
             V = np.concatenate([v for _, v in got])
             m, se = V.mean(0), V.std(0, ddof=1) / np.sqrt(V.shape[0])
