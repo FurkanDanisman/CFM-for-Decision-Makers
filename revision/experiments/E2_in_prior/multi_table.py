@@ -11,9 +11,7 @@ import numpy as np
 
 root, NW = sys.argv[1], int(sys.argv[2])
 SHARD = 100
-MODELS = [("dopfn_native", "Do-PFN", "dopfn"), ("dopfn_joint2d_262k", "Do-PFN 2D", "dopfn"),
-          ("uwyk1d", "UWYK (binary T)", "uwyk_1d"), ("uwyk1d_cont", "UWYK (continuous T)", "uwyk_1dc"),
-          ("graph2d", "UWYK 2D", "uwyk_2d"), ("cpfn1d", "CausalPFN-C", "cpfn_1d"), ("cpfn2d", "CausalPFN-C 2D", "cpfn_2d")]
+MODELS = [("dopfn_native", "Do-PFN", "dopfn"), ("dopfn_joint2d_262k", "Do-PFN 2D", "dopfn")]
 TRUTHS = ("delta_shared", "delta_indep")
 sd_cache = {}
 

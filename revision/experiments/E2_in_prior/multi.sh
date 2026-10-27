@@ -1,23 +1,22 @@
 #!/bin/bash
 # In-prior calibration per SCM: 100 worlds per prior, 1000 observational sets (+500 query units) each.
 # World w is the same-mode world of gen_*.py with E2_WORLD=w (w = 0 is the original same-world run).
-# The appendix in-prior models, settings as in the appendix tables:
-#   0 dopfn_native  2 uwyk1d  3 graph2d  4 cpfn1d  5 cpfn2d  6 uwyk1d_cont  8 dopfn_joint2d_262k (temperature off)
+# Do-PFN only, settings as in the appendix tables: 0 dopfn_native, 8 dopfn_joint2d_262k (temperature off)
 # Three steps, one after the other (no dependency jobs). Each job runs <= 3 h and requeues itself until done;
 # finished datasets / shards are skipped, so a requeue continues where it stopped.
-#   bash R-PFN/revision/experiments/E2_in_prior/multi.sh gen      6 CPU jobs, one per prior
-#   bash R-PFN/revision/experiments/E2_in_prior/multi.sh eval     7 GPU jobs, one per model (after gen is done)
+#   bash R-PFN/revision/experiments/E2_in_prior/multi.sh gen      1 CPU job (Do-PFN prior)
+#   bash R-PFN/revision/experiments/E2_in_prior/multi.sh eval     2 GPU jobs, one per model (after gen is done)
 #   bash R-PFN/revision/experiments/E2_in_prior/multi.sh table    per-world tables, committed and pushed
 #   bash R-PFN/revision/experiments/E2_in_prior/multi.sh progress
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 ROOT="$SCRATCH/e2/multi"; NW=100; mkdir -p logs_e2 "$ROOT"
-PRIORS=(dopfn uwyk_2d uwyk_1d cpfn_1d cpfn_2d uwyk_1dc)          # gen_e2.sbatch tasks 0-5
-MODELS=(0:dopfn_native:dopfn 2:uwyk1d:uwyk_1d 3:graph2d:uwyk_2d 4:cpfn1d:cpfn_1d 5:cpfn2d:cpfn_2d 6:uwyk1d_cont:uwyk_1dc 8:dopfn_joint2d_262k:dopfn)
+PRIORS=(dopfn)                                                  # gen_e2.sbatch task 0
+MODELS=(0:dopfn_native:dopfn 8:dopfn_joint2d_262k:dopfn)
 ndone() { ls "$1" 2>/dev/null | wc -l; }
 case "$1" in
 gen)
-  for P in 0 1 2 3 4 5; do
+  for P in 0; do
     sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --requeue --job-name="multi-gen-${PRIORS[$P]}" \
       -o "logs_e2/multi_gen_${PRIORS[$P]}_%j.out" "$E2/multi.sh" _gen "$P"
   done ;;
