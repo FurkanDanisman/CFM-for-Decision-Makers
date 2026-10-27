@@ -10,6 +10,8 @@
 # Do-PFN-bb (task 7) has 1000 worlds: run it on its own with E2_SHARDS=10 --array=7.
 # Do-PFN 2D at the published 1D budget (task 8, 262,144 steps), added beside the 150k one:
 #   E2_DATA=$SCRATCH/e2/new/data E2_RESULTS=$SCRATCH/e2/new/results E2_SHARDS=10 sbatch --array=8 ...
+# Fixed-SCM experiment (tasks 9-12, Do-PFN 1D 10k: natural, setup1, setup2, setup3), same-SCM data only:
+#   E2_DATA=$SCRATCH/e2/same/data E2_RESULTS=$SCRATCH/e2/same/results_fscm E2_SHARDS=10 sbatch --array=9-12 ...
 # E2: the paper's per-model harnesses, unchanged, on the E2 datasets (DENSITY_DUMP=1).
 # One task per model; it runs the shards (100 datasets each) in turn. After each shard the dumps
 # are reduced to per-query 95% intervals (score_shard.py) and deleted. A shard with a result file
@@ -26,8 +28,10 @@ export CAUSALPFN="$DEPLOY_ROOT/external/causalpfn" DOPFN_ROOT="$DEPLOY_ROOT/exte
 UWYK="$DEPLOY_ROOT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 
-MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb dopfn_joint2d_262k)
-PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb dopfn)
+MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb dopfn_joint2d_262k
+        fscm_natural fscm_setup1 fscm_setup2 fscm_setup3)
+PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb dopfn
+        dopfn        dopfn       dopfn       dopfn)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
@@ -55,6 +59,9 @@ case "$MODEL" in
       python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
   dopfn_joint2d_262k)
     DOPFN_CKPT="$CK/dopfn_repro_joint2d_step262144.pt" \
+      python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
+  fscm_*)                                     # fixed-SCM experiment (revision/experiments/fixed_scm), temperature off
+    DOPFN_SOFTMAX_TEMP=0 DOPFN_CKPT="$DEPLOY_ROOT/checkpoints_fixed_scm/${MODEL#fscm_}/dopfn_1d/step_10000_final.pt" \
       python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
   uwyk1d)
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \

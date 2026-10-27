@@ -26,7 +26,8 @@ MODELS = [("dopfn_native", "dopfn", ["delta_shared", "delta_indep"]),
           ("uwyk1d_cont", "uwyk_1dc", ["delta_shared", "delta_indep"]),
           ("graph2d", "uwyk_2d", ["delta_shared", "delta_indep"]),
           ("cpfn1d", "cpfn_1d", ["delta_shared", "delta_indep", "tau"]),
-          ("cpfn2d", "cpfn_2d", ["delta_shared", "delta_indep"])]
+          ("cpfn2d", "cpfn_2d", ["delta_shared", "delta_indep"])] + [
+          (f"fscm_{r}", "dopfn", ["delta_shared", "delta_indep"]) for r in ("natural", "setup1", "setup2", "setup3")]
 
 cols = [(R, Q) for R in R_LIST for Q in QS]
 print("coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q")
