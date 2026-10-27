@@ -1,0 +1,14 @@
+coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q
+model          truth             R=1000 Q=10    R=1000 Q=100    R=1000 Q=500        length
+fscm_natural   delta_shared    0.973 (0.002)   0.973 (0.001)   0.974 (0.001) 1.65 (0.00)
+fscm_natural   delta_indep     0.965 (0.002)   0.963 (0.001)   0.963 (0.001) 1.65 (0.00)
+               (1000 datasets scored; non-finite length: [])
+fscm_setup1    delta_shared    1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 0.50 (0.00)
+fscm_setup1    delta_indep     0.996 (0.001)   0.995 (0.000)   0.995 (0.000) 0.50 (0.00)
+               (1000 datasets scored; non-finite length: [])
+fscm_setup2    delta_shared    1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 1.70 (0.00)
+fscm_setup2    delta_indep     1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 1.70 (0.00)
+               (1000 datasets scored; non-finite length: [])
+fscm_setup3    delta_shared    1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 0.47 (0.00)
+fscm_setup3    delta_indep     0.994 (0.001)   0.993 (0.000)   0.993 (0.000) 0.47 (0.00)
+               (1000 datasets scored; non-finite length: [])
