@@ -78,6 +78,10 @@ from training_dopfn_repro.model import (  # noqa: E402
     loss_joint_2d,
 )
 from training_dopfn_repro.prior import PriorConfig, sample_batch  # noqa: E402
+from training_dopfn_repro.fixed_scm import FixedSCM, uses_fixed  # noqa: E402
+
+# Seeds of the fixed-SCM datasets: far from the prior stream (stream_seed + step).
+FIXED_SEED_BASE = 3_000_000_000
 
 # Recorded in the released checkpoint. Do not tune these.
 ADAM_LR = 8.485281374238571e-05
@@ -108,19 +112,36 @@ class PriorStream(torch.utils.data.Dataset):
     same SCMs in the same order, which makes the comparison paired.
     """
 
-    def __init__(self, variant, seed_base, prior_cfg, batch_cfg, length=10**9):
+    def __init__(self, variant, seed_base, prior_cfg, batch_cfg, length=10**9,
+                 fixed=None):
         self.variant = variant
         self.seed_base = seed_base
         self.prior_cfg = prior_cfg
         self.batch_cfg = batch_cfg
         self.length = length
+        # fixed = (mode, chunks, stream_seed, steps, data_r000): see fixed_scm.py. None = the usual prior.
+        self.fixed = fixed
+        self._fixed_scm = None
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, index):
         seed = self.seed_base + int(index)
-        rec = sample_batch(seed, self.prior_cfg)
+        if self.fixed is not None:
+            mode, chunks, stream_seed, steps, data_r000 = self.fixed
+            step = seed - stream_seed
+            if uses_fixed(mode, step, steps):
+                if self._fixed_scm is None:
+                    self._fixed_scm = FixedSCM(data_r000)   # built once per worker
+                return {"chunks": [
+                    self._one(FIXED_SEED_BASE + step * 1_000 + c, self._fixed_scm.sample)
+                    for c in range(chunks)
+                ]}
+        return self._one(seed, sample_batch)
+
+    def _one(self, seed, sampler):
+        rec = sampler(seed, self.prior_cfg)
         sep = sample_single_eval_pos(seed, self.prior_cfg.seq_len, self.batch_cfg)
         if is_1d(self.variant):
             out = _1D_BUILDERS[self.variant](rec, sep, self.batch_cfg)
@@ -133,8 +154,8 @@ class PriorStream(torch.utils.data.Dataset):
         return batch
 
 
-def make_loader(variant, seed_base, prior_cfg, batch_cfg, workers):
-    stream = PriorStream(variant, seed_base, prior_cfg, batch_cfg)
+def make_loader(variant, seed_base, prior_cfg, batch_cfg, workers, fixed=None):
+    stream = PriorStream(variant, seed_base, prior_cfg, batch_cfg, fixed=fixed)
     return torch.utils.data.DataLoader(
         stream,
         batch_size=None,          # the prior already emits a full batch
@@ -261,6 +282,12 @@ def main() -> None:
     ap.add_argument("--log-every", type=int, default=50)
     ap.add_argument("--ckpt-every", type=int, default=5_000)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--fixed-scm", choices=("off", "natural", "p10", "once"), default="off",
+                    help="the in-prior SCM as a training source (fixed_scm.py); off = unchanged training")
+    ap.add_argument("--fixed-scm-data", default=None,
+                    help="in-prior same-SCM dataset r000.npz; Y and covariates are read off it")
+    ap.add_argument("--fixed-chunks", type=int, default=1,
+                    help="batches of batch_size datasets per fixed-SCM step, accumulated into one update")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -342,13 +369,23 @@ def main() -> None:
         "stream_seed": args.stream_seed,
         "backbone": model.dopfn_repro_spec,
         "amp": args.amp,
+        "fixed_scm": args.fixed_scm,
+        "fixed_chunks": args.fixed_chunks,
+        "fixed_scm_data": args.fixed_scm_data,
     }
     with open(os.path.join(out_dir, "provenance.json"), "w") as fh:
         json.dump(provenance, fh, indent=2, default=str)
 
+    fixed = None
+    if args.fixed_scm != "off":
+        fixed = (args.fixed_scm, args.fixed_chunks, args.stream_seed, args.steps, args.fixed_scm_data)
+        print(FixedSCM(args.fixed_scm_data).describe())
+        n_fixed = sum(uses_fixed(args.fixed_scm, s, args.steps) for s in range(args.steps))
+        print(f"fixed SCM mode={args.fixed_scm}: {n_fixed} of {args.steps} steps, "
+              f"{args.fixed_chunks * args.batch_size} datasets each")
     loader = make_loader(
         args.variant, args.stream_seed + start_step, prior_cfg, batch_cfg,
-        args.workers,
+        args.workers, fixed,
     )
 
     def save(path, step):
@@ -377,35 +414,48 @@ def main() -> None:
         if step >= args.steps:
             break
 
+        # A fixed-SCM step can carry several batches ("chunks"): their gradients
+        # are accumulated (mean loss) into one optimizer update.
+        parts = batch["chunks"] if "chunks" in batch else [batch]
         # doscm marks a degenerate SCM by filling the batch with -100; training
         # on that is meaningless, so step over it rather than let it move the
         # weights. Counted and reported, never silent.
-        if bool(batch["nonfinite"]):
+        parts = [b for b in parts if not bool(b["nonfinite"])]
+        if not parts:
             skipped += 1
             step += 1
             continue
 
         optimizer.zero_grad(set_to_none=True)
-        with torch.autocast(
-            device_type=device.type,
-            dtype=amp_dtype,
-            enabled=amp_dtype is not None and device.type == "cuda",
-        ):
-            loss = compute_loss(model, batch, args.variant, spec, edges, device)
+        losses = []
+        for part in parts:
+            with torch.autocast(
+                device_type=device.type,
+                dtype=amp_dtype,
+                enabled=amp_dtype is not None and device.type == "cuda",
+            ):
+                part_loss = compute_loss(model, part, args.variant, spec, edges, device)
+            if not torch.isfinite(part_loss):
+                continue
+            if use_scaler:
+                scaler.scale(part_loss / len(parts)).backward()
+            else:
+                (part_loss / len(parts)).backward()
+            losses.append(float(part_loss))
 
-        if not torch.isfinite(loss):
+        if not losses:
+            optimizer.zero_grad(set_to_none=True)
             skipped += 1
             step += 1
             continue
+        loss = torch.tensor(sum(losses) / len(losses))
 
         if use_scaler:
-            scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             scaler.step(optimizer)
             scaler.update()
         else:
-            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
         scheduler.step()
