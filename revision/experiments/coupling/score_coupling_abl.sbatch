@@ -23,13 +23,18 @@ mkdir -p "$KIT/logs_coupling"
 [ -d "$TRUTH" ] || { echo "FATAL: no $TRUTH"; exit 1; }
 S=$SCRATCH; A=$SCRATCH/aurora3_kill
 # model | RealCause root | case-study root | ComplexMech all-rho root | methods   (as submit_hist_extra.sbatch)
-export ROWS="
+# COUPLING_ROWS (same format) scores those models instead, e.g. the published-CausalPFN / UWYK-B comparison:
+#   COUPLING_ROWS="cmp" -> UWYK-B and the published two-stage CausalPFN (as submit_hist_extra.sbatch)
+if [ "${COUPLING_ROWS:-}" = cmp ]; then COUPLING_ROWS="
+uwyk_bin|$S/dumps_all/uwyk_bin/rc|$S/dumps_all/uwyk_bin/cs|$S/cmech_dumps/uwyk_bin|uwyk1d-noanc uwyk1d-v3a
+cpfn_v0|$S/dumps_all/cpfn_v0/rc|$S/dumps_all/cpfn_v0/cs|$S/cmech_dumps/cpfn_v0|cpfn1d"; fi
+export ROWS="${COUPLING_ROWS:-
 dopfn_repro_1d_J10_262k_t1|$S/dumps_all/dopfn_repro_1d_J10_262k_t1/rc|$S/dumps_all/dopfn_repro_1d_J10_262k_t1/cs|$S/cmech_dumps/dopfn_repro_1d_J10_262k_t1|dopfn_native
 dopfn_1d_botharms_262k_t1|$S/dumps_all/dopfn_1d_botharms_262k_t1/rc|$S/dumps_all/dopfn_1d_botharms_262k_t1/cs|$S/cmech_dumps/dopfn_1d_botharms_262k_t1|dopfn_native
 uwyk_D_j32_nobin|$A/rc/uwyk_D_j32_nobin|$A/cs/uwyk_D_j32_nobin|$S/aurora3_allrho/cm_rho99/uwyk_D_j32_nobin|uwyk1d-noanc uwyk1d-v3a
 uwyk_C_botharms|$A/rc/uwyk_C_botharms|$A/cs/uwyk_C_botharms|$S/aurora3_allrho/cm_rho99/uwyk_C_botharms|uwyk1d-noanc uwyk1d-v3a
 cpfn1d_j32|$S/dumps_all/cpfn1d_j32/rc|$S/dumps_all/cpfn1d_j32/cs|$S/cmech_dumps/cpfn1d_j32|cpfn1d
-cpfn1d_botharms|$S/dumps_all/cpfn1d_botharms/rc|$S/dumps_all/cpfn1d_botharms/cs|$S/cmech_dumps/cpfn1d_botharms|cpfn1d"
+cpfn1d_botharms|$S/dumps_all/cpfn1d_botharms/rc|$S/dumps_all/cpfn1d_botharms/cs|$S/cmech_dumps/cpfn1d_botharms|cpfn1d}"
 
 # one (model, coupling) pair, every cell of PART
 pair() {
