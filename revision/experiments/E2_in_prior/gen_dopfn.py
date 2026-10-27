@@ -14,7 +14,7 @@ import training_dopfn_repro.prior as P
 from common import write_world, done, N_CTX, N_Q
 
 mode, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
-SEED = 20261003
+SEED = int(os.environ.get("DOPFN_SAME_SEED", 20261003))   # nohc.sh sets a hidden-confounder-free seed
 ROWS = N_CTX + N_Q
 
 # Shared truth: the prior's own y_do1 - y_do0 (both arms reuse every noise draw, _propagate_arm).
