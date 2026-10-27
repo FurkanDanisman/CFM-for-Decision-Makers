@@ -16,6 +16,7 @@ from common import write_world, done, N_CTX, N_Q
 model, mode, (R0, R1), out = sys.argv[1], sys.argv[2], map(int, sys.argv[3].split(":")), sys.argv[4]
 ROWS = N_CTX + N_Q
 SEED = 20261003
+WORLD = int(os.environ.get("E2_WORLD", 0))                     # same mode: which world (multi.sh); 0 = the original run
 
 # the training prior: train.py +experiment=simple_configuration -> train_meta_dataset (synthetic_backdoor)
 with initialize_config_dir(config_dir=os.path.join(os.environ["CAUSALPFN"], "conf"), version_base=None):
@@ -87,7 +88,7 @@ if mode == "new":
             write(r, *draw(r))
 else:
     prior.n_samples = R1 * ROWS                                # one world, R1 * 1500 i.i.d. units
-    X, t, y, truths = draw(0)
+    X, t, y, truths = draw(WORLD)
     for r in range(R0, R1):
         if not done(out, r):
             write(r, X, t, y, truths, off=r * ROWS)

@@ -16,6 +16,7 @@ from common import write_world, done, N_CTX, N_Q
 mode, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = int(os.environ.get("DOPFN_SAME_SEED", 20261003))   # nohc.sh sets a hidden-confounder-free seed
 ROWS = N_CTX + N_Q
+WORLD = int(os.environ.get("E2_WORLD", 0))                     # same mode: which world (multi.sh); 0 = the original run
 
 # Shared truth: the prior's own y_do1 - y_do0 (both arms reuse every noise draw, _propagate_arm).
 # Independent truth: arm 0 propagated again with fresh additive noise for every descendant of T.
@@ -63,7 +64,7 @@ if mode == "new":
         if not done(out, r):
             write(r, *draw(r, 2200))                    # 2200 = the prior's seq_len; first 1500 rows used
 else:
-    x, y, ds, di = draw(0, R1 * ROWS)                   # one world, R1 * 1500 i.i.d. units
+    x, y, ds, di = draw(WORLD, R1 * ROWS)               # one world, R1 * 1500 i.i.d. units
     for r in range(R0, R1):
         if not done(out, r):
             write(r, x, y, ds, di, off=r * ROWS)

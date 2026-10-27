@@ -25,6 +25,7 @@ from common import write_world, done, N_CTX, N_Q
 
 mode, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = 20261003
+WORLD = int(os.environ.get("E2_WORLD", 0))                     # same mode: which world (multi.sh); 0 = the original run
 uwyk = os.environ.get("UWYK", os.path.join(REPO, "external/uwyk_reproduce"))
 cfg_all = yaml.safe_load(open(os.path.join(uwyk, "experiments/checkpoints/full_conditioned_model/"
                                            "final_earlytest_full_conditioning_16773252.0/best_model_config.yaml")))
@@ -102,7 +103,7 @@ def propagate_pairs(scm, intv, T, Y, t0, t1, fresh_seed=None):
 
 def dataset(r, w):
     scm, intv, T, Y, feats = w
-    torch.manual_seed(SEED + 1_000_003 + r)
+    torch.manual_seed(SEED + 1_000_003 + r + WORLD * 10_000_019)
     cols = lambda o, m: torch.cat([o[v].reshape(m, -1).float() for v in feats], dim=1)
     scm.sample_exogenous(N_CTX); scm._fixed_endogenous_vec = None; scm.sample_endogenous(N_CTX)
     obs = scm.propagate(N_CTX)
@@ -112,7 +113,7 @@ def dataset(r, w):
     scm.sample_exogenous(N_Q); scm._fixed_endogenous_vec = None; scm.sample_endogenous(N_Q)
     obs_test = scm.propagate(N_Q)
     y0, y1 = propagate_pairs(scm, intv, T, Y, t0, t1)
-    y0i, y1i = propagate_pairs(scm, intv, T, Y, t0, t1, fresh_seed=SEED + 7 * r + 1)
+    y0i, y1i = propagate_pairs(scm, intv, T, Y, t0, t1, fresh_seed=SEED + 7 * r + 1 + WORLD * 10_000_019)
     X_ctx, X_q = SP._standardize(cols(obs, N_CTX), cols(obs_test, N_Q))
     write_world(out, r, X_ctx, T_ctx, obs[Y].reshape(-1).float(), X_q,
                 {"delta_shared": y1 - y0, "delta_indep": y1i - y0i},
@@ -125,7 +126,7 @@ if mode == "new":
         if not done(out, r):
             dataset(r, world(r))
 else:
-    w = world(0)                                               # one world; every shard redraws the same one
+    w = world(WORLD)                                           # one world; every shard redraws the same one
     for r in range(R0, R1):
         if not done(out, r):
             dataset(r, w)

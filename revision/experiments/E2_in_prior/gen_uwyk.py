@@ -24,6 +24,7 @@ from common import write_world, done, N_CTX, N_Q
 
 model, mode, (R0, R1), out = sys.argv[1], sys.argv[2], map(int, sys.argv[3].split(":")), sys.argv[4]
 SEED = 20261003
+WORLD = int(os.environ.get("E2_WORLD", 0))                     # same mode: which world (multi.sh); 0 = the original run
 if model == "2d":
     from graph2d_scm_config import DEFAULT_SCM_CONFIG as scm_config
 else:
@@ -76,8 +77,8 @@ def dataset(r, s):
     """A new observational set + new query units from the world of sample s (same steps as the prior)."""
     scm, intv, T, t0, t1 = (state[k] for k in ("scm", "intv", "T", "t0", "t1"))
     feats, target = s["feature_nodes"], s["target_node"]
-    torch.manual_seed(SEED + 1_000_003 + r)
-    state["seed"] = SEED + 7 * r + 1
+    torch.manual_seed(SEED + 1_000_003 + r + WORLD * 10_000_019)
+    state["seed"] = SEED + 7 * r + 1 + WORLD * 10_000_019
     cols = lambda o, n: torch.cat([o[v].reshape(n, -1).float() for v in feats], dim=1)
     scm.sample_exogenous(N_CTX); scm._fixed_endogenous_vec = None; scm.sample_endogenous(N_CTX)
     obs = scm.propagate(N_CTX)
@@ -98,7 +99,7 @@ if mode == "new":
             write(r, s["X_obs"][:, :F], s["T_obs"].reshape(-1), s["Y_obs_raw"].reshape(-1), s["X_intv"][:, :F],
                   s["Y_do0_raw"].reshape(-1), s["Y_do1_raw"].reshape(-1), s["target_node"])
 else:
-    s = world(0)                                               # fixes the world; every shard redraws the same one
+    s = world(WORLD)                                           # fixes the world; every shard redraws the same one
     for r in range(R0, R1):
         if not done(out, r):
             dataset(r, s)
