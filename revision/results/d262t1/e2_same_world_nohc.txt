@@ -1,0 +1,13 @@
+seed 20261005: seed 20261005: T U1 Y X0 x ['U1', 'X2'] hidden ['X3'] hidden confounders []
+== default temperature
+coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q
+model          truth             R=1000 Q=10    R=1000 Q=100    R=1000 Q=500        length
+dopfn_native   delta_shared    1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 28.75 (0.02)
+dopfn_native   delta_indep     1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 28.75 (0.02)
+               (1000 datasets scored; non-finite length: [])
+== temperature off
+coverage (SE) of the hist 95% interval;  columns = datasets R x queries Q
+model          truth             R=1000 Q=10    R=1000 Q=100    R=1000 Q=500        length
+dopfn_joint2d_262k delta_shared    1.000 (0.000)   1.000 (0.000)   1.000 (0.000) 1.14 (0.00)
+dopfn_joint2d_262k delta_indep     0.316 (0.005)   0.317 (0.002)   0.315 (0.001) 1.14 (0.00)
+               (1000 datasets scored; non-finite length: [])
