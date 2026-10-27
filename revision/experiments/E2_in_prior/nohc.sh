@@ -13,7 +13,7 @@ ROOT="$SCRATCH/e2/same_nohc"; mkdir -p logs_e2 "$ROOT"
 case "$1" in
 gen)
   sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=nohc-gen -o logs_e2/nohc_gen_%j.out \
-    --wrap "cd $KIT && source venv/bin/activate && export PYTHONHASHSEED=0 PYTHONUNBUFFERED=1 DOPFN_SRC=$KIT/external/dopfn && \
+    --wrap "cd $KIT && . venv/bin/activate && export PYTHONHASHSEED=0 PYTHONUNBUFFERED=1 DOPFN_SRC=$KIT/external/dopfn && \
       S=\$(python $E2/find_seed_nohc.py | tee $ROOT/seed_search.txt | tail -1) && echo \$S > $ROOT/seed.txt && echo seed \$S && \
       cd $E2 && DOPFN_SAME_SEED=\$S python gen_dopfn.py same 0:1000 $ROOT/data/dopfn" ;;
 eval)
