@@ -56,7 +56,7 @@ progress)
   for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$( (ls $ROOT/results/w*/$M/shard*.npz 2>/dev/null || true) | wc -l); echo "eval $M: $n/$((NW * 10)) shards"; done ;;
 table)
   source venv/bin/activate; O="$REPO/revision/results/d262t1/e2_multi_world.txt"
-  python "$E2/multi_table.py" "$ROOT" "$NW" | tee "$O"
-  cd "$REPO" && git add "$O" && git commit -qm "E2: in-prior calibration per SCM (100 worlds x 1000 sets)" \
+  python "$E2/multi_table.py" "$ROOT" "$NW" "${O%.txt}.csv" | tee "$O"
+  cd "$REPO" && git add "$O" "${O%.txt}.csv" && git commit -qm "E2: in-prior calibration per SCM (100 worlds x 1000 sets)" \
     && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
 esac

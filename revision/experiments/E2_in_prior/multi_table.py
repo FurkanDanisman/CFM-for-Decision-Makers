@@ -10,6 +10,8 @@ import glob, os, re, sys
 import numpy as np
 
 root, NW = sys.argv[1], int(sys.argv[2])
+CSV = sys.argv[3] if len(sys.argv) > 3 else None          # per-world values (model, truth, world, coverage, length)
+rows_out = []
 SHARD = 100
 MODELS = [("dopfn_native", "Do-PFN", "dopfn"), ("dopfn_joint2d_262k", "Do-PFN 2D", "dopfn")]
 TRUTHS = ("delta_shared", "delta_indep")
@@ -45,8 +47,10 @@ print(f"In-prior calibration per SCM: {NW} worlds per prior, 1000 observational 
 print("coverage per world = mean over its sets; across worlds: mean (SE), sd, [min, max], worlds with |c - 0.95| <= 0.02\n")
 print(f"{'model':20s} {'truth':13s} {'worlds':>6s} {'coverage':>15s} {'sd':>6s} {'range':>15s} {'within 0.02':>12s} {'length':>13s}")
 for model, name, prior in MODELS:
-    got = [world(model, prior, w) for w in range(NW)]
-    got = [g for g in got if g is not None]
+    got = [(w, world(model, prior, w)) for w in range(NW)]
+    got = [(w, g) for w, g in got if g is not None]
+    rows_out += [(name, t, w, g[0][t], g[1]) for w, g in got for t in TRUTHS]
+    got = [g for _, g in got]
     if not got:
         print(f"{name:20s} (no complete world)"); continue
     Ls = np.array([g[1] for g in got])
@@ -55,3 +59,9 @@ for model, name, prior in MODELS:
         inside = int(np.sum(np.abs(c - 0.95) <= 0.02))
         print(f"{name:20s} {t:13s} {n:6d} {c.mean():7.3f} ({c.std(ddof=1) / np.sqrt(n):.3f}) {c.std(ddof=1):6.3f} "
               f"[{c.min():.3f}, {c.max():.3f}] {inside:5d}/{n:<6d} {Ls.mean():6.2f} ({Ls.std(ddof=1) / np.sqrt(n):.2f})")
+
+if CSV:
+    with open(CSV, "w") as fh:
+        fh.write("model,truth,world,coverage,length\n")
+        fh.writelines(f"{m},{t},{w},{c:.6f},{l:.6f}\n" for m, t, w, c, l in rows_out)
+    print("per-world values:", CSV)
