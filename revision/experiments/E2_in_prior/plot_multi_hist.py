@@ -1,18 +1,22 @@
 """Per-SCM coverage (multi.sh, e2_multi_world.csv): number of SCMs per coverage bin.
-python plot_multi_hist.py e2_multi_world.csv out_prefix
+python plot_multi_hist.py e2_multi_world.csv out_prefix          (ITE coverage: the delta_shared truth)
+python plot_multi_hist.py e2_multi_world_outcomes.csv out_prefix (outcome-level: one panel per model and target)
 Bins of width 0.01 on [0.85, 1), plus one bar for coverage below 0.85 and one for coverage exactly 1;
 the band 0.93-0.97 around the nominal 0.95 is shaded. Counts are written on the bars."""
 import sys
 import numpy as np, pandas as pd, matplotlib
 matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
-d = pd.read_csv(sys.argv[1]); d = d[d.truth == "delta_shared"]; out = sys.argv[2]
-models = list(dict.fromkeys(d.model))
+d = pd.read_csv(sys.argv[1]); out = sys.argv[2]
+if "delta_shared" in set(d.truth):
+    d = d[d.truth == "delta_shared"]
+d["panel"] = d.model if d.truth.nunique() == 1 else d.model + ", " + d.truth
+models = list(dict.fromkeys(d.panel))
 edges = np.round(np.arange(0.85, 1.0001, 0.01), 2)                    # 0.85, 0.86, ..., 1.00
 labels = ["<0.85"] + [f"{a:.2f}" for a in edges[:-1]] + ["1"]
 fig, axes = plt.subplots(len(models), 1, figsize=(8.2, 2.5 * len(models)), sharex=True)
 for ax, m in zip(np.atleast_1d(axes), models):
-    c = d[d.model == m].coverage.values
+    c = d[d.panel == m].coverage.values
     one = c >= 1 - 1e-9
     cnt = [int((c < 0.85).sum())] + [int(((c >= a) & (c < b) & ~one).sum()) for a, b in zip(edges[:-1], edges[1:])] + [int(one.sum())]
     x = np.arange(len(cnt))

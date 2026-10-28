@@ -8,6 +8,10 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/multi.sh eval     2 GPU jobs, one per model (after gen is done)
 #   bash R-PFN/revision/experiments/E2_in_prior/multi.sh table    per-world tables, committed and pushed
 #   bash R-PFN/revision/experiments/E2_in_prior/multi.sh progress
+# Outcome-level coverage (1D: each outcome's interval; 2D: the joint's 95% region), three more steps:
+#   multi.sh truths    1 CPU job: both true outcomes of every query unit (redrawn, verified against the saved ITE)
+#   multi.sh eval_y    2 GPU jobs: the evaluation again, scored at the outcome level (results_y/)
+#   multi.sh table_y   per-world outcome coverage, CSV + histogram, committed and pushed
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 ROOT="$SCRATCH/e2/multi"; NW=100; mkdir -p logs_e2 "$ROOT"
@@ -51,9 +55,43 @@ _eval)                                        # job body: model $3 (eval_e2.sbat
         bash '"$E2"'/eval_e2.sbatch > '"$ROOT"'/eval_'"$M"'_w$w.log 2>&1 || exit 1
     done' || { [ $? = 124 ] && { echo "time limit: requeue"; scontrol requeue "$SLURM_JOB_ID"; exit 0; }; exit 1; }
   echo "[$(date '+%F %T')] $M: all $NW worlds done" ;;
+truths)
+  sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --requeue --job-name=multi-truths-y \
+    -o "logs_e2/multi_truths_y_%j.out" "$E2/multi.sh" _truths ;;
+_truths)
+  source venv/bin/activate
+  cd "$E2" && PYTHONHASHSEED=0 DOPFN_SRC="$KIT/external/dopfn" timeout 170m python multi_truth_y.py "$ROOT" "0:$NW" \
+    || { [ $? = 124 ] && { echo "time limit: requeue"; scontrol requeue "$SLURM_JOB_ID"; exit 0; }; exit 1; } ;;
+eval_y)
+  for w in $(seq 0 $((NW - 1))); do
+    [ "$(ndone "$ROOT/data/w$w/dopfn/truths_y")" = 1000 ] || { echo "FATAL: truths_y of world $w incomplete (run truths first)"; exit 1; }
+  done
+  for spec in "${MODELS[@]}"; do
+    IFS=: read -r I M PR <<< "$spec"
+    sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --cpus-per-task=4 --mem=32G --requeue \
+      --job-name="multiy-$M" -o "logs_e2/multi_evaly_${M}_%j.out" "$E2/multi.sh" _eval_y "$I" "$M"
+  done ;;
+_eval_y)
+  I="$2"; M="$3"; T=""; [ "$I" = 8 ] && T="DOPFN_SOFTMAX_TEMP=0"
+  timeout 170m bash -c '
+    for w in $(seq 0 '"$((NW - 1))"'); do
+      [ "$(ls '"$ROOT"'/results_y/w$w/'"$M"'/outcomes_shard*.npz 2>/dev/null | wc -l)" = 10 ] && continue
+      echo "[$(date "+%F %T")] world $w"
+      env '"$T"' E2_DATA='"$ROOT"'/data/w$w E2_RESULTS='"$ROOT"'/results_y/w$w E2_SHARDS=10 SLURM_ARRAY_TASK_ID='"$I"' \
+        E2_TRUTH_Y='"$ROOT"'/data/w$w/dopfn/truths_y bash '"$E2"'/eval_e2.sbatch > '"$ROOT"'/evaly_'"$M"'_w$w.log 2>&1 || exit 1
+    done' || { [ $? = 124 ] && { echo "time limit: requeue"; scontrol requeue "$SLURM_JOB_ID"; exit 0; }; exit 1; }
+  echo "[$(date '+%F %T')] $M: all $NW worlds scored at the outcome level" ;;
+table_y)
+  source venv/bin/activate; O="$REPO/revision/results/d262t1/e2_multi_world_outcomes"
+  python "$E2/multi_outcome_table.py" "$ROOT" "$NW" "$O.csv" | tee "$O.txt"
+  python "$E2/plot_multi_hist.py" "$O.csv" "${O}_hist"
+  cd "$REPO" && git add "$O".* "${O}_hist".* && git commit -qm "E2: per-SCM outcome-level coverage (1D per outcome, 2D joint)" \
+    && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
 progress)
   for pr in "${PRIORS[@]}"; do n=0; for w in $(seq 0 $((NW - 1))); do [ "$(ndone $ROOT/data/w$w/$pr/truths)" = 1000 ] && n=$((n + 1)); done; echo "data $pr: $n/$NW worlds"; done
-  for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$( (ls $ROOT/results/w*/$M/shard*.npz 2>/dev/null || true) | wc -l); echo "eval $M: $n/$((NW * 10)) shards"; done ;;
+  for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$( (ls $ROOT/results/w*/$M/shard*.npz 2>/dev/null || true) | wc -l); echo "eval $M: $n/$((NW * 10)) shards"; done
+  n=0; for w in $(seq 0 $((NW - 1))); do [ "$(ndone $ROOT/data/w$w/dopfn/truths_y)" = 1000 ] && n=$((n + 1)); done; echo "truths_y: $n/$NW worlds"
+  for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$( (ls $ROOT/results_y/w*/$M/outcomes_shard*.npz 2>/dev/null || true) | wc -l); echo "eval_y $M: $n/$((NW * 10)) shards"; done ;;
 table)
   source venv/bin/activate; O="$REPO/revision/results/d262t1/e2_multi_world.txt"
   python "$E2/multi_table.py" "$ROOT" "$NW" "${O%.txt}.csv" | tee "$O"

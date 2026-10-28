@@ -88,6 +88,8 @@ case "$MODEL" in
       --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
 esac
 python "$REPO/revision/experiments/E2_in_prior/score_shard.py" "$OUT" "$RES/shard$SHARD.npz"
+# E2_TRUTH_Y (multi.sh eval_y): also the outcome-level coverage, while the dumps still exist
+[ -n "${E2_TRUTH_Y:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_outcomes.py" "$OUT" "$E2_TRUTH_Y" "$SHARD" "$RES/outcomes_shard$SHARD.npz"
 rm -rf "$OUT"
 done
 echo "[$(date '+%F %T')] done"
