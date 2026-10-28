@@ -1,0 +1,111 @@
+model,truth,world,coverage,length
+Do-PFN,y0,0,0.990678,nan
+Do-PFN,y1,0,0.989654,nan
+Do-PFN,y0,1,0.969664,nan
+Do-PFN,y1,1,0.993410,nan
+Do-PFN,y0,2,0.948416,nan
+Do-PFN,y1,2,0.953848,nan
+Do-PFN,y0,3,0.960792,nan
+Do-PFN,y1,3,0.974378,nan
+Do-PFN,y0,4,0.992228,nan
+Do-PFN,y1,4,0.996754,nan
+Do-PFN,y0,5,0.947488,nan
+Do-PFN,y1,5,0.942412,nan
+Do-PFN,y0,6,0.960032,nan
+Do-PFN,y1,6,0.947670,nan
+Do-PFN,y0,7,0.708842,nan
+Do-PFN,y1,7,0.968868,nan
+Do-PFN,y0,8,0.942274,nan
+Do-PFN,y1,8,0.950704,nan
+Do-PFN,y0,9,0.988144,nan
+Do-PFN,y1,9,0.998718,nan
+Do-PFN,y0,10,0.950498,nan
+Do-PFN,y1,10,0.958552,nan
+Do-PFN,y0,11,0.976456,nan
+Do-PFN,y1,11,0.965466,nan
+Do-PFN,y0,12,0.862724,nan
+Do-PFN,y1,12,0.969220,nan
+Do-PFN,y0,13,0.989934,nan
+Do-PFN,y1,13,0.995540,nan
+Do-PFN,y0,14,0.603522,nan
+Do-PFN,y1,14,0.951280,nan
+Do-PFN,y0,15,0.948436,nan
+Do-PFN,y1,15,0.947064,nan
+Do-PFN,y0,16,0.785012,nan
+Do-PFN,y1,16,0.970118,nan
+Do-PFN,y0,17,0.216488,nan
+Do-PFN,y1,17,0.991146,nan
+Do-PFN,y0,18,0.993590,nan
+Do-PFN,y1,18,0.994672,nan
+Do-PFN,y0,19,0.977876,nan
+Do-PFN,y1,19,0.988372,nan
+Do-PFN,y0,20,0.984148,nan
+Do-PFN,y1,20,0.980608,nan
+Do-PFN 2D,joint,0,0.997302,nan
+Do-PFN 2D,joint,1,0.975300,nan
+Do-PFN 2D,joint,2,0.909760,nan
+Do-PFN 2D,joint,3,0.978068,nan
+Do-PFN 2D,joint,4,0.996414,nan
+Do-PFN 2D,joint,5,0.951824,nan
+Do-PFN 2D,joint,6,0.976094,nan
+Do-PFN 2D,joint,7,0.919468,nan
+Do-PFN 2D,joint,8,0.963832,nan
+Do-PFN 2D,joint,9,0.970456,nan
+Do-PFN 2D,joint,10,0.970998,nan
+Do-PFN 2D,joint,11,0.986598,nan
+Do-PFN 2D,joint,12,0.883594,nan
+Do-PFN 2D,joint,13,0.999280,nan
+Do-PFN 2D,joint,14,0.985918,nan
+Do-PFN 2D,joint,15,0.941406,nan
+Do-PFN 2D,joint,16,0.966474,nan
+Do-PFN 2D,joint,17,0.982956,nan
+Do-PFN 2D,joint,18,0.984740,nan
+Do-PFN 2D,joint,19,0.983640,nan
+Do-PFN 2D,joint,20,0.973714,nan
+Do-PFN 2D,joint,21,0.974824,nan
+Do-PFN 2D,joint,22,0.958318,nan
+Do-PFN 2D,joint,23,0.983552,nan
+Do-PFN 2D,joint,24,0.949330,nan
+Do-PFN 2D,joint,25,1.000000,nan
+Do-PFN 2D,joint,26,0.997960,nan
+Do-PFN 2D,joint,27,0.978156,nan
+Do-PFN 2D,joint,28,0.850696,nan
+Do-PFN 2D,joint,29,0.981978,nan
+Do-PFN 2D,joint,30,0.975096,nan
+Do-PFN 2D,joint,31,0.972738,nan
+Do-PFN 2D,joint,32,0.967852,nan
+Do-PFN 2D,joint,33,0.975632,nan
+Do-PFN 2D,joint,34,0.977466,nan
+Do-PFN 2D,joint,35,0.888168,nan
+Do-PFN 2D,joint,36,0.937320,nan
+Do-PFN 2D,joint,37,0.974252,nan
+Do-PFN 2D,joint,38,0.977752,nan
+Do-PFN 2D,joint,39,0.968882,nan
+Do-PFN 2D,joint,40,0.746466,nan
+Do-PFN 2D,joint,41,0.952058,nan
+Do-PFN 2D,joint,42,0.989214,nan
+Do-PFN 2D,joint,43,0.948622,nan
+Do-PFN 2D,joint,44,0.979974,nan
+Do-PFN 2D,joint,45,0.000000,nan
+Do-PFN 2D,joint,46,0.979582,nan
+Do-PFN 2D,joint,47,0.904834,nan
+Do-PFN 2D,joint,48,0.989656,nan
+Do-PFN 2D,joint,49,0.956510,nan
+Do-PFN 2D,joint,50,0.974974,nan
+Do-PFN 2D,joint,51,0.918804,nan
+Do-PFN 2D,joint,52,0.990512,nan
+Do-PFN 2D,joint,53,0.030102,nan
+Do-PFN 2D,joint,54,0.973562,nan
+Do-PFN 2D,joint,55,1.000000,nan
+Do-PFN 2D,joint,56,0.981106,nan
+Do-PFN 2D,joint,57,0.979812,nan
+Do-PFN 2D,joint,58,0.354876,nan
+Do-PFN 2D,joint,59,0.957054,nan
+Do-PFN 2D,joint,60,0.975410,nan
+Do-PFN 2D,joint,61,0.957922,nan
+Do-PFN 2D,joint,62,0.968566,nan
+Do-PFN 2D,joint,63,0.929256,nan
+Do-PFN 2D,joint,64,0.985574,nan
+Do-PFN 2D,joint,65,0.944840,nan
+Do-PFN 2D,joint,66,0.987628,nan
+Do-PFN 2D,joint,67,0.653862,nan

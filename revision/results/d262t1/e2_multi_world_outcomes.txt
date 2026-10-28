@@ -1,0 +1,6 @@
+model      target worlds        coverage     sd           range [0.93,0.97]  (0.97,1)    =1
+Do-PFN     y0         21   0.890 (0.040)  0.185 [0.216, 0.994]           8         8     0
+Do-PFN     y1         21   0.973 (0.004)  0.019 [0.942, 0.999]          10        11     0
+Do-PFN 2D  joint      68   0.921 (0.022)  0.183 [0.000, 1.000]          16        37     2
+           true pair outside the 2D grid: 3.18% of query units (counted as not covered)
+per-world values: /scratch/furkanbd/rpfn_bench_kit/R-PFN/revision/results/d262t1/e2_multi_world_outcomes.csv
