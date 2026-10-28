@@ -1,0 +1,279 @@
+model,truth,world,coverage,length
+Do-PFN,delta_shared,0,1.000000,0.941879
+Do-PFN,delta_indep,0,0.998420,0.941879
+Do-PFN,delta_shared,1,0.991884,1.583401
+Do-PFN,delta_indep,1,0.974944,1.583401
+Do-PFN,delta_shared,2,1.000000,2.343946
+Do-PFN,delta_indep,2,0.992640,2.343946
+Do-PFN,delta_shared,3,1.000000,1.455466
+Do-PFN,delta_indep,3,0.962204,1.455466
+Do-PFN,delta_shared,4,1.000000,0.418656
+Do-PFN,delta_indep,4,0.999312,0.418656
+Do-PFN,delta_shared,5,1.000000,8.386374
+Do-PFN,delta_indep,5,0.998200,8.386374
+Do-PFN,delta_shared,6,1.000000,2.596534
+Do-PFN,delta_indep,6,0.966244,2.596534
+Do-PFN,delta_shared,7,0.673240,2.478979
+Do-PFN,delta_indep,7,0.664226,2.478979
+Do-PFN,delta_shared,8,1.000000,7.577805
+Do-PFN,delta_indep,8,0.990162,7.577805
+Do-PFN,delta_shared,9,1.000000,1.057801
+Do-PFN,delta_indep,9,1.000000,1.057801
+Do-PFN,delta_shared,10,1.000000,3.115213
+Do-PFN,delta_indep,10,0.998360,3.115213
+Do-PFN,delta_shared,11,1.000000,3.117433
+Do-PFN,delta_indep,11,1.000000,3.117433
+Do-PFN,delta_shared,12,0.961580,6.803063
+Do-PFN,delta_indep,12,0.899862,6.803063
+Do-PFN,delta_shared,13,1.000000,0.787645
+Do-PFN,delta_indep,13,0.999832,0.787645
+Do-PFN,delta_shared,14,0.673920,1.511055
+Do-PFN,delta_indep,14,0.673906,1.511055
+Do-PFN,delta_shared,15,1.000000,6.187471
+Do-PFN,delta_indep,15,0.971010,6.187471
+Do-PFN,delta_shared,16,0.993806,1.058177
+Do-PFN,delta_indep,16,0.862992,1.058177
+Do-PFN,delta_shared,17,0.302908,1.318904
+Do-PFN,delta_indep,17,0.303444,1.318904
+Do-PFN,delta_shared,18,1.000000,2.984205
+Do-PFN,delta_indep,18,1.000000,2.984205
+Do-PFN,delta_shared,19,1.000000,0.473274
+Do-PFN,delta_indep,19,0.994046,0.473274
+Do-PFN,delta_shared,20,0.999654,1.391583
+Do-PFN,delta_indep,20,0.999472,1.391583
+Do-PFN,delta_shared,21,1.000000,1.236903
+Do-PFN,delta_indep,21,0.985558,1.236903
+Do-PFN,delta_shared,22,0.999886,1.302772
+Do-PFN,delta_indep,22,0.999864,1.302772
+Do-PFN,delta_shared,23,0.999870,79.108050
+Do-PFN,delta_indep,23,0.995678,79.108050
+Do-PFN,delta_shared,24,1.000000,5.876868
+Do-PFN,delta_indep,24,0.972772,5.876868
+Do-PFN,delta_shared,25,1.000000,0.338955
+Do-PFN,delta_indep,25,1.000000,0.338955
+Do-PFN,delta_shared,26,1.000000,0.589583
+Do-PFN,delta_indep,26,0.974136,0.589583
+Do-PFN,delta_shared,27,1.000000,0.607072
+Do-PFN,delta_indep,27,0.997918,0.607072
+Do-PFN,delta_shared,28,0.998418,3.232592
+Do-PFN,delta_indep,28,0.862634,3.232592
+Do-PFN,delta_shared,29,0.335506,1.310437
+Do-PFN,delta_indep,29,0.370506,1.310437
+Do-PFN,delta_shared,30,1.000000,5.357013
+Do-PFN,delta_indep,30,1.000000,5.357013
+Do-PFN,delta_shared,31,1.000000,0.859833
+Do-PFN,delta_indep,31,0.999954,0.859833
+Do-PFN,delta_shared,32,1.000000,3.917846
+Do-PFN,delta_indep,32,0.971948,3.917846
+Do-PFN,delta_shared,33,1.000000,4.203495
+Do-PFN,delta_indep,33,1.000000,4.203495
+Do-PFN,delta_shared,34,1.000000,0.646466
+Do-PFN,delta_indep,34,0.999998,0.646466
+Do-PFN,delta_shared,35,0.994622,6.122345
+Do-PFN,delta_indep,35,0.954996,6.122345
+Do-PFN,delta_shared,36,1.000000,1.123595
+Do-PFN,delta_indep,36,0.989694,1.123595
+Do-PFN,delta_shared,37,1.000000,1.579401
+Do-PFN,delta_indep,37,0.999996,1.579401
+Do-PFN,delta_shared,38,1.000000,5.675802
+Do-PFN,delta_indep,38,0.999688,5.675802
+Do-PFN 2D,delta_shared,0,1.000000,1.451880
+Do-PFN 2D,delta_indep,0,1.000000,1.451880
+Do-PFN 2D,delta_shared,1,0.987788,1.274750
+Do-PFN 2D,delta_indep,1,0.987798,1.274750
+Do-PFN 2D,delta_shared,2,1.000000,1.340810
+Do-PFN 2D,delta_indep,2,0.850578,1.340810
+Do-PFN 2D,delta_shared,3,1.000000,1.274215
+Do-PFN 2D,delta_indep,3,0.914760,1.274215
+Do-PFN 2D,delta_shared,4,1.000000,1.399296
+Do-PFN 2D,delta_indep,4,0.999998,1.399296
+Do-PFN 2D,delta_shared,5,1.000000,1.544776
+Do-PFN 2D,delta_indep,5,0.437272,1.544776
+Do-PFN 2D,delta_shared,6,1.000000,1.352184
+Do-PFN 2D,delta_indep,6,0.727596,1.352184
+Do-PFN 2D,delta_shared,7,0.948060,1.486888
+Do-PFN 2D,delta_indep,7,0.946598,1.486888
+Do-PFN 2D,delta_shared,8,1.000000,1.796706
+Do-PFN 2D,delta_indep,8,0.487350,1.796706
+Do-PFN 2D,delta_shared,9,1.000000,1.335057
+Do-PFN 2D,delta_indep,9,0.999996,1.335057
+Do-PFN 2D,delta_shared,10,1.000000,1.390379
+Do-PFN 2D,delta_indep,10,0.874866,1.390379
+Do-PFN 2D,delta_shared,11,1.000000,1.385547
+Do-PFN 2D,delta_indep,11,0.994452,1.385547
+Do-PFN 2D,delta_shared,12,0.923464,1.957416
+Do-PFN 2D,delta_indep,12,0.901362,1.957416
+Do-PFN 2D,delta_shared,13,1.000000,1.299421
+Do-PFN 2D,delta_indep,13,1.000000,1.299421
+Do-PFN 2D,delta_shared,14,0.999146,1.188902
+Do-PFN 2D,delta_indep,14,0.999104,1.188902
+Do-PFN 2D,delta_shared,15,0.998108,1.521034
+Do-PFN 2D,delta_indep,15,0.411640,1.521034
+Do-PFN 2D,delta_shared,16,1.000000,1.556411
+Do-PFN 2D,delta_indep,16,0.990620,1.556411
+Do-PFN 2D,delta_shared,17,0.986448,2.079584
+Do-PFN 2D,delta_indep,17,0.986654,2.079584
+Do-PFN 2D,delta_shared,18,0.999998,1.454430
+Do-PFN 2D,delta_indep,18,0.999616,1.454430
+Do-PFN 2D,delta_shared,19,1.000000,1.068002
+Do-PFN 2D,delta_indep,19,0.995756,1.068002
+Do-PFN 2D,delta_shared,20,1.000000,1.065465
+Do-PFN 2D,delta_indep,20,1.000000,1.065465
+Do-PFN 2D,delta_shared,21,0.997208,1.140267
+Do-PFN 2D,delta_indep,21,0.997570,1.140267
+Do-PFN 2D,delta_shared,22,0.976060,1.454197
+Do-PFN 2D,delta_indep,22,0.975914,1.454197
+Do-PFN 2D,delta_shared,23,0.999962,1.522424
+Do-PFN 2D,delta_indep,23,0.656188,1.522424
+Do-PFN 2D,delta_shared,24,0.999486,1.662858
+Do-PFN 2D,delta_indep,24,0.472870,1.662858
+Do-PFN 2D,delta_shared,25,1.000000,0.968214
+Do-PFN 2D,delta_indep,25,1.000000,0.968214
+Do-PFN 2D,delta_shared,26,1.000000,1.468494
+Do-PFN 2D,delta_indep,26,0.999998,1.468494
+Do-PFN 2D,delta_shared,27,1.000000,1.138294
+Do-PFN 2D,delta_indep,27,0.989318,1.138294
+Do-PFN 2D,delta_shared,28,0.989702,3.242044
+Do-PFN 2D,delta_indep,28,0.899276,3.242044
+Do-PFN 2D,delta_shared,29,0.999778,1.503384
+Do-PFN 2D,delta_indep,29,0.999612,1.503384
+Do-PFN 2D,delta_shared,30,1.000000,1.566024
+Do-PFN 2D,delta_indep,30,1.000000,1.566024
+Do-PFN 2D,delta_shared,31,1.000000,1.376272
+Do-PFN 2D,delta_indep,31,1.000000,1.376272
+Do-PFN 2D,delta_shared,32,1.000000,1.363000
+Do-PFN 2D,delta_indep,32,0.566354,1.363000
+Do-PFN 2D,delta_shared,33,1.000000,1.605484
+Do-PFN 2D,delta_indep,33,1.000000,1.605484
+Do-PFN 2D,delta_shared,34,0.999188,1.274796
+Do-PFN 2D,delta_indep,34,0.999108,1.274796
+Do-PFN 2D,delta_shared,35,0.906840,2.883219
+Do-PFN 2D,delta_indep,35,0.733790,2.883219
+Do-PFN 2D,delta_shared,36,1.000000,1.004820
+Do-PFN 2D,delta_indep,36,0.996406,1.004820
+Do-PFN 2D,delta_shared,37,1.000000,1.109930
+Do-PFN 2D,delta_indep,37,1.000000,1.109930
+Do-PFN 2D,delta_shared,38,1.000000,1.413869
+Do-PFN 2D,delta_indep,38,0.999394,1.413869
+Do-PFN 2D,delta_shared,39,1.000000,1.197572
+Do-PFN 2D,delta_indep,39,0.487436,1.197572
+Do-PFN 2D,delta_shared,40,0.808638,1.620949
+Do-PFN 2D,delta_indep,40,0.814050,1.620949
+Do-PFN 2D,delta_shared,41,1.000000,1.609104
+Do-PFN 2D,delta_indep,41,0.991600,1.609104
+Do-PFN 2D,delta_shared,42,0.996760,1.405458
+Do-PFN 2D,delta_indep,42,0.996758,1.405458
+Do-PFN 2D,delta_shared,43,0.981528,1.803112
+Do-PFN 2D,delta_indep,43,0.979448,1.803112
+Do-PFN 2D,delta_shared,44,0.999962,1.320459
+Do-PFN 2D,delta_indep,44,0.999896,1.320459
+Do-PFN 2D,delta_shared,45,0.000000,3.567729
+Do-PFN 2D,delta_indep,45,0.000000,3.567729
+Do-PFN 2D,delta_shared,46,1.000000,1.350253
+Do-PFN 2D,delta_indep,46,0.999438,1.350253
+Do-PFN 2D,delta_shared,47,0.951726,1.874112
+Do-PFN 2D,delta_indep,47,0.731128,1.874112
+Do-PFN 2D,delta_shared,48,1.000000,1.066056
+Do-PFN 2D,delta_indep,48,1.000000,1.066056
+Do-PFN 2D,delta_shared,49,1.000000,1.622245
+Do-PFN 2D,delta_indep,49,0.443544,1.622245
+Do-PFN 2D,delta_shared,50,1.000000,1.368373
+Do-PFN 2D,delta_indep,50,0.998482,1.368373
+Do-PFN 2D,delta_shared,51,0.999450,1.763505
+Do-PFN 2D,delta_indep,51,0.540074,1.763505
+Do-PFN 2D,delta_shared,52,1.000000,1.425645
+Do-PFN 2D,delta_indep,52,0.999990,1.425645
+Do-PFN 2D,delta_shared,53,0.000564,1.546038
+Do-PFN 2D,delta_indep,53,0.027060,1.546038
+Do-PFN 2D,delta_shared,54,1.000000,1.195098
+Do-PFN 2D,delta_indep,54,0.997670,1.195098
+Do-PFN 2D,delta_shared,55,1.000000,1.140877
+Do-PFN 2D,delta_indep,55,1.000000,1.140877
+Do-PFN 2D,delta_shared,56,0.999996,1.020361
+Do-PFN 2D,delta_indep,56,0.998404,1.020361
+Do-PFN 2D,delta_shared,57,1.000000,1.051248
+Do-PFN 2D,delta_indep,57,1.000000,1.051248
+Do-PFN 2D,delta_shared,58,0.453450,1.578867
+Do-PFN 2D,delta_indep,58,0.456662,1.578867
+Do-PFN 2D,delta_shared,59,0.977212,1.418727
+Do-PFN 2D,delta_indep,59,0.378618,1.418727
+Do-PFN 2D,delta_shared,60,1.000000,1.448382
+Do-PFN 2D,delta_indep,60,0.988370,1.448382
+Do-PFN 2D,delta_shared,61,0.991386,1.657368
+Do-PFN 2D,delta_indep,61,0.970416,1.657368
+Do-PFN 2D,delta_shared,62,1.000000,1.501703
+Do-PFN 2D,delta_indep,62,0.643824,1.501703
+Do-PFN 2D,delta_shared,63,0.998416,1.895420
+Do-PFN 2D,delta_indep,63,0.990906,1.895420
+Do-PFN 2D,delta_shared,64,1.000000,1.143081
+Do-PFN 2D,delta_indep,64,1.000000,1.143081
+Do-PFN 2D,delta_shared,65,0.968826,1.511952
+Do-PFN 2D,delta_indep,65,0.968166,1.511952
+Do-PFN 2D,delta_shared,66,0.999548,1.458433
+Do-PFN 2D,delta_indep,66,0.999500,1.458433
+Do-PFN 2D,delta_shared,67,0.700854,2.048987
+Do-PFN 2D,delta_indep,67,0.510228,2.048987
+Do-PFN 2D,delta_shared,68,1.000000,1.254654
+Do-PFN 2D,delta_indep,68,0.999940,1.254654
+Do-PFN 2D,delta_shared,69,1.000000,1.701739
+Do-PFN 2D,delta_indep,69,1.000000,1.701739
+Do-PFN 2D,delta_shared,70,1.000000,0.990116
+Do-PFN 2D,delta_indep,70,0.989740,0.990116
+Do-PFN 2D,delta_shared,71,1.000000,1.047759
+Do-PFN 2D,delta_indep,71,1.000000,1.047759
+Do-PFN 2D,delta_shared,72,0.990722,1.322053
+Do-PFN 2D,delta_indep,72,0.990534,1.322053
+Do-PFN 2D,delta_shared,73,1.000000,1.373349
+Do-PFN 2D,delta_indep,73,0.999986,1.373349
+Do-PFN 2D,delta_shared,74,1.000000,1.192698
+Do-PFN 2D,delta_indep,74,0.999996,1.192698
+Do-PFN 2D,delta_shared,75,1.000000,1.297179
+Do-PFN 2D,delta_indep,75,1.000000,1.297179
+Do-PFN 2D,delta_shared,76,1.000000,0.969774
+Do-PFN 2D,delta_indep,76,1.000000,0.969774
+Do-PFN 2D,delta_shared,77,0.995314,1.540052
+Do-PFN 2D,delta_indep,77,0.995306,1.540052
+Do-PFN 2D,delta_shared,78,1.000000,1.100820
+Do-PFN 2D,delta_indep,78,1.000000,1.100820
+Do-PFN 2D,delta_shared,79,1.000000,1.100547
+Do-PFN 2D,delta_indep,79,1.000000,1.100547
+Do-PFN 2D,delta_shared,80,0.994248,2.371714
+Do-PFN 2D,delta_indep,80,0.994196,2.371714
+Do-PFN 2D,delta_shared,81,1.000000,1.100871
+Do-PFN 2D,delta_indep,81,1.000000,1.100871
+Do-PFN 2D,delta_shared,82,0.990894,1.022858
+Do-PFN 2D,delta_indep,82,0.990396,1.022858
+Do-PFN 2D,delta_shared,83,1.000000,1.445159
+Do-PFN 2D,delta_indep,83,0.999994,1.445159
+Do-PFN 2D,delta_shared,84,1.000000,1.324290
+Do-PFN 2D,delta_indep,84,0.940808,1.324290
+Do-PFN 2D,delta_shared,85,0.235264,2.314927
+Do-PFN 2D,delta_indep,85,0.329610,2.314927
+Do-PFN 2D,delta_shared,86,1.000000,1.064795
+Do-PFN 2D,delta_indep,86,0.999998,1.064795
+Do-PFN 2D,delta_shared,87,0.984754,1.197736
+Do-PFN 2D,delta_indep,87,0.984734,1.197736
+Do-PFN 2D,delta_shared,88,0.995814,1.254476
+Do-PFN 2D,delta_indep,88,0.995804,1.254476
+Do-PFN 2D,delta_shared,89,0.998936,1.316797
+Do-PFN 2D,delta_indep,89,0.998868,1.316797
+Do-PFN 2D,delta_shared,90,1.000000,1.225497
+Do-PFN 2D,delta_indep,90,0.882070,1.225497
+Do-PFN 2D,delta_shared,91,0.017000,0.979263
+Do-PFN 2D,delta_indep,91,0.021294,0.979263
+Do-PFN 2D,delta_shared,92,0.999224,1.191902
+Do-PFN 2D,delta_indep,92,0.981924,1.191902
+Do-PFN 2D,delta_shared,93,1.000000,1.619941
+Do-PFN 2D,delta_indep,93,0.729370,1.619941
+Do-PFN 2D,delta_shared,94,0.988204,1.239895
+Do-PFN 2D,delta_indep,94,0.988198,1.239895
+Do-PFN 2D,delta_shared,95,0.999034,1.708589
+Do-PFN 2D,delta_indep,95,0.642754,1.708589
+Do-PFN 2D,delta_shared,96,1.000000,1.485381
+Do-PFN 2D,delta_indep,96,0.735764,1.485381
+Do-PFN 2D,delta_shared,97,1.000000,1.402816
+Do-PFN 2D,delta_indep,97,0.422964,1.402816
+Do-PFN 2D,delta_shared,98,0.974752,1.228192
+Do-PFN 2D,delta_indep,98,0.926760,1.228192
+Do-PFN 2D,delta_shared,99,1.000000,1.003570
+Do-PFN 2D,delta_indep,99,1.000000,1.003570
