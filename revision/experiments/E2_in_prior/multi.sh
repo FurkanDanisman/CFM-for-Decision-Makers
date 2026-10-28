@@ -13,7 +13,7 @@ KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/exp
 ROOT="$SCRATCH/e2/multi"; NW=100; mkdir -p logs_e2 "$ROOT"
 PRIORS=(dopfn)                                                  # gen_e2.sbatch task 0
 MODELS=(0:dopfn_native:dopfn 8:dopfn_joint2d_262k:dopfn)
-ndone() { ls "$1" 2>/dev/null | wc -l; }
+ndone() { (ls "$1" 2>/dev/null || true) | wc -l; }
 case "$1" in
 gen)
   for P in 0; do
@@ -53,7 +53,7 @@ _eval)                                        # job body: model $3 (eval_e2.sbat
   echo "[$(date '+%F %T')] $M: all $NW worlds done" ;;
 progress)
   for pr in "${PRIORS[@]}"; do n=0; for w in $(seq 0 $((NW - 1))); do [ "$(ndone $ROOT/data/w$w/$pr/truths)" = 1000 ] && n=$((n + 1)); done; echo "data $pr: $n/$NW worlds"; done
-  for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$(ls $ROOT/results/w*/$M/shard*.npz 2>/dev/null | wc -l); echo "eval $M: $n/$((NW * 10)) shards"; done ;;
+  for spec in "${MODELS[@]}"; do IFS=: read -r I M PR <<< "$spec"; n=$( (ls $ROOT/results/w*/$M/shard*.npz 2>/dev/null || true) | wc -l); echo "eval $M: $n/$((NW * 10)) shards"; done ;;
 table)
   source venv/bin/activate; O="$REPO/revision/results/d262t1/e2_multi_world.txt"
   python "$E2/multi_table.py" "$ROOT" "$NW" | tee "$O"
