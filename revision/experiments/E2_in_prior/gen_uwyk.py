@@ -21,6 +21,7 @@ REPO = os.path.join(HERE, "../../..")
 sys.path.insert(0, os.path.join(REPO, "benchmarks", "context_sweep"))
 import scm_prior as SP
 from common import write_world, done, N_CTX, N_Q
+import truthy
 
 model, mode, (R0, R1), out = sys.argv[1], sys.argv[2], map(int, sys.argv[3].split(":")), sys.argv[4]
 SEED = 20261003
@@ -60,6 +61,8 @@ SP._propagate_paired = paired_with_indep
 
 def write(r, X_ctx, T_ctx, Y_ctx, X_q, y0, y1, target):
     ind = state["indep"][target].reshape(-1).float()
+    if truthy.ON:
+        truthy.save(out, r, y0, y1, ind[:N_Q], ind[N_Q:]); return
     write_world(out, r, X_ctx, T_ctx, Y_ctx, X_q,
                 {"delta_shared": y1 - y0, "delta_indep": ind[N_Q:] - ind[:N_Q]})
     print(f"r={r} F={X_ctx.shape[1]} treated={T_ctx.float().mean():.2f}", flush=True)
@@ -93,7 +96,7 @@ def dataset(r, s):
 
 if mode == "new":
     for r in range(R0, R1):
-        if not done(out, r):
+        if not (truthy.done(out, r) if truthy.ON else done(out, r)):
             s = world(r)
             F = len(s["feature_nodes"])
             write(r, s["X_obs"][:, :F], s["T_obs"].reshape(-1), s["Y_obs_raw"].reshape(-1), s["X_intv"][:, :F],

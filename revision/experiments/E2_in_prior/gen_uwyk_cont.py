@@ -22,6 +22,7 @@ REPO = os.path.join(HERE, "../../..")
 sys.path.insert(0, os.path.join(REPO, "benchmarks", "context_sweep"))
 import scm_prior as SP
 from common import write_world, done, N_CTX, N_Q
+import truthy
 
 mode, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = 20261003
@@ -115,6 +116,8 @@ def dataset(r, w):
     y0, y1 = propagate_pairs(scm, intv, T, Y, t0, t1)
     y0i, y1i = propagate_pairs(scm, intv, T, Y, t0, t1, fresh_seed=SEED + 7 * r + 1 + WORLD * 10_000_019)
     X_ctx, X_q = SP._standardize(cols(obs, N_CTX), cols(obs_test, N_Q))
+    if truthy.ON:
+        truthy.save(out, r, y0, y1, y0i, y1i); return
     write_world(out, r, X_ctx, T_ctx, obs[Y].reshape(-1).float(), X_q,
                 {"delta_shared": y1 - y0, "delta_indep": y1i - y0i},
                 extra={"T_test0": t0, "T_test1": t1})
@@ -123,7 +126,7 @@ def dataset(r, w):
 
 if mode == "new":
     for r in range(R0, R1):
-        if not done(out, r):
+        if not (truthy.done(out, r) if truthy.ON else done(out, r)):
             dataset(r, world(r))
 else:
     w = world(WORLD)                                           # one world; every shard redraws the same one

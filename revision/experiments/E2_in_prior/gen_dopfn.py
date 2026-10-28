@@ -12,6 +12,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../.."))
 import training_dopfn_repro.prior as P
 from common import write_world, done, N_CTX, N_Q
+import truthy
 
 mode, (R0, R1), out = sys.argv[1], map(int, sys.argv[2].split(":")), sys.argv[3]
 SEED = int(os.environ.get("DOPFN_SAME_SEED", 20261003))   # nohc.sh sets a hidden-confounder-free seed
@@ -50,6 +51,7 @@ def draw(r, n_rows):
     x, y = rec["x_obs"][:, 0], rec["y_obs"][:, 0]
     y_do0, y_do1 = rec["y_do0"][:, 0], rec["y_do1"][:, 0]
     y_do0_ind = state["arm0_indep"][rec["meta"]["y_key"]][0].float()
+    state["ys"] = (y_do0, y_do1, y_do0_ind)
     return x, y, y_do1 - y_do0, y_do1 - y_do0_ind
 
 
@@ -59,7 +61,12 @@ def write(r, x, y, ds, di, off=0):
     print(f"r={r} F={x.shape[1] - 1} treated={x[c, 0].mean():.2f}", flush=True)
 
 
-if mode == "new":
+if mode == "new" and truthy.ON:
+    for r in range(R0, R1):
+        if not truthy.done(out, r):
+            draw(r, 2200); y0, y1, y0i = state["ys"]; q = slice(N_CTX, N_CTX + N_Q)
+            truthy.save(out, r, y0[q], y1[q], y0i[q], y1[q])
+elif mode == "new":
     for r in range(R0, R1):
         if not done(out, r):
             write(r, *draw(r, 2200))                    # 2200 = the prior's seq_len; first 1500 rows used

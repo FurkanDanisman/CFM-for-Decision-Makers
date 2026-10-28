@@ -12,6 +12,7 @@ import torch
 from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
 from common import write_world, done, N_CTX, N_Q
+import truthy
 
 model, mode, (R0, R1), out = sys.argv[1], sys.argv[2], map(int, sys.argv[3].split(":")), sys.argv[4]
 ROWS = N_CTX + N_Q
@@ -52,6 +53,9 @@ def fresh_copy(eta0):
     return factor * x * torch.randn_like(eta0)
 
 
+STATE_Y = {}
+
+
 def draw(r):
     """One table of prior.n_samples units: X, t, factual y, and the truths."""
     torch.manual_seed(SEED + r); random.seed(SEED + r); np.random.seed(SEED + r)
@@ -63,16 +67,20 @@ def draw(r):
     tau = E1 - E0
     eta0 = y0 - E0
 
+    state_y = {"y0": y0, "E0": E0, "E1": E1, "eta0": eta0}
     if model == "1d":
         y = s["y"].double()                                    # factual outcome of the stock prior
+        state_y.update(y1_sh=E1 + eta0, y0_in=y0, y1_in=y1)
         truths = {"delta_shared": tau,                         # eta1 := eta0 cancels: y1 - y0 = tau
                   "delta_indep": y1 - y0,
                   "tau": tau}
     else:
         y = torch.where(t > 0.5, E1 + eta0, y0)                # trainer.py: y1 = E_y1 + (y0 - E_y0)
         eta0_new = fresh_copy(eta0)                            # same unit, same scale, fresh draw
+        state_y.update(y1_sh=E1 + eta0, y0_in=y0, y1_in=E1 + eta0_new)
         truths = {"delta_shared": tau,                         # (E1 + eta0) - (E0 + eta0) = tau
                   "delta_indep": tau + eta0_new - eta0}
+    STATE_Y.clear(); STATE_Y.update(state_y)
     return X, t, y, truths
 
 
@@ -82,7 +90,12 @@ def write(r, X, t, y, truths, off=0):
     print(f"r={r} n_cov={X.shape[1]} treated={t[c].mean():.2f}", flush=True)
 
 
-if mode == "new":
+if mode == "new" and truthy.ON:
+    for r in range(R0, R1):
+        if not truthy.done(out, r):
+            draw(r); S = STATE_Y; q = slice(N_CTX, N_CTX + N_Q)
+            truthy.save(out, r, S["y0"][q], S["y1_sh"][q], S["y0_in"][q], S["y1_in"][q], m0=S["E0"][q], m1=S["E1"][q])
+elif mode == "new":
     for r in range(R0, R1):
         if not done(out, r):
             write(r, *draw(r))
