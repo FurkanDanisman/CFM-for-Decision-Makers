@@ -8,7 +8,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/fscm_moments.sh progress
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
-DATA="$SCRATCH/e2/same/data"; RES="$SCRATCH/e2/same/results_fscm_m"; mkdir -p logs_e2 "$RES"
+DATA="$SCRATCH/e2/same/data"; RES="${FSCM_RES:-$SCRATCH/e2/same/results_fscm_q}"; mkdir -p logs_e2 "$RES"
 MODELS=(9:fscm_natural 10:fscm_setup1 11:fscm_setup2 12:fscm_setup3)
 cnt() { (ls $1 2>/dev/null || true) | wc -l; }
 case "$1" in
@@ -38,10 +38,14 @@ for m in ("fscm_natural", "fscm_setup1", "fscm_setup2", "fscm_setup3"):
     for f in fs:
         k = int(f.rsplit("shard", 1)[1].split(".")[0]); z = np.load(f)
         for j, i in enumerate(z["idx"]):
-            acc[k * 100 + int(i)] = [z[c][j] for c in ("mu0", "sd0", "mu1", "sd1")]
+            acc[k * 100 + int(i)] = [z[c][j] for c in ("mu0", "sd0", "mu1", "sd1", "lo0", "hi0", "lo1", "hi1")]
+        zi = np.load(os.path.join(res, m, f"shard{k}.npz"))         # the paper's ITE interval (score_shard.py)
+        for j, i in enumerate(zi["idx"]):
+            acc[k * 100 + int(i)] += [zi["lo"][j], zi["hi"][j]]
     assert sorted(acc) == list(range(1000)), (m, len(acc))
-    a = np.array([acc[r] for r in range(1000)])                 # (1000, 4, 500)
-    np.savez_compressed(os.path.join(out, f"{m}.npz"), mu0=a[:, 0], sd0=a[:, 1], mu1=a[:, 2], sd1=a[:, 3])
+    a = np.array([acc[r] for r in range(1000)])                 # (1000, 10, 500)
+    names = ("mu0", "sd0", "mu1", "sd1", "lo0", "hi0", "lo1", "hi1", "lo_ite", "hi_ite")
+    np.savez_compressed(os.path.join(out, f"{m}.npz"), **{c: a[:, j] for j, c in enumerate(names)})
     print("packed", m)
 PY
   cd "$REPO" && git add "$O" && git commit -qm "fscm: per-query predicted moments and true outcomes (same SCM)" \
