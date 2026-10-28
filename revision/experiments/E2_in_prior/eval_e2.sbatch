@@ -90,6 +90,8 @@ esac
 python "$REPO/revision/experiments/E2_in_prior/score_shard.py" "$OUT" "$RES/shard$SHARD.npz"
 # E2_TRUTH_Y (multi.sh eval_y): also the outcome-level coverage, while the dumps still exist
 [ -n "${E2_TRUTH_Y:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_outcomes.py" "$OUT" "$E2_TRUTH_Y" "$SHARD" "$RES/outcomes_shard$SHARD.npz"
+# E2_MOMENTS=1 (fscm_moments.sh): also the per-query mean and sd of each predicted outcome
+[ -n "${E2_MOMENTS:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_moments.py" "$OUT" "$RES/moments_shard$SHARD.npz"
 rm -rf "$OUT"
 done
 echo "[$(date '+%F %T')] done"
