@@ -13,7 +13,7 @@ fig, axes = plt.subplots(1, len(models), figsize=(4.2 * len(models), 3.0), share
 for ax, m in zip(np.atleast_1d(axes), models):
     s = d[(d.model == m) & (d.truth == "delta_shared")].coverage.values
     i = d[(d.model == m) & (d.truth == "delta_indep")].coverage.values
-    ax.hist(s, bins=bins, weights=np.ones_like(s) / len(s), color="#5b3a8a", alpha=.75, label="shared noise")
+    ax.hist(s, bins=bins, weights=np.ones_like(s) / len(s), color="#1F4E9C", alpha=.8, label="shared noise")
     ax.hist(i, bins=bins, weights=np.ones_like(i) / len(i), histtype="step", color="#333333", lw=1.5, label="independent noise")
     ax.axvline(0.95, color="#c0392b", ls="--", lw=1.2)
     ax.set_title(f"{m}  ({len(s)} SCMs)", fontsize=11); ax.set_xlabel("coverage of the 95% interval")
