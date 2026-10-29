@@ -8,6 +8,7 @@ import os, sys
 import numpy as np
 
 D = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../results/d262t1/fscm_moments")
+FIXQ = bool(np.load(os.path.join(D, "truths.npz"))["y1"].std(0).max() == 0)   # same queries in every set
 T = np.load(os.path.join(D, "truths.npz")); y0, y1 = T["y0_ind"], T["y1"]; ite = y1 - y0
 Z = 1.959963984540054
 print(f"{'model':14s} {'tgt':4s} {'interval':9s} {'mean':>7s} {'sd':>6s} {'min':>6s} {'max':>6s} {'sets in [0.93,0.97]':>20s}")
@@ -25,3 +26,6 @@ for m in ("fscm_natural", "fscm_setup1", "fscm_setup2", "fscm_setup3"):
         for vname, hit in versions:
             c = hit.mean(1)                                          # per set
             print(f"{m:14s} {name:4s} {vname:9s} {c.mean():7.3f} {c.std():6.3f} {c.min():6.3f} {c.max():6.3f} {int(((c >= .93) & (c <= .97)).sum()):14d}/1000")
+            if FIXQ:                                                 # fixed queries: coverage per query over the sets
+                cq = hit.mean(0)
+                print(f"{'':14s} {'':4s} {'per query':9s} {cq.mean():7.3f} {cq.std():6.3f} {cq.min():6.3f} {cq.max():6.3f} {int(((cq >= .93) & (cq <= .97)).sum()):14d}/{cq.size} queries")

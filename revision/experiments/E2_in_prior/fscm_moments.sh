@@ -22,8 +22,9 @@ eval)
     E2_MOMENTS=1 E2_DATA=$DATA E2_RESULTS=$RES E2_SHARDS=10 \
       sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --array=$I --job-name="fscm-m-${M#fscm_}" "$E2/eval_e2.sbatch"
   done ;;
-pack)
-  source venv/bin/activate; O="$REPO/revision/results/d262t1/fscm_moments"; mkdir -p "$O"
+pack|_pack_to)                                 # _pack_to DATA OUT: the same packing for another data/output dir (fixq.sh)
+  source venv/bin/activate; O="$REPO/revision/results/d262t1/fscm_moments"
+  [ "$1" = _pack_to ] && { DATA="$2"; O="$3"; }; mkdir -p "$O"
   python - "$DATA/dopfn/truths_y" "$RES" "$O" <<'PY'
 import glob, os, sys
 import numpy as np
@@ -48,7 +49,7 @@ for m in ("fscm_natural", "fscm_setup1", "fscm_setup2", "fscm_setup3"):
     np.savez_compressed(os.path.join(out, f"{m}.npz"), **{c: a[:, j] for j, c in enumerate(names)})
     print("packed", m)
 PY
-  cd "$REPO" && git add "$O" && git commit -qm "fscm: per-query predicted moments and true outcomes (same SCM)" \
+  cd "$REPO" && git add "$O" && git commit -qm "fscm: per-query predicted moments and true outcomes (same SCM${1#pack})" \
     && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
 progress)
   echo "truths_y: $(cnt "$DATA/dopfn/truths_y/*.npz")/1000"
