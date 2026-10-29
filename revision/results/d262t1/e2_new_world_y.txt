@@ -1,0 +1,58 @@
+
+Do-PFN  (1000 worlds)
+  y0 posterior           0.929 (0.004)   within [0.93,0.97]:  435/1000
+  y0 formula             0.922 (0.005)   within [0.93,0.97]:  190/1000
+  y1 posterior           0.954 (0.002)   within [0.93,0.97]:  426/1000
+  y1 formula             0.946 (0.004)   within [0.93,0.97]:  207/1000
+  ITE rho=0 (sh)         0.953 (0.005)   within [0.93,0.97]:   16/1000
+  ITE rho=0 (in)         0.940 (0.005)   within [0.93,0.97]:  142/1000
+
+Do-PFN 2D  (1000 worlds)
+  joint (sh)             0.902 (0.007)   within [0.93,0.97]:  253/1000
+  joint (in)             0.776 (0.008)   within [0.93,0.97]:  128/1000
+  ITE learned (sh)       0.944 (0.006)   within [0.93,0.97]:   29/1000
+  ITE rho=0 (sh)         0.955 (0.006)   within [0.93,0.97]:   20/1000
+  ITE learned (in)       0.838 (0.008)   within [0.93,0.97]:   73/1000
+  ITE rho=0 (in)         0.942 (0.006)   within [0.93,0.97]:  161/1000
+
+UWYK (binary T)  (1000 worlds)
+  y0 posterior           0.875 (0.005)   within [0.93,0.97]:  319/1000
+  y0 formula             0.892 (0.005)   within [0.93,0.97]:  261/1000
+  y1 posterior           0.870 (0.006)   within [0.93,0.97]:  318/1000
+  y1 formula             0.890 (0.005)   within [0.93,0.97]:  267/1000
+  ITE rho=0 (sh)         0.858 (0.008)   within [0.93,0.97]:   90/1000
+  ITE rho=0 (in)         0.831 (0.007)   within [0.93,0.97]:  275/1000
+
+UWYK (continuous T)  (1000 worlds)
+  y0 posterior           0.879 (0.005)   within [0.93,0.97]:  330/1000
+  y0 formula             0.907 (0.005)   within [0.93,0.97]:  207/1000
+  y1 posterior           0.872 (0.006)   within [0.93,0.97]:  323/1000
+  y1 formula             0.900 (0.005)   within [0.93,0.97]:  208/1000
+  ITE rho=0 (sh)         0.916 (0.005)   within [0.93,0.97]:  113/1000
+  ITE rho=0 (in)         0.886 (0.005)   within [0.93,0.97]:  303/1000
+
+UWYK 2D  (1000 worlds)
+  joint (sh)             0.947 (0.003)   within [0.93,0.97]:  217/1000
+  joint (in)             0.885 (0.005)   within [0.93,0.97]:  204/1000
+  ITE learned (sh)       0.963 (0.003)   within [0.93,0.97]:  138/1000
+  ITE rho=0 (sh)         0.978 (0.002)   within [0.93,0.97]:  117/1000
+  ITE learned (in)       0.888 (0.005)   within [0.93,0.97]:  188/1000
+  ITE rho=0 (in)         0.957 (0.002)   within [0.93,0.97]:  299/1000
+
+CausalPFN-C  (1000 worlds)
+  y0 posterior           0.943 (0.002)   within [0.93,0.97]:  541/1000
+  y0 formula             0.941 (0.002)   within [0.93,0.97]:  549/1000
+  y1 posterior           0.943 (0.002)   within [0.93,0.97]:  565/1000
+  y1 formula             0.941 (0.002)   within [0.93,0.97]:  580/1000
+  ITE rho=0 (sh)         0.964 (0.001)   within [0.93,0.97]:  384/1000
+  ITE rho=0 (in)         0.869 (0.003)   within [0.93,0.97]:  237/1000
+
+CausalPFN-C 2D  (1000 worlds)
+  joint (sh)             0.882 (0.004)   within [0.93,0.97]:  207/1000
+  joint (in)             0.873 (0.004)   within [0.93,0.97]:  181/1000
+  ITE learned (sh)       0.946 (0.003)   within [0.93,0.97]:  217/1000
+  ITE rho=0 (sh)         0.955 (0.002)   within [0.93,0.97]:  210/1000
+  ITE learned (in)       0.914 (0.003)   within [0.93,0.97]:  234/1000
+  ITE rho=0 (in)         0.929 (0.002)   within [0.93,0.97]:  260/1000
+
+per-world values: /scratch/furkanbd/rpfn_bench_kit/R-PFN/revision/results/d262t1/e2_new_world_y.csv
