@@ -122,16 +122,18 @@ def pct_panel(ax, pct, y, lims, title=False):
 
 
 def avg_panel(ax, vals, errs, colors, title=False):
-    """last column: the average over datasets (+- SE), its value printed at the bar end, no axis ticks"""
+    """last column: the average over datasets (+- SE), its value printed at the bar end; x ticks as the other panels"""
     vals, errs = np.asarray(vals, float), np.asarray(errs, float)
     y = np.arange(len(vals))[::-1]
     ax.barh(y, vals, height=0.8, xerr=errs, color=colors, edgecolor="black", linewidth=0.7, error_kw=ERR)
     top = np.nanmax(vals + np.nan_to_num(errs))
     for yy, v, e in zip(y, vals, np.nan_to_num(errs)):
         ax.text(v + e + 0.05 * top, yy, (f"{v:.2f}" if v < 10 else f"{v:.1f}") if v < 100 else f"{v:.0f}", va="center", ha="left", fontsize=9)
-    ax.set_xlim(0, top * 1.75)
+    ticks, xmax = short_ticks(top * 1.75, (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8))
+    ax.set_xlim(0, xmax)
     ax.set_ylim(-0.6, len(vals) - 0.4)
-    ax.set_xticks([])                                            # no ticks: the values are printed
+    ax.set_xticks(ticks)
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(fmt))
     ax.set_yticks([])
     ax.set_facecolor(COL_GREY)
     frame(ax)
