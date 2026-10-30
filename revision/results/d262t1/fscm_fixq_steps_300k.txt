@@ -1,20 +1,20 @@
 fixed-SCM Do-PFN 1D models, 300k-step runs, over training; fixed queries (200 sets), posterior intervals;
-truths with independent noise: y1, y0_ind, ITE = y1 - y0_ind
-model             step  cov y1  cov y0  cov ITE pred sd y1 err sd y1  ratio
-fscm_natural     20000   0.995   0.999    1.000     0.0976    0.1216   0.80   (200 sets)
-fscm_natural     60000   0.967   1.000    1.000     0.0540    0.1126   0.48   (200 sets)
-fscm_natural    120000   0.982   0.998    0.997     0.0515    0.1506   0.34   (200 sets)
-fscm_natural    160000   0.970   0.992    1.000     0.0441    0.0792   0.56   (200 sets)
+truths: y1; independent noise (ind) y0_ind, ITE = y1 - y0_ind; shared noise (sh) y0, ITE = y1 - y0
+model             step  cov y1  y0 ind   y0 sh  ITE ind   ITE sh pred sd y1 err sd y1  ratio
+fscm_natural     20000   0.995   0.999   0.999    1.000    1.000     0.0976    0.1216   0.80   (200 sets)
+fscm_natural     60000   0.967   1.000   0.997    1.000    1.000     0.0540    0.1126   0.48   (200 sets)
+fscm_natural    120000   0.982   0.998   0.998    0.997    1.000     0.0515    0.1506   0.34   (200 sets)
+fscm_natural    160000   0.970   0.992   0.996    1.000    1.000     0.0441    0.0792   0.56   (200 sets)
 
-fscm_setup1      20000   0.979   0.975    0.997     0.0728    0.0670   1.09   (200 sets)
-fscm_setup1      60000   0.971   0.955    0.978     0.0377    0.0357   1.06   (200 sets)
-fscm_setup1     120000   0.969   0.957    0.977     0.0356    0.0446   0.80   (200 sets)
-fscm_setup1     160000   0.967   0.950    0.975     0.0351    0.0606   0.58   (200 sets)
+fscm_setup1      20000   0.979   0.975   0.979    0.997    1.000     0.0728    0.0670   1.09   (200 sets)
+fscm_setup1      60000   0.971   0.955   0.956    0.978    1.000     0.0377    0.0357   1.06   (200 sets)
+fscm_setup1     120000   0.969   0.957   0.972    0.977    1.000     0.0356    0.0446   0.80   (200 sets)
+fscm_setup1     160000   0.967   0.950   0.968    0.975    1.000     0.0351    0.0606   0.58   (200 sets)
 
-fscm_setup2      20000   0.993   0.997    1.000     0.1021    0.1589   0.64   (200 sets)
-fscm_setup2      60000   0.961   0.997    1.000     0.0480    0.2172   0.22   (200 sets)
-fscm_setup2     120000   0.924   0.998    0.961     0.0589    0.1447   0.41   (200 sets)
-fscm_setup2     160000   0.958   0.991    0.963     0.0458    0.0948   0.48   (200 sets)
+fscm_setup2      20000   0.993   0.997   0.997    1.000    1.000     0.1021    0.1589   0.64   (200 sets)
+fscm_setup2      60000   0.961   0.997   0.992    1.000    1.000     0.0480    0.2172   0.22   (200 sets)
+fscm_setup2     120000   0.924   0.998   0.994    0.961    0.988     0.0589    0.1447   0.41   (200 sets)
+fscm_setup2     160000   0.958   0.991   0.997    0.963    0.995     0.0458    0.0948   0.48   (200 sets)
 
 fscm_setup3      10000 (no results)
 
