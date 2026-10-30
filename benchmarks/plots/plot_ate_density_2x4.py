@@ -203,8 +203,14 @@ def main():
                     ax.set_xlim(xlo, xhi)
 
     if a.paper:
-        fig.supxlabel("Treatment effect", fontsize=PS.LABEL, y=0.02)
-    fig.tight_layout(h_pad=0.6, w_pad=0.4)
+        from matplotlib.ticker import MultipleLocator
+        for row in axes:
+            for ax in row:
+                ax.xaxis.set_major_locator(MultipleLocator(5))     # ticks every 5 (-5, 0, 5, 10 on IHDP)
+        fig.tight_layout(h_pad=0.6, w_pad=0.4, rect=(0, 0.045, 1, 1))  # room for one shared x-label just below
+        fig.text(0.5, 0.0, "Treatment effect", ha="center", va="bottom", fontsize=PS.LABEL)
+    else:
+        fig.tight_layout(h_pad=0.6, w_pad=0.4)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     fig.savefig(a.out, dpi=300 if a.paper else 150, bbox_inches="tight")
     if a.paper:
