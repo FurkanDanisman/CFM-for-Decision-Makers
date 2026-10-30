@@ -174,7 +174,7 @@ def main():
                 spans.append(sp)
             if a.paper:
                 ax.set_title(lab + suffix, fontsize=PS.TITLE - 0.5, pad=3)
-                ax.tick_params(labelsize=PS.TICK - 0.5)
+                ax.tick_params(labelsize=8)                     # 7 x-labels (-15..15 by 5) fit without overlap
                 ax.set_yticks([])
                 for sp_ in ("top", "right"):
                     ax.spines[sp_].set_visible(True)
@@ -208,7 +208,10 @@ def main():
             for ax in row:
                 ax.xaxis.set_major_locator(MultipleLocator(5))     # ticks every 5 (-5, 0, 5, 10 on IHDP)
         fig.tight_layout(h_pad=0.6, w_pad=0.4, rect=(0, 0.045, 1, 1))  # room for one shared x-label just below
-        fig.text(0.5, 0.0, "Treatment effect", ha="center", va="bottom", fontsize=PS.LABEL)
+        fig.canvas.draw()                                               # shared x-label right under the tick labels
+        r_ = fig.canvas.get_renderer()
+        bot = min(t.get_window_extent(r_).y0 for t in axes[1, 0].get_xticklabels()) / fig.bbox.height
+        fig.text(0.5, bot - 0.012, "Treatment effect", ha="center", va="top", fontsize=PS.LABEL)
     else:
         fig.tight_layout(h_pad=0.6, w_pad=0.4)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
