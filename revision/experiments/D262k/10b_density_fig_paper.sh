@@ -16,7 +16,7 @@ ln -s "$SCRATCH/rc_dens_eta0/cpfn2d_pooled" "$V/cpfn2d_eta0"
 ln -s "$RC_OUT/dopfn_native" "$V/dopfn_repro_joint2d"
 for m in "$V"/*; do ls "$m/IHDP" >/dev/null || { echo "missing $m/IHDP"; exit 1; }; done
 python -u "$REPO/benchmarks/plots/plot_ate_density_2x4.py" --root "$V" --dataset IHDP --realization 0 \
-  --repo "$REPO" --paper --out "$F/ihdp_r0_ate_2x4_paper.png" || exit 1
+  --repo "$REPO" --paper --xlim -15 15 --out "$F/ihdp_r0_ate_2x4_paper.png" || exit 1
 cd "$REPO" && git add "revision/results/$TAG/figures/ihdp_r0_ate_2x4_paper.png" "revision/results/$TAG/figures/ihdp_r0_ate_2x4_paper.pdf" \
   && git commit -q -m "$TAG: IHDP ATE-density figure in the paper style" && git pull -q --rebase --autostash origin main \
   && git push -q origin main && echo pushed
