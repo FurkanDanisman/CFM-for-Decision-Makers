@@ -2,7 +2,7 @@
 # The four fixed-SCM Do-PFN 1D models of the 300k-step runs (checkpoints_fixed_scm_300k) over training: the
 # fixed-query evaluation (fixq.sh data) at some of the saved checkpoints (one every 10k steps). Same evaluation as
 # fixq_steps_all.sh: 200 of the 1000 observational sets (shards 0-1); truths with independent noise
-# (y1, y0_ind, ITE = y1 - y0_ind). Steps: natural, setup1, setup2 at 20k, 60k, 120k, 160k; setup3 at 10k.
+# (y1, y0_ind, ITE = y1 - y0_ind); the table also scores against the shared-noise truths (y0, ITE = y1 - y0). Steps: natural, setup1, setup2 at 20k, 60k, 120k, 160k; setup3 at 10k.
 # One GPU job per model, its checkpoints one after the other; finished checkpoints are skipped, and a checkpoint
 # not written yet is reported and left for a later `eval` (setup3's 10k).
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh eval
@@ -50,10 +50,10 @@ table)
 import os, sys
 import numpy as np
 ty, res, specs = sys.argv[1], sys.argv[2], [m.split(":") for m in sys.argv[3:]]
-t = np.load(os.path.join(ty, "r000.npz")); y1, y0 = t["y1"], t["y0_ind"]   # fixed queries; independent noise
+t = np.load(os.path.join(ty, "r000.npz")); y1, y0, y0s = t["y1"], t["y0_ind"], t["y0"]   # fixed queries; y0 independent / shared noise
 print("fixed-SCM Do-PFN 1D models, 300k-step runs, over training; fixed queries (200 sets), posterior intervals;")
-print("truths with independent noise: y1, y0_ind, ITE = y1 - y0_ind")
-print(f"{'model':14s} {'step':>7s} {'cov y1':>7s} {'cov y0':>7s} {'cov ITE':>8s} {'pred sd y1':>10s} {'err sd y1':>9s} {'ratio':>6s}")
+print("truths: y1; independent noise (ind) y0_ind, ITE = y1 - y0_ind; shared noise (sh) y0, ITE = y1 - y0")
+print(f"{'model':14s} {'step':>7s} {'cov y1':>7s} {'y0 ind':>7s} {'y0 sh':>7s} {'ITE ind':>8s} {'ITE sh':>8s} {'pred sd y1':>10s} {'err sd y1':>9s} {'ratio':>6s}")
 for _, m, steps in specs:
     for s in steps.split():
         d = os.path.join(res, f"step_{s}", m)
@@ -72,7 +72,7 @@ for _, m, steps in specs:
         A = lambda c: np.array([acc[r][c] for r in sorted(acc)])
         cov = lambda lo, hi, y: float(((A(lo) <= y) & (y <= A(hi))).mean())
         sd, err = np.median(A("sd1")), (y1 - A("mu1")).std()
-        print(f"{m:14s} {s:>7s} {cov('lo1', 'hi1', y1):7.3f} {cov('lo0', 'hi0', y0):7.3f} {cov('lo', 'hi', y1 - y0):8.3f} "
+        print(f"{m:14s} {s:>7s} {cov('lo1', 'hi1', y1):7.3f} {cov('lo0', 'hi0', y0):7.3f} {cov('lo0', 'hi0', y0s):7.3f} {cov('lo', 'hi', y1 - y0):8.3f} {cov('lo', 'hi', y1 - y0s):8.3f} "
               f"{sd:10.4f} {err:9.4f} {sd / err:6.2f}   ({len(acc)} sets)")
     print()
 PY
