@@ -27,8 +27,8 @@ table)
 import os, sys
 import numpy as np
 ty, res, steps = sys.argv[1], sys.argv[2], sys.argv[3:]
-t = np.load(os.path.join(ty, "r000.npz")); y1, y0 = t["y1"], t["y0"]       # fixed queries: the same truths in every set
-print("setup3 on the fixed queries (200 sets), posterior intervals; truths: y1, y0 with shared noise, ITE = y1 - y0")
+t = np.load(os.path.join(ty, "r000.npz")); y1, y0 = t["y1"], t["y0_ind"]   # fixed queries; independent noise (as fscm_formula_cov.py)
+print("setup3 on the fixed queries (200 sets), posterior intervals; truths with independent noise: y1, y0_ind, ITE = y1 - y0_ind")
 print(f"{'step':>6s} {'cov y1':>7s} {'cov y0':>7s} {'cov ITE':>8s} {'pred sd y1':>10s} {'err sd y1':>9s} {'ratio':>6s}")
 for s in steps:
     d = os.path.join(res, f"step_{s}", "fscm_setup3")
