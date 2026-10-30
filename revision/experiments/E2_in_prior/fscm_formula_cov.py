@@ -8,7 +8,7 @@ import os, sys
 import numpy as np
 
 D = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../results/d262t1/fscm_moments")
-FIXQ = bool(np.load(os.path.join(D, "truths.npz"))["y1"].std(0).max() == 0)   # same queries in every set
+FIXQ = bool(np.allclose(*(lambda a: (a, a[:1]))(np.load(os.path.join(D, "truths.npz"))["y1"])))   # same queries in every set
 T = np.load(os.path.join(D, "truths.npz")); y0, y1 = T["y0_ind"], T["y1"]; ite = y1 - y0
 Z = 1.959963984540054
 print(f"{'model':14s} {'tgt':4s} {'interval':9s} {'mean':>7s} {'sd':>6s} {'min':>6s} {'max':>6s} {'sets in [0.93,0.97]':>20s}")
