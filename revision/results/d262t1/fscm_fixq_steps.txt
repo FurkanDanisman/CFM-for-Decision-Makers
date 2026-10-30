@@ -1,0 +1,7 @@
+setup3 on the fixed queries (200 sets), posterior intervals; truths: y1, y0 with shared noise, ITE = y1 - y0
+  step  cov y1  cov y0  cov ITE pred sd y1 err sd y1  ratio
+  1000 (no results)
+  2500 (no results)
+  5000 (no results)
+  7500 (no results)
+ 10000 (no results)
