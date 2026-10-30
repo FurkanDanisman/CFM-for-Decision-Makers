@@ -61,7 +61,7 @@ case "$MODEL" in
     DOPFN_CKPT="$CK/dopfn_repro_joint2d_step262144.pt" \
       python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
   fscm_*)                                     # fixed-SCM experiment (revision/experiments/fixed_scm), temperature off
-    DOPFN_SOFTMAX_TEMP=0 DOPFN_CKPT="$DEPLOY_ROOT/checkpoints_fixed_scm/${MODEL#fscm_}/dopfn_1d/step_10000_final.pt" \
+    DOPFN_SOFTMAX_TEMP=0 DOPFN_CKPT="$DEPLOY_ROOT/checkpoints_fixed_scm/${MODEL#fscm_}/dopfn_1d/${FSCM_CKPT:-step_10000_final.pt}" \
       python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
   uwyk1d)
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
