@@ -147,10 +147,19 @@ def main():
                     help="let each panel autoscale (not recommended: it makes a narrow "
                          "and a wide density look alike)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--paper", action="store_true",
+                    help="the paper's figure style (revision/paper/paper_style.py): text width, STIX fonts, "
+                         "1D blue / 2D orange, dotted frame; also writes a .pdf next to --out")
     a = ap.parse_args()
+    global C_1D, C_2D
+    if a.paper:
+        sys.path.insert(0, os.path.join(a.repo, "revision", "paper"))
+        import paper_style as PS
+        PS.apply()
+        C_1D, C_2D = PS.COL_1D, PS.COL_2D
 
     bary = _import_barycenter(a.repo)
-    fig, axes = plt.subplots(2, len(PAIRS), figsize=(3.0 * len(PAIRS), 4.6),
+    fig, axes = plt.subplots(2, len(PAIRS), figsize=(PS.TEXTWIDTH, 3.9) if a.paper else (3.0 * len(PAIRS), 4.6),
                              squeeze=False)
     spans = []
     for ci, (lab, m1, t1, m2, t2) in enumerate(PAIRS):
@@ -163,10 +172,20 @@ def main():
                         lab + suffix)
             if sp is not None:
                 spans.append(sp)
-            if ci == 0:
-                ax.set_ylabel("density", fontsize=8)
-            if ri == 1:
-                ax.set_xlabel("Treatment effect", fontsize=8)
+            if a.paper:
+                ax.set_title(lab + suffix, fontsize=PS.TITLE - 0.5, pad=3)
+                ax.tick_params(labelsize=PS.TICK - 0.5)
+                ax.set_yticks([])
+                for sp_ in ("top", "right"):
+                    ax.spines[sp_].set_visible(True)
+                PS.frame(ax)
+                if ci == 0:
+                    ax.set_ylabel("Density", fontsize=PS.LABEL)
+            else:
+                if ci == 0:
+                    ax.set_ylabel("density", fontsize=8)
+                if ri == 1:
+                    ax.set_xlabel("Treatment effect", fontsize=8)
 
     if not a.free_x:
         if a.xlim:
@@ -183,9 +202,13 @@ def main():
                 for ax in row:
                     ax.set_xlim(xlo, xhi)
 
-    fig.tight_layout()
+    if a.paper:
+        fig.supxlabel("Treatment effect", fontsize=PS.LABEL, y=0.02)
+    fig.tight_layout(h_pad=0.6, w_pad=0.4)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
-    fig.savefig(a.out, dpi=150, bbox_inches="tight")
+    fig.savefig(a.out, dpi=300 if a.paper else 150, bbox_inches="tight")
+    if a.paper:
+        fig.savefig(os.path.splitext(a.out)[0] + ".pdf", bbox_inches="tight", pad_inches=0.02)
     print("wrote", a.out)
     return 0
 
