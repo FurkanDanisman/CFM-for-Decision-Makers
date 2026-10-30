@@ -8,7 +8,7 @@
 #   setup3   each step, 10% chance to use this SCM, 1000 datasets
 # Everything else as the 262k 1D run: same prior stream (stream seed 1,000,000), backbone init, optimizer,
 # cosine schedule over 300k steps. One L40S job per run, 24 h (~0.22-0.28 s/step -> ~18-23 h), --requeue: on the
-# time limit the job requeues itself and train.py resumes from latest.pt (written every 5,000 steps, with step_<N>.pt).
+# time limit the job requeues itself and train.py resumes from latest.pt (written every 10,000 steps, with step_<N>.pt).
 #   cd $KIT && git -C R-PFN pull --rebase && bash R-PFN/revision/experiments/fixed_scm/submit_300k.sh
 set -euo pipefail
 KIT="${KIT:-$PWD}"; REPO="$KIT/R-PFN"; cd "$KIT"
@@ -22,7 +22,7 @@ for spec in "natural|natural|1" "setup1|p10|1" "setup2|once|250" "setup3|p10|250
   IFS='|' read -r RUN MODE CH <<< "$spec"
   if squeue -u "$USER" -h -o %j | grep -qx "fscm300k-$RUN"; then echo "$RUN: already queued, skipped"; continue; fi
   STEPS=300000 OUT="$ROOT/$RUN" \
-  EXTRA="--num-buckets 100 --backbone-init $INIT --ckpt-every 5000 --fixed-scm $MODE --fixed-chunks $CH --fixed-scm-data $DATA" \
+  EXTRA="--num-buckets 100 --backbone-init $INIT --ckpt-every 10000 --fixed-scm $MODE --fixed-chunks $CH --fixed-scm-data $DATA" \
     sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=24:00:00 --job-name="fscm300k-$RUN" \
     "$REPO/training_dopfn_repro/cluster/submit_train_dopfn_1d.sbatch"
 done
