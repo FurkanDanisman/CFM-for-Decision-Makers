@@ -121,8 +121,9 @@ def pct_panel(ax, pct, y, lims, title=False):
         ax.set_title(r"$\Delta$ (%)", pad=3, fontweight="bold")
 
 
-def avg_panel(ax, vals, errs, colors, title=False):
-    """last column: the average over datasets (+- SE), its value printed at the bar end; x ticks as the other panels"""
+def avg_panel(ax, vals, errs, colors, title=False, kind="A"):
+    """last column: the average over datasets (+- SE), its value printed at the bar end; x ticks as the other panels.
+    kind: "A" arithmetic mean (interval score), "G" geometric mean (point estimates)"""
     vals, errs = np.asarray(vals, float), np.asarray(errs, float)
     y = np.arange(len(vals))[::-1]
     ax.barh(y, vals, height=0.8, xerr=errs, color=colors, edgecolor="black", linewidth=0.7, error_kw=ERR)
@@ -138,7 +139,7 @@ def avg_panel(ax, vals, errs, colors, title=False):
     ax.set_facecolor(COL_GREY)
     frame(ax)
     if title:
-        ax.set_title("Average", pad=3, fontweight="bold")
+        ax.set_title(rf"$\mathbf{{Average}}_{{{kind}}}$", pad=3)
 
 
 def gmean_se(V, E, sig=None):

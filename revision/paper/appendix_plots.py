@@ -98,7 +98,7 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
             PS.avg_panel(ax, V.mean(1), np.sqrt((E ** 2).sum(1)) / V.shape[1], colors, title=(r == 0 or per_row))
         else:                                                    # point estimates: geometric mean over datasets
             g, se = PS.gmean_se(V, E, None if sig is None else sig[r])
-            PS.avg_panel(ax, g, se, colors, title=(r == 0 or per_row))
+            PS.avg_panel(ax, g, se, colors, title=(r == 0 or per_row), kind="G")
             if hatches:
                 for p_, h in zip(ax.patches, hatches):
                     if h:
