@@ -68,9 +68,11 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
     row_h = row_h or (0.18 * nser + 0.36)
     two_line = any("\n" in c for cc in rcols for c in cc)
     extra = (0.42 if two_line else 0.25) * (R - 1) if per_row else 0   # room for each row's own titles
-    fig = plt.figure(figsize=(PS.TEXTWIDTH * width, row_h * R + extra + 0.55 + (0.15 if two_line else 0)))
-    gs = fig.add_gridspec(R, K + 1, wspace=0.3, hspace=(0.5 + extra / max(R - 1, 1) / row_h) if per_row else 0.5,
-                          width_ratios=[1] * K + [1.6])
+    gap = 0.3 if sep is not None else 0                         # empty row around the dashed line, in units of a row
+    fig = plt.figure(figsize=(PS.TEXTWIDTH * width, row_h * (R + gap) + extra + 0.55 + (0.15 if two_line else 0)))
+    n_gs = R + (1 if sep is not None else 0)
+    gs = fig.add_gridspec(n_gs, K + 1, wspace=0.3, hspace=(0.5 + extra / max(R - 1, 1) / row_h) if per_row else 0.5,
+                          width_ratios=[1] * K + [1.6], height_ratios=[1] * n_gs if sep is None else [1] * sep + [gap] + [1] * (R - sep))
     D = []
     for _, V, _ in rows:
         if kind == "is":
@@ -84,7 +86,7 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
     for r, (rlab, V, E) in enumerate(rows):
         colors = row_colors[r] if row_colors else all_colors
         for c in range(len(rcols[r])):
-            ax = fig.add_subplot(gs[r, c])
+            ax = fig.add_subplot(gs[r if (sep is None or r < sep) else r + 1, c])
             y = PS.hbars(ax, V[:, c], E[:, c], colors, height=0.8, steps=STEPS, compact=True)
             if hatches:
                 for p, h in zip(ax.patches, hatches):
@@ -100,7 +102,7 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
                 ax.set_title(rcols[r][c], pad=3, linespacing=1.0)
             if c == 0:
                 labels.append((ax, rlab))
-        ax = fig.add_subplot(gs[r, K])
+        ax = fig.add_subplot(gs[r if (sep is None or r < sep) else r + 1, K])
         g, se = PS.gmean_se(V, E, None if (sig is None or kind == "is") else sig[r])   # geometric mean over datasets
         PS.avg_panel(ax, g, se, colors, title=(r == 0 or per_row), kind="G")
         if hatches:
@@ -353,7 +355,11 @@ save(fig, "rho_ctrl_lines")
 def summary(rows, fname, base, sep=None):
     """rows = [(row label, (v, e) PEHE, (v, e) eps, (v, e) IS)], v = [baseline..., 2D]"""
     R = len(rows)
-    fig, axes = plt.subplots(R, 3, figsize=(PS.TEXTWIDTH, 0.5 + sum(0.42 * 1 + 0.75 for _ in rows)), squeeze=False)
+    gap = 0.22 if sep is not None else 0                       # empty row around the dashed line, in units of a row
+    fig = plt.figure(figsize=(PS.TEXTWIDTH, 0.5 + sum(0.42 * 1 + 0.75 for _ in rows) + gap * 1.17))
+    n_gs = R + (1 if sep is not None else 0)
+    gs = fig.add_gridspec(n_gs, 3, height_ratios=[1] * n_gs if sep is None else [1] * sep + [gap] + [1] * (R - sep))
+    axes = np.array([[fig.add_subplot(gs[r if (sep is None or r < sep) else r + 1, c]) for c in range(3)] for r in range(R)])
     for r, (rlab, pe, ep, iv) in enumerate(rows):
         for c, ((v, e), yl) in enumerate(((pe, [base, "2D"]), (ep, [base, "2D"]), (iv, RHOLAB))):
             ax = axes[r, c]
@@ -362,6 +368,8 @@ def summary(rows, fname, base, sep=None):
             ax.set_facecolor("white")
             ax.set_yticks(np.arange(len(v))[::-1])
             ax.set_yticklabels(yl, fontsize=PS.TICK - 1)
+            mid = (len(v) - 1) / 2                             # same bar thickness as the five-bar panels
+            ax.set_ylim(mid - 2.5, mid + 2.5)
             ax.tick_params(axis="x", labelsize=PS.TICK - 1)
             if r == 0:
                 ax.set_title([r"$\sqrt{\mathrm{PEHE}}$", r"$\epsilon_{\mathrm{ATE}}$", IS][c], pad=4)
@@ -372,7 +380,7 @@ def summary(rows, fname, base, sep=None):
                  fontsize=PS.LABEL - 1, linespacing=1.0)
     if sep is not None:                                        # dashed line across the figure between two groups of rows
         above, below = axes[sep - 1, 0].get_position().y0, axes[sep, 0].get_position().y1
-        yl = below + 0.3 * (above - below)
+        yl = below + 0.36 * (above - below)
         fig.add_artist(matplotlib.lines.Line2D([0.01, 0.99], [yl, yl], transform=fig.transFigure, color="0.25", lw=0.9,
                                                ls=(0, (4, 2))))
     save(fig, fname)
