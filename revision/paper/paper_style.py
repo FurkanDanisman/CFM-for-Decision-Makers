@@ -139,7 +139,7 @@ def avg_panel(ax, vals, errs, colors, title=False, kind="A"):
     ax.set_facecolor(COL_GREY)
     frame(ax)
     if title:
-        ax.set_title(rf"$\mathbf{{Average}}_{{{kind}}}$", pad=3)
+        ax.set_title(rf"$\mathbf{{Average}}_{{{kind.lower()}}}$", pad=3)
 
 
 def gmean_se(V, E, sig=None):
