@@ -156,7 +156,7 @@ TWO = {f: k2 for _, _, _, f2, k2 in [(None,) + m[1:] for m in CT.MAIN] for f in 
 FAM2D = {m[0]: m[4] for m in CT.MAIN}
 for key, tag in (("rc", "rc"), ("cs", "cs"), ("cmall", "cm")):
     rows = []
-    for var, short in (("matched res.", "res."), ("matched labels", "label")):        # four matched-resolution rows, then four matched-label rows
+    for var, short in (("matched res.", "resolution"), ("matched labels", "label")):        # four matched-resolution rows, then four matched-label rows
         for fam in ("Do-PFN", "UWYK No-Anc", "UWYK Anc", "CausalPFN-C"):
             lab, k1, c1 = ABLK[f"{fam} ({var})"]
             ser = [(None, k1) if st is None else (st, c1) for st, _ in RR.RHO] + [(None, FAM2D[fam])]
@@ -230,7 +230,7 @@ for bm, keys, cols, tag in BKEYS:
             E = np.array([[float(AB[(bm, k, fam, v)][se]) for k in keys] for v in VARS])
             rows.append((FAMROW[fam], V, E))
         sg = [[c[3] for c in sp[{"rc": "rc", "cs": "cs", "cm": "cmall"}[tag]]]] * len(rows) if mt == "pehe" else None
-        figure(rows, cols, ["res.", "label", "2D"], [PS.COL_RES, PS.COL_LAB, PS.COL_2D], f"ablation_point_{tag}_{mt}",
+        figure(rows, cols, ["resolution", "label", "2D"], [PS.COL_RES, PS.COL_LAB, PS.COL_2D], f"ablation_point_{tag}_{mt}",
                lab, kind="point", row_h=0.66, sig=sg)
 
 # ---- comparison point estimates, from the paper's tables (tab:cpfn-2d, tab:uwyk-binarization)
