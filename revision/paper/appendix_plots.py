@@ -350,7 +350,7 @@ save(fig, "rho_ctrl_lines")
 
 
 # ---- H.5, H.6: one summary figure, Average_g per benchmark for the two point metrics and the interval score
-def summary(rows, fname, base):
+def summary(rows, fname, base, sep=None):
     """rows = [(row label, (v, e) PEHE, (v, e) eps, (v, e) IS)], v = [baseline..., 2D]"""
     R = len(rows)
     fig, axes = plt.subplots(R, 3, figsize=(PS.TEXTWIDTH, 0.5 + sum(0.42 * 1 + 0.75 for _ in rows)), squeeze=False)
@@ -370,6 +370,11 @@ def summary(rows, fname, base):
         p = axes[r, 0].get_position()
         fig.text(0.03, (p.y0 + p.y1) / 2, rlab, rotation=90, ha="center", va="center", fontweight="bold",
                  fontsize=PS.LABEL - 1, linespacing=1.0)
+    if sep is not None:                                        # dashed line across the figure between two groups of rows
+        above, below = axes[sep - 1, 0].get_position().y0, axes[sep, 0].get_position().y1
+        yl = below + 0.3 * (above - below)
+        fig.add_artist(matplotlib.lines.Line2D([0.01, 0.99], [yl, yl], transform=fig.transFigure, color="0.25", lw=0.9,
+                                               ls=(0, (4, 2))))
     save(fig, fname)
 
 
@@ -388,5 +393,5 @@ def summ_row(lab, tab, sec, tag, off, b, m2):
 
 
 summary([summ_row(bl, cp_t, sec, tag, 0, *CMPS["cpfn"][0][1:]) for sec, tag, bl in SEC], "cmp_cpfn_summary", "published")
-summary([summ_row(f"{bl}\n{sub}", ub_t, sec, tag, off, b, m2) for sec, tag, bl in SEC
-         for off, (sub, b, m2) in zip((0, 4), CMPS["uwykb"])], "cmp_uwykb_summary", "UWYK-B")
+summary([summ_row(f"{bl}\n{sub}", ub_t, sec, tag, off, b, m2) for off, (sub, b, m2) in zip((0, 4), CMPS["uwykb"])
+         for sec, tag, bl in SEC], "cmp_uwykb_summary", "UWYK-B", sep=3)
