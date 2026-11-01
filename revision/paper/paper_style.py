@@ -11,6 +11,7 @@ import numpy as np
 
 TEXTWIDTH = 433.62 / 72.27                                       # CLeaR \textwidth, inches
 COL_1D, COL_2D = "#3f7fbf", "#e6820e"
+COL_RES, COL_LAB = "#2a9d8f", "#8e6bbf"                          # matched-resolution, matched-label ablations
 COL_GREY = "0.93"                                                # background of the average panels
 ERR = dict(elinewidth=0.9, ecolor="0.2", capsize=1.6, capthick=0.9)
 TITLE, LABEL, TICK, YTICK = 10.5, 10.5, 9.5, 10
