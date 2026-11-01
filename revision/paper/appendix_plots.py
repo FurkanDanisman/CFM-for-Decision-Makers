@@ -203,7 +203,7 @@ BINS = ["[-0.5, 0)", "[0, 0.5)", "[0.5, 1]"]
 BINLAB = [r"$\rho\in[-0.5,0)$", r"$\rho\in[0,0.5)$", r"$\rho\in[0.5,1]$"]
 CTRL = [("Do-PFN", "Do-PFN", "Do-PFN 2D"), ("UWYK\nNo-Anc", "UWYK No-Anc", "UWYK 2D No-Anc"),
         ("UWYK\nAnc", "UWYK Anc", "UWYK 2D Anc"), ("Causal-\nPFN-C", "CausalPFN-C", "CausalPFN-C 2D"),
-        ("C-PFN-C\n(m. res.)", "CausalPFN-C (matched resolution)", "CausalPFN-C 2D")]
+        ("Causal-\nPFN-C\n(resolution)", "CausalPFN-C (matched resolution)", "CausalPFN-C 2D")]
 for bench in RC_[None].index.get_level_values(0).unique():
     rows = []
     for lab, m1, m2 in CTRL:
@@ -349,6 +349,25 @@ fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False, fontsize=
 fig.tight_layout(rect=(0, 0.025, 1, 0.915), h_pad=0.25, w_pad=0.1)
 fig.text(0.54, 0.008, "Bin of the true $\\rho$ ($<0$: $[-0.5, 0)$, $.25$: $[0, 0.5)$, $.75$: $[0.5, 1]$)", ha="center", fontsize=PS.LABEL - 1.5)
 save(fig, "rho_ctrl_lines")
+
+
+# ---- H.4: three bar figures, one per benchmark group, geometric mean over the group's datasets in each bin of the true rho
+RHO_GROUPS = [("cs", ["Observed Confounder", "Backdoor Criterion", "Frontdoor Criterion", "Unobserved Confounder"]),
+              ("rc", ["IHDP", "ACIC"]), ("cm", ["ComplexMech n=5"])]
+for tag, group in RHO_GROUPS:
+    rows = []
+    for lab, m1, m2 in CTRL:
+        have = [b_ for b_ in group if (b_, BINS[0], m1) in RC_[None].index]
+        if not have:
+            continue
+        V, E = [], []
+        for src, mod in [(st, m1) for st, _ in RHO_FILES] + [(None, m2)]:
+            X = np.array([[RC_[src].at[(b_, b, mod), "IS"] for b_ in have] for b in BINS])
+            S = np.array([[RC_[src].at[(b_, b, mod), "IS_se"] for b_ in have] for b in BINS])
+            g, se = PS.gmean_se(X, S)
+            V.append(g); E.append(se)
+        rows.append((lab, np.array(V), np.array(E)))
+    figure(rows, BINLAB, RHOLAB, [PS.COL_1D] * 4 + [PS.COL_2D], f"rho_ctrl_group_{tag}", IS, row_h=0.82)
 
 
 # ---- H.5, H.6: one summary figure, Average_g per benchmark for the two point metrics and the interval score
