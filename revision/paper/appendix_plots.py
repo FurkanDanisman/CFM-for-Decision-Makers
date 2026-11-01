@@ -356,7 +356,7 @@ def summary(rows, fname, base, sep=None):
     """rows = [(row label, (v, e) PEHE, (v, e) eps, (v, e) IS)], v = [baseline..., 2D]"""
     R = len(rows)
     gap = 0.22 if sep is not None else 0                       # empty row around the dashed line, in units of a row
-    fig = plt.figure(figsize=(PS.TEXTWIDTH, 0.5 + sum(0.42 * 1 + 0.75 for _ in rows) + gap * 1.17))
+    fig = plt.figure(figsize=(PS.TEXTWIDTH, 0.5 + 1.1 * (R + gap)))
     n_gs = R + (1 if sep is not None else 0)
     gs = fig.add_gridspec(n_gs, 3, height_ratios=[1] * n_gs if sep is None else [1] * sep + [gap] + [1] * (R - sep))
     axes = np.array([[fig.add_subplot(gs[r if (sep is None or r < sep) else r + 1, c]) for c in range(3)] for r in range(R)])
