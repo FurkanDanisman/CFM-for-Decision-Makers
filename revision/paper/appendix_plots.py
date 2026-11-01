@@ -94,15 +94,12 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
             if c == 0:
                 labels.append((ax, rlab))
         ax = fig.add_subplot(gs[r, K])
-        if kind == "is":                                         # the average over datasets +- its SE
-            PS.avg_panel(ax, V.mean(1), np.sqrt((E ** 2).sum(1)) / V.shape[1], colors, title=(r == 0 or per_row))
-        else:                                                    # point estimates: geometric mean over datasets
-            g, se = PS.gmean_se(V, E, None if sig is None else sig[r])
-            PS.avg_panel(ax, g, se, colors, title=(r == 0 or per_row), kind="G")
-            if hatches:
-                for p_, h in zip(ax.patches, hatches):
-                    if h:
-                        p_.set_hatch(h)
+        g, se = PS.gmean_se(V, E, None if (sig is None or kind == "is") else sig[r])   # geometric mean over datasets
+        PS.avg_panel(ax, g, se, colors, title=(r == 0 or per_row), kind="G")
+        if hatches:
+            for p_, h in zip(ax.patches, hatches):
+                if h:
+                    p_.set_hatch(h)
     nl = max(r[0].count("\n") + 1 for r in rows)              # lines of the rotated row labels
     left = (0.2 if max(len(l) for l in ylabels) > 8 else 0.15) + 0.022 * (nl - 2)
     fig.subplots_adjust(left=left / width, right=0.985, top=1 - 0.45 / fig.get_figheight(),

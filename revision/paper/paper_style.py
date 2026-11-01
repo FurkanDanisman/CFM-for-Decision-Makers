@@ -121,9 +121,9 @@ def pct_panel(ax, pct, y, lims, title=False):
         ax.set_title(r"$\Delta$ (%)", pad=3, fontweight="bold")
 
 
-def avg_panel(ax, vals, errs, colors, title=False, kind="A"):
+def avg_panel(ax, vals, errs, colors, title=False, kind="G"):
     """last column: the average over datasets (+- SE), its value printed at the bar end; x ticks as the other panels.
-    kind: "A" arithmetic mean (interval score), "G" geometric mean (point estimates)"""
+    kind: "G", the geometric mean over datasets"""
     vals, errs = np.asarray(vals, float), np.asarray(errs, float)
     y = np.arange(len(vals))[::-1]
     ax.barh(y, vals, height=0.8, xerr=errs, color=colors, edgecolor="black", linewidth=0.7, error_kw=ERR)
