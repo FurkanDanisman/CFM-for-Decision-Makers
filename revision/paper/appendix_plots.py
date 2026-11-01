@@ -57,8 +57,9 @@ def save(fig, name):
     print("wrote", name)
 
 
-def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, width=1.0, row_h=None, sig=None):
-    """sig: per row, the outcome scale of each dataset (point estimates of PEHE: geometric mean of PEHE / sigma)"""
+def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, width=1.0, row_h=None, sig=None, sep=None):
+    """sig: per row, the outcome scale of each dataset (point estimates of PEHE: geometric mean of PEHE / sigma)
+    sep: number of series above a horizontal dashed line drawn in every panel"""
     """rows = [(row label, V[nser, K], E[nser, K])]; the last series is the 2D model (reference of Delta)."""
     per_row = isinstance(cols[0], list)                         # column titles per row (rows of different benchmarks)
     rcols = cols if per_row else [cols] * len(rows)
@@ -86,6 +87,8 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
                 for p, h in zip(ax.patches, hatches):
                     if h:
                         p.set_hatch(h)
+            if sep is not None:
+                ax.axhline(nser - sep - 0.5, color="0.25", lw=0.8, ls=(0, (4, 2)), zorder=3)
             ax.set_yticks(y)
             ax.set_yticklabels(ylabels if c == 0 else [])
             ax.tick_params(axis="x", labelsize=PS.TICK - 0.5)
@@ -100,6 +103,8 @@ def figure(rows, cols, ylabels, colors, fname, xlabel, kind="is", hatches=None, 
             for p_, h in zip(ax.patches, hatches):
                 if h:
                     p_.set_hatch(h)
+        if sep is not None:
+            ax.axhline(nser - sep - 0.5, color="0.25", lw=0.8, ls=(0, (4, 2)), zorder=3)
     nl = max(r[0].count("\n") + 1 for r in rows)              # lines of the rotated row labels
     left = (0.2 if max(len(l) for l in ylabels) > 8 else 0.15) + 0.022 * (nl - 2)
     fig.subplots_adjust(left=left / width, right=0.985, top=1 - 0.45 / fig.get_figheight(),
@@ -138,13 +143,15 @@ TWO = {f: k2 for _, _, _, f2, k2 in [(None,) + m[1:] for m in CT.MAIN] for f in 
 FAM2D = {m[0]: m[4] for m in CT.MAIN}
 for key, tag in (("rc", "rc"), ("cs", "cs"), ("cmall", "cm")):
     rows = []
-    for fam in ("Do-PFN", "UWYK No-Anc", "UWYK Anc", "CausalPFN-C"):
-        for var, short in (("matched res.", "res."), ("matched labels", "labels")):
+    for fam in ("Do-PFN", "UWYK No-Anc", "UWYK Anc", "CausalPFN-C"):                  # matched resolution, then labels, then 2D
+        ser = []
+        for var in ("matched res.", "matched labels"):
             lab, k1, c1 = ABLK[f"{fam} ({var})"]
-            ser = [(None, k1) if st is None else (st, c1) for st, _ in RR.RHO] + [(None, FAM2D[fam])]
-            V, E = is_rows(key, ser)
-            rows.append((f"{FAMROW[fam]}\n({short})", V, E))
-    figure(rows, COLS[key], RHOLAB, [PS.COL_1D] * 4 + [PS.COL_2D], f"coupling_abl_{tag}", IS, row_h=0.82)
+            ser += [(None, k1) if st is None else (st, c1) for st, _ in RR.RHO]
+        V, E = is_rows(key, ser + [(None, FAM2D[fam])])
+        rows.append((FAMROW[fam], V, E))
+    figure(rows, COLS[key], RHOLAB[:4] * 2 + ["2D"], [PS.COL_1D] * 8 + [PS.COL_2D], f"coupling_abl_{tag}", IS,
+           hatches=["////"] * 4 + [""] * 5, row_h=1.5, sep=4)
 
 # ---- the comparison baselines: published two-stage CausalPFN and UWYK-B (tab:cpfn-2d-rho, tab:uwyk-binarization-rho)
 CMPS = {"cpfn": [("", "CausalPFN (two-stage, published)", "CausalPFN 2D")],
@@ -201,7 +208,7 @@ for bench in RC_[None].index.get_level_values(0).unique():
 AB = {(r["benchmark"], r["setting"], r["model"], r["variant"]): r for r in csv.DictReader(open(os.path.join(RES, "ablation_point.csv")))}
 BKEYS = [("RealCause", ["IHDP", "ACIC", "CPS", "PSID", "PSID_bal"], RC, "rc"),
          ("CaseStudy", CS_KEYS, CASES, "cs"), ("ComplexMech", [str(n) for n in NODES], COLS["cmall"], "cm")]
-VARS = ["matched label", "matched resolution", "2D"]
+VARS = ["matched resolution", "matched label", "2D"]
 for bm, keys, cols, tag in BKEYS:
     for metric, se, lab, mt in (("pehe", "pehe_se", r"$\sqrt{\mathrm{PEHE}}$", "pehe"), ("eps_ate", "eps_se", r"$\epsilon_{\mathrm{ATE}}$", "eps")):
         rows = []
@@ -210,8 +217,8 @@ for bm, keys, cols, tag in BKEYS:
             E = np.array([[float(AB[(bm, k, fam, v)][se]) for k in keys] for v in VARS])
             rows.append((FAMROW[fam], V, E))
         sg = [[c[3] for c in sp[{"rc": "rc", "cs": "cs", "cm": "cmall"}[tag]]]] * len(rows) if mt == "pehe" else None
-        figure(rows, cols, ["label", "res.", "2D"], [PS.COL_1D, PS.COL_1D, PS.COL_2D], f"ablation_point_{tag}_{mt}",
-               lab, kind="point", hatches=["", "////", ""], row_h=0.66, sig=sg)
+        figure(rows, cols, ["res.", "label", "2D"], [PS.COL_1D, PS.COL_1D, PS.COL_2D], f"ablation_point_{tag}_{mt}",
+               lab, kind="point", hatches=["////", "", ""], row_h=0.66, sig=sg, sep=1)
 
 # ---- comparison point estimates, from the paper's tables (tab:cpfn-2d, tab:uwyk-binarization)
 CELL = re.compile(r"([\d.]+)\}?\\,\{\\scriptsize\$\\pm\$([\d.]+)")
