@@ -154,7 +154,7 @@ TWO = {f: k2 for _, _, _, f2, k2 in [(None,) + m[1:] for m in CT.MAIN] for f in 
 FAM2D = {m[0]: m[4] for m in CT.MAIN}
 for key, tag in (("rc", "rc"), ("cs", "cs"), ("cmall", "cm")):
     rows = []
-    for var, short in (("matched res.", "resolution"), ("matched labels", "label")):        # four matched-resolution rows, then four matched-label rows
+    for var, short in (("matched res.", "res."), ("matched labels", "label")):        # four matched-resolution rows, then four matched-label rows
         for fam in ("Do-PFN", "UWYK No-Anc", "UWYK Anc", "CausalPFN-C"):
             lab, k1, c1 = ABLK[f"{fam} ({var})"]
             ser = [(None, k1) if st is None else (st, c1) for st, _ in RR.RHO] + [(None, FAM2D[fam])]
@@ -228,7 +228,7 @@ for bm, keys, cols, tag in BKEYS:
             E = np.array([[float(AB[(bm, k, fam, v)][se]) for k in keys] for v in VARS])
             rows.append((FAMROW[fam], V, E))
         sg = [[c[3] for c in sp[{"rc": "rc", "cs": "cs", "cm": "cmall"}[tag]]]] * len(rows) if mt == "pehe" else None
-        figure(rows, cols, ["resolution", "label", "2D"], [PS.COL_RES, PS.COL_LAB, PS.COL_2D], f"ablation_point_{tag}_{mt}",
+        figure(rows, cols, ["res.", "label", "2D"], [PS.COL_RES, PS.COL_LAB, PS.COL_2D], f"ablation_point_{tag}_{mt}",
                lab, kind="point", row_h=0.66, sig=sg)
 
 # ---- comparison point estimates, from the paper's tables (tab:cpfn-2d, tab:uwyk-binarization)
@@ -309,3 +309,84 @@ if os.path.exists(PBD):
                 sg.append([sig["main"]["case_study"][case]] * len(DS))
             figure(rows, [f"$d={d}$" for d in DS], ["1D", "2D"], [PS.COL_1D, PS.COL_2D], f"dsplit_{mt}_{TAG[case]}",
                    lab, kind="point", row_h=0.6, sig=sg if mt == "pehe" else None)
+
+
+# ---- H.4: one figure, the interval score over the bins of the true rho (rows: families, columns: benchmarks)
+CTITLE = {"Observed Confounder": "Obs.\nConf.", "Backdoor Criterion": "Back-\ndoor", "Frontdoor Criterion": "Front-\ndoor",
+          "Unobserved Confounder": "Unobs.\nConf.", "IHDP": "IHDP", "ACIC": "ACIC", "ComplexMech n=5": "CM\n$n=5$"}
+RHOCOL = ["#b7d0e8", "#7fb0d8", "#3f7fbf", "#1d4f8a"]
+RHOMARK = ["o", "s", "^", "D"]
+benches = list(RC_[None].index.get_level_values(0).unique())
+print("rho_ctrl benches", benches)
+fig, axes = plt.subplots(len(CTRL), len(benches), figsize=(PS.TEXTWIDTH, 1.12 * len(CTRL) + 0.95), squeeze=False)
+for c, bench in enumerate(benches):
+    for r, (lab, m1, m2) in enumerate(CTRL):
+        ax = axes[r, c]
+        if r == 0:
+            ax.set_title(CTITLE.get(bench, bench), pad=3, linespacing=1.0, fontsize=PS.TITLE - 1)
+        if c == 0:
+            ax.set_ylabel(lab, fontweight="bold", fontsize=PS.LABEL - 2, linespacing=1.0, labelpad=4)
+        if (bench, BINS[0], m1) not in RC_[None].index:
+            ax.axis("off")
+            continue
+        for s, (st, _) in enumerate(RHO_FILES):
+            ax.plot(range(3), [RC_[st].at[(bench, b, m1), "IS"] for b in BINS], color=RHOCOL[s], marker=RHOMARK[s], ms=2.6, lw=1.1)
+        ax.plot(range(3), [RC_[None].at[(bench, b, m2), "IS"] for b in BINS], color=PS.COL_2D, marker="o", ms=3.2, lw=2.0, zorder=5)
+        ax.set_yscale("log")
+        ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}"))
+        ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+        ax.set_xticks(range(3))
+        ax.set_xticklabels(["<0", ".25", ".75"] if r == len(CTRL) - 1 else [], fontsize=PS.TICK - 2)
+        ax.tick_params(axis="y", labelsize=PS.TICK - 2.5, length=2, pad=1.5)
+        ax.tick_params(axis="x", length=2, pad=1.5)
+        ax.set_xlim(-0.25, 2.25)
+handles = [matplotlib.lines.Line2D([], [], color=RHOCOL[s], marker=RHOMARK[s], ms=3, lw=1.1, label=RHOLAB[s]) for s in range(4)]
+handles.append(matplotlib.lines.Line2D([], [], color=PS.COL_2D, marker="o", ms=3.2, lw=2.0, label="2D"))
+fig.legend(handles=handles, loc="upper center", ncol=5, frameon=False, fontsize=PS.LABEL - 1.5, bbox_to_anchor=(0.53, 1.0),
+           title="assumed $\\rho$ of the baseline, and the 2D model", title_fontsize=PS.LABEL - 1.5, handlelength=1.8, columnspacing=1.2)
+fig.tight_layout(rect=(0, 0.025, 1, 0.915), h_pad=0.25, w_pad=0.1)
+fig.text(0.54, 0.008, "Bin of the true $\\rho$ ($<0$: $[-0.5, 0)$, $.25$: $[0, 0.5)$, $.75$: $[0.5, 1]$)", ha="center", fontsize=PS.LABEL - 1.5)
+save(fig, "rho_ctrl_lines")
+
+
+# ---- H.5, H.6: one summary figure, Average_g per benchmark for the two point metrics and the interval score
+def summary(rows, fname, base):
+    """rows = [(row label, (v, e) PEHE, (v, e) eps, (v, e) IS)], v = [baseline..., 2D]"""
+    R = len(rows)
+    fig, axes = plt.subplots(R, 3, figsize=(PS.TEXTWIDTH, 0.5 + sum(0.42 * 1 + 0.75 for _ in rows)), squeeze=False)
+    for r, (rlab, pe, ep, iv) in enumerate(rows):
+        for c, ((v, e), yl) in enumerate(((pe, [base, "2D"]), (ep, [base, "2D"]), (iv, RHOLAB))):
+            ax = axes[r, c]
+            cols_ = [PS.COL_1D] * (len(v) - 1) + [PS.COL_2D]
+            PS.avg_panel(ax, v, e, cols_)
+            ax.set_facecolor("white")
+            ax.set_yticks(np.arange(len(v))[::-1])
+            ax.set_yticklabels(yl, fontsize=PS.TICK - 1)
+            ax.tick_params(axis="x", labelsize=PS.TICK - 1)
+            if r == 0:
+                ax.set_title([r"$\sqrt{\mathrm{PEHE}}$", r"$\epsilon_{\mathrm{ATE}}$", IS][c], pad=4)
+    fig.tight_layout(rect=(0.075, 0, 1, 1), h_pad=0.5, w_pad=1.0)
+    for r, (rlab, *_) in enumerate(rows):
+        p = axes[r, 0].get_position()
+        fig.text(0.03, (p.y0 + p.y1) / 2, rlab, rotation=90, ha="center", va="center", fontweight="bold",
+                 fontsize=PS.LABEL - 1, linespacing=1.0)
+    save(fig, fname)
+
+
+def cell(tab, sec, off, k):
+    a = tab[sec]
+    return (np.array([[r[1][off + k][0] for r in a], [r[1][off + 2 + k][0] for r in a]]),
+            np.array([[r[1][off + k][1] for r in a], [r[1][off + 2 + k][1] for r in a]]))
+
+
+def summ_row(lab, tab, sec, tag, off, b, m2):
+    key = {"rc": "rc", "cs": "cs", "cm": "cmall"}[tag]
+    pe = PS.gmean_se(*cell(tab, sec, off, 0), [c[3] for c in sp[key]])
+    ep = PS.gmean_se(*cell(tab, sec, off, 1))
+    V, E = is_rows(key, [(None, b) if st is None else (st, b) for st, _ in RR.RHO] + [(None, m2)])
+    return (lab, pe, ep, PS.gmean_se(V, E))
+
+
+summary([summ_row(bl, cp_t, sec, tag, 0, *CMPS["cpfn"][0][1:]) for sec, tag, bl in SEC], "cmp_cpfn_summary", "published")
+summary([summ_row(f"{bl}\n{sub}", ub_t, sec, tag, off, b, m2) for sec, tag, bl in SEC
+         for off, (sub, b, m2) in zip((0, 4), CMPS["uwykb"])], "cmp_uwykb_summary", "UWYK-B")
