@@ -150,7 +150,6 @@ def is_rows(key, series_keys):
 
 # ---- coupling sensitivity of the ablation baselines (tab:coupling-abl-*)
 ABLK = {a[0]: a for a in CT.ABL}
-HATCH_RES, HATCH_LAB = "////", "...."                          # matched resolution, matched label
 TWO = {f: k2 for _, _, _, f2, k2 in [(None,) + m[1:] for m in CT.MAIN] for f in [f2]}
 FAM2D = {m[0]: m[4] for m in CT.MAIN}
 for key, tag in (("rc", "rc"), ("cs", "cs"), ("cmall", "cm")):
@@ -162,7 +161,7 @@ for key, tag in (("rc", "rc"), ("cs", "cs"), ("cmall", "cm")):
             V, E = is_rows(key, ser)
             rows.append((f"{FAMROW[fam]}\n({short})", V, E))
     figure(rows, COLS[key], RHOLAB, [PS.COL_1D] * 4 + [PS.COL_2D], f"coupling_abl_{tag}", IS, row_h=0.82,
-           row_hatch=[HATCH_RES] * 4 + [HATCH_LAB] * 4, sep=4,
+           sep=4,
            row_colors=[[PS.COL_RES] * 4 + [PS.COL_2D]] * 4 + [[PS.COL_LAB] * 4 + [PS.COL_2D]] * 4)
 
 # ---- the comparison baselines: published two-stage CausalPFN and UWYK-B (tab:cpfn-2d-rho, tab:uwyk-binarization-rho)
@@ -230,7 +229,7 @@ for bm, keys, cols, tag in BKEYS:
             rows.append((FAMROW[fam], V, E))
         sg = [[c[3] for c in sp[{"rc": "rc", "cs": "cs", "cm": "cmall"}[tag]]]] * len(rows) if mt == "pehe" else None
         figure(rows, cols, ["resolution", "label", "2D"], [PS.COL_RES, PS.COL_LAB, PS.COL_2D], f"ablation_point_{tag}_{mt}",
-               lab, kind="point", hatches=[HATCH_RES, HATCH_LAB, ""], row_h=0.66, sig=sg)
+               lab, kind="point", row_h=0.66, sig=sg)
 
 # ---- comparison point estimates, from the paper's tables (tab:cpfn-2d, tab:uwyk-binarization)
 CELL = re.compile(r"([\d.]+)\}?\\,\{\\scriptsize\$\\pm\$([\d.]+)")
