@@ -2,7 +2,7 @@
 # The four fixed-SCM Do-PFN 1D models of the 300k-step runs (checkpoints_fixed_scm_300k) over training: the
 # fixed-query evaluation (fixq.sh data) at some of the saved checkpoints (one every 10k steps). Same evaluation as
 # fixq_steps_all.sh: 200 of the 1000 observational sets (shards 0-1); truths with independent noise
-# (y1, y0_ind, ITE = y1 - y0_ind); the table also scores against the shared-noise truths (y0, ITE = y1 - y0). Steps: natural, setup1, setup2 at 50k, 100k, ..., 300k; setup3 at 10k, 20k.
+# (y1, y0_ind, ITE = y1 - y0_ind); the table also scores against the shared-noise truths (y0, ITE = y1 - y0). Steps: natural, setup1, setup2 at 50k, 100k, ..., 300k; setup3 at 10k, 20k, 30k.
 # One GPU job per model, its checkpoints one after the other; finished checkpoints are skipped, and a checkpoint
 # not written yet is reported and left for a later `eval`.
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh eval
@@ -13,7 +13,7 @@ KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/exp
 DATA="$SCRATCH/e2/same_fixq/data"; RES="$SCRATCH/e2/same_fixq/results_steps_300k"; mkdir -p logs_e2 "$RES"
 CK="checkpoints_fixed_scm_300k"
 ST="50000 100000 150000 200000 250000 300000"
-MODELS=("9:fscm_natural:$ST" "10:fscm_setup1:$ST" "11:fscm_setup2:$ST" "12:fscm_setup3:10000 20000")
+MODELS=("9:fscm_natural:$ST" "10:fscm_setup1:$ST" "11:fscm_setup2:$ST" "12:fscm_setup3:10000 20000 30000")
 n_done() { (ls "$RES/step_$1/$2"/moments_shard*.npz 2>/dev/null || true) | wc -l | tr -d ' '; }
 ckpt() { echo "$KIT/$CK/${2#fscm_}/dopfn_1d/step_$1.pt"; }
 case "$1" in
