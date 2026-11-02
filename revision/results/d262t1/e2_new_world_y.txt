@@ -8,6 +8,10 @@ Do-PFN  (1000 worlds)
   ITE rho=0 (in)         0.940 (0.005)   within [0.93,0.97]:  142/1000
 
 Do-PFN 2D  (1000 worlds)
+  y0 posterior           0.949 (0.005)   within [0.93,0.97]:  133/1000
+  y0 formula             0.947 (0.005)   within [0.93,0.97]:  218/1000
+  y1 posterior           0.964 (0.004)   within [0.93,0.97]:  130/1000
+  y1 formula             0.961 (0.004)   within [0.93,0.97]:  210/1000
   joint (sh)             0.902 (0.007)   within [0.93,0.97]:  253/1000
   joint (in)             0.776 (0.008)   within [0.93,0.97]:  128/1000
   ITE learned (sh)       0.944 (0.006)   within [0.93,0.97]:   29/1000
@@ -32,6 +36,10 @@ UWYK (continuous T)  (1000 worlds)
   ITE rho=0 (in)         0.886 (0.005)   within [0.93,0.97]:  303/1000
 
 UWYK 2D  (1000 worlds)
+  y0 posterior           0.971 (0.001)   within [0.93,0.97]:  221/1000
+  y0 formula             0.962 (0.002)   within [0.93,0.97]:  279/1000
+  y1 posterior           0.972 (0.002)   within [0.93,0.97]:  216/1000
+  y1 formula             0.964 (0.002)   within [0.93,0.97]:  275/1000
   joint (sh)             0.947 (0.003)   within [0.93,0.97]:  217/1000
   joint (in)             0.885 (0.005)   within [0.93,0.97]:  204/1000
   ITE learned (sh)       0.963 (0.003)   within [0.93,0.97]:  138/1000
@@ -48,6 +56,10 @@ CausalPFN-C  (1000 worlds)
   ITE rho=0 (in)         0.869 (0.003)   within [0.93,0.97]:  237/1000
 
 CausalPFN-C 2D  (1000 worlds)
+  y0 posterior           0.946 (0.002)   within [0.93,0.97]:  203/1000
+  y0 formula             0.919 (0.003)   within [0.93,0.97]:  189/1000
+  y1 posterior           0.937 (0.002)   within [0.93,0.97]:  275/1000
+  y1 formula             0.907 (0.003)   within [0.93,0.97]:  253/1000
   joint (sh)             0.882 (0.004)   within [0.93,0.97]:  207/1000
   joint (in)             0.873 (0.004)   within [0.93,0.97]:  181/1000
   ITE learned (sh)       0.946 (0.003)   within [0.93,0.97]:  217/1000
