@@ -9,6 +9,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh progress
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh table     printed, committed and pushed
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh methods   ITE coverage of four intervals, printed, committed and pushed
+#   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh rhofit    rho measured from the predicted means, ITE coverage under it, printed, committed and pushed
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/same_fixq/data"; RES="$SCRATCH/e2/same_fixq/results_steps_300k"; mkdir -p logs_e2 "$RES"
@@ -117,5 +118,43 @@ for _, m, steps in specs:
     print()
 PY
   cd "$REPO" && git add "$O" && git commit -qm "fixq: ITE coverage of four intervals, the 300k-step runs over training checkpoints" \
+    && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
+rhofit)
+  source venv/bin/activate; O="$REPO/revision/results/d262t1/fscm_fixq_rhofit_300k.txt"
+  python - "$DATA/dopfn/truths_y" "$RES" "${MODELS[@]}" <<'PY' | tee "$O"
+# The queries are the same in every set, so the predicted means move across sets only through the context.
+#   rho_q = cov(mu1, mu0 over sets) / (mean sd1 * mean sd0), per query; rho = its mean, clipped to [-1, 1]
+#   ITE interval: (mu1 - mu0) +- 1.96 sqrt(sd1^2 + sd0^2 - 2 rho sd1 sd0)
+# Then the same interval on a grid of rho. Misses any error that is constant across the sets.
+import os, sys
+import numpy as np
+ty, res, specs = sys.argv[1], sys.argv[2], [m.split(":") for m in sys.argv[3:]]
+t = np.load(os.path.join(ty, "r000.npz")); ind, sh = t["y1"] - t["y0_ind"], t["y1"] - t["y0"]
+Z = 1.959963984540054; G = np.round(np.arange(0, 1.01, 0.1), 1)
+print("fixed-SCM Do-PFN 1D models, 300k-step runs; fixed queries (200 sets); rho measured from the predicted means; frequentist ITE interval")
+print(f"{'model':14s} {'step':>7s} {'rho':>6s} {'cov ind':>8s} {'cov sh':>7s} {'width':>6s}  ind coverage on rho = " + " ".join(f"{g:5.1f}" for g in G))
+for _, m, steps in specs:
+    for s in steps.split():
+        d = os.path.join(res, f"step_{s}", m); acc = {}
+        for k in (0, 1):
+            f = os.path.join(d, f"moments_shard{k}.npz")
+            if not os.path.exists(f):
+                continue
+            z = np.load(f)
+            for j, i in enumerate(z["idx"]):
+                acc[k * 100 + int(i)] = {c: z[c][j] for c in ("mu0", "sd0", "mu1", "sd1")}
+        if not acc:
+            print(f"{m:14s} {s:>7s} (no results)"); continue
+        A = lambda c: np.array([acc[r][c] for r in sorted(acc)], dtype=np.float64)
+        m1, m0, s1, s0 = A("mu1"), A("mu0"), A("sd1"), A("sd0")
+        c = ((m1 - m1.mean(0)) * (m0 - m0.mean(0))).mean(0)
+        rho = float(np.clip((c / (s1.mean(0) * s0.mean(0))).mean(), -1, 1))
+        mu = m1 - m0
+        hw = lambda r: Z * np.sqrt(np.maximum(s1 ** 2 + s0 ** 2 - 2 * r * s1 * s0, 0))
+        cov = lambda r, y: float((np.abs(y - mu) <= hw(r)).mean())
+        print(f"{m:14s} {s:>7s} {rho:6.3f} {cov(rho, ind):8.3f} {cov(rho, sh):7.3f} {2 * np.median(hw(rho)):6.3f}  {'':22s}" + " ".join(f"{cov(g, ind):5.3f}" for g in G) + f"   ({len(acc)} sets)")
+    print()
+PY
+  cd "$REPO" && git add "$O" && git commit -qm "fixq: rho measured from the predicted means, the 300k-step runs" \
     && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
 esac
