@@ -8,6 +8,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh eval
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh progress
 #   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh table     printed, committed and pushed
+#   bash R-PFN/revision/experiments/E2_in_prior/fixq_steps_300k.sh methods   ITE coverage of four intervals, printed, committed and pushed
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/same_fixq/data"; RES="$SCRATCH/e2/same_fixq/results_steps_300k"; mkdir -p logs_e2 "$RES"
@@ -77,5 +78,44 @@ for _, m, steps in specs:
     print()
 PY
   cd "$REPO" && git add "$O" && git commit -qm "fixq: the four fixed-SCM 300k-step runs over training checkpoints" \
+    && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
+methods)
+  source venv/bin/activate; O="$REPO/revision/results/d262t1/fscm_fixq_methods_300k.txt"
+  python - "$DATA/dopfn/truths_y" "$RES" "${MODELS[@]}" <<'PY' | tee "$O"
+# ITE intervals from the saved per-query mean, sd and outcome quantiles of each checkpoint. No GPU, no dumps.
+#   freq r0   (mu1 - mu0) +- 1.96 sqrt(sd1^2 + sd0^2)      freq r1   (mu1 - mu0) +- 1.96 |sd1 - sd0|
+#   bayes r0  the paper's predictive interval under independence (hist)
+#   bayes r1  approximate: the two ends Q1 - Q0 at 2.5% and 97.5%; the exact comonotone interval needs the full histograms
+import os, sys
+import numpy as np
+ty, res, specs = sys.argv[1], sys.argv[2], [m.split(":") for m in sys.argv[3:]]
+t = np.load(os.path.join(ty, "r000.npz")); y1, ind, sh = t["y1"], t["y1"] - t["y0_ind"], t["y1"] - t["y0"]
+Z = 1.959963984540054
+print("fixed-SCM Do-PFN 1D models, 300k-step runs; fixed queries (200 sets); ITE coverage against independent (ind) and shared (sh) noise, and median width")
+print(f"{'model':14s} {'step':>7s}" + "".join(f" {n + ' ind':>13s} {n + ' sh':>12s} {'width':>6s}" for n in ("freq r0", "freq r1", "bayes r0", "bayes r1")))
+for _, m, steps in specs:
+    for s in steps.split():
+        d = os.path.join(res, f"step_{s}", m); acc = {}
+        for k in (0, 1):
+            f = os.path.join(d, f"moments_shard{k}.npz"); g = os.path.join(d, f"shard{k}.npz")
+            if not (os.path.exists(f) and os.path.exists(g)):
+                continue
+            z, zi = np.load(f), np.load(g)
+            for j, i in enumerate(z["idx"]):
+                acc.setdefault(k * 100 + int(i), {}).update({c: z[c][j] for c in ("mu0", "sd0", "mu1", "sd1", "lo0", "hi0", "lo1", "hi1")})
+            for j, i in enumerate(zi["idx"]):
+                acc.setdefault(k * 100 + int(i), {}).update(lo=zi["lo"][j], hi=zi["hi"][j])
+        if not acc:
+            print(f"{m:14s} {s:>7s} (no results)"); continue
+        A = lambda c: np.array([acc[r][c] for r in sorted(acc)])
+        mu, s1, s0 = A("mu1") - A("mu0"), A("sd1"), A("sd0")
+        a, b = A("lo1") - A("lo0"), A("hi1") - A("hi0")
+        M = [(mu - Z * np.sqrt(s1 ** 2 + s0 ** 2), mu + Z * np.sqrt(s1 ** 2 + s0 ** 2)), (mu - Z * np.abs(s1 - s0), mu + Z * np.abs(s1 - s0)),
+             (A("lo"), A("hi")), (np.minimum(a, b), np.maximum(a, b))]
+        cov = lambda lo, hi, y: float(((lo <= y) & (y <= hi)).mean())
+        print(f"{m:14s} {s:>7s}" + "".join(f" {cov(lo, hi, ind):13.3f} {cov(lo, hi, sh):12.3f} {np.median(hi - lo):6.3f}" for lo, hi in M) + f"   ({len(acc)} sets)")
+    print()
+PY
+  cd "$REPO" && git add "$O" && git commit -qm "fixq: ITE coverage of four intervals, the 300k-step runs over training checkpoints" \
     && git pull -q --rebase --autostash origin main && git push -q origin main && echo pushed ;;
 esac
