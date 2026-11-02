@@ -1,7 +1,7 @@
 """In-prior calibration, new SCM per dataset: coverage of y0, y1, the joint region (2D) and the ITE, per world.
 python newworld_y_table.py DATA RES NW OUT_CSV
 Per world (one dataset of 500 queries): coverage = share of queries whose truth lies in the 95% interval.
-  y0, y1     posterior: the predictive interval; formula: mu +- 1.96 sd. Truth: the prior's own outcomes
+  y0, y1     posterior: the predictive interval (2D: of each marginal of the joint); formula: mu +- 1.96 sd. Truth: the prior's own outcomes
              (CausalPFN-C 1D: its training target m_t).
   joint      2D only: the joint's 95% region; truth pair with shared noise (sh) and with independent noise (in).
   ITE        the paper's interval (1D: independence, rho = 0; 2D: learned joint) and, for 2D, rho = 0;
@@ -43,11 +43,10 @@ for model, name, prior, is2d in MODELS:
         td = np.load(os.path.join(DATA, prior, "truths", f"r{r:03d}.npz"))
         y0, y1 = (ty["m0"], ty["m1"]) if prior == "cpfn_1d" else (ty["y0"], ty["y1"])
         add = lambda key, hit: cov.setdefault(key, []).append((r, float(np.mean(hit))))
-        if not is2d:
-            for t, y in ((0, y0), (1, y1)):
-                add(f"y{t} posterior", (o[f"lo{t}"] <= y) & (y <= o[f"hi{t}"]))
-                add(f"y{t} formula", np.abs(y - o[f"mu{t}"]) <= Z * o[f"sd{t}"])
-        else:
+        for t, y in ((0, y0), (1, y1)):                       # 2D: the two marginals of the joint
+            add(f"y{t} posterior", (o[f"lo{t}"] <= y) & (y <= o[f"hi{t}"]))
+            add(f"y{t} formula", np.abs(y - o[f"mu{t}"]) <= Z * o[f"sd{t}"])
+        if is2d:
             for v in ("sh", "in"):
                 if f"joint_hit_{v}" in o: add(f"joint ({v})", o[f"joint_hit_{v}"])
         for v, key in (("sh", "delta_shared"), ("in", "delta_indep")):
