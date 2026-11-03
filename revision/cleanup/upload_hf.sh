@@ -16,9 +16,12 @@ from huggingface_hub import HfApi
 src, repo = sys.argv[1], sys.argv[2]
 rows = [l.rstrip("\n") for l in open(os.path.join(src, "MANIFEST.txt")) if l.strip()]
 table = ["| File | Paper model | Size (MB) | sha256 |", "|---|---|---|---|"]
+PUBLISHED = ("uwyk_published_", "cpfn_published_")       # not re-hosted: linked to their original releases
 for r in rows:
     left, _, _ = r.partition(" | ")
     sha, size, name, *model = left.split()
+    if name.startswith(PUBLISHED):
+        continue
     table.append(f"| `{name}` | {' '.join(model)} | {int(size) / 1e6:.0f} | `{sha[:16]}…` |")
 card = f"""---
 license: other
@@ -26,18 +29,30 @@ tags: [causal-inference, prior-data-fitted-networks, tabular]
 ---
 # Checkpoints: Joint Learning of Factual and Counter-factual Worlds for Causal PFNs
 
-Every checkpoint used for the results of the paper. The training and evaluation code, and how each model was
-trained and evaluated, are in the GitHub repository. Published models we evaluate but did not train (Do-PFN,
-UWYK, the two-stage CausalPFN) are included only where the paper loads a specific file; see their original
-releases for licences.
+Every checkpoint we trained for the results of the paper, including the fixed-SCM Do-PFN runs. The training and
+evaluation code, and how each model was trained and evaluated, are in the GitHub repository.
 
 {chr(10).join(table)}
 
-Full sha256 sums and the original cluster paths are in `MANIFEST.txt`.
+## Published models (not re-hosted)
+
+The paper also evaluates published checkpoints, which are available from their original releases:
+
+- **Do-PFN** (Robertson et al., 2025): https://github.com/jr2021/Do-PFN, file
+  `artifacts/model_submitit_0ccc_id_171b69db_epoch_-1.cpkt`.
+- **UWYK** (Reuter et al., 2026): https://github.com/ArikReuter/Graphs4CausalFoundationModels, branch
+  `reproduce-realcause-results` (commit `c27fba6`, via `git lfs pull`), file
+  `experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt`
+  with its `best_model_config.yaml`.
+- **CausalPFN** (Balazadeh et al., 2025), the published two-stage checkpoint: https://github.com/vdblm/CausalPFN.
+
+Their sha256 sums, as used in the paper, are in `MANIFEST.txt`, so a downloaded copy can be checked against them.
+Full sha256 sums and the original cluster paths of all files are in `MANIFEST.txt`.
 """
 open(os.path.join(src, "README.md"), "w").write(card)
 api = HfApi()
 api.create_repo(repo, repo_type="model", private=False, exist_ok=True)
-api.upload_folder(folder_path=src, repo_id=repo, repo_type="model", commit_message="paper checkpoints")
+api.upload_folder(folder_path=src, repo_id=repo, repo_type="model", commit_message="paper checkpoints",
+                  ignore_patterns=[p + "*" for p in PUBLISHED], delete_patterns=[p + "*" for p in PUBLISHED])
 print("uploaded to https://huggingface.co/" + repo)
 PY
