@@ -44,7 +44,8 @@ The paper also evaluates published checkpoints, which are available from their o
   `reproduce-realcause-results` (commit `c27fba6`, via `git lfs pull`), file
   `experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0/best_model.pt`
   with its `best_model_config.yaml`.
-- **CausalPFN** (Balazadeh et al., 2025), the published two-stage checkpoint: https://github.com/vdblm/CausalPFN.
+- **CausalPFN** (Balazadeh et al., 2025), the published two-stage checkpoint: `causalpfn_v0.pt` from
+  https://huggingface.co/vdblm/causalpfn (code: https://github.com/vdblm/CausalPFN).
 
 Their sha256 sums, as used in the paper, are in `MANIFEST.txt`, so a downloaded copy can be checked against them.
 Full sha256 sums and the original cluster paths of all files are in `MANIFEST.txt`.
