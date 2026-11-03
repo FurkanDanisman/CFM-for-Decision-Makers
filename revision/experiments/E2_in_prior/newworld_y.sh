@@ -5,13 +5,15 @@
 # Three steps, one after the other (no dependency jobs):
 #   bash R-PFN/revision/experiments/E2_in_prior/newworld_y.sh truths   6 CPU jobs: true outcomes, checked against the saved ITEs
 #   bash R-PFN/revision/experiments/E2_in_prior/newworld_y.sh eval     7 GPU jobs: the models again, outcome-level readouts saved
+#   ONLY=uwyk_bin bash R-PFN/revision/experiments/E2_in_prior/newworld_y.sh eval    just UWYK-B (added later, task 13)
 #   bash R-PFN/revision/experiments/E2_in_prior/newworld_y.sh table    per-world coverage table + CSV, committed and pushed
 #   bash R-PFN/revision/experiments/E2_in_prior/newworld_y.sh progress
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/new/data"; RES="$SCRATCH/e2/new/results_y"; NW=1000; mkdir -p logs_e2 "$RES"
 PRIORS=(dopfn uwyk_2d uwyk_1d cpfn_1d cpfn_2d uwyk_1dc)        # gen_e2.sbatch priors 0-5
-MODELS=(0:dopfn_native:dopfn 8:dopfn_joint2d_262k:dopfn 2:uwyk1d:uwyk_1d 6:uwyk1d_cont:uwyk_1dc 3:graph2d:uwyk_2d 4:cpfn1d:cpfn_1d 5:cpfn2d:cpfn_2d)
+MODELS=(0:dopfn_native:dopfn 8:dopfn_joint2d_262k:dopfn 2:uwyk1d:uwyk_1d 6:uwyk1d_cont:uwyk_1dc 3:graph2d:uwyk_2d 4:cpfn1d:cpfn_1d 5:cpfn2d:cpfn_2d
+        13:uwyk_bin:uwyk_1d)
 cnt() { (ls $1 2>/dev/null || true) | wc -l; }
 case "$1" in
 truths)
@@ -25,6 +27,7 @@ eval)
   done
   for spec in "${MODELS[@]}"; do
     IFS=: read -r I M PR <<< "$spec"; T=""; [ "$I" = 8 ] && T="DOPFN_SOFTMAX_TEMP=0"
+    [ -n "${ONLY:-}" ] && [ "$M" != "$ONLY" ] && continue          # ONLY=<model>: submit just that one
     env $T E2_OUTCOMES_ALL=1 E2_DATA=$DATA E2_RESULTS=$RES E2_SHARDS=$((NW / 100)) \
       sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --array=$I --job-name="nwy-$M" "$E2/eval_e2.sbatch"
   done ;;

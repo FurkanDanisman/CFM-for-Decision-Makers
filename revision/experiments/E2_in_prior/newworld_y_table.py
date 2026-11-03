@@ -14,6 +14,7 @@ DATA, RES, NW, OUT = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 Z = 1.959963984540054
 MODELS = [("dopfn_native", "Do-PFN", "dopfn", False), ("dopfn_joint2d_262k", "Do-PFN 2D", "dopfn", True),
           ("uwyk1d", "UWYK (binary T)", "uwyk_1d", False), ("uwyk1d_cont", "UWYK (continuous T)", "uwyk_1dc", False),
+          ("uwyk_bin", "UWYK-B", "uwyk_1d", False),
           ("graph2d", "UWYK 2D", "uwyk_2d", True), ("cpfn1d", "CausalPFN-C", "cpfn_1d", False),
           ("cpfn2d", "CausalPFN-C 2D", "cpfn_2d", True)]
 
