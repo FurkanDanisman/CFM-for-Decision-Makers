@@ -29,9 +29,9 @@ UWYK="$DEPLOY_ROOT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 
 MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb dopfn_joint2d_262k
-        fscm_natural fscm_setup1 fscm_setup2 fscm_setup3 uwyk_bin)
+        fscm_natural fscm_setup1 fscm_setup2 fscm_setup3)
 PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb dopfn
-        dopfn        dopfn       dopfn       dopfn       uwyk_1d)
+        dopfn        dopfn       dopfn       dopfn)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
@@ -68,11 +68,6 @@ case "$MODEL" in
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
       --ckpt "$UWYK_CKPT_DIR/best_model.pt" --config "$UWYK_CKPT_DIR/best_model_config.yaml" \
       --anc-mode v3ab_only --t-encoding target --eval-max-context 1000 --eval-context-seed 43 ;;
-  uwyk_bin)                                   # UWYK-B: UWYK re-trained on binary T, on the binary-T UWYK prior (task 13)
-    python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
-      --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
-      --ckpt "$CK/uwyk_bin_step50000.pt" --config "$CK/uwyk_USED_IN_RESULTS_best_model_config.yaml" \
-      --anc-mode v3ab_only --t-encoding binary --eval-max-context 1000 --eval-context-seed 43 ;;
   uwyk1d_cont)                                # UWYK 1D on its own continuous-T prior
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
