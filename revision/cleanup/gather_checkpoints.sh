@@ -8,7 +8,7 @@
 set -uo pipefail
 KIT="${KIT:-/scratch/furkanbd/rpfn_bench_kit}"; CK="$KIT/R-PFN/Required_checkpoints"; D262="$KIT/checkpoints_dopfn_repro_262k"
 AUR="$KIT/from_aurora"; UW="$KIT/external/uwyk_reproduce/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
-DEST="$KIT/final_checkpoints_paper"; mkdir -p "$DEST"; MAN="$DEST/MANIFEST.txt"; : > "$MAN"
+DEST="$KIT/final_checkpoints_paper"; mkdir -p "$DEST"; MAN="$DEST/MANIFEST.txt"; : > "$MAN"   # rebuilt on every run
 
 grab() {   # grab <source> <name in DEST> <paper model>
   local src="$1" dst="$DEST/$2"
@@ -42,6 +42,18 @@ grab "$CK/cpfn_v0_original.pt"                          cpfn_published_two_stage
 grab "$UW/best_model.pt"                                uwyk_published_best_model.pt          "UWYK (published)"
 grab "$UW/best_model_config.yaml"                       uwyk_published_best_model_config.yaml "UWYK (published) config"
 grab "$D262/backbone_init_s0.pt"                        dopfn_backbone_init_s0.pt             "shared backbone init (Do-PFN 262k + fixed-SCM)"
+echo "== fixed-SCM Do-PFN 1D runs (natural, setup1-3): the final 10k checkpoint and the most recent 300k-run checkpoint"
+for run in natural setup1 setup2 setup3; do
+  grab "$KIT/checkpoints_fixed_scm/$run/dopfn_1d/step_10000_final.pt" "fscm10k_${run}_step10000.pt" "fixed-SCM $run, 10k run (final)"
+  d="$KIT/checkpoints_fixed_scm_300k/$run/dopfn_1d"
+  last=$(ls "$d"/step_*.pt 2>/dev/null | sort -V | tail -1)
+  [ -z "$last" ] && { echo "MISSING  fixed-SCM $run 300k: no step_*.pt in $d"; continue; }
+  st=$(basename "$last" .pt | sed 's/^step_//; s/_final$//')
+  for old in "$DEST"/fscm300k_${run}_step*.pt; do      # a newer step replaces the older copy (setup3 is still training)
+    [ -e "$old" ] && [ "$old" != "$DEST/fscm300k_${run}_step${st}.pt" ] && { rm -f "$old"; sed -i "/fscm300k_${run}_step/d" "$MAN"; }
+  done
+  grab "$last" "fscm300k_${run}_step${st}.pt" "fixed-SCM $run, 300k run (most recent: step $st)"
+done
 echo "== published Do-PFN weights (external/dopfn, whole folder kept in place; files listed here)"
 find "$KIT/external/dopfn" -maxdepth 4 -type f \( -name '*.cpkt' -o -name '*.ckpt' -o -name '*.pt' -o -name '*.pth' \) -exec ls -la {} \; 2>/dev/null
 
