@@ -73,6 +73,32 @@ for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
     row("all", np.ones(len(common), bool))
     for lo, hi in [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]:
         row(f"correlation in [{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
+    # paired tests on the same datasets: Wilcoxon signed-rank on the per-dataset errors (robust to the few extreme
+    # datasets) and a paired t-test on log(2D / 1D) (the geometric mean); Holm over the bins x outcomes of this family
+    from scipy import stats
+    bins = [("all", np.ones(len(common), bool))] + [(f"[{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
+            for lo, hi in [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]]
+    T = []
+    for bl, m in bins:
+        if m.sum() < 10:
+            continue
+        for c, name in enumerate(("Y0", "Y1", "ITE")):
+            a1, a2 = A[m, c], B[m, c]
+            pw = stats.wilcoxon(a2, a1).pvalue
+            lr = np.log(a2 / a1); pt = stats.ttest_1samp(lr, 0.0).pvalue
+            T.append((bl, name, int(m.sum()), float(np.exp(lr.mean())), pw, pt))
+    def holm_(ps):
+        order = np.argsort(ps); rej = np.zeros(len(ps), bool)
+        for k, i in enumerate(order):
+            if ps[i] <= 0.05 / (len(ps) - k): rej[i] = True
+            else: break
+        return rej
+    rw, rt = holm_(np.array([t[4] for t in T])), holm_(np.array([t[5] for t in T]))
+    say(f"   paired tests, 2D vs 1D on the same datasets (Holm over the {len(T)} tests of this family, alpha 0.05)")
+    say(f"   {'bin':14s} {'outcome':7s} {'n':>5s}  {'geo-mean 2D/1D':>15s}  {'Wilcoxon p':>11s}  {'t on log p':>11s}  result")
+    for (bl, name, n, g, pw, pt), a_, b_ in zip(T, rw, rt):
+        res = ("2D better" if g < 1 else "2D worse") if (a_ and b_) else ("2D better (one test)" if g < 1 else "2D worse (one test)") if (a_ or b_) else "not significant"
+        say(f"   {bl:14s} {name:7s} {n:5d}  {g:15.3f}  {pw:11.2g}  {pt:11.2g}  {res}")
     say(f"   (datasets without a predicted correlation: {int(np.isnan(rr).sum())})")
 open(OUT, "w").write("\n".join(lines) + "\n")
 print("wrote", OUT)
