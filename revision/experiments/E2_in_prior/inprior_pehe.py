@@ -67,7 +67,7 @@ rho_all = {}
 for row in csv.DictReader(open(RHO_CSV)):
     rho_all.setdefault(row["model"], {})[int(row["shard"]) * 100 + int(row["dataset"])] = float(row["rho_median"])
 
-say("In-prior point estimation, 1D vs 2D on the same datasets (R = 1000, one new SCM each; shared-noise truths)")
+say("In-prior point estimation, 1D vs 2D on the same datasets (R = 1000, one new SCM each)")
 say("RMSE per dataset over its queries, divided by that dataset's sigma_Y (sd of its observed outcomes), as in the paper;")
 say("Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs the realised ITE; truths with shared noise (y0, y1,")
 say("delta_shared) and with independent noise in the two outcomes (y0_ind, y1_ind, delta_indep)")
