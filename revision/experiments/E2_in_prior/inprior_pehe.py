@@ -57,17 +57,17 @@ for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
     say(f"   {'model':8s} {'n':>5s}  {'Y0':>16s}  {'Y1':>16s}  {'ITE':>16s}")
     for lab, M in (("1D", A), ("2D", B)):
         say(f"   {lab:8s} {len(M):5d}  " + "  ".join(f"{M[:, c].mean():8.4f} ({se(M[:, c]):.4f})" for c in range(3)))
-    say(f"   paired ratio 2D / 1D per dataset, mean (SE), and share of datasets where 2D is lower")
-    say(f"   {'datasets':34s} {'n':>5s}  {'Y0':>20s}  {'Y1':>20s}  {'ITE':>20s}")
+    say(f"   RMSE per bin of the 2D model's predicted correlation: mean (SE) and [median] over datasets")
+    say(f"   {'datasets':30s} {'n':>5s}  {'Y0 1D':>24s} {'Y0 2D':>24s}  {'Y1 1D':>24s} {'Y1 2D':>24s}  {'ITE 1D':>24s} {'ITE 2D':>24s}")
+    rr = np.array([rho_all.get(rho_name, {}).get(r, np.nan) for r in common])
     def row(label, m):
         if m.sum() < 2:
-            say(f"   {label:34s} {int(m.sum()):5d}  (too few)"); return
-        q = B[m] / A[m]
-        say(f"   {label:34s} {int(m.sum()):5d}  " + "  ".join(f"{q[:, c].mean():6.3f} ({se(q[:, c]):.3f}) {100 * (q[:, c] < 1).mean():3.0f}%" for c in range(3)))
+            say(f"   {label:30s} {int(m.sum()):5d}  (too few)"); return
+        f = lambda M, c: f"{M[m, c].mean():9.4f} ({se(M[m, c]):.4f}) [{np.median(M[m, c]):.4f}]"
+        say(f"   {label:30s} {int(m.sum()):5d}  " + "  ".join(f"{f(A, c):>24s} {f(B, c):>24s}" for c in range(3)))
     row("all", np.ones(len(common), bool))
-    rr = np.array([rho_all.get(rho_name, {}).get(r, np.nan) for r in common])
     for lo, hi in [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]:
-        row(f"predicted correlation in [{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
+        row(f"correlation in [{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
     say(f"   (datasets without a predicted correlation: {int(np.isnan(rr).sum())})")
 open(OUT, "w").write("\n".join(lines) + "\n")
 print("wrote", OUT)
