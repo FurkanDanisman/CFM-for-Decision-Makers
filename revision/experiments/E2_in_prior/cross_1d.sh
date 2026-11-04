@@ -25,5 +25,5 @@ progress)
   for spec in "${JOBS[@]}"; do IFS=: read -r I M PR <<< "$spec"; echo "$M on $PR: $(cnt "$CROSS/on_$PR/$M/outall_shard*.npz")/$((NW / 100)) shards"; done ;;
 table)
   sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-pehe -o "$SCRATCH/inprior_pehe.log" \
-    --wrap "cd $KIT && source venv/bin/activate && python $E2/inprior_pehe.py $DATA $RES $REPO/revision/results/d262t1/rho_pred_inprior.csv $REPO/revision/results/d262t1/inprior_pehe.txt $CROSS" ;;
+    --wrap "cd $KIT && $KIT/venv/bin/python $E2/inprior_pehe.py $DATA $RES $REPO/revision/results/d262t1/rho_pred_inprior.csv $REPO/revision/results/d262t1/inprior_pehe.txt $CROSS" ;;
 esac
