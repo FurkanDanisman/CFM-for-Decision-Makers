@@ -1,5 +1,6 @@
 #!/bin/bash
-# In-prior point estimation on the SAME datasets: the 1D models of UWYK and CausalPFN-C evaluated on their 2D
+# In-prior point estimation on the SAME datasets: the 1D models of UWYK and CausalPFN-C, and the matched-resolution /
+# matched-label ablations of all three families (tasks 13-18), evaluated on their 2D
 # model's in-prior datasets (uwyk_2d, cpfn_2d; R = 1000, one new SCM each, shared noise), with every outcome-level
 # readout saved (E2_OUTCOMES_ALL). Do-PFN 1D and 2D already share the dopfn datasets (results_y).
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh eval       2 GPU jobs (resubmit to resume: done shards are skipped)
@@ -9,7 +10,8 @@ set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/new/data"; RES="$SCRATCH/e2/new/results_y"; CROSS="$SCRATCH/e2/new/results_y_cross"; NW=1000
 mkdir -p logs_e2 "$CROSS"
-JOBS=(2:uwyk1d:uwyk_2d 4:cpfn1d:cpfn_2d)
+JOBS=(2:uwyk1d:uwyk_2d 4:cpfn1d:cpfn_2d
+      13:dopfn1d_mr:dopfn 14:dopfn1d_ml:dopfn 15:uwyk1d_mr:uwyk_2d 16:uwyk1d_ml:uwyk_2d 17:cpfn1d_mr:cpfn_2d 18:cpfn1d_ml:cpfn_2d)
 cnt() { (ls $1 2>/dev/null || true) | wc -l; }
 case "$1" in
 eval)

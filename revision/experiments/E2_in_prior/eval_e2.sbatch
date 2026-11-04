@@ -24,14 +24,17 @@ mkdir -p logs_e2
 DEPLOY_ROOT="${DEPLOY_ROOT:-$PWD}"
 REPO="$DEPLOY_ROOT/R-PFN"
 CK="$REPO/Required_checkpoints"
+FC="$DEPLOY_ROOT/final_checkpoints_paper"      # the paper checkpoints gathered by revision/cleanup/gather_checkpoints.sh
 export CAUSALPFN="$DEPLOY_ROOT/external/causalpfn" DOPFN_ROOT="$DEPLOY_ROOT/external/dopfn"
 UWYK="$DEPLOY_ROOT/external/uwyk_reproduce"
 UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlytest_full_conditioning_16773252.0"
 
 MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb dopfn_joint2d_262k
-        fscm_natural fscm_setup1 fscm_setup2 fscm_setup3)
+        fscm_natural fscm_setup1 fscm_setup2 fscm_setup3
+        dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml)
 PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb dopfn
-        dopfn        dopfn       dopfn       dopfn)
+        dopfn        dopfn       dopfn       dopfn
+        dopfn      dopfn      uwyk_2d   uwyk_2d   cpfn_2d   cpfn_2d)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 # E2_PRIOR (optional): evaluate this model on another prior's data, e.g. a 1D model on its 2D model's datasets
@@ -70,6 +73,19 @@ case "$MODEL" in
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
       --ckpt "$UWYK_CKPT_DIR/best_model.pt" --config "$UWYK_CKPT_DIR/best_model_config.yaml" \
       --anc-mode v3ab_only --t-encoding target --eval-max-context 1000 --eval-context-seed 43 ;;
+  dopfn1d_mr|dopfn1d_ml)                      # ablations (tasks 13-14): Do-PFN 1D at 262k, J=10 / both arms; temperature off
+    DOPFN_SOFTMAX_TEMP=0 DOPFN_CKPT="$FC/$([ "$MODEL" = dopfn1d_mr ] && echo dopfn1d_J10_step262144.pt || echo dopfn1d_botharms_step262144.pt)" \
+      python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset "$DATASET" ;;
+  uwyk1d_mr|uwyk1d_ml)                        # ablations (tasks 15-16): UWYK J=32 no binarise / both arms, as bodik/run.sh
+    if [ "$MODEL" = uwyk1d_mr ]; then K="$FC/uwyk_mr_D_j32_step50000.pt"; C="$FC/uwyk_mr_D_j32_config.yaml"; E=target
+    else K="$FC/uwyk_ml_C_botharms_step50000.pt"; C="$FC/uwyk_ml_C_botharms_config.yaml"; E=binary; fi
+    python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
+      --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" --ckpt "$K" --config "$C" \
+      --anc-mode v3ab_only --t-encoding "$E" --eval-max-context 1000 --eval-context-seed 43 ;;
+  cpfn1d_mr|cpfn1d_ml)                        # ablations (tasks 17-18): CausalPFN-C 1D J=32 / both arms
+    CKPT="$FC/$([ "$MODEL" = cpfn1d_mr ] && echo cpfnC_mr_1d_j32_step50000.pt || echo cpfnC_ml_1d_botharms_step50000.pt)" \
+    EVAL_MAX_CONTEXT= EVAL_CONTEXT_SEED=1 STD_MODE=per_arm COMPILE=0 SKIP_EM=1 \
+      python -u "$REPO/case_study/density_eval/eval_cpfn1d_perarm.py" --dataset "$DATASET" ;;
   uwyk1d_cont)                                # UWYK 1D on its own continuous-T prior
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \

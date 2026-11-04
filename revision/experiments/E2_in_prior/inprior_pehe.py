@@ -16,10 +16,14 @@ from common import SHARD                                   # datasets per shard 
 
 DATA, RES, RHO_CSV, OUT, CROSS = sys.argv[1:6]
 NW = 1000
-FAMILIES = [  # (family, data prior, (1D dir, 1D model), (2D dir, 2D model), name of the 2D model in RHO_CSV)
-    ("Do-PFN", "dopfn", (RES, "dopfn_native"), (RES, "dopfn_joint2d_262k"), "Do-PFN 2D"),
-    ("UWYK", "uwyk_2d", (os.path.join(CROSS, "on_uwyk_2d"), "uwyk1d"), (RES, "graph2d"), "UWYK 2D"),
-    ("CausalPFN-C", "cpfn_2d", (os.path.join(CROSS, "on_cpfn_2d"), "cpfn1d"), (RES, "cpfn2d"), "CausalPFN-C 2D")]
+CD = lambda prior: os.path.join(CROSS, f"on_{prior}")
+FAMILIES = [  # (family, data prior, [(baseline label, dir, model)], (2D dir, 2D model))
+    ("Do-PFN", "dopfn", [("1D", RES, "dopfn_native"), ("matched resolution", CD("dopfn"), "dopfn1d_mr"),
+                         ("matched label", CD("dopfn"), "dopfn1d_ml")], (RES, "dopfn_joint2d_262k")),
+    ("UWYK", "uwyk_2d", [("1D", CD("uwyk_2d"), "uwyk1d"), ("matched resolution", CD("uwyk_2d"), "uwyk1d_mr"),
+                         ("matched label", CD("uwyk_2d"), "uwyk1d_ml")], (RES, "graph2d")),
+    ("CausalPFN-C", "cpfn_2d", [("1D", CD("cpfn_2d"), "cpfn1d"), ("matched resolution", CD("cpfn_2d"), "cpfn1d_mr"),
+                                ("matched label", CD("cpfn_2d"), "cpfn1d_ml")], (RES, "cpfn2d"))]
 lines = []
 say = lambda s="": (print(s), lines.append(s))
 se = lambda a: np.std(a, ddof=1) / np.sqrt(len(a))
@@ -64,55 +68,53 @@ for row in csv.DictReader(open(RHO_CSV)):
 say("In-prior point estimation, 1D vs 2D on the same datasets (R = 1000, one new SCM each; shared-noise truths)")
 say("RMSE per dataset over its queries, divided by that dataset's sigma_Y (sd of its observed outcomes), as in the paper;")
 say("Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs delta_shared")
-for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
-    p1, p2 = load(d1, m1), load(d2, m2)
-    say(); say(f"== {fam}  (data: {prior}; 1D = {m1}, 2D = {m2})")
-    if not p1 or not p2:
-        say(f"   missing predictions: 1D {len(p1)} datasets ({d1}/{m1}), 2D {len(p2)} datasets ({d2}/{m2})"); continue
-    common = sorted(set(p1) & set(p2))
-    A = np.array([score(prior, {r: p1[r]})[r] for r in common]); B = np.array([score(prior, {r: p2[r]})[r] for r in common])
-    say(f"   {'model':8s} {'n':>5s}  {'Y0':>16s}  {'Y1':>16s}  {'ITE':>16s}")
-    for lab, M in (("1D", A), ("2D", B)):
-        say(f"   {lab:8s} {len(M):5d}  " + "  ".join(f"{M[:, c].mean():8.4f} ({se(M[:, c]):.4f})" for c in range(3)))
-    say(f"   RMSE per bin of the TRUE correlation of the dataset's SCM: mean (SE) and [median] over datasets")
-    say(f"   {'datasets':30s} {'n':>5s}  {'Y0 1D':>24s} {'Y0 2D':>24s}  {'Y1 1D':>24s} {'Y1 2D':>24s}  {'ITE 1D':>24s} {'ITE 2D':>24s}")
-    rr = np.array([rho_true(prior, r) for r in common])          # TRUE correlation of the data-generating SCM
-    say(f"   true correlation over datasets: median {np.nanmedian(rr):.2f}, 5-95% {np.nanpercentile(rr, 5):.2f} to "
-        f"{np.nanpercentile(rr, 95):.2f}, undefined for {int(np.isnan(rr).sum())}")
-    def row(label, m):
-        if m.sum() < 2:
-            say(f"   {label:30s} {int(m.sum()):5d}  (too few)"); return
-        f = lambda M, c: f"{M[m, c].mean():9.4f} ({se(M[m, c]):.4f}) [{np.median(M[m, c]):.4f}]"
-        say(f"   {label:30s} {int(m.sum()):5d}  " + "  ".join(f"{f(A, c):>24s} {f(B, c):>24s}" for c in range(3)))
-    row("all", np.ones(len(common), bool))
-    for lo, hi in [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]:
-        row(f"correlation in [{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
-    # paired tests on the same datasets: Wilcoxon signed-rank on the per-dataset errors (robust to the few extreme
-    # datasets) and a paired t-test on log(2D / 1D) (the geometric mean); Holm over the bins x outcomes of this family
-    from scipy import stats
-    bins = [("all", np.ones(len(common), bool))] + [(f"[{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi))
-            for lo, hi in [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]]
+from scipy import stats
+def holm_(ps):
+    order = np.argsort(ps); rej = np.zeros(len(ps), bool)
+    for k, i in enumerate(order):
+        if ps[i] <= 0.05 / (len(ps) - k): rej[i] = True
+        else: break
+    return rej
+BINS = [(-1, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 0.9), (0.9, 1.01)]
+for fam, prior, bases, (d2, m2) in FAMILIES:
+    say(); say(f"== {fam}  (data: {prior}; 2D = {m2}; baselines: " + ", ".join(f"{l} = {m}" for l, _, m in bases) + ")")
+    p2 = load(d2, m2)
+    if not p2:
+        say(f"   missing 2D predictions ({d2}/{m2})"); continue
+    have = [(l, load(d, m)) for l, d, m in bases]
+    for l, p in have:
+        if not p: say(f"   missing predictions for {l}")
+    have = [(l, p) for l, p in have if p]
+    common = sorted(set(p2).intersection(*[set(p) for _, p in have]))
+    S2 = np.array([score(prior, {r: p2[r]})[r] for r in common])
+    SB = {l: np.array([score(prior, {r: p[r]})[r] for r in common]) for l, p in have}
+    rr = np.array([rho_true(prior, r) for r in common])
+    say(f"   {len(common)} datasets; true correlation of the SCM: median {np.nanmedian(rr):.2f}, 5-95% "
+        f"{np.nanpercentile(rr, 5):.2f} to {np.nanpercentile(rr, 95):.2f}, undefined for {int(np.isnan(rr).sum())}")
+    masks = [("all", np.ones(len(common), bool))] + [(f"[{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi)) for lo, hi in BINS]
+    models = [(l, SB[l]) for l, _ in have] + [("2D", S2)]
+    for c, name in enumerate(("Y0", "Y1", "ITE")):
+        say(f"   {name} error / sigma_Y by bin of the TRUE correlation: mean (SE) [median]")
+        say(f"   {'bin':14s} {'n':>5s}  " + "  ".join(f"{l:>26s}" for l, _ in models))
+        for bl, m in masks:
+            if m.sum() < 2:
+                say(f"   {bl:14s} {int(m.sum()):5d}  (too few)"); continue
+            say(f"   {bl:14s} {int(m.sum()):5d}  " + "  ".join(
+                f"{M[m, c].mean():8.4f} ({se(M[m, c]):.4f}) [{np.median(M[m, c]):.4f}]".rjust(26) for _, M in models))
     T = []
-    for bl, m in bins:
-        if m.sum() < 10:
-            continue
-        for c, name in enumerate(("Y0", "Y1", "ITE")):
-            a1, a2 = A[m, c], B[m, c]
-            pw = stats.wilcoxon(a2, a1).pvalue
-            lr = np.log(a2 / a1); pt = stats.ttest_1samp(lr, 0.0).pvalue
-            T.append((bl, name, int(m.sum()), float(np.exp(lr.mean())), pw, pt))
-    def holm_(ps):
-        order = np.argsort(ps); rej = np.zeros(len(ps), bool)
-        for k, i in enumerate(order):
-            if ps[i] <= 0.05 / (len(ps) - k): rej[i] = True
-            else: break
-        return rej
-    rw, rt = holm_(np.array([t[4] for t in T])), holm_(np.array([t[5] for t in T]))
-    say(f"   paired tests, 2D vs 1D on the same datasets (Holm over the {len(T)} tests of this family, alpha 0.05)")
-    say(f"   {'bin':14s} {'outcome':7s} {'n':>5s}  {'geo-mean 2D/1D':>15s}  {'Wilcoxon p':>11s}  {'t on log p':>11s}  result")
-    for (bl, name, n, g, pw, pt), a_, b_ in zip(T, rw, rt):
-        res = ("2D better" if g < 1 else "2D worse") if (a_ and b_) else ("2D better (one test)" if g < 1 else "2D worse (one test)") if (a_ or b_) else "not significant"
-        say(f"   {bl:14s} {name:7s} {n:5d}  {g:15.3f}  {pw:11.2g}  {pt:11.2g}  {res}")
-    say(f"   (datasets with undefined true correlation: {int(np.isnan(rr).sum())})")
+    for l, M in SB.items():
+        for bl, m in masks:
+            if m.sum() < 10: continue
+            for c, name in enumerate(("Y0", "Y1", "ITE")):
+                a1, a2 = M[m, c], S2[m, c]; lr = np.log(a2 / a1)
+                T.append((l, bl, name, int(m.sum()), float(np.exp(lr.mean())), stats.wilcoxon(a2, a1).pvalue,
+                          stats.ttest_1samp(lr, 0.0).pvalue))
+    rw, rt = holm_(np.array([t[5] for t in T])), holm_(np.array([t[6] for t in T]))
+    say(f"   paired tests, 2D vs each baseline on the same datasets (Wilcoxon on the errors; t-test on log(2D/baseline);")
+    say(f"   Holm over the {len(T)} tests of this family, alpha 0.05)")
+    say(f"   {'baseline':20s} {'bin':14s} {'outcome':7s} {'n':>5s}  {'geo-mean 2D/base':>16s}  {'Wilcoxon p':>11s}  {'t-test p':>9s}  result")
+    for (l, bl, name, n, g, pw, pt), a_, b_ in zip(T, rw, rt):
+        res = ("2D better" if g < 1 else "2D worse") if (a_ and b_) else (("2D better" if g < 1 else "2D worse") + " (one test)") if (a_ or b_) else "not significant"
+        say(f"   {l:20s} {bl:14s} {name:7s} {n:5d}  {g:16.3f}  {pw:11.2g}  {pt:9.2g}  {res}")
 open(OUT, "w").write("\n".join(lines) + "\n")
 print("wrote", OUT)
