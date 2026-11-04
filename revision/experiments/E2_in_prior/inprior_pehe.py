@@ -4,8 +4,7 @@ python inprior_pehe.py DATA RES RHO_CSV OUT_TXT     (DATA = $SCRATCH/e2/new/data
                                                     RHO_CSV = R-PFN/revision/results/d262t1/rho_pred_inprior.csv)
 Predictions: RES/<model>/outall_shard*.npz from newworld_y.sh eval (per query mean mu0, mu1 of each predicted outcome;
 for the 2D models the means of the two marginals of the joint). Point estimate of the ITE: mu1 - mu0.
-Truths: truths_y/r###.npz y0, y1 (the prior's own pair, shared noise; CausalPFN-C 1D: its target m0, m1) and
-truths/r###.npz delta_shared. Per dataset: RMSE over its 500 queries; reported: mean over datasets (SE).
+Truths: truths_y/r###.npz y0, y1 (the prior's realised pair) and truths/r###.npz delta_shared, the same for every model. Per dataset: RMSE over its 500 queries; reported: mean over datasets (SE).
 The Y RMSEs are against the realised outcomes, so they include the outcome noise, which is the same for every model
 scored on the same data. Do-PFN 1D and 2D are scored on the same 1000 datasets, so they are also compared per dataset
 (paired), overall and by the 2D model's predicted correlation on that dataset (rho_pred_inprior.csv)."""
@@ -39,7 +38,7 @@ for model, name, prior in MODELS:
     for r, (mu0, mu1) in got.items():
         ty = np.load(os.path.join(DATA, prior, "truths_y", f"r{r:03d}.npz"))
         td = np.load(os.path.join(DATA, prior, "truths", f"r{r:03d}.npz"))
-        y0, y1 = (ty["m0"], ty["m1"]) if prior == "cpfn_1d" else (ty["y0"], ty["y1"])
+        y0, y1 = ty["y0"], ty["y1"]                        # the same truth for every model (no special case)
         d = td["delta_shared"]
         rmse = lambda a, b: float(np.sqrt(np.mean((a - b) ** 2)))
         rows[r] = (rmse(mu0, y0), rmse(mu1, y1), rmse(mu1 - mu0, d))
