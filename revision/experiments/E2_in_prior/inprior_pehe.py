@@ -58,7 +58,9 @@ def score(prior, preds):
         d = np.load(os.path.join(DATA, prior, "truths", f"r{r:03d}.npz"))["delta_shared"]
         sy = float(np.std(np.load(os.path.join(DATA, prior, f"shard{r // SHARD}", "complexmech", "5node", "path_TY",
                                                "hide_0.0", f"r{r:03d}.npz"))["Y_train"]))   # sd of the observed outcomes
-        rows[r] = (rmse(mu0, ty["y0"]) / sy, rmse(mu1, ty["y1"]) / sy, rmse(mu1 - mu0, d) / sy)
+        di = np.load(os.path.join(DATA, prior, "truths", f"r{r:03d}.npz"))["delta_indep"]
+        rows[r] = (rmse(mu0, ty["y0"]) / sy, rmse(mu1, ty["y1"]) / sy, rmse(mu1 - mu0, d) / sy,          # shared noise
+                   rmse(mu0, ty["y0_ind"]) / sy, rmse(mu1, ty["y1_ind"]) / sy, rmse(mu1 - mu0, di) / sy)  # independent
     return rows
 
 rho_all = {}
@@ -67,7 +69,8 @@ for row in csv.DictReader(open(RHO_CSV)):
 
 say("In-prior point estimation, 1D vs 2D on the same datasets (R = 1000, one new SCM each; shared-noise truths)")
 say("RMSE per dataset over its queries, divided by that dataset's sigma_Y (sd of its observed outcomes), as in the paper;")
-say("Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs delta_shared")
+say("Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs the realised ITE; truths with shared noise (y0, y1,")
+say("delta_shared) and with independent noise in the two outcomes (y0_ind, y1_ind, delta_indep)")
 from scipy import stats
 def holm_(ps):
     order = np.argsort(ps); rej = np.zeros(len(ps), bool)
@@ -93,8 +96,8 @@ for fam, prior, bases, (d2, m2) in FAMILIES:
         f"{np.nanpercentile(rr, 5):.2f} to {np.nanpercentile(rr, 95):.2f}, undefined for {int(np.isnan(rr).sum())}")
     masks = [("all", np.ones(len(common), bool))] + [(f"[{max(lo, -1):.1f}, {min(hi, 1):.1f})", (rr >= lo) & (rr < hi)) for lo, hi in BINS]
     models = [(l, SB[l]) for l, _ in have] + [("2D", S2)]
-    for c, name in enumerate(("Y0", "Y1", "ITE")):
-        say(f"   {name} error / sigma_Y by bin of the TRUE correlation: mean (SE) [median]")
+    for c, name in enumerate(("Y0 shared", "Y1 shared", "ITE shared", "Y0 indep", "Y1 indep", "ITE indep")):
+        say(f"   {name}: error / sigma_Y by bin of the TRUE correlation: mean (SE) [median]")
         say(f"   {'bin':14s} {'n':>5s}  " + "  ".join(f"{l:>26s}" for l, _ in models))
         for bl, m in masks:
             if m.sum() < 2:
@@ -105,16 +108,16 @@ for fam, prior, bases, (d2, m2) in FAMILIES:
     for l, M in SB.items():
         for bl, m in masks:
             if m.sum() < 10: continue
-            for c, name in enumerate(("Y0", "Y1", "ITE")):
+            for c, name in enumerate(("Y0 shared", "Y1 shared", "ITE shared", "Y0 indep", "Y1 indep", "ITE indep")):
                 a1, a2 = M[m, c], S2[m, c]; lr = np.log(a2 / a1)
                 T.append((l, bl, name, int(m.sum()), float(np.exp(lr.mean())), stats.wilcoxon(a2, a1).pvalue,
                           stats.ttest_1samp(lr, 0.0).pvalue))
     rw, rt = holm_(np.array([t[5] for t in T])), holm_(np.array([t[6] for t in T]))
     say(f"   paired tests, 2D vs each baseline on the same datasets (Wilcoxon on the errors; t-test on log(2D/baseline);")
     say(f"   Holm over the {len(T)} tests of this family, alpha 0.05)")
-    say(f"   {'baseline':20s} {'bin':14s} {'outcome':7s} {'n':>5s}  {'geo-mean 2D/base':>16s}  {'Wilcoxon p':>11s}  {'t-test p':>9s}  result")
+    say(f"   {'baseline':20s} {'bin':14s} {'outcome':11s} {'n':>5s}  {'geo-mean 2D/base':>16s}  {'Wilcoxon p':>11s}  {'t-test p':>9s}  result")
     for (l, bl, name, n, g, pw, pt), a_, b_ in zip(T, rw, rt):
         res = ("2D better" if g < 1 else "2D worse") if (a_ and b_) else (("2D better" if g < 1 else "2D worse") + " (one test)") if (a_ or b_) else "not significant"
-        say(f"   {l:20s} {bl:14s} {name:7s} {n:5d}  {g:16.3f}  {pw:11.2g}  {pt:9.2g}  {res}")
+        say(f"   {l:20s} {bl:14s} {name:11s} {n:5d}  {g:16.3f}  {pw:11.2g}  {pt:9.2g}  {res}")
 open(OUT, "w").write("\n".join(lines) + "\n")
 print("wrote", OUT)
