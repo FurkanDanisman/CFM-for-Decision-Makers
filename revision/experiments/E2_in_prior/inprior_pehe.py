@@ -6,11 +6,13 @@ python inprior_pehe.py DATA RES RHO_CSV OUT_TXT CROSS
   CROSS = $SCRATCH/e2/new/results_y_cross cross_1d.sh eval: the UWYK and CausalPFN-C 1D models on their 2D model's data
 Predictions: <dir>/<model>/outall_shard*.npz, the per-query means mu0, mu1 of each predicted outcome (2D: the means of
 the two marginals of the joint). ITE point estimate: mu1 - mu0. Every model is scored against the same truth.
-Per dataset: RMSE over its queries. The Y RMSEs are against the realised outcomes and so include the outcome noise,
+Per dataset: RMSE over its queries divided by sigma_Y, the sd of that dataset's observed outcomes Y_train. The Y RMSEs are against the realised outcomes and so include the outcome noise,
 which is identical for the two models of a pair (same datasets, same queries). Per family: mean RMSE (SE) of each model,
 and the paired ratio 2D / 1D per dataset, overall and by the 2D model's predicted correlation on that dataset."""
 import csv, glob, os, re, sys
 import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from common import SHARD                                   # datasets per shard of the harness input
 
 DATA, RES, RHO_CSV, OUT, CROSS = sys.argv[1:6]
 NW = 1000
@@ -38,7 +40,9 @@ def score(prior, preds):
     for r, (mu0, mu1) in preds.items():
         ty = np.load(os.path.join(DATA, prior, "truths_y", f"r{r:03d}.npz"))
         d = np.load(os.path.join(DATA, prior, "truths", f"r{r:03d}.npz"))["delta_shared"]
-        rows[r] = (rmse(mu0, ty["y0"]), rmse(mu1, ty["y1"]), rmse(mu1 - mu0, d))
+        sy = float(np.std(np.load(os.path.join(DATA, prior, f"shard{r // SHARD}", "complexmech", "5node", "path_TY",
+                                               "hide_0.0", f"r{r:03d}.npz"))["Y_train"]))   # sd of the observed outcomes
+        rows[r] = (rmse(mu0, ty["y0"]) / sy, rmse(mu1, ty["y1"]) / sy, rmse(mu1 - mu0, d) / sy)
     return rows
 
 rho_all = {}
@@ -46,7 +50,8 @@ for row in csv.DictReader(open(RHO_CSV)):
     rho_all.setdefault(row["model"], {})[int(row["shard"]) * 100 + int(row["dataset"])] = float(row["rho_median"])
 
 say("In-prior point estimation, 1D vs 2D on the same datasets (R = 1000, one new SCM each; shared-noise truths)")
-say("RMSE per dataset over its queries; Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs delta_shared")
+say("RMSE per dataset over its queries, divided by that dataset's sigma_Y (sd of its observed outcomes), as in the paper;")
+say("Y0, Y1: predicted mean vs realised outcome; ITE: mu1 - mu0 vs delta_shared")
 for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
     p1, p2 = load(d1, m1), load(d2, m2)
     say(); say(f"== {fam}  (data: {prior}; 1D = {m1}, 2D = {m2})")
