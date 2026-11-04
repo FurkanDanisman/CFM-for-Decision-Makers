@@ -8,7 +8,7 @@ Predictions: <dir>/<model>/outall_shard*.npz, the per-query means mu0, mu1 of ea
 the two marginals of the joint). ITE point estimate: mu1 - mu0. Every model is scored against the same truth.
 Per dataset: RMSE over its queries divided by sigma_Y, the sd of that dataset's observed outcomes Y_train. The Y RMSEs are against the realised outcomes and so include the outcome noise,
 which is identical for the two models of a pair (same datasets, same queries). Per family: mean RMSE (SE) of each model,
-and the paired ratio 2D / 1D per dataset, overall and by the 2D model's predicted correlation on that dataset."""
+and paired tests, overall and by the TRUE correlation of each dataset's SCM (estimated from its truths, see rho_true)."""
 import csv, glob, os, re, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -33,6 +33,18 @@ def load(d, model):
             if r < NW:
                 out[r] = (z["mu0"][j].astype(np.float64), z["mu1"][j].astype(np.float64))
     return out
+
+def rho_true(prior, r):
+    """correlation of the two outcomes' noise in the dataset's SCM, from its truths (500 queries):
+    Cov_noise = Cov(y1, y0) - Cov(y1, y0_ind), Var_noise(y0) = Var(y0) - Cov(y0, y0_ind),
+    Var_noise(y1) = Var(y1) - Cov(y1, y1_ind); the covariate-driven part is common to both terms and cancels."""
+    t = np.load(os.path.join(DATA, prior, "truths_y", f"r{r:03d}.npz"))
+    y0, y1, y0i, y1i = (t[k].astype(np.float64) for k in ("y0", "y1", "y0_ind", "y1_ind"))
+    c = lambda a, b: float(np.cov(a, b)[0, 1])
+    v0, v1 = c(y0, y0) - c(y0, y0i), c(y1, y1) - c(y1, y1i)
+    if v0 <= 1e-12 or v1 <= 1e-12:
+        return np.nan                                  # no noise in one outcome: correlation undefined
+    return float(np.clip((c(y1, y0) - c(y1, y0i)) / np.sqrt(v0 * v1), -1, 1))
 
 def score(prior, preds):
     rows = {}
@@ -62,9 +74,11 @@ for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
     say(f"   {'model':8s} {'n':>5s}  {'Y0':>16s}  {'Y1':>16s}  {'ITE':>16s}")
     for lab, M in (("1D", A), ("2D", B)):
         say(f"   {lab:8s} {len(M):5d}  " + "  ".join(f"{M[:, c].mean():8.4f} ({se(M[:, c]):.4f})" for c in range(3)))
-    say(f"   RMSE per bin of the 2D model's predicted correlation: mean (SE) and [median] over datasets")
+    say(f"   RMSE per bin of the TRUE correlation of the dataset's SCM: mean (SE) and [median] over datasets")
     say(f"   {'datasets':30s} {'n':>5s}  {'Y0 1D':>24s} {'Y0 2D':>24s}  {'Y1 1D':>24s} {'Y1 2D':>24s}  {'ITE 1D':>24s} {'ITE 2D':>24s}")
-    rr = np.array([rho_all.get(rho_name, {}).get(r, np.nan) for r in common])
+    rr = np.array([rho_true(prior, r) for r in common])          # TRUE correlation of the data-generating SCM
+    say(f"   true correlation over datasets: median {np.nanmedian(rr):.2f}, 5-95% {np.nanpercentile(rr, 5):.2f} to "
+        f"{np.nanpercentile(rr, 95):.2f}, undefined for {int(np.isnan(rr).sum())}")
     def row(label, m):
         if m.sum() < 2:
             say(f"   {label:30s} {int(m.sum()):5d}  (too few)"); return
@@ -99,6 +113,6 @@ for fam, prior, (d1, m1), (d2, m2), rho_name in FAMILIES:
     for (bl, name, n, g, pw, pt), a_, b_ in zip(T, rw, rt):
         res = ("2D better" if g < 1 else "2D worse") if (a_ and b_) else ("2D better (one test)" if g < 1 else "2D worse (one test)") if (a_ or b_) else "not significant"
         say(f"   {bl:14s} {name:7s} {n:5d}  {g:15.3f}  {pw:11.2g}  {pt:11.2g}  {res}")
-    say(f"   (datasets without a predicted correlation: {int(np.isnan(rr).sum())})")
+    say(f"   (datasets with undefined true correlation: {int(np.isnan(rr).sum())})")
 open(OUT, "w").write("\n".join(lines) + "\n")
 print("wrote", OUT)
