@@ -34,6 +34,8 @@ PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    d
         dopfn        dopfn       dopfn       dopfn)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
+# E2_PRIOR (optional): evaluate this model on another prior's data, e.g. a 1D model on its 2D model's datasets
+PRIOR=${E2_PRIOR:-${PRIORS[$I]}}
 export DATASET=CMECH_n5 DENSITY_DUMP=1        # all 100 queries of every world
 source "$DEPLOY_ROOT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 PYTHONPATH="$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
@@ -42,7 +44,7 @@ RES="${E2_RESULTS:?}/$MODEL"; mkdir -p "$RES"
 # E2_SHARD_LIST (optional, space-separated) runs only those shards instead of 0..E2_SHARDS-1.
 for SHARD in ${E2_SHARD_LIST:-$(seq 0 $(( ${E2_SHARDS:?} - 1 )))}; do
 [ -f "$RES/shard$SHARD.npz" ] && { echo "skip shard $SHARD (done)"; continue; }
-export UWYK_FIG34_DATA="${E2_DATA:?}/${PRIORS[$I]}/shard$SHARD"
+export UWYK_FIG34_DATA="${E2_DATA:?}/$PRIOR/shard$SHARD"
 export OUT="$RES/dumps_shard$SHARD"
 rm -rf "$OUT"; mkdir -p "$OUT"
 echo "[$(date '+%F %T')] model=$MODEL data=$UWYK_FIG34_DATA out=$OUT"
@@ -91,7 +93,7 @@ python "$REPO/revision/experiments/E2_in_prior/score_shard.py" "$OUT" "$RES/shar
 # E2_TRUTH_Y (multi.sh eval_y): also the outcome-level coverage, while the dumps still exist
 [ -n "${E2_TRUTH_Y:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_outcomes.py" "$OUT" "$E2_TRUTH_Y" "$SHARD" "$RES/outcomes_shard$SHARD.npz"
 # E2_OUTCOMES_ALL=1 (newworld_y.sh): every model's outcome-level readouts (+ joint region and rho = 0 ITE for 2D)
-[ -n "${E2_OUTCOMES_ALL:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_outcomes_all.py" "$OUT" "$RES/outall_shard$SHARD.npz" "${E2_DATA}/${PRIORS[$I]}/truths_y" "$SHARD"
+[ -n "${E2_OUTCOMES_ALL:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_outcomes_all.py" "$OUT" "$RES/outall_shard$SHARD.npz" "${E2_DATA}/$PRIOR/truths_y" "$SHARD"
 # E2_MOMENTS=1 (fscm_moments.sh): also the per-query mean and sd of each predicted outcome
 [ -n "${E2_MOMENTS:-}" ] && python "$REPO/revision/experiments/E2_in_prior/score_moments.py" "$OUT" "$RES/moments_shard$SHARD.npz"
 rm -rf "$OUT"
