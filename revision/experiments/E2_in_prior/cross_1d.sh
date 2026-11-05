@@ -6,6 +6,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh eval       2 GPU jobs (resubmit to resume: done shards are skipped)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh progress
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh table      CPU job: inprior_pehe.py over all three families
+#   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh means      CPU job: inprior_mean_tests.py (paired t-test on the average)
 set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/new/data"; RES="$SCRATCH/e2/new/results_y"; CROSS="$SCRATCH/e2/new/results_y_cross"; NW=1000
@@ -28,4 +29,7 @@ progress)
 table)
   sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-pehe -o "$SCRATCH/inprior_pehe.log" \
     --wrap "cd $KIT && $KIT/venv/bin/python $E2/inprior_pehe.py $DATA $RES $REPO/revision/results/d262t1/rho_pred_inprior.csv $REPO/revision/results/d262t1/inprior_pehe.txt $CROSS" ;;
+means)
+  sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-means -o "$SCRATCH/inprior_means.log" \
+    --wrap "cd $KIT && $KIT/venv/bin/python $E2/inprior_mean_tests.py $DATA $RES $CROSS $REPO/revision/results/d262t1/inprior_mean_tests.txt" ;;
 esac
