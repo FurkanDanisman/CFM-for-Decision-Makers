@@ -28,12 +28,7 @@ ax.plot(rhos, L2, "-", color="#e8a09a", lw=7, label="2D loss")
 ax.plot(fine, theory, "--", color="#a01818", lw=2.5, label="Theory prediction")
 ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1),
        title="Loss of a prediction whose effect is wrong by 1")
-ax.legend(fontsize=13, loc="upper left")
-ins = ax.inset_axes([0.40, 0.25, 0.42, 0.42])
-m1, m2 = rhos <= 0.9, fine <= 0.9
-ins.plot(rhos[m1], L1[m1], "-", color="#1f4e9c", lw=6); ins.plot(rhos[m1], L2[m1], "-", color="#e8a09a", lw=6)
-ins.plot(fine[m2], theory[m2], "--", color="#a01818", lw=2.2)
-ins.set(xlim=(0, 0.9), title="zoom: ρ from 0 to 0.9"); ins.tick_params(labelsize=10); ins.title.set_fontsize(11)
+ax.legend(fontsize=13, loc="upper left"); 
 fig.tight_layout()
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"reason.{ext}"), dpi=150)
 for r, a, b in list(zip(rhos, L1, L2))[::11]: print(f"rho {r:.2f}  1D {a:.3f}  2D {b:.3f}  predicted {1 + (a - 1) / (1 - r):.3f}")
