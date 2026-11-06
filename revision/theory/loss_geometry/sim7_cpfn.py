@@ -1,6 +1,6 @@
 """CausalPFN version of sim6_groups.py: the same setup, only the 1D target differs.
 Same x ~ U[-2, 2], m0 = sin(2x) + 0.5x, tau = 0.5 sin(3x), network (width 6, outputs m0, m1, two sds, a correlation),
-Adam, 4000 steps, batch 256, 10 seeds. Two noise terms:
+Adam, 4000 steps, batch 256, 30 seeds. Two noise terms:
   u   (the variation left in CausalPFN's E_y_t, not controlled), sd SD_U: corr(u0, u1) = rho_u; RHO_U = None draws one
       random value per network (per seed and range, the same for its 1D and 2D network) from U[0, 1), a number fixes it
   eta (the outcome noise CausalPFN's 1D target removes, controlled), sd 1: corr(eta0, eta1) = rho_eta, drawn per unit from the
@@ -23,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("s5", os.path.join(HERE, "sim5_track.py"))
 S5 = importlib.util.module_from_spec(spec); spec.loader.exec_module(S5)
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
-STEPS, BATCH, EVERY, SEEDS, WIDTH = 4000, 256, 100, range(10), 6
+STEPS, BATCH, EVERY, SEEDS, WIDTH = 4000, 256, 100, range(30), 6
 SD_U, RHO_U = 2.0, 0.0
 RANGES = {"low": (0.1, 0.4), "medium": (0.4, 0.7), "high": (0.7, 0.95), "full": (0.1, 0.95)}
 m0, tau, XG = S5.m0, S5.tau, S5.XG
