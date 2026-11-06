@@ -1,0 +1,14 @@
+Toy: correlation rising from 0.1 to 0.95 across x, learned by the model; separate vs joint loss, same data,
+same start, 4000 steps; mean (SE) over 10 seeds of the final errors; ratio = joint / separate per seed
+
+network narrow (width 6)
+   pehe  separate 0.1701 (0.0017)  joint 0.1497 (0.0020)  ratio 0.880 (0.010)  joint lower in 10/10
+   m0    separate 0.1031 (0.0029)  joint 0.1431 (0.0060)  ratio 1.390 (0.047)  joint lower in 0/10
+   m1    separate 0.1078 (0.0023)  joint 0.1186 (0.0062)  ratio 1.107 (0.070)  joint lower in 4/10
+   learned rho at x = -2, -1, 0, 1, 2: 0.02, 0.34, 0.52, 0.75, 0.88   (true: 0.10, 0.31, 0.53, 0.74, 0.95)
+
+network wide (width 64)
+   pehe  separate 0.0640 (0.0047)  joint 0.0559 (0.0028)  ratio 0.913 (0.069)  joint lower in 6/10
+   m0    separate 0.0580 (0.0076)  joint 0.0520 (0.0055)  ratio 0.975 (0.099)  joint lower in 5/10
+   m1    separate 0.0539 (0.0049)  joint 0.0561 (0.0038)  ratio 1.092 (0.082)  joint lower in 4/10
+   learned rho at x = -2, -1, 0, 1, 2: 0.06, 0.31, 0.53, 0.74, 0.93   (true: 0.10, 0.31, 0.53, 0.74, 0.95)
