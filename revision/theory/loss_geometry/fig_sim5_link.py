@@ -1,5 +1,6 @@
 """Two panels from the SAME trained networks of sim5_track.py (narrow network, 10 seeds), both against the correlation:
-left : cost of an effect error under each loss, relative to 1D (2D: 1 / (1 - rho learned by the 2D network)).
+middle: loss of a prediction whose effect is wrong by 1 (1D: 1.25; 2D: 1 + 0.25 / (1 - rho learned by the 2D network);
+        theory: 1 + 0.25 / (1 - true rho)).
 right: PEHE of the trained 1D and 2D networks, in 10 bins of the correlation (mean and SE over seeds).
    .venv/bin/python revision/theory/loss_geometry/fig_sim5_link.py OUT_DIR"""
 import json, os, sys
@@ -26,10 +27,11 @@ ax[0].legend(loc="upper right", frameon=False)
 ax = ax[1:]
 
 rh = np.array([get(s, "joint")["rho_hat"] for s in SEEDS]).mean(0)
-ax[0].plot(rho, np.ones_like(rho), color=B1, lw=1.8, label="1D loss")
-ax[0].plot(rho, 1 / (1 - rh), color=B2, lw=1.8, label="2D loss")
-ax[0].plot(rho, 1 / (1 - rho), "--", color="k", lw=1.0, label="Theory prediction")
-ax[0].set(xlabel=r"correlation $\rho$", ylabel="cost of an effect error\n(relative to 1D)", xlim=(0, 1))
+c = 0.25                                   # error part of the 1D loss for a prediction whose effect is wrong by 1
+ax[0].plot(rho, 1 + c * np.ones_like(rho), color=B1, lw=1.8, label="1D loss")
+ax[0].plot(rho, 1 + c / (1 - rh), color=B2, lw=1.8, label="2D loss")
+ax[0].plot(rho, 1 + c / (1 - rho), "--", color="k", lw=1.0, label="Theory prediction")
+ax[0].set(xlabel=r"correlation $\rho$", ylabel="loss", xlim=(0, 1))
 ax[0].legend(loc="upper left", frameon=False)
 
 edges = np.linspace(rho[0], rho[-1], 11); mid = (edges[:-1] + edges[1:]) / 2
