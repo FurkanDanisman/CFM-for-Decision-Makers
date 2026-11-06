@@ -42,8 +42,10 @@ for lab, l, c in (("1D", "separate", B1), ("2D", "joint", B2)):
 ax[1].set(xlabel=r"correlation $\rho$", ylabel="PEHE", xlim=(0, 1), xticks=[0, 0.5, 1])
 for a in fig.axes:
     PS.frame(a); a.tick_params(axis="y", length=2, width=0.5)
+kw = dict(frameon=False, handlelength=1.1, handletextpad=0.4, labelspacing=0.2, borderaxespad=0.2)
+fig.axes[0].legend(loc="upper right", **kw)
 h, l = fig.axes[1].get_legend_handles_labels()
-fig.axes[0].legend(h, l, loc="upper right", frameon=False, handlelength=1.1, handletextpad=0.4, labelspacing=0.2, borderaxespad=0.2)
-fig.axes[0].set_ylim(0.7, 2.3); fig.axes[0].set_yticks([1, 1.5, 2])
+fig.axes[1].legend([h[l.index("Theory")]], ["Theory"], loc="upper left", **kw)
+fig.axes[0].set_ylim(0.7, 2.0); fig.axes[0].set_yticks([1, 1.5, 2])
 fig.tight_layout(w_pad=0.6)
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"sim5_link.{ext}"), dpi=150)
