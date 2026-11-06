@@ -39,7 +39,7 @@ for lab, l, c in (("1D", "separate", B1), ("2D", "joint", B2)):
     P = np.array([[np.sqrt(E[k, idx == b].mean()) for b in range(10)] for k in range(len(SEEDS))])
     m, se = P.mean(0), P.std(0, ddof=1) / np.sqrt(len(P))
     ax[1].plot(mid, m, "-o", color=c, lw=1.8, ms=3, label=lab); ax[1].fill_between(mid, m - se, m + se, color=c, alpha=0.2, lw=0)
-ax[1].set(xlabel=r"correlation $\rho$", ylabel="PEHE after training", xlim=(0, 1))
+ax[1].set(xlabel=r"correlation $\rho$", ylabel="PEHE", xlim=(0, 1))
 ax[1].legend(loc="upper center", frameon=False)
 for a in fig.axes:
     PS.frame(a); a.tick_params(axis="y", length=2, width=0.5)
