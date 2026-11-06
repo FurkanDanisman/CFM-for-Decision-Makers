@@ -27,7 +27,7 @@ spec = importlib.util.spec_from_file_location("s5", os.path.join(os.path.dirname
 S5 = importlib.util.module_from_spec(spec); spec.loader.exec_module(S5)
 o = torch.stack([S5.m0(S5.XT)[:, 0], (S5.m0(S5.XT) + S5.tau(S5.XT))[:, 0], torch.zeros(len(S5.XT)), torch.zeros(len(S5.XT)),
                  torch.atanh(S5.RT / 0.999)], 1)
-G = {"low": r"$\rho$ 0.1 to 0.4", "medium": r"$\rho$ 0.4 to 0.7", "high": r"$\rho$ 0.7 to 0.95"}
+G = {"low": r"$\rho \in [0.1, 0.4)$", "medium": r"$\rho \in [0.4, 0.7)$", "high": r"$\rho \in [0.7, 0.95]$"}
 SHADES = {"separate": ("#a6c8e8", "#3f7fbf", "#173d63"), "joint": ("#f6c48e", "#e6820e", "#8a4a05")}   # 1D blue, 2D orange
 steps = [t["step"] for t in run(0, "joint")["track"]]
 for a, (lab, l, _) in zip(ax[:2], MOD):
