@@ -53,7 +53,9 @@ XT = torch.rand(30000, 1, generator=GT) * 4 - 2
 RT = rho(XT)[:, 0]
 ZT0, ZT1 = torch.randn(30000, generator=GT), torch.randn(30000, generator=GT)
 YT = torch.stack([m0(XT)[:, 0] + ZT0, (m0(XT) + tau(XT))[:, 0] + RT * ZT0 + torch.sqrt(1 - RT ** 2) * ZT1], 1)
-GROUPS = {"low": (RT < 0.4), "medium": (RT >= 0.4) & (RT < 0.7), "high": (RT >= 0.7)}
+GROUPS = {"low": (RT < 0.4), "medium": (RT >= 0.4) & (RT < 0.7), "high": (RT >= 0.7), "all": torch.ones_like(RT, dtype=torch.bool)}
+RG = rho(XG)[:, 0]
+GGRID = {"low": (RG < 0.4), "medium": (RG >= 0.4) & (RG < 0.7), "high": (RG >= 0.7), "all": torch.ones_like(RG, dtype=torch.bool)}
 
 
 def run(args):
@@ -74,7 +76,9 @@ def run(args):
                 a, b, _, _, rh = heads(f(XG))
                 e = lambda p, q: (p - q).pow(2).mean().sqrt().item()
                 lu = nll_units(f(XT), YT, loss)
-                track.append(dict(step=step, loss=l.item(), **{f"loss_{k}": lu[m].mean().item() for k, m in GROUPS.items()}, pehe=e(b - a, tau(XG)[:, 0]), m0=e(a, m0(XG)[:, 0]),
+                d2 = ((b - a) - tau(XG)[:, 0]) ** 2
+                track.append(dict(step=step, loss=l.item(), **{f"loss_{k}": lu[m].mean().item() for k, m in GROUPS.items()},
+                                  **{f"pehe_{k}": d2[m].mean().sqrt().item() for k, m in GGRID.items()}, pehe=e(b - a, tau(XG)[:, 0]), m0=e(a, m0(XG)[:, 0]),
                                   m1=e(b, (m0(XG) + tau(XG))[:, 0])))
     with torch.no_grad():
         a, b, _, _, rh = heads(f(XG))
