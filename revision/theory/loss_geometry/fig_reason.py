@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 OUT = sys.argv[1]; rng = np.random.default_rng(0); N = 200_000
 e = np.array([-0.5, 0.5])
-rhos = np.array([0, .1, .2, .3, .4, .5, .6, .7, .8, .85, .9, .93, .95, .97, .98, .99]); L1, L2 = [], []
+rhos = np.linspace(0, 0.99, 100); L1, L2 = [], []
 for r in rhos:
     S = np.array([[1, r], [r, 1]]); z = rng.standard_normal((N, 2)) @ np.linalg.cholesky(S).T
     res = z - e                                         # Y - prediction = noise - error
@@ -22,12 +22,12 @@ L1, L2 = np.array(L1), np.array(L2)
 fine = np.linspace(0, 0.99, 400)
 theory = 1 + (L1.mean() - 1) / (1 - fine)
 fig, ax = plt.subplots(figsize=(5.5, 4))
-ax.plot(rhos, L1, "o", color="#888888", label="1D loss (measured)")
-ax.plot(rhos, L2, "o", color="#c0392b", label="2D loss (measured)")
-ax.plot(fine, theory, "-", color="#c0392b", alpha=0.6, label="2D loss predicted from 1D: 1 + (1D loss - 1) / (1 - ρ)")
+ax.plot(rhos, L1, "-", color="#888888", label="1D loss (measured)")
+ax.plot(rhos, L2, "-", color="#c0392b", label="2D loss (measured)")
+ax.plot(fine, theory, "--", color="k", lw=1, label="2D loss predicted from 1D: 1 + (1D loss - 1) / (1 - ρ)")
 ax.axhline(1, color="k", lw=0.8, ls=":", label="loss of a correct prediction (both)")
 ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1),
        title="Loss of a prediction whose effect is wrong by 1")
 ax.legend(fontsize=8); fig.tight_layout()
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"reason.{ext}"), dpi=150)
-for r, a, b in zip(rhos, L1, L2): print(f"rho {r:.2f}  1D {a:.3f}  2D {b:.3f}  predicted {1 + (a - 1) / (1 - r):.3f}")
+for r, a, b in list(zip(rhos, L1, L2))[::11]: print(f"rho {r:.2f}  1D {a:.3f}  2D {b:.3f}  predicted {1 + (a - 1) / (1 - r):.3f}")
