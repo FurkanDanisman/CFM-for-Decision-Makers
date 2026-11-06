@@ -1,7 +1,8 @@
-"""From the trained networks of sim5_track.py (narrow network, mean over 10 seeds), over training:
-row 1: training loss on fixed test units, with the loss of a perfect prediction dashed (same colour):
-       1D by correlation group | 2D by correlation group | 1D and 2D over all correlations rho in [0.1, 0.95]
-row 2: PEHE after training against the correlation, 10 bins (mean and SE over seeds): 1D | 2D | 1D and 2D.
+"""Columns 1-2: separate networks per correlation range (sim6_groups.py), 1D and 2D; column 3: one network on
+rho in [0.1, 0.95] (sim5_track.py), 1D and 2D. Narrow network, mean over 10 seeds.
+row 1: training loss on fixed test units over training, the loss of a perfect prediction dashed (same colour);
+row 2: PEHE after training: columns 1-2 one line per network over its correlation range (mean, SE band);
+       column 3 against the correlation in 10 bins.
    .venv/bin/python revision/theory/loss_geometry/fig_sim5_link.py OUT_DIR"""
 import importlib.util, json, os, sys
 import numpy as np
@@ -33,10 +34,15 @@ MOD = (("1D", "separate", PS.COL_1D), ("2D", "joint", PS.COL_2D))
 KW = dict(frameon=False, handlelength=1.1, handletextpad=0.4, labelspacing=0.05, borderaxespad=0.05)
 fig, ax = plt.subplots(2, 3, figsize=(PS.TEXTWIDTH, PS.TEXTWIDTH * 0.72))
 
+R6 = json.load(open(os.path.join(OUT, "sim6_results.json")))
 for j, (lab, l, _) in enumerate(MOD):
     for (g, gl), col in zip(G.items(), SHADES[l]):
-        ax[0, j].plot(steps, mean_track(l, f"loss_{g}"), color=col, lw=2.0, label=gl)
-        ax[0, j].axhline(perfect(l, g), color=col, lw=1.3, ls="--")
+        L = np.array([[t["loss"] for t in R6["runs"][f"{g}|{s}|{l}"]["track"]] for s in SEEDS]).mean(0)
+        ax[0, j].plot(steps, L, color=col, lw=2.0, label=gl)
+        ax[0, j].axhline(R6["perfect"][f"{g}|{l}"], color=col, lw=1.3, ls="--")
+        P = np.sqrt((np.array([R6["runs"][f"{g}|{s}|{l}"]["tau_err"] for s in SEEDS]) ** 2).mean(1))
+        m, se = P.mean(), P.std(ddof=1) / np.sqrt(len(P)); lo_, hi_ = R6["ranges"][g]
+        ax[1, j].plot([lo_, hi_], [m, m], color=col, lw=2.5); ax[1, j].fill_between([lo_, hi_], m - se, m + se, color=col, alpha=0.25, lw=0)
     ax[0, j].set_title(lab)
     ax[0, j].legend(loc="upper right", **KW)
 for lab, l, c in MOD:
@@ -52,10 +58,9 @@ def pehe_by_rho(l):
     E = np.array([run(s, l)["final"]["tau_err"] for s in SEEDS]) ** 2
     P = np.array([[np.sqrt(E[k, idx == b].mean()) for b in range(10)] for k in range(len(SEEDS))])
     return P.mean(0), P.std(0, ddof=1) / np.sqrt(len(P))
-for j, (lab, l, c) in enumerate(MOD):
+for lab, l, c in MOD:
     m, se = pehe_by_rho(l)
-    for a in (ax[1, j], ax[1, 2]):
-        a.plot(mid, m, "-o", color=c, lw=2.0, ms=3, label=lab); a.fill_between(mid, m - se, m + se, color=c, alpha=0.2, lw=0)
+    ax[1, 2].plot(mid, m, "-o", color=c, lw=2.0, ms=3, label=lab); ax[1, 2].fill_between(mid, m - se, m + se, color=c, alpha=0.2, lw=0)
 ax[1, 2].legend(loc="upper center", **KW)
 
 for a in ax[0]: a.set_ylim(0.25, 2.1); a.set_yticks([0.5, 1, 1.5, 2])
