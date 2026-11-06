@@ -49,9 +49,7 @@ for a in ax[0]:
 ax[0, 0].set_ylabel("training loss")
 for a in ax[1]:
     a.set_xlim(0, 0.2); a.set_xticks([0, 0.1, 0.2]); a.set_xlabel("PEHE")
-for a in ax[1, :2]:
-    a.set_yticks([2, 1, 0]); a.set_yticklabels(list(G.values()))
-ax[1, 1].set_yticklabels([])
-ax[1, 2].set_yticks([1, 0]); ax[1, 2].set_yticklabels(["1D", "2D"])
+for a in ax[1]:
+    a.set_yticks([])
 fig.tight_layout(w_pad=0.4, h_pad=0.6)
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"sim5_link.{ext}"), dpi=150)
