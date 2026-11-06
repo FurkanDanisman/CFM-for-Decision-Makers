@@ -11,15 +11,26 @@ OUT = sys.argv[1]; W = "narrow"; SEEDS = range(10)
 R = json.load(open(os.path.join(OUT, "sim5_results.json")))
 get = lambda s, l: R[f"{W}|{s}|{l}"]["final"]
 xs = np.linspace(-2, 2, 401); rho = 0.10 + 0.85 * (xs + 2) / 4
-B1, B2, TH = "#1f4e9c", "#e8a09a", "#a01818"
-plt.rcParams.update({"font.size": 13})
-fig, ax = plt.subplots(1, 2, figsize=(13, 5))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "paper"))
+import paper_style as PS
+PS.apply()
+B1, B2 = PS.COL_1D, PS.COL_2D
+fig, ax = plt.subplots(1, 3, figsize=(PS.TEXTWIDTH * 1.35, PS.TEXTWIDTH * 0.38))
+
+for lab, l, c in (("1D", "separate", B1), ("2D", "joint", B2)):
+    T = R[f"{W}|0|{l}"]["track"]; steps = [t["step"] for t in T]
+    Lm = np.array([[t["loss"] for t in R[f"{W}|{s}|{l}"]["track"]] for s in SEEDS]).mean(0)
+    ax[0].plot(steps, Lm, color=c, lw=1.8, label=f"{lab} loss")
+ax[0].set(xlabel="training step", ylabel="training loss")
+ax[0].legend(loc="upper right", frameon=False)
+ax = ax[1:]
 
 rh = np.array([get(s, "joint")["rho_hat"] for s in SEEDS]).mean(0)
-ax[0].plot(rho, np.ones_like(rho), color=B1, lw=7, label="1D loss")
-ax[0].plot(rho, 1 / (1 - rh), color=B2, lw=7, label="2D loss")
-ax[0].set(xlabel="correlation ρ", ylabel="cost of an effect error (relative to 1D)", xlim=(0, 1))
-ax[0].legend(loc="upper left")
+ax[0].plot(rho, np.ones_like(rho), color=B1, lw=1.8, label="1D loss")
+ax[0].plot(rho, 1 / (1 - rh), color=B2, lw=1.8, label="2D loss")
+ax[0].plot(rho, 1 / (1 - rho), "--", color="k", lw=1.0, label="Theory prediction")
+ax[0].set(xlabel=r"correlation $\rho$", ylabel="cost of an effect error\n(relative to 1D)", xlim=(0, 1))
+ax[0].legend(loc="upper left", frameon=False)
 
 edges = np.linspace(rho[0], rho[-1], 11); mid = (edges[:-1] + edges[1:]) / 2
 idx = np.clip(np.digitize(rho, edges) - 1, 0, 9)
@@ -27,9 +38,10 @@ for lab, l, c in (("1D", "separate", B1), ("2D", "joint", B2)):
     E = np.array([get(s, l)["tau_err"] for s in SEEDS]) ** 2
     P = np.array([[np.sqrt(E[k, idx == b].mean()) for b in range(10)] for k in range(len(SEEDS))])
     m, se = P.mean(0), P.std(0, ddof=1) / np.sqrt(len(P))
-    ax[1].plot(mid, m, color=c, lw=7, label=lab); ax[1].fill_between(mid, m - se, m + se, color=c, alpha=0.3)
-ax[1].set(xlabel="correlation ρ", ylabel="PEHE after training", xlim=(0, 1))
-ax[1].legend(loc="upper left")
+    ax[1].plot(mid, m, "-o", color=c, lw=1.8, ms=3, label=lab); ax[1].fill_between(mid, m - se, m + se, color=c, alpha=0.2, lw=0)
+ax[1].set(xlabel=r"correlation $\rho$", ylabel="PEHE after training", xlim=(0, 1))
+ax[1].legend(loc="upper center", frameon=False)
+for a in fig.axes:
+    PS.frame(a); a.tick_params(axis="y", length=2, width=0.5)
 fig.tight_layout()
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"sim5_link.{ext}"), dpi=150)
-for b in range(10): print(f"rho {mid[b]:.2f}")
