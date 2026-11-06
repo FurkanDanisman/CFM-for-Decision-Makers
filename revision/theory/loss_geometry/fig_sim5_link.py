@@ -29,7 +29,7 @@ rh = np.array([get(s, "joint")["rho_hat"] for s in SEEDS]).mean(0)
 c = 0.25                                   # error part of the 1D loss for a prediction whose effect is wrong by 1
 ax[0].plot(rho, 1 + c * np.ones_like(rho), color=B1, lw=1.8, label="1D")
 ax[0].plot(rho, 1 + c / (1 - rh), color=B2, lw=1.8, label="2D")
-ax[0].plot(rho, 1 + c / (1 - rho), "--", color="k", lw=1.0, label="Theory prediction")
+ax[0].plot(rho, 1 + c / (1 - rho), "--", color="k", lw=1.0, label="Theory")
 ax[0].set(xlabel=r"correlation $\rho$", ylabel="loss", xlim=(0, 1), xticks=[0, 0.5, 1])
 
 edges = np.linspace(rho[0], rho[-1], 11); mid = (edges[:-1] + edges[1:]) / 2
@@ -43,6 +43,7 @@ ax[1].set(xlabel=r"correlation $\rho$", ylabel="PEHE", xlim=(0, 1), xticks=[0, 0
 for a in fig.axes:
     PS.frame(a); a.tick_params(axis="y", length=2, width=0.5)
 h, l = fig.axes[1].get_legend_handles_labels()
-fig.legend(h, l, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.0))
-fig.tight_layout(w_pad=0.6, rect=(0, 0, 1, 0.88))
+fig.axes[0].legend(h, l, loc="upper right", frameon=False, handlelength=1.1, handletextpad=0.4, labelspacing=0.2, borderaxespad=0.2)
+fig.axes[0].set_ylim(0.7, 2.3); fig.axes[0].set_yticks([1, 1.5, 2])
+fig.tight_layout(w_pad=0.6)
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"sim5_link.{ext}"), dpi=150)
