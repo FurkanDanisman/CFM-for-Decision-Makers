@@ -1,7 +1,7 @@
 """From the trained networks of sim5_track.py (narrow network, mean over 10 seeds), over training:
 row 1: training loss on fixed test units, with the loss of a perfect prediction dashed (same colour):
        1D by correlation group | 2D by correlation group | 1D and 2D over all correlations rho in [0.1, 0.95]
-row 2: PEHE on a grid of x, in the same groups / models as the panel above it.
+row 2: PEHE after training against the correlation, 10 bins (mean and SE over seeds): 1D | 2D | 1D and 2D.
    .venv/bin/python revision/theory/loss_geometry/fig_sim5_link.py OUT_DIR"""
 import importlib.util, json, os, sys
 import numpy as np
@@ -31,33 +31,40 @@ G = {"low": r"$\rho \in [0.1, 0.4)$", "medium": r"$\rho \in [0.4, 0.7)$", "high"
 SHADES = {"separate": ("#a6c8e8", "#3f7fbf", "#173d63"), "joint": ("#f6c48e", "#e6820e", "#8a4a05")}   # 1D blue, 2D orange
 MOD = (("1D", "separate", PS.COL_1D), ("2D", "joint", PS.COL_2D))
 KW = dict(frameon=False, handlelength=1.1, handletextpad=0.4, labelspacing=0.05, borderaxespad=0.05)
-fig, ax = plt.subplots(2, 3, figsize=(PS.TEXTWIDTH, PS.TEXTWIDTH * 0.72), sharex=True)
+fig, ax = plt.subplots(2, 3, figsize=(PS.TEXTWIDTH, PS.TEXTWIDTH * 0.72))
 
 for j, (lab, l, _) in enumerate(MOD):
     for (g, gl), col in zip(G.items(), SHADES[l]):
         ax[0, j].plot(steps, mean_track(l, f"loss_{g}"), color=col, lw=2.0, label=gl)
         ax[0, j].axhline(perfect(l, g), color=col, lw=1.3, ls="--")
-        ax[1, j].plot(steps, mean_track(l, f"pehe_{g}"), color=col, lw=2.0)
     ax[0, j].set_title(lab)
     ax[0, j].legend(loc="upper right", **KW)
 for lab, l, c in MOD:
     ax[0, 2].plot(steps, mean_track(l, "loss_all"), color=c, lw=2.0, label=lab)
     ax[0, 2].axhline(perfect(l, "all"), color=c, lw=1.3, ls="--")
-    ax[1, 2].plot(steps, mean_track(l, "pehe_all"), color=c, lw=2.0)
-ax[0, 2].set_title(r"$\rho \in [0.1, 0.95]$")
-ax[0, 2].legend(loc="upper right", **KW)
+ax[0, 2].set_title("1D & 2D")
+ax[0, 2].text(0.97, 0.95, r"$\rho \in [0.1, 0.95]$", transform=ax[0, 2].transAxes, ha="right", va="top")
+
+xs = np.linspace(-2, 2, 401); rho = 0.10 + 0.85 * (xs + 2) / 4
+edges = np.linspace(rho[0], rho[-1], 11); mid = (edges[:-1] + edges[1:]) / 2
+idx = np.clip(np.digitize(rho, edges) - 1, 0, 9)
+def pehe_by_rho(l):
+    E = np.array([run(s, l)["final"]["tau_err"] for s in SEEDS]) ** 2
+    P = np.array([[np.sqrt(E[k, idx == b].mean()) for b in range(10)] for k in range(len(SEEDS))])
+    return P.mean(0), P.std(0, ddof=1) / np.sqrt(len(P))
+for j, (lab, l, c) in enumerate(MOD):
+    m, se = pehe_by_rho(l)
+    for a in (ax[1, j], ax[1, 2]):
+        a.plot(mid, m, "-o", color=c, lw=2.0, ms=3, label=lab); a.fill_between(mid, m - se, m + se, color=c, alpha=0.2, lw=0)
+ax[1, 2].legend(loc="upper center", **KW)
 
 for a in ax[0]: a.set_ylim(0.25, 2.1); a.set_yticks([0.5, 1, 1.5, 2])
 top = max(a.get_ylim()[1] for a in ax[1])
-for a in ax[1]: a.set_ylim(0, top); a.set_xlabel("training step")
+for a in ax[1]: a.set_ylim(0, top); a.set(xlabel=r"correlation $\rho$", xlim=(0, 1), xticks=[0, 0.5, 1])
 ax[0, 0].set_ylabel("training loss"); ax[1, 0].set_ylabel("PEHE")
+for a in ax[0]:
+    a.set(xlabel="training step", xticks=[0, 2000, 4000]); a.set_xticklabels(["0", "2k", "4k"])
 for a in ax.flat:
-    a.set_xticks([0, 2000, 4000]); a.set_xticklabels(["0", "2k", "4k"])
     PS.frame(a); a.tick_params(axis="y", length=2, width=0.5)
 fig.tight_layout(w_pad=0.4, h_pad=0.6)
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"sim5_link.{ext}"), dpi=150)
-for lab, l, _ in MOD:
-    for g in list(G) + ["all"]:
-        L, P = mean_track(l, f"loss_{g}"), mean_track(l, f"pehe_{g}")
-        print(f"{lab} {g:6s}: loss above perfect start {L[0] - perfect(l, g):.3f} end {L[-1] - perfect(l, g):.3f};  "
-              f"PEHE start {P[0]:.3f} end {P[-1]:.3f}")
