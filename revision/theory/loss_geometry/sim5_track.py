@@ -34,13 +34,26 @@ def heads(o):
     return o[:, 0], o[:, 1], o[:, 2].exp(), o[:, 3].exp(), 0.999 * torch.tanh(o[:, 4])
 
 
-def nll(o, y, loss):
+def nll_units(o, y, loss):
     a, b, s0, s1, r = heads(o)
     z0, z1 = (y[:, 0] - a) / s0, (y[:, 1] - b) / s1
     if loss == "separate":
-        return (0.5 * z0 ** 2 + s0.log() + 0.5 * z1 ** 2 + s1.log()).mean()
+        return 0.5 * z0 ** 2 + s0.log() + 0.5 * z1 ** 2 + s1.log()
     return ((z0 ** 2 - 2 * r * z0 * z1 + z1 ** 2) / (2 * (1 - r ** 2)) + s0.log() + s1.log()
-            + 0.5 * torch.log(1 - r ** 2)).mean()
+            + 0.5 * torch.log(1 - r ** 2))
+
+
+def nll(o, y, loss):
+    return nll_units(o, y, loss).mean()
+
+
+# fixed test units for the training loss by correlation group: low 0.1-0.4, medium 0.4-0.7, high 0.7-0.95
+GT = torch.Generator().manual_seed(12345)
+XT = torch.rand(30000, 1, generator=GT) * 4 - 2
+RT = rho(XT)[:, 0]
+ZT0, ZT1 = torch.randn(30000, generator=GT), torch.randn(30000, generator=GT)
+YT = torch.stack([m0(XT)[:, 0] + ZT0, (m0(XT) + tau(XT))[:, 0] + RT * ZT0 + torch.sqrt(1 - RT ** 2) * ZT1], 1)
+GROUPS = {"low": (RT < 0.4), "medium": (RT >= 0.4) & (RT < 0.7), "high": (RT >= 0.7)}
 
 
 def run(args):
@@ -60,7 +73,8 @@ def run(args):
             with torch.no_grad():
                 a, b, _, _, rh = heads(f(XG))
                 e = lambda p, q: (p - q).pow(2).mean().sqrt().item()
-                track.append(dict(step=step, loss=l.item(), pehe=e(b - a, tau(XG)[:, 0]), m0=e(a, m0(XG)[:, 0]),
+                lu = nll_units(f(XT), YT, loss)
+                track.append(dict(step=step, loss=l.item(), **{f"loss_{k}": lu[m].mean().item() for k, m in GROUPS.items()}, pehe=e(b - a, tau(XG)[:, 0]), m0=e(a, m0(XG)[:, 0]),
                                   m1=e(b, (m0(XG) + tau(XG))[:, 0])))
     with torch.no_grad():
         a, b, _, _, rh = heads(f(XG))
