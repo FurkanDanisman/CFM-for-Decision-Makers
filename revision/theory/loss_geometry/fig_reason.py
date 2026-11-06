@@ -26,7 +26,7 @@ fig, ax = plt.subplots(figsize=(7, 5))
 ax.plot(rhos, L1, "-", color="#1f4e9c", lw=3.5, label="1D loss")
 ax.plot(rhos, L2, "-", color="#c0392b", lw=3.5, label="2D loss")
 ax.plot(fine, theory, "--", color="k", lw=1.8, label="Theory prediction")
-ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1), ylim=(1, 6),
+ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1),
        title="Loss of a prediction whose effect is wrong by 1")
 ax.legend(fontsize=13); fig.tight_layout()
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"reason.{ext}"), dpi=150)
