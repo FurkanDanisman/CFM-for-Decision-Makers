@@ -1,5 +1,5 @@
 """Figures for sim8_noise.py (narrow network, mean over 30 seeds), the same format as fig_sim5_link.py:
-row 1 training loss with the perfect-prediction loss dashed, row 2 PEHE bars; columns 1D per noise-size range,
+row 1 training loss with the best loss possible from x dashed (perfect_from_x.py), row 2 PEHE bars; columns 1D per noise-size range,
 2D per range, 1D & 2D over the whole range.
    .venv/bin/python revision/theory/loss_geometry/fig_sim8.py MODE OUT_DIR      (MODE: cpfn or dopfn)"""
 import json, os, sys
@@ -29,13 +29,13 @@ fig, ax = plt.subplots(2, 3, figsize=(PS.TEXTWIDTH, PS.TEXTWIDTH * 0.72))
 for j, (lab, l, c) in enumerate(MOD):
     for (g, gl), col in zip(G.items(), SHADES[l]):
         ax[0, j].plot(steps, loss_curve(g, l), color=col, lw=2.0, label=gl)
-        ax[0, j].axhline(R["perfect"][f"{g}|{l}"], color=col, lw=1.3, ls="--")
+        ax[0, j].axhline(R["perfect_x"][f"{g}|{l}"], color=col, lw=1.3, ls="--")
     ax[0, j].set_title(lab); ax[0, j].legend(loc="upper right", **KW)
     M = np.array([pehe(g, l) for g in G])
     PS.hbars(ax[1, j], M[:, 0], M[:, 1], list(SHADES[l]))
 for lab, l, c in MOD:
     ax[0, 2].plot(steps, loss_curve("full", l), color=c, lw=2.0)
-    ax[0, 2].axhline(R["perfect"][f"full|{l}"], color=c, lw=1.3, ls="--")
+    ax[0, 2].axhline(R["perfect_x"][f"full|{l}"], color=c, lw=1.3, ls="--")
 ax[0, 2].set_title("1D & 2D")
 ax[0, 2].text(0.97, 0.95, rf"sd$({NZ}) \in [0.25, 1.75]$", transform=ax[0, 2].transAxes, ha="right", va="top")
 M = np.array([pehe("full", l) for _, l, _ in MOD])

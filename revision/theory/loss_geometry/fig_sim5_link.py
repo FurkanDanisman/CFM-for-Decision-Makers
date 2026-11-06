@@ -1,6 +1,6 @@
 """From sim6_groups.py (narrow network, mean over 10 seeds). Each unit's correlation rho = corr(Y0, Y1 | x) is drawn
 from the network's training range, independently of x.
-row 1: training loss over training, the loss of a perfect prediction dashed (same colour):
+row 1: training loss over training, the best loss possible from x dashed (perfect_from_x.py) (same colour):
        1D per range | 2D per range | 1D and 2D on rho in [0.1, 0.95]
 row 2: PEHE after training (against tau(x) on the same grid of x for every network), mean and SE over seeds,
        horizontal bars as in the paper: 1D per range | 2D per range | 1D and 2D on [0.1, 0.95]
@@ -31,13 +31,13 @@ fig, ax = plt.subplots(2, 3, figsize=(PS.TEXTWIDTH, PS.TEXTWIDTH * 0.72))
 for j, (lab, l, c) in enumerate(MOD):
     for (g, gl), col in zip(G.items(), SHADES[l]):
         ax[0, j].plot(steps, loss_curve(g, l), color=col, lw=2.0, label=gl)
-        ax[0, j].axhline(R["perfect"][f"{g}|{l}"], color=col, lw=1.3, ls="--")
+        ax[0, j].axhline(R["perfect_x"][f"{g}|{l}"], color=col, lw=1.3, ls="--")
     ax[0, j].set_title(lab); ax[0, j].legend(loc="upper right", **KW)
     M = np.array([pehe(g, l) for g in G])
     PS.hbars(ax[1, j], M[:, 0], M[:, 1], list(SHADES[l]))
 for lab, l, c in MOD:
     ax[0, 2].plot(steps, loss_curve("full", l), color=c, lw=2.0)
-    ax[0, 2].axhline(R["perfect"][f"full|{l}"], color=c, lw=1.3, ls="--")
+    ax[0, 2].axhline(R["perfect_x"][f"full|{l}"], color=c, lw=1.3, ls="--")
 ax[0, 2].set_title("1D & 2D")
 ax[0, 2].text(0.97, 0.95, r"$\rho \in [0.1, 0.95]$", transform=ax[0, 2].transAxes, ha="right", va="top")
 M = np.array([pehe("full", l) for _, l, _ in MOD])
