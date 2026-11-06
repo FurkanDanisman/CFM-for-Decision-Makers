@@ -1,6 +1,6 @@
 """The reason, measured: loss of a prediction that is wrong only in the effect, under the 1D (separate) and the
 2D (joint) loss, as the correlation of the two outcomes' noise grows; and the 2D loss predicted from the 1D loss.
-Prediction: m0_hat = m0 - 0.5, m1_hat = m1 + 0.5 (effect off by 1, average level right). Noise sd 1, correlation rho.
+Prediction: m0_hat = m0 - 0.1, m1_hat = m1 + 0.1 (effect off by 0.2, average level right). Noise sd 1, correlation rho.
 Losses per unit, without the constant term that does not depend on the prediction (log of the noise sizes):
   1D: (r0^2 + r1^2) / 2          2D: r^T Sigma^-1 r / 2        (r = Y - prediction)
 Theory: a correct prediction has loss 1 under both; an effect error adds (1D loss - 1) / (1 - rho) under 2D.
@@ -10,8 +10,8 @@ import numpy as np
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-OUT = sys.argv[1]; rng = np.random.default_rng(0); N = 200_000
-e = np.array([-0.5, 0.5])
+OUT = sys.argv[1]; rng = np.random.default_rng(0); N = 1_000_000
+e = np.array([-0.1, 0.1])
 rhos = np.linspace(0, 0.99, 100); L1, L2 = [], []
 for r in rhos:
     S = np.array([[1, r], [r, 1]]); z = rng.standard_normal((N, 2)) @ np.linalg.cholesky(S).T
@@ -27,7 +27,7 @@ ax.plot(rhos, L1, "-", color="#1f4e9c", lw=7, label="1D loss")
 ax.plot(rhos, L2, "-", color="#e8a09a", lw=7, label="2D loss")
 ax.plot(fine, theory, "--", color="#a01818", lw=2.5, label="Theory prediction")
 ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1),
-       title="Loss of a prediction whose effect is wrong by 1")
+       title="Loss of a prediction whose effect is wrong by 0.2")
 ax.legend(fontsize=13, loc="upper left"); 
 fig.tight_layout()
 for ext in ("png", "pdf"): fig.savefig(os.path.join(OUT, f"reason.{ext}"), dpi=150)
