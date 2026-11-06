@@ -25,7 +25,6 @@ fig, ax = plt.subplots(figsize=(5.5, 4))
 ax.plot(rhos, L1, "-", color="#888888", label="1D loss (measured)")
 ax.plot(rhos, L2, "-", color="#c0392b", label="2D loss (measured)")
 ax.plot(fine, theory, "--", color="k", lw=1, label="2D loss predicted from 1D: 1 + (1D loss - 1) / (1 - ρ)")
-ax.axhline(1, color="k", lw=0.8, ls=":", label="loss of a correct prediction (both)")
 ax.set(xlabel="correlation ρ of the two outcomes", ylabel="loss", xlim=(0, 1),
        title="Loss of a prediction whose effect is wrong by 1")
 ax.legend(fontsize=8); fig.tight_layout()
