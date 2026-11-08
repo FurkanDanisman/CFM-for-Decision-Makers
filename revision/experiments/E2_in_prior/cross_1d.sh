@@ -42,6 +42,6 @@ pairs)
   sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-pairs -o "$SCRATCH/inprior_pairs.log" \
     --wrap "cd $KIT && $KIT/venv/bin/python $E2/inprior_pairs.py $DATA $RES $CROSS $REPO/revision/results/d262t1/inprior_pairs.txt" ;;
 ucheck)
-  sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=8 --mem=16G --job-name=cpfn-ucheck -o "$SCRATCH/cpfn_u_check.log" \
+  sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=8 --mem=16G --job-name=cpfn-ucheck -o "$SCRATCH/cpfn_u_check.log" \
     --wrap "cd $KIT && $KIT/venv/bin/python $E2/cpfn_u_check.py $DATA $REPO/revision/results/d262t1/cpfn_u_check.txt" ;;
 esac

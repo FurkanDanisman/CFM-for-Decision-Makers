@@ -9,6 +9,8 @@ corr(Y0, Y1 | x) = corr(u0 + eta, u1 + eta).
 python cpfn_u_check.py DATA OUT_TXT   (DATA = $SCRATCH/e2/new/data)
 """
 import os, sys
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ[_v] = "1"                                # one thread per worker (the pool runs one worker per CPU)
 import numpy as np
 from multiprocessing import Pool
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -43,8 +45,12 @@ def one(r):
 
 
 if __name__ == "__main__":
+    rows = []
     with Pool(int(os.environ.get("SLURM_CPUS_PER_TASK", 4))) as pool:
-        rows = pool.map(one, range(NW))
+        for k, row in enumerate(pool.imap(one, range(NW), chunksize=4), 1):
+            rows.append(row)
+            if k % 50 == 0:
+                print(f"{k}/{NW} datasets done", flush=True)
     lines = ["CausalPFN-C 2D prior (cpfn_2d), 1000 in-prior datasets x 500 query units: u = part of m_t not explained by x",
              "(gradient boosting, 5-fold cross-fitted), eta = y - m (exact, shared by the arms)", ""]
     q = lambda k: np.array([d[k] for d in rows], float)
