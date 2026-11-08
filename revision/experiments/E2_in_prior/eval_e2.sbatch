@@ -31,10 +31,10 @@ UWYK_CKPT_DIR="$UWYK/experiments/checkpoints/full_conditioned_model/final_earlyt
 
 MODELS=(dopfn_native dopfn_joint2d uwyk1d graph2d cpfn1d cpfn2d uwyk1d_cont dopfn_bb dopfn_joint2d_262k
         fscm_natural fscm_setup1 fscm_setup2 fscm_setup3
-        dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml)
+        dopfn1d_mr dopfn1d_ml uwyk1d_mr uwyk1d_ml cpfn1d_mr cpfn1d_ml uwykB)
 PRIORS=(dopfn        dopfn         uwyk_1d uwyk_2d cpfn_1d cpfn_2d uwyk_1dc    dopfn_bb dopfn
         dopfn        dopfn       dopfn       dopfn
-        dopfn      dopfn      uwyk_2d   uwyk_2d   cpfn_2d   cpfn_2d)
+        dopfn      dopfn      uwyk_2d   uwyk_2d   cpfn_2d   cpfn_2d   uwyk_2d)
 I=$SLURM_ARRAY_TASK_ID
 MODEL=${MODELS[$I]}
 # E2_PRIOR (optional): evaluate this model on another prior's data, e.g. a 1D model on its 2D model's datasets
@@ -82,6 +82,11 @@ case "$MODEL" in
     python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
       --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" --ckpt "$K" --config "$C" \
       --anc-mode v3ab_only --t-encoding "$E" --eval-max-context 1000 --eval-context-seed 43 ;;
+  uwykB)                                      # task 19: UWYK-B (binary re-training), as bodik/run.sh uwyk_bin
+    python -u "$REPO/realcause_eval/Table1/uwyk1d.py" --dataset "$DATASET" --outdir "$OUT" \
+      --uwyk-repro "$UWYK" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+      --ckpt "$FC/uwykB_bin_step50000.pt" --config "$FC/uwykB_config.yaml" \
+      --anc-mode v3ab_only --t-encoding binary --eval-max-context 1000 --eval-context-seed 43 ;;
   cpfn1d_mr|cpfn1d_ml)                        # ablations (tasks 17-18): CausalPFN-C 1D J=32 / both arms
     CKPT="$FC/$([ "$MODEL" = cpfn1d_mr ] && echo cpfnC_mr_1d_j32_step50000.pt || echo cpfnC_ml_1d_botharms_step50000.pt)" \
     EVAL_MAX_CONTEXT= EVAL_CONTEXT_SEED=1 STD_MODE=per_arm COMPILE=0 SKIP_EM=1 \

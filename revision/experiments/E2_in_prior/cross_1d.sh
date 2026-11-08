@@ -8,6 +8,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh table      CPU job: inprior_pehe.py over all three families
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh means      CPU job: inprior_mean_tests.py (paired t-test on the average)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh noise      CPU job: inprior_noise_dose.py (PEHE gain vs the noise that cancels)
+#   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh uwykb      GPU job: UWYK-B on the uwyk_2d datasets (task 19)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh rhodose    CPU job: inprior_rho_dose.py (PEHE gain vs the 2D model's predicted rho)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh ucheck     CPU job: cpfn_u_check.py (does u dominate in the CausalPFN-C 2D prior?)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh pairs      CPU job: inprior_pairs.py (PEHE, every pair of 1D / matched label / 2D)
@@ -15,7 +16,7 @@ set -euo pipefail
 KIT="${KIT:-$SCRATCH/rpfn_bench_kit}"; REPO="$KIT/R-PFN"; E2="$REPO/revision/experiments/E2_in_prior"; cd "$KIT"
 DATA="$SCRATCH/e2/new/data"; RES="$SCRATCH/e2/new/results_y"; CROSS="$SCRATCH/e2/new/results_y_cross"; NW=1000
 mkdir -p logs_e2 "$CROSS"
-JOBS=(2:uwyk1d:uwyk_2d 4:cpfn1d:cpfn_2d
+JOBS=(2:uwyk1d:uwyk_2d 4:cpfn1d:cpfn_2d 19:uwykB:uwyk_2d
       13:dopfn1d_mr:dopfn 14:dopfn1d_ml:dopfn 15:uwyk1d_mr:uwyk_2d 16:uwyk1d_ml:uwyk_2d 17:cpfn1d_mr:cpfn_2d 18:cpfn1d_ml:cpfn_2d)
 cnt() { (ls $1 2>/dev/null || true) | wc -l; }
 case "$1" in
@@ -28,6 +29,10 @@ eval)
       sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --array=$I --job-name="x1d-$M" \
       -o "logs_e2/cross_${M}_%a.out" -e "logs_e2/cross_${M}_%a.err" "$E2/eval_e2.sbatch"
   done ;;
+uwykb)
+  E2_PRIOR=uwyk_2d E2_OUTCOMES_ALL=1 E2_DATA=$DATA E2_RESULTS="$CROSS/on_uwyk_2d" E2_SHARDS=$((NW / 100)) \
+    sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --array=19 --job-name="x1d-uwykB" \
+    -o "logs_e2/cross_uwykB_%a.out" -e "logs_e2/cross_uwykB_%a.err" "$E2/eval_e2.sbatch" ;;
 progress)
   for spec in "${JOBS[@]}"; do IFS=: read -r I M PR <<< "$spec"; echo "$M on $PR: $(cnt "$CROSS/on_$PR/$M/outall_shard*.npz")/$((NW / 100)) shards"; done ;;
 table)
