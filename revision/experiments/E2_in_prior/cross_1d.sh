@@ -8,6 +8,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh table      CPU job: inprior_pehe.py over all three families
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh means      CPU job: inprior_mean_tests.py (paired t-test on the average)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh noise      CPU job: inprior_noise_dose.py (PEHE gain vs the noise that cancels)
+#   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh rhodose    CPU job: inprior_rho_dose.py (PEHE gain vs the 2D model's predicted rho)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh ucheck     CPU job: cpfn_u_check.py (does u dominate in the CausalPFN-C 2D prior?)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh pairs      CPU job: inprior_pairs.py (PEHE, every pair of 1D / matched label / 2D)
 set -euo pipefail
@@ -44,4 +45,7 @@ pairs)
 ucheck)
   sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=8 --mem=16G --job-name=cpfn-ucheck -o "$SCRATCH/cpfn_u_check.log" \
     --wrap "cd $KIT && $KIT/venv/bin/python $E2/cpfn_u_check.py $DATA $REPO/revision/results/d262t1/cpfn_u_check.txt" ;;
+rhodose)
+  sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-rhodose -o "$SCRATCH/inprior_rho_dose.log" \
+    --wrap "cd $KIT && $KIT/venv/bin/python $E2/inprior_rho_dose.py $DATA $RES $CROSS $REPO/revision/results/d262t1/rho_pred_inprior.csv $REPO/revision/results/d262t1/inprior_rho_dose.txt" ;;
 esac
