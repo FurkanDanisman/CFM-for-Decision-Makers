@@ -8,6 +8,7 @@
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh table      CPU job: inprior_pehe.py over all three families
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh means      CPU job: inprior_mean_tests.py (paired t-test on the average)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh noise      CPU job: inprior_noise_dose.py (PEHE gain vs the noise that cancels)
+#   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh uwykbtab   CPU job: coverage table, mean tests and rho dose with UWYK-B
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh uwykb      GPU job: UWYK-B on the uwyk_2d datasets (task 19)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh rhodose    CPU job: inprior_rho_dose.py (PEHE gain vs the 2D model's predicted rho)
 #   bash R-PFN/revision/experiments/E2_in_prior/cross_1d.sh ucheck     CPU job: cpfn_u_check.py (does u dominate in the CausalPFN-C 2D prior?)
@@ -33,6 +34,10 @@ uwykb)
   E2_PRIOR=uwyk_2d E2_OUTCOMES_ALL=1 E2_DATA=$DATA E2_RESULTS="$CROSS/on_uwyk_2d" E2_SHARDS=$((NW / 100)) \
     sbatch --account=aip-rgrosse --gres=gpu:l40s:1 --time=3:00:00 --array=19 --job-name="x1d-uwykB" \
     -o "logs_e2/cross_uwykB_%a.out" -e "logs_e2/cross_uwykB_%a.err" "$E2/eval_e2.sbatch" ;;
+uwykbtab)
+  R=$REPO/revision/results/d262t1
+  sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=8G --job-name=inprior-uwykB -o "$SCRATCH/inprior_uwykB.log" \
+    --wrap "cd $KIT && $KIT/venv/bin/python $E2/newworld_y_table.py $DATA $RES $NW $R/newworld_y_uwykB.csv $CROSS && $KIT/venv/bin/python $E2/inprior_mean_tests.py $DATA $RES $CROSS $R/inprior_mean_tests.txt && $KIT/venv/bin/python $E2/inprior_rho_dose.py $DATA $RES $CROSS $R/rho_pred_inprior.csv $R/inprior_rho_dose.txt" ;;
 progress)
   for spec in "${JOBS[@]}"; do IFS=: read -r I M PR <<< "$spec"; echo "$M on $PR: $(cnt "$CROSS/on_$PR/$M/outall_shard*.npz")/$((NW / 100)) shards"; done ;;
 table)

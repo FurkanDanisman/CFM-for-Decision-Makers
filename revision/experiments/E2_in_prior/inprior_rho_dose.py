@@ -23,7 +23,7 @@ FAMILIES = [
     ("Do-PFN", "dopfn", [("1D", RES, "dopfn_native"), ("matched resolution", CD("dopfn"), "dopfn1d_mr"),
                          ("matched label", CD("dopfn"), "dopfn1d_ml")], (RES, "dopfn_joint2d_262k")),
     ("UWYK", "uwyk_2d", [("1D", CD("uwyk_2d"), "uwyk1d"), ("matched resolution", CD("uwyk_2d"), "uwyk1d_mr"),
-                         ("matched label", CD("uwyk_2d"), "uwyk1d_ml")], (RES, "graph2d")),
+                         ("matched label", CD("uwyk_2d"), "uwyk1d_ml"), ("UWYK-B", CD("uwyk_2d"), "uwykB")], (RES, "graph2d")),
     ("CausalPFN-C", "cpfn_2d", [("1D", CD("cpfn_2d"), "cpfn1d"), ("matched resolution", CD("cpfn_2d"), "cpfn1d_mr"),
                                 ("matched label", CD("cpfn_2d"), "cpfn1d_ml")], (RES, "cpfn2d"))]
 lines = []

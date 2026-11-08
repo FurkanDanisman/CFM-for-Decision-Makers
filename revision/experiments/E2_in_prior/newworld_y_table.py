@@ -1,5 +1,5 @@
 """In-prior calibration, new SCM per dataset: coverage of y0, y1, the joint region (2D) and the ITE, per world.
-python newworld_y_table.py DATA RES NW OUT_CSV
+python newworld_y_table.py DATA RES NW OUT_CSV [CROSS]   (CROSS: cross_1d.sh results, for UWYK-B on uwyk_2d)
 Per world (one dataset of 500 queries): coverage = share of queries whose truth lies in the 95% interval.
   y0, y1     posterior: the predictive interval (2D: of each marginal of the joint); formula: mu +- 1.96 sd. Truth: the prior's own outcomes
              (CausalPFN-C 1D: its training target m_t).
@@ -11,19 +11,24 @@ import glob, os, re, sys
 import numpy as np
 
 DATA, RES, NW, OUT = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+CROSS = sys.argv[5] if len(sys.argv) > 5 else None
 Z = 1.959963984540054
 MODELS = [("dopfn_native", "Do-PFN", "dopfn", False), ("dopfn_joint2d_262k", "Do-PFN 2D", "dopfn", True),
           ("uwyk1d", "UWYK (binary T)", "uwyk_1d", False), ("uwyk1d_cont", "UWYK (continuous T)", "uwyk_1dc", False),
           ("graph2d", "UWYK 2D", "uwyk_2d", True), ("cpfn1d", "CausalPFN-C", "cpfn_1d", False),
           ("cpfn2d", "CausalPFN-C 2D", "cpfn_2d", True)]
+if CROSS:                                                    # UWYK-B (binary re-training) on UWYK 2D's datasets
+    MODELS.insert(4, ("uwykB", "UWYK-B", "uwyk_2d", False))
+DIRS = {"uwykB": os.path.join(CROSS, "on_uwyk_2d")} if CROSS else {}
 
 
 def load_shards(model):
     """global world index -> (outcome readouts dict, (ite lo, ite hi))"""
     out = {}
-    for f in glob.glob(os.path.join(RES, model, "outall_shard*.npz")):
+    base = DIRS.get(model, RES)
+    for f in glob.glob(os.path.join(base, model, "outall_shard*.npz")):
         k = int(re.search(r"shard(\d+)\.npz$", f).group(1))
-        z = np.load(f); zi = np.load(os.path.join(RES, model, f"shard{k}.npz"))
+        z = np.load(f); zi = np.load(os.path.join(base, model, f"shard{k}.npz"))
         ite = {int(i): (lo, hi) for i, lo, hi in zip(zi["idx"], zi["lo"], zi["hi"])}
         for j, i in enumerate(z["idx"]):
             r = k * 100 + int(i)
