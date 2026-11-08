@@ -1,0 +1,10 @@
+CausalPFN toy with the prior's numbers (u sd 2.2, corr(u) 0.4, eta shared); PEHE vs tau(x), mean (SE) over 30 seeds
+eta sd (0.25, 0.75): 1D 0.2313 (0.0116)  2D-full 0.2524 (0.0137)  2D-weak 0.2482 (0.0119)
+   2D-full / 1D 1.115  2D better in 13/30  t p 0.074  learned rho 0.44
+   2D-weak / 1D 1.079  2D better in 8/30  t p 0.00054  learned rho 0.10
+eta sd (0.75, 1.25): 1D 0.2313 (0.0116)  2D-full 0.2709 (0.0138)  2D-weak 0.2662 (0.0128)
+   2D-full / 1D 1.203  2D better in 11/30  t p 0.0035  learned rho 0.51
+   2D-weak / 1D 1.164  2D better in 6/30  t p 0.00012  learned rho 0.10
+eta sd (1.25, 1.75): 1D 0.2313 (0.0116)  2D-full 0.2949 (0.0117)  2D-weak 0.2974 (0.0116)
+   2D-full / 1D 1.327  2D better in 7/30  t p 1.7e-05  learned rho 0.60
+   2D-weak / 1D 1.323  2D better in 3/30  t p 3.4e-07  learned rho 0.10
