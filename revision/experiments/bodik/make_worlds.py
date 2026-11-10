@@ -119,9 +119,65 @@ def twins_bodik(out, d=10, n_sub=10, block=2000):
     print(f"{root}: {n_sub} context draws of {TW_CTX} x {len(blocks)} query blocks", flush=True)
 
 
+DEQ_W = (0.1, 0.25, 0.5)
+
+
+def _write_bodik(out, kind, tag, X, T, y0, y1, y_ctx, n_sub=10, block=2000):
+    """twins_bodik's two layouts: <kind>_full_<tag> (context = all families) and <kind>_sub_<tag> (1000 families,
+    n_sub draws); every family queried; truths = the BINARY outcomes; the context carries y_ctx."""
+    allq = np.arange(T.size)
+    blocks = [allq[s:s + block] for s in range(0, T.size, block)]
+    tr = lambda q: {"delta_shared": (y1 - y0)[q], "cate": (y1 - y0)[q], "y0": y0[q], "y1": y1[q], "t_test": T[q]}
+    d = X.shape[1]
+    root = os.path.join(out, f"{kind}_full_{tag}", f"d{d}")
+    for k, q in enumerate(blocks):
+        if not done(root, k):
+            write_world(root, k, X, T, y_ctx, X[q], tr(q))
+    root = os.path.join(out, f"{kind}_sub_{tag}", f"d{d}")
+    it, ic = np.flatnonzero(T == 1), np.flatnonzero(T == 0)
+    n_t = int(round(TW_CTX * it.size / T.size))
+    for s_ in range(n_sub):
+        rng = np.random.default_rng([SEED, 4, s_])                    # the same context draws as twins_bodik
+        ctx = np.concatenate([rng.choice(it, n_t, replace=False), rng.choice(ic, TW_CTX - n_t, replace=False)])
+        rng.shuffle(ctx)
+        for b, q in enumerate(blocks):
+            k = s_ * len(blocks) + b
+            if not done(root, k):
+                write_world(root, k, X[ctx], T[ctx], y_ctx[ctx], X[q], tr(q))
+    print(f"{kind} {tag} d{d}: full + {n_sub} draws of {TW_CTX}, {len(blocks)} query blocks", flush=True)
+
+
+def twins_deq(out, d):
+    """The binary outcome dequantized for the context only: y + U(-w, w), w < 1/2, so the threshold 1/2 recovers it
+    exactly; truths and scoring stay binary.
+      twins_{full,sub}_deq<w>     Twins (Bodik's setup), w in DEQ_W
+      twinsind_{full,sub}_deq<w>  control with NO cross-world dependence: the same covariates and treatment, each twin's outcome
+                       redrawn independently from P(Y_t = 1 | x) (a logistic fit of that twin's outcome on the 10
+                       covariates), w in (0,) + DEQ_W (w = 0: binary, as given to the models in Table 2)"""
+    from sklearn.linear_model import LogisticRegression
+    z = np.load(os.path.join(HERE, "bodik_twins.npz"))
+    Xa, T = z["X"].astype(np.float64), z["T"].astype(np.float64)
+    y0, y1 = z["Y0"].astype(np.float64), z["Y1"].astype(np.float64)
+    X10 = Xa[:, :10]
+    rng = np.random.default_rng([SEED, 7])
+    p = {t: LogisticRegression(max_iter=2000).fit(X10, yt).predict_proba(X10)[:, 1] for t, yt in ((0, y0), (1, y1))}
+    i0, i1 = (rng.random(T.size) < p[0]).astype(np.float64), (rng.random(T.size) < p[1]).astype(np.float64)
+    X = Xa[:, :d]
+    for kind, (a0, a1), widths in (("twins", (y0, y1), DEQ_W), ("twinsind", (i0, i1), (0.0,) + DEQ_W)):
+        yf = np.where(T == 1, a1, a0)
+        for w in widths:
+            u = np.random.default_rng([SEED, 8, int(round(w * 1000))]).uniform(-w, w, T.size)
+            _write_bodik(out, kind, f"deq{w:g}", X, T, a0, a1, yf + u)
+    print(f"control: corr(Y0, Y1) {np.corrcoef(i0, i1)[0, 1]:.3f} (Twins {np.corrcoef(y0, y1)[0, 1]:.3f}); "
+          f"mortality {i0.mean():.3f}/{i1.mean():.3f} (Twins {y0.mean():.3f}/{y1.mean():.3f})", flush=True)
+
+
 if __name__ == "__main__":
     out = sys.argv[1]
-    if "--twins-bodik" in sys.argv:
+    if "--twins-deq" in sys.argv:
+        for d_ in (10, 1):
+            twins_deq(out, d_)
+    elif "--twins-bodik" in sys.argv:
         for d_ in (10, 1):
             twins_bodik(out, d=d_)
     else:

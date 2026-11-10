@@ -30,6 +30,10 @@ if [ "${RUN:-}" != 1 ]; then
              --job-name="bodik-$M-$P" -o "logs_bodik/eval_${M}_${P}_%j.out" --wrap "RUN=1 KIT=$KIT bash $SELF eval $M $P" ;;
     gen_twins) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=16G --job-name=bodik-gen-tw \
              -o logs_bodik/gen_twins_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen_twins" ;;
+    gen_twins_deq) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-gen-deq \
+             -o logs_bodik/gen_twins_deq_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen_twins_deq" ;;
+    score_twins_deq) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-deq-score \
+             -o logs_bodik/score_twins_deq_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_deq" ;;
     score_twins_bodik) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-tw-score \
              -o logs_bodik/score_twins_bodik_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_bodik" ;;
     readouts) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-ro \
@@ -54,6 +58,18 @@ fi
 REPO="$KIT/R-PFN"; CK="$REPO/Required_checkpoints"; HERE="$REPO/revision/experiments/bodik"
 cd "$KIT"; source venv/bin/activate
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-4}" PYTHONUNBUFFERED=1
+
+if [ "$STEP" = gen_twins_deq ]; then                 # dequantized Twins + the no-dependence control
+  python -u "$HERE/make_worlds.py" "$D" --twins-deq && echo "[$(date '+%F %T')] gen_twins_deq done"
+  exit $?
+fi
+
+if [ "$STEP" = score_twins_deq ]; then
+  export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
+  O="$REPO/revision/results/d262t1"; mkdir -p "$O"
+  python -u "$HERE/score_twins_deq.py" "$D" "$O/bodik_twins_deq"
+  exit $?
+fi
 
 if [ "$STEP" = gen_twins ]; then
   python -u "$HERE/make_worlds.py" "$D" --twins-bodik && echo "[$(date '+%F %T')] gen_twins done"
@@ -234,6 +250,15 @@ cells() {
       for d in 10 1; do for r in 1 0.75 0.5 0.25 0; do echo "$PART/d$d/rho$r $PART/d$d/rho$r"; done; done ;;
     twins)                                          # his d = 10 and d = 1 (d = 71 is not reported)
       for d in 10 1; do echo "twins/d$d twins/d$d"; done ;;
+    deq_all) PART=twins_deq cells; PART=twinsind_deq cells ;;   # both, for the fast models (one job)
+    twins_deq|twinsind_deq)                         # dequantized context (twins) / no-dependence control (twinsind)
+      K="${PART%_deq}"; W="0.1 0.25 0.5"; [ "$K" = twinsind ] && W="0 0.1 0.25 0.5"
+      for d in 10 1; do for w in $W; do
+        case "$MODEL" in
+          uwyk*|graph2d) echo "${K}_sub_deq$w/d$d ${K}_sub_deq$w/d$d" ;;
+          *)             echo "${K}_full_deq$w/d$d ${K}_full_deq$w/d$d" ;;
+        esac
+      done; done ;;
     twins_bodik)                                    # Bodik's setup: Do-PFN / CausalPFN-C full context, UWYK 1000 x 10
       for d in 10 1; do
         case "$MODEL" in
