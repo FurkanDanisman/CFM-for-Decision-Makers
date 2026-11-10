@@ -1,6 +1,7 @@
 """Jittered Twins, MSE: 2D against its 1D baselines evaluated over the range of rho compatible with the observed data
 (score_twins_deq.py ... range: per w, RANGES[w]), per covariate set d; averaged over w = 0.1, 0.25, 0.5.
-python twins_range_test.py CSV [CSV ...]   (the *_range CSVs of the 1D baselines and the 2D CSVs)
+python twins_range_test.py [--common] CSV [CSV ...]   (the *_range CSVs of the 1D baselines and the 2D CSVs;
+--common: the narrowest range [-0.4, 0.8] for every w)
 
 Two summaries of a 1D baseline per w: the average of its MSEs over the range ("avg of scores") and the MSE of its
 prediction averaged over the range ("avg prediction", the row "copula ρ=avg"). Over w: the mean of the per-w values,
@@ -20,6 +21,9 @@ FAM = [("Do-PFN", "Do-PFN 2D"), ("UWYK No-Anc", "UWYK 2D No-Anc"), ("UWYK Anc", 
 BASE = [("full resolution", ""), ("matched resolution", " (matched resolution)"), ("matched label", " (matched label)")]
 mean = lambda x: sum(x) / len(x)
 
+if sys.argv[1] == "--common":                                  # robustness: one range for every w, the narrowest
+    RANGES = {w: (-4, 8) for w in WS}
+    sys.argv = sys.argv[:1] + sys.argv[2:]
 rows = {}
 for path in sys.argv[1:]:
     for r in csv.DictReader(open(path)):
