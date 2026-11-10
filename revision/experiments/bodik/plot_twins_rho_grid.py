@@ -80,7 +80,7 @@ def main(out, paths, mr):
             ax.text(0.97, 0.95, "*" * stars, transform=ax.transAxes, ha="right", va="top", fontsize=17)
         ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
         ax.set_title(lab)
-        ax.set_xlabel("assumed ρ (1D)")
+        ax.set_xlabel("ρ")
     axes[0][0].set_ylabel("MSE")
     fig.tight_layout()
     for ext in ("pdf", "png"):
