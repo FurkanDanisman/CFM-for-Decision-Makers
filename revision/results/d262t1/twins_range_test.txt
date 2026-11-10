@@ -1,0 +1,52 @@
+
+== 1D summarised as: avg of scores over the observed-data range of rho; MSE averaged over w
+  Do-PFN       d=10  vs 1D full resolution     2D 0.131 ± 0.003   1D 0.203 ± 0.003   p 1.1e-74   2D lower **
+  Do-PFN       d=10  vs 1D matched resolution  2D 0.131 ± 0.003   1D 0.332 ± 0.004   p 0   2D lower **
+  Do-PFN       d=10  vs 1D matched label       2D 0.131 ± 0.003   1D 0.209 ± 0.003   p 3.3e-90   2D lower **
+  Do-PFN       d=1   vs 1D full resolution     2D 0.141 ± 0.003   1D 0.206 ± 0.003   p 7.8e-56   2D lower **
+  Do-PFN       d=1   vs 1D matched resolution  2D 0.141 ± 0.003   1D 0.317 ± 0.004   p 0   2D lower **
+  Do-PFN       d=1   vs 1D matched label       2D 0.141 ± 0.003   1D 0.212 ± 0.003   p 2.5e-70   2D lower **
+  UWYK No-Anc  d=10  vs 1D full resolution     2D 0.116 ± 0.001   1D 0.202 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=10  vs 1D matched resolution  2D 0.116 ± 0.001   1D 0.199 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=10  vs 1D matched label       2D 0.116 ± 0.001   1D 0.201 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D full resolution     2D 0.117 ± 0.001   1D 0.202 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D matched resolution  2D 0.117 ± 0.001   1D 0.201 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D matched label       2D 0.117 ± 0.001   1D 0.201 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=10  vs 1D full resolution     2D 0.115 ± 0.001   1D 0.222 ± 0.003   p 1.2e-316   2D lower **
+  UWYK Anc     d=10  vs 1D matched resolution  2D 0.115 ± 0.001   1D 0.204 ± 0.002   p 0   2D lower **
+  UWYK Anc     d=10  vs 1D matched label       2D 0.115 ± 0.001   1D 0.207 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D full resolution     2D 0.118 ± 0.001   1D 0.212 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D matched resolution  2D 0.118 ± 0.001   1D 0.211 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D matched label       2D 0.118 ± 0.001   1D 0.203 ± 0.001   p 0   2D lower **
+  CausalPFN-C  d=10  vs 1D full resolution     2D 0.160 ± 0.002   1D 0.213 ± 0.003   p 1.6e-52   2D lower **
+  CausalPFN-C  d=10  vs 1D matched resolution  2D 0.160 ± 0.002   1D 0.204 ± 0.003   p 7e-38   2D lower **
+  CausalPFN-C  d=10  vs 1D matched label       2D 0.160 ± 0.002   1D 0.216 ± 0.003   p 6.7e-59   2D lower **
+  CausalPFN-C  d=1   vs 1D full resolution     2D 0.164 ± 0.002   1D 0.210 ± 0.003   p 1.3e-39   2D lower **
+  CausalPFN-C  d=1   vs 1D matched resolution  2D 0.164 ± 0.002   1D 0.204 ± 0.003   p 4.7e-31   2D lower **
+  CausalPFN-C  d=1   vs 1D matched label       2D 0.164 ± 0.002   1D 0.212 ± 0.003   p 9.5e-44   2D lower **
+
+== 1D summarised as: avg prediction over the observed-data range of rho; MSE averaged over w
+  Do-PFN       d=10  vs 1D full resolution     2D 0.131 ± 0.003   1D 0.161 ± 0.002   p 1.8e-18   2D lower **
+  Do-PFN       d=10  vs 1D matched resolution  2D 0.131 ± 0.003   1D 0.221 ± 0.002   p 3.1e-156   2D lower **
+  Do-PFN       d=10  vs 1D matched label       2D 0.131 ± 0.003   1D 0.163 ± 0.002   p 4e-22   2D lower **
+  Do-PFN       d=1   vs 1D full resolution     2D 0.141 ± 0.003   1D 0.163 ± 0.002   p 2.4e-09   2D lower **
+  Do-PFN       d=1   vs 1D matched resolution  2D 0.141 ± 0.003   1D 0.207 ± 0.002   p 3.5e-85   2D lower **
+  Do-PFN       d=1   vs 1D matched label       2D 0.141 ± 0.003   1D 0.164 ± 0.002   p 4.3e-11   2D lower **
+  UWYK No-Anc  d=10  vs 1D full resolution     2D 0.116 ± 0.001   1D 0.164 ± 0.001   p 0   2D lower **
+  UWYK No-Anc  d=10  vs 1D matched resolution  2D 0.116 ± 0.001   1D 0.163 ± 0.000   p 0   2D lower **
+  UWYK No-Anc  d=10  vs 1D matched label       2D 0.116 ± 0.001   1D 0.163 ± 0.000   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D full resolution     2D 0.117 ± 0.001   1D 0.163 ± 0.000   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D matched resolution  2D 0.117 ± 0.001   1D 0.163 ± 0.000   p 0   2D lower **
+  UWYK No-Anc  d=1   vs 1D matched label       2D 0.117 ± 0.001   1D 0.163 ± 0.000   p 0   2D lower **
+  UWYK Anc     d=10  vs 1D full resolution     2D 0.115 ± 0.001   1D 0.174 ± 0.002   p 6.2e-188   2D lower **
+  UWYK Anc     d=10  vs 1D matched resolution  2D 0.115 ± 0.001   1D 0.165 ± 0.001   p 1.5e-291   2D lower **
+  UWYK Anc     d=10  vs 1D matched label       2D 0.115 ± 0.001   1D 0.165 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D full resolution     2D 0.118 ± 0.001   1D 0.168 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D matched resolution  2D 0.118 ± 0.001   1D 0.167 ± 0.001   p 0   2D lower **
+  UWYK Anc     d=1   vs 1D matched label       2D 0.118 ± 0.001   1D 0.164 ± 0.000   p 0   2D lower **
+  CausalPFN-C  d=10  vs 1D full resolution     2D 0.160 ± 0.002   1D 0.167 ± 0.002   p 0.029   not significant
+  CausalPFN-C  d=10  vs 1D matched resolution  2D 0.160 ± 0.002   1D 0.166 ± 0.002   p 0.07   not significant
+  CausalPFN-C  d=10  vs 1D matched label       2D 0.160 ± 0.002   1D 0.170 ± 0.002   p 0.0005   2D lower **
+  CausalPFN-C  d=1   vs 1D full resolution     2D 0.164 ± 0.002   1D 0.166 ± 0.002   p 0.4   not significant
+  CausalPFN-C  d=1   vs 1D matched resolution  2D 0.164 ± 0.002   1D 0.166 ± 0.002   p 0.53   not significant
+  CausalPFN-C  d=1   vs 1D matched label       2D 0.164 ± 0.002   1D 0.167 ± 0.002   p 0.28   not significant
