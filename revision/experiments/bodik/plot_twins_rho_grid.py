@@ -3,7 +3,7 @@ every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average o
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
-python plot_twins_rho_grid.py [--is] [--no1] [--range | --range-perw] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+python plot_twins_rho_grid.py [--d1] [--is] [--no1] [--range | --range-perw] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs). By default every 1D baseline found is drawn: full resolution (blue), matched resolution (green), matched label
 (purple); --full / --mr / --ml: that one only)
 
@@ -184,6 +184,8 @@ def main_range_perw(out, paths, series):
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
+    if argv[0] == "--d1":                                         # covariate set d = 1 instead of 10
+        D = "d=1"; argv = argv[1:]
     if argv[0] == "--is":
         METRIC = "IS"; argv = argv[1:]
     if argv[0] == "--no1":                                       # the grid without rho = 1: rho in [0, 0.9]
