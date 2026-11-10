@@ -215,8 +215,12 @@ run_model() {   # run_model <outdir>   (dataset CMECH_n5 read from $UWYK_FIG34_D
       python -u "$REPO/realcause_eval/Table1/cpfn1d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn1d_j1024_headrand_step_50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
     dopfn1d_mr|dopfn1d_ml)                         # appendix ablations: 262k Do-PFN 1D, temperature off
-      local V=dopfn_1d; [ "$MODEL" = dopfn1d_ml ] && V=dopfn_1d_botharms
-      DOPFN_CKPT="$D262/$V/step_262144_final.pt" DOPFN_SOFTMAX_TEMP=0 \
+      local V=dopfn_1d F=dopfn1d_J10_step262144.pt; [ "$MODEL" = dopfn1d_ml ] && V=dopfn_1d_botharms F=dopfn1d_botharms_step262144.pt
+      local CKF="$D262/$V/step_262144_final.pt"           # moved by the clean-up: then its copy in final_checkpoints_paper
+      [ -e "$CKF" ] || CKF="$KIT/final_checkpoints_paper/$F"
+      [ -e "$CKF" ] || { echo "FATAL: no checkpoint for $MODEL ($D262/$V/step_262144_final.pt, $KIT/final_checkpoints_paper/$F)"; return 1; }
+      echo "checkpoint: $CKF"
+      DOPFN_CKPT="$CKF" DOPFN_SOFTMAX_TEMP=0 \
         python -u "$REPO/benchmarks/eval_scm_case_studies/eval_native_dopfn.py" --dataset CMECH_n5 ;;
     uwyk1d_mr|uwyk1d_ml|uwyk_bin)                  # UWYK matched resolution (D) / matched label (C) / binary (UWYK-B)
       local C K E A

@@ -82,10 +82,7 @@ def main(out, paths, mr):
         ax.set_title(lab)
         ax.set_xlabel("assumed ρ (1D)")
     axes[0][0].set_ylabel("MSE")
-    h, l = axes[0][0].get_legend_handles_labels()
-    fig.legend(h, l, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.04))
-    fig.suptitle("Twins (jittered, averaged over w = 0.1, 0.25, 0.5), d = 10", y=0.99)
-    fig.tight_layout(rect=(0, 0.1, 1, 0.95))
+    fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
     print(f"wrote {out}.pdf/.png")
