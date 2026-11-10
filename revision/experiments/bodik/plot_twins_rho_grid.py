@@ -4,7 +4,8 @@ w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
 python plot_twins_rho_grid.py [--mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
-runs; --mr / --ml: the 1D baselines at matched resolution (green) / matched label (purple))
+runs). By default every 1D baseline found is drawn: full resolution (blue), matched resolution (green), matched label
+(purple); --mr / --ml: that one only)
 
 Averages: over w, a model's mean is the average of its per-w means and its SE is bounded by the average of its per-w
 SEs; over the rho grid, the same (the average of the 11 rho means, SE bounded by the average of their SEs). Both bounds
@@ -50,32 +51,38 @@ def over_w(rows, model):
     return mean([float(r["mse"]) for r in c]), mean([float(r["mse_se"]) for r in c])
 
 
-def main(out, paths, abl):
+SERIES = [("", PS.COL_1D), (" (matched resolution)", PS.COL_RES), (" (matched label)", PS.COL_LAB)]
+
+
+def main(out, paths, series):
+    """series: the 1D baselines drawn, as (label suffix, colour); a baseline missing from the CSVs is skipped"""
     rows = load(paths)
-    col1 = {"mr": PS.COL_RES, "ml": PS.COL_LAB}.get(abl, PS.COL_1D)
-    suffix = {"mr": " (matched resolution)", "ml": " (matched label)"}.get(abl, "")
     res = []
     for one, two, lab in FAM:
-        one = one + suffix
         t = over_w(rows, two)
-        g = [over_w(rows, f"{one} copula ρ={r}") for r in RHOS]
-        if t is None or any(x is None for x in g):
-            print("missing", one); continue
-        a = (mean([m for m, _ in g]), mean([s for _, s in g]))
-        p = math.erfc(abs(t[0] - a[0]) / math.hypot(t[1], a[1]) / math.sqrt(2))
-        stars = 2 if p < 0.05 else 1 if p < 0.1 else 0
-        res.append((lab, g, a, t, p, stars))
-        print(f"{one:34s} 2D {t[0]:.3f} ± {t[1]:.3f}   1D avg {a[0]:.3f} ± {a[1]:.3f}   p {p:.2g}   "
-              + (("2D lower " if t[0] < a[0] else "2D higher ") + "*" * stars if stars else "not significant"))
+        curves = []
+        for suffix, col in series:
+            g = [over_w(rows, f"{one}{suffix} copula ρ={r}") for r in RHOS]
+            if t is None or any(x is None for x in g):
+                continue
+            a = (mean([m for m, _ in g]), mean([s for _, s in g]))
+            p = math.erfc(abs(t[0] - a[0]) / math.hypot(t[1], a[1]) / math.sqrt(2))
+            stars = 2 if p < 0.05 else 1 if p < 0.1 else 0
+            curves.append((g, a, col))
+            print(f"{one + suffix:34s} 2D {t[0]:.3f} ± {t[1]:.3f}   1D avg {a[0]:.3f} ± {a[1]:.3f}   p {p:.2g}   "
+                  + (("2D lower " if t[0] < a[0] else "2D higher ") + "*" * stars if stars else "not significant"))
+        if curves:
+            res.append((lab, curves, t))
     plt.rcParams.update({"font.size": 14, "axes.titlesize": 15, "axes.labelsize": 14, "xtick.labelsize": 12.5,
                          "ytick.labelsize": 12.5, "legend.fontsize": 13.5})
     fig, axes = plt.subplots(1, len(res), figsize=(3.2 * len(res), 3.3), squeeze=False)
-    for ax, (lab, g, a, t, p, stars) in zip(axes[0], res):
-        m1, s1 = [m for m, _ in g], [s for _, s in g]
-        ax.plot(RHOS, m1, "-o", ms=6, lw=2.4, color=col1, label="1D, assumed ρ")
-        ax.fill_between(RHOS, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col1, alpha=0.2, lw=0)
-        ax.axhline(a[0], color=col1, ls="--", lw=2.2, label="1D, average over ρ ∈ [0, 1]")
-        ax.axhline(t[0], color=PS.COL_2D, lw=3.0, label="2D")
+    for ax, (lab, curves, t) in zip(axes[0], res):
+        for g, a, col in curves:
+            m1, s1 = [m for m, _ in g], [s for _, s in g]
+            ax.plot(RHOS, m1, "-o", ms=6, lw=2.4, color=col)
+            ax.fill_between(RHOS, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col, alpha=0.2, lw=0)
+            ax.axhline(a[0], color=col, ls="--", lw=2.2)
+        ax.axhline(t[0], color=PS.COL_2D, lw=3.0)
         ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.15, lw=0)
         ax.set_xticks([0, 0.5, 1]); ax.set_xticklabels(["0", "0.5", "1"])
         ax.set_title(lab)
@@ -88,6 +95,6 @@ def main(out, paths, abl):
 
 
 if __name__ == "__main__":
-    abl = sys.argv[1][2:] if sys.argv[1] in ("--mr", "--ml") else None
+    abl = sys.argv[1][2:] if sys.argv[1] in ("--mr", "--ml") else None   # one baseline only; default: all found
     a = sys.argv[2:] if abl else sys.argv[1:]
-    main(a[0], a[1:], abl)
+    main(a[0], a[1:], {"mr": SERIES[1:2], "ml": SERIES[2:3]}.get(abl, SERIES))
