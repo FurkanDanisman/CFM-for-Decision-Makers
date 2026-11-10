@@ -144,17 +144,17 @@ def main_range(out, paths, series):
 
 
 def main_range_perw(out, paths, series):
-    """one row per w, one column per family: the 1D curve over that w's own range of rho (+- SE band), its average over
+    """one column per w, one row per family: the 1D curve over that w's own range of rho (+- SE band), its average over
     the range (dashed), and 2D at that w (orange, +- SE band)"""
     rows = load(paths)
     plt.rcParams.update({"font.size": 14, "axes.titlesize": 15, "axes.labelsize": 14, "xtick.labelsize": 12.5,
                          "ytick.labelsize": 12.5})
-    fig, axes = plt.subplots(len(WS), len(FAM), figsize=(3.2 * len(FAM), 2.9 * len(WS)), squeeze=False)
+    fig, axes = plt.subplots(len(FAM), len(WS), figsize=(3.4 * len(WS), 2.8 * len(FAM)), squeeze=False)
     for i, w in enumerate(WS):
         lo, hi = RANGES[w]
         rh = [k / 10 for k in range(lo, hi + 1)]
         for j, (one, two, lab) in enumerate(FAM):
-            ax = axes[i][j]
+            ax = axes[j][i]                                       # rows: families, columns: w
             t = rows.get((w, D, two))
             for suffix, col in series:
                 g = [rows.get((w, D, f"{one}{suffix} copula ρ={r}")) for r in rh]
@@ -170,12 +170,12 @@ def main_range_perw(out, paths, series):
                 ax.axhspan(float(t[METRIC]) - e, float(t[METRIC]) + e, color=PS.COL_2D, alpha=0.15, lw=0)
             ax.set_xlim(-1.02, 1.02)
             ax.set_xticks([-1, -0.5, 0, 0.5, 1]); ax.set_xticklabels(["-1", "-0.5", "0", "0.5", "1"])
-            if i == 0:
-                ax.set_title(lab)
-            if i == len(WS) - 1:
-                ax.set_xlabel("ρ")
             if j == 0:
-                ax.set_ylabel(f"w = {w}\nMSE" if METRIC == "mse" else f"w = {w}\nInterval score")
+                ax.set_title(f"w = {w}")
+            if j == len(FAM) - 1:
+                ax.set_xlabel("ρ")
+            if i == 0:
+                ax.set_ylabel(f"{lab}\nMSE" if METRIC == "mse" else f"{lab}\nInterval score")
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
