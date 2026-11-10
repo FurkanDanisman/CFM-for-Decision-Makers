@@ -7,6 +7,8 @@ Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covari
                jittered outcome (the bin of the known arm that holds it; outside the grid, the end bin); 1D and
                2D with the dependence off (rho = 0): the other arm's marginal (bodik_cf_readouts.cond_hist). The
                prediction is the histogram's mean (bodik_cf_readouts.mean_hist), the Table 2 read-out.
+  IS           interval score at alpha = 0.05 of the same histogram's 95% interval (bodik_cf_readouts.hist_interval:
+               2.5% / 97.5% points on bin edges, the paper's read-out) against the other twin's jittered outcome
   rho_pred     2D only: correlation of the predicted joint (raw bin centres), median over queries
   rho_true     correlation of the two twins' binary outcomes in the variant's truths
 Aggregation as score_twins_bodik (all families: SE over families; UWYK: per context draw, SE over draws).
@@ -32,6 +34,14 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
 
 
+def score(E, W, T, y):
+    """per query: squared error of the mean, interval score of the 95% interval"""
+    m = R.mean_hist(E, W, T)
+    L, U = R.hist_interval(E, W, T)
+    IS = (U - L) + (2 / R.A) * np.maximum(0, L - y) + (2 / R.A) * np.maximum(0, y - U)
+    return np.stack([(m - y) ** 2, IS], 1)
+
+
 def per_query(D, part, f, tag, is2d, d, ld_off=False):
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
     z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
@@ -40,7 +50,7 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False):
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
     if not is2d or ld_off:
         E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
-        return k, (R.mean_hist(E, W, T) - y) ** 2
+        return k, score(E, W, T, y)
     with np.load(f, allow_pickle=True) as zz:
         key = f"p_joint_scaled_{tag}" if tag and f"p_joint_scaled_{tag}" in zz.files else "p_joint_scaled"
         J = np.asarray(zz[key], np.float64)
@@ -48,18 +58,17 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False):
         e = {a: es * _map(zz, a)[0] + _map(zz, a)[1] for a in (0, 1)}
     J = J / J.sum((1, 2), keepdims=True)
     K = J.shape[-1]
-    mean = np.empty(t.size)
+    E, W = np.empty((t.size, K + 1)), np.empty((t.size, K))
     for arm_f in (0, 1):
         sel = np.flatnonzero(t == arm_f)
         if sel.size == 0:
             continue
         kb = np.clip(np.searchsorted(e[arm_f], yf[sel], side="right") - 1, 0, K - 1)
         M = J[sel] if arm_f == 0 else np.transpose(J[sel], (0, 2, 1))       # [q, known bin, other bin]
-        W = M[np.arange(sel.size), kb, :]
-        W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
-        eo = e[1 - arm_f]
-        mean[sel] = W @ (0.5 * (eo[:-1] + eo[1:]))
-    return k, (mean - y) ** 2
+        w_ = M[np.arange(sel.size), kb, :]
+        W[sel] = w_ / np.maximum(w_.sum(1, keepdims=True), 1e-300)
+        E[sel] = e[1 - arm_f]
+    return k, score(E, W, np.zeros((t.size, 4)) + [0, 1, 0, 1], y)
 
 
 def rho_pred(f, tag):
@@ -79,14 +88,15 @@ def rho_pred(f, tag):
 
 
 def agg(got, sub):
+    """mean and SE per column (MSE, IS)"""
     if not sub:
         V = np.concatenate([v for _, v in got])
-        return V.mean(), V.std(ddof=1) / np.sqrt(V.size)
+        return V.mean(0), V.std(0, ddof=1) / np.sqrt(V.shape[0])
     draws = {}
     for k, v in got:
         draws.setdefault(k // S.NB, []).append(v)
-    M = np.array([np.concatenate(v).mean() for v in draws.values()])
-    return M.mean(), M.std(ddof=1) / np.sqrt(M.size)
+    M = np.array([np.concatenate(v).mean(0) for v in draws.values()])
+    return M.mean(0), M.std(0, ddof=1) / np.sqrt(M.shape[0])
 
 
 def main(D, out):
@@ -106,16 +116,17 @@ def main(D, out):
                     for f in files:
                         got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off))
                     m, se = agg(got, sub)
-                    r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m), mse_se=float(se))
+                    r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m[0]), mse_se=float(se[0]),
+                             IS=float(m[1]), IS_se=float(se[1]))
                     if is2d and not ld_off:
                         r["rho_pred"] = float(np.median(np.concatenate([rho_pred(f, tag) for f in files])))
                     t = np.load(os.path.join(D, pname, f"d{d}", "truths", "r000.npz"))
                     r["rho_true"] = float(np.corrcoef(t["y0"], t["y1"])[0, 1])
                     recs.append(r)
-                    print(f"{kind:8s} w={w:4s} d={d:2d} {lab:26s} MSE {m:.4f} ± {se:.4f}"
+                    print(f"{kind:8s} w={w:4s} d={d:2d} {lab:26s} MSE {m[0]:.4f} ± {se[0]:.4f}  IS {m[1]:.3f} ± {se[1]:.3f}"
                           + (f"  rho_pred {r['rho_pred']:.3f}" if "rho_pred" in r else "")
                           + f"  rho_true {r['rho_true']:.3f}", flush=True)
-    keys = ["variant", "w", "setting", "model", "mse", "mse_se", "rho_pred", "rho_true"]
+    keys = ["variant", "w", "setting", "model", "mse", "mse_se", "IS", "IS_se", "rho_pred", "rho_true"]
     with open(out + ".csv", "w", newline="") as fh:
         wr = csv.DictWriter(fh, fieldnames=keys); wr.writeheader(); wr.writerows(recs)
     print(f"wrote {out}.csv", flush=True)
