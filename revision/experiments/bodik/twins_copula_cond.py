@@ -1,6 +1,7 @@
 """Twins (Bodik's task, reviewer request): the single-outcome baselines conditioned on the known twin through a Gaussian
 copula with an assumed rho, scored exactly like Table 2.
-python twins_copula_cond.py DATA_ROOT OUT_PREFIX [PART]      (PART: bodik = Table 2 setup (default), twins = old setup)
+python twins_copula_cond.py DATA_ROOT OUT_PREFIX [PART] [est]  (PART: bodik = Table 2 setup (default), twins = old setup;
+                                                             est: only the estimated rho of each covariate set, ESTIMATED)
 
 Per query, a 1D baseline gives the marginals of both arms (raw units, UWYK keeps its half-normal tails). They are coupled
 by a Gaussian copula with correlation rho on the latent normals (Z_f, Z_c) and conditioned on the known twin's event,
@@ -29,6 +30,7 @@ import bodik_cf_readouts as R                                    # noqa: E402
 from bodik_cf import _map, _above                                # noqa: E402
 
 RHOS = (-0.5, 0.0, 0.5, 1.0)
+ESTIMATED = {1: 0.649, 10: 0.636}                                # tab:rho-all, Twins: corr of the residuals given d covariates
 NB = 6                                                           # query blocks per context draw (score_twins_bodik)
 MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN (matched resolution)", "dopfn1d_mr", None, "full"),
           ("CausalPFN-C", "cpfn1d", None, "full"), ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None, "full"),
@@ -109,7 +111,7 @@ def per_file(f, truth, tag, rho):
     return (pred - y) ** 2
 
 
-def main(D, out, part="bodik"):
+def main(D, out, part="bodik", mode="grid"):
     recs = []
     for d in (10, 1):
         for label, mdir, tag, sub in MODELS:
@@ -117,7 +119,7 @@ def main(D, out, part="bodik"):
             files = sorted(glob.glob(os.path.join(D, "dumps", mdir, sub_dir, f"d{d}", "*r[0-9]*.npz")))
             if not files:
                 print("missing", label, d, flush=True); continue
-            for rho in RHOS:
+            for rho in ((ESTIMATED[d],) if mode == "est" else RHOS):
                 got = []
                 for f in files:
                     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
@@ -132,11 +134,11 @@ def main(D, out, part="bodik"):
                     Mv = np.array([np.concatenate(v).mean() for v in draws.values()])
                     m, se = Mv.mean(), Mv.std(ddof=1) / np.sqrt(Mv.size)
                 recs.append(dict(setting=f"d={d}", model=label, rho=rho, mse=float(m), mse_se=float(se)))
-                print(f"d={d:2d} {label:34s} rho={rho:+.1f}  MSE {m:.4f} ± {se:.4f}", flush=True)
+                print(f"d={d:2d} {label:34s} rho={rho:+.3f}  MSE {m:.4f} ± {se:.4f}", flush=True)
     with open(out + ".csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(recs[0])); w.writeheader(); w.writerows(recs)
     print(f"wrote {out}.csv", flush=True)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], *(sys.argv[3:4]))
+    main(sys.argv[1], sys.argv[2], *(sys.argv[3:5]))
