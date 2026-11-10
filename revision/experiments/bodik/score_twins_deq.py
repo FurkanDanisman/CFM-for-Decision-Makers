@@ -1,6 +1,7 @@
 """Dequantized Twins (both twins jittered, correlated so the cross-world correlation is kept; make_worlds.twins_deq)
 and the no-dependence control, scored like Table 2 on the jittered (continuous) outcomes.
 python score_twins_deq.py DATA_ROOT OUT_PREFIX [MODELS: dump dirs, e.g. dopfn1d,dopfn2d | all] [VARIANTS: e.g. twins0.1,twinsind | all]
+    [grid: the 1D copula at rho = 0, 0.1, ..., 1 instead of -0.5, 0.5, 1, est]
 
 Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covariate set (d = 10, 1) and model:
   mse          (predicted mean - the other twin's jittered outcome)^2. 2D: the joint conditioned on the known twin's
@@ -40,6 +41,8 @@ VONLY = [v for v in (sys.argv[4] if len(sys.argv) > 4 else "all").split(",") if 
 if ONLY:
     MODELS = [m for m in MODELS if m[1] in ONLY]
 COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned through a Gaussian copula
+if len(sys.argv) > 5 and sys.argv[5] == "grid":                 # the analyst's range rho in [0, 1], step 0.1
+    COP_RHOS = tuple(k / 10 for k in range(11))
 ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (the jittered pairs keep it)
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
 if VONLY:

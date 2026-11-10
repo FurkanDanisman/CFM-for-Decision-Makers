@@ -32,9 +32,9 @@ if [ "${RUN:-}" != 1 ]; then
              -o logs_bodik/gen_twins_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen_twins" ;;
     gen_twins_deq) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-gen-deq \
              -o logs_bodik/gen_twins_deq_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF gen_twins_deq" ;;
-    score_twins_deq) M="${2:-}" V="${3:-}"         # optional: dump dirs (dopfn1d,dopfn2d), variants (twins0.1,twinsind)
+    score_twins_deq) M="${2:-}" V="${3:-}" G="${4:-}"   # optional: dump dirs (dopfn1d,dopfn2d), variants (twins0.1,twinsind), grid
              sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-deq-score \
-             -o logs_bodik/score_twins_deq_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_deq $M $V" ;;
+             -o logs_bodik/score_twins_deq_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_deq $M $V $G" ;;
     score_twins_bodik) sbatch --account=aip-rgrosse --time=3:00:00 --cpus-per-task=4 --mem=64G --job-name=bodik-tw-score \
              -o logs_bodik/score_twins_bodik_%j.out --wrap "RUN=1 KIT=$KIT bash $SELF score_twins_bodik" ;;
     readouts) sbatch --account=aip-rgrosse --time=1:00:00 --cpus-per-task=2 --mem=32G --job-name=bodik-ro \
@@ -68,8 +68,8 @@ fi
 if [ "$STEP" = score_twins_deq ]; then
   export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
   O="$REPO/revision/results/d262t1"; mkdir -p "$O"
-  M="${2:-all}"; V="${3:-all}"; echo "models: $M  variants: $V"
-  python -u "$HERE/score_twins_deq.py" "$D" "$O/bodik_twins_deq_$(echo "$M" | tr , _)_$(echo "$V" | tr , _)" "$M" "$V"
+  M="${2:-all}"; V="${3:-all}"; G="${4:-}"; echo "models: $M  variants: $V  ${G}"
+  python -u "$HERE/score_twins_deq.py" "$D" "$O/bodik_twins_deq_$(echo "$M" | tr , _)_$(echo "$V" | tr , _)${G:+_$G}" "$M" "$V" $G
   exit $?
 fi
 
