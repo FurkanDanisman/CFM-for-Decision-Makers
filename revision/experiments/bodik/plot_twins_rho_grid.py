@@ -3,7 +3,7 @@ every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average o
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
-python plot_twins_rho_grid.py [--is] [--no1] [--range] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+python plot_twins_rho_grid.py [--is] [--no1] [--range | --range-perw] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs). By default every 1D baseline found is drawn: full resolution (blue), matched resolution (green), matched label
 (purple); --full / --mr / --ml: that one only)
 
@@ -143,15 +143,55 @@ def main_range(out, paths, series):
     print(f"wrote {out}.pdf/.png")
 
 
+def main_range_perw(out, paths, series):
+    """one row per w, one column per family: the 1D curve over that w's own range of rho (+- SE band), its average over
+    the range (dashed), and 2D at that w (orange, +- SE band)"""
+    rows = load(paths)
+    plt.rcParams.update({"font.size": 14, "axes.titlesize": 15, "axes.labelsize": 14, "xtick.labelsize": 12.5,
+                         "ytick.labelsize": 12.5})
+    fig, axes = plt.subplots(len(WS), len(FAM), figsize=(3.2 * len(FAM), 2.9 * len(WS)), squeeze=False)
+    for i, w in enumerate(WS):
+        lo, hi = RANGES[w]
+        rh = [k / 10 for k in range(lo, hi + 1)]
+        for j, (one, two, lab) in enumerate(FAM):
+            ax = axes[i][j]
+            t = rows.get((w, D, two))
+            for suffix, col in series:
+                g = [rows.get((w, D, f"{one}{suffix} copula ρ={r}")) for r in rh]
+                if any(x is None for x in g):
+                    continue
+                m1, s1 = [float(x[METRIC]) for x in g], [float(x[METRIC + "_se"]) for x in g]
+                ax.plot(rh, m1, "-o", ms=4, lw=2.0, color=col)
+                ax.fill_between(rh, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col, alpha=0.2, lw=0)
+                ax.axhline(mean(m1), color=col, ls="--", lw=2.0)
+            if t is not None:
+                ax.axhline(float(t[METRIC]), color=PS.COL_2D, lw=3.0)
+                e = float(t[METRIC + "_se"])
+                ax.axhspan(float(t[METRIC]) - e, float(t[METRIC]) + e, color=PS.COL_2D, alpha=0.15, lw=0)
+            ax.set_xlim(-1.02, 1.02)
+            ax.set_xticks([-1, -0.5, 0, 0.5, 1]); ax.set_xticklabels(["-1", "-0.5", "0", "0.5", "1"])
+            if i == 0:
+                ax.set_title(lab)
+            if i == len(WS) - 1:
+                ax.set_xlabel("ρ")
+            if j == 0:
+                ax.set_ylabel(f"w = {w}\nMSE" if METRIC == "mse" else f"w = {w}\nInterval score")
+    fig.tight_layout()
+    for ext in ("pdf", "png"):
+        fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
+    print(f"wrote {out}.pdf/.png")
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     if argv[0] == "--is":
         METRIC = "IS"; argv = argv[1:]
     if argv[0] == "--no1":                                       # the grid without rho = 1: rho in [0, 0.9]
         RHOS = RHOS[:-1]; argv = argv[1:]
-    rng_mode = argv[0] == "--range"                               # the observed-data range of rho per w
+    rng_mode = argv[0] in ("--range", "--range-perw")             # the observed-data range of rho per w
+    perw = argv[0] == "--range-perw"                              # one row per w
     if rng_mode:
         argv = argv[1:]
     abl = argv[0][2:] if argv[0] in ("--full", "--mr", "--ml") else None   # one baseline only; default: all
     a = argv[1:] if abl else argv
-    (main_range if rng_mode else main)(a[0], a[1:], {"full": SERIES[0:1], "mr": SERIES[1:2], "ml": SERIES[2:3]}.get(abl, SERIES))
+    (main_range_perw if perw else main_range if rng_mode else main)(a[0], a[1:], {"full": SERIES[0:1], "mr": SERIES[1:2], "ml": SERIES[2:3]}.get(abl, SERIES))
