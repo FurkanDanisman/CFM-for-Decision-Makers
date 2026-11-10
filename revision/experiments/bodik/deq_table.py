@@ -11,10 +11,12 @@ and metric, over all its comparisons in that table (1D columns x d, and x w in t
 + 2D lower (better), - 2D higher (worse); * at 0.1, ** at 0.05; no mark = not significant.
 """
 import csv
+import math
 import sys
 
-import numpy as np
-from scipy.stats import norm
+NAN = float("nan")
+isnan = math.isnan
+mean = lambda x: sum(x) / len(x)
 
 PAIRS = [("Do-PFN", "Do-PFN 2D"), ("CausalPFN-C", "CausalPFN-C 2D"),
          ("UWYK No-Anc", "UWYK 2D No-Anc"), ("UWYK Anc", "UWYK 2D Anc")]
@@ -26,14 +28,13 @@ WS = ("0.1", "0.25", "0.5")
 
 def hochberg(p):
     """number of stars per test (0, 1, 2): Hochberg step-up at 0.1 and 0.05"""
-    p = np.asarray(p, float)
-    out = np.zeros(p.size, int)
-    order = np.argsort(p)
-    M = p.size
+    M = len(p)
+    out = [0] * M
+    order = sorted(range(M), key=lambda i: p[i])
     for a in (0.1, 0.05):
         ks = [k for k in range(1, M + 1) if p[order[k - 1]] <= a / (M - k + 1)]
-        if ks:
-            out[order[:max(ks)]] += 1
+        for i in (order[:max(ks)] if ks else []):
+            out[i] += 1
     return out
 
 
@@ -46,7 +47,7 @@ for path in sys.argv[1:]:
 
 def cell(w, d, model, metric):
     r = rows.get((w, d, model))
-    return (float(r[metric]), float(r[metric + "_se"])) if r else (np.nan, np.nan)
+    return (float(r[metric]), float(r[metric + "_se"])) if r else (NAN, NAN)
 
 
 for metric in ("mse", "IS"):
@@ -60,17 +61,17 @@ for metric in ("mse", "IS"):
                         name = t.format(None, one, two)
                         if avg:
                             c = [cell(x, d, name, metric) for x in WS]
-                            v.append((np.mean([a for a, _ in c]), np.mean([s for _, s in c])))
+                            v.append((mean([a for a, _ in c]), mean([s for _, s in c])))
                         else:
                             v.append(cell(w, d, name, metric))
-                    if all(np.isnan(a) for a, _ in v):
+                    if all(isnan(a) for a, _ in v):
                         continue
                     lines.append((one, w, d, v))
                     for i in TESTED:
                         (m2, s2), (m1, s1) = v[0], v[i]
-                        if not (np.isnan(m1) or np.isnan(m2)):
-                            z = (m2 - m1) / np.sqrt(s2 ** 2 + s1 ** 2)
-                            tests.setdefault(one, []).append(((one, w, d, i), 2 * norm.sf(abs(z)), m2 < m1))
+                        if not (isnan(m1) or isnan(m2)):
+                            z = (m2 - m1) / math.sqrt(s2 ** 2 + s1 ** 2)
+                            tests.setdefault(one, []).append(((one, w, d, i), math.erfc(abs(z) / math.sqrt(2)), m2 < m1))
         marks = {}
         for one, ts in tests.items():
             for (key, _, lower), k in zip(ts, hochberg([p for _, p, _ in ts])):
