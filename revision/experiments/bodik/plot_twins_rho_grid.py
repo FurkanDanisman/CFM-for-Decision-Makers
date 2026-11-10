@@ -71,10 +71,10 @@ def main(out, paths, mr):
     fig, axes = plt.subplots(1, len(res), figsize=(3.2 * len(res), 3.3), squeeze=False)
     for ax, (lab, g, a, t, p, stars) in zip(axes[0], res):
         m1, s1 = [m for m, _ in g], [s for _, s in g]
-        ax.plot(RHOS, m1, "-o", ms=3, color=col1, label="1D, assumed ρ")
+        ax.plot(RHOS, m1, "-o", ms=6, lw=2.4, color=col1, label="1D, assumed ρ")
         ax.fill_between(RHOS, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col1, alpha=0.2, lw=0)
-        ax.axhline(a[0], color=col1, ls="--", lw=1.2, label="1D, average over ρ ∈ [0, 1]")
-        ax.axhline(t[0], color=PS.COL_2D, lw=1.6, label="2D")
+        ax.axhline(a[0], color=col1, ls="--", lw=2.2, label="1D, average over ρ ∈ [0, 1]")
+        ax.axhline(t[0], color=PS.COL_2D, lw=3.0, label="2D")
         ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.15, lw=0)
         ax.set_xticks([0, 0.5, 1]); ax.set_xticklabels(["0", "0.5", "1"])
         ax.set_title(lab)
