@@ -1,8 +1,8 @@
 """Jittered Twins, d = 10, MSE: 2D (conditioned on the known twin) against 1D conditioned through a Gaussian copula at
 every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average over that range; averaged over
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
-model (+- SE band); the paper's figure style (revision/paper/paper_style.py: STIX fonts, text width, 1D blue or green at
-matched resolution, 2D orange, dotted top/right frame), the stars on the 1D average.
+model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange); stars when 2D and the 1D
+average differ significantly.
 python plot_twins_rho_grid.py [--mr] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs; --mr: the 1D baselines at matched resolution)
 
@@ -25,8 +25,8 @@ import matplotlib.ticker                                         # noqa: E402
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "paper"))
 import paper_style as PS                                         # noqa: E402
 
-FAM = [("Do-PFN", "Do-PFN 2D", "Do-PFN"), ("UWYK No-Anc", "UWYK 2D No-Anc", "UWYK\nNo-Anc"),
-       ("UWYK Anc", "UWYK 2D Anc", "UWYK\nAnc"), ("CausalPFN-C", "CausalPFN-C 2D", "Causal-\nPFN-C")]
+FAM = [("Do-PFN", "Do-PFN 2D", "Do-PFN"), ("UWYK No-Anc", "UWYK 2D No-Anc", "UWYK No-Anc"),
+       ("UWYK Anc", "UWYK 2D Anc", "UWYK Anc"), ("CausalPFN-C", "CausalPFN-C 2D", "CausalPFN-C")]
 RHOS = [k / 10 for k in range(11)]
 WS = ("0.1", "0.25", "0.5")
 D = "d=10"
@@ -51,7 +51,6 @@ def over_w(rows, model):
 
 
 def main(out, paths, mr):
-    PS.apply()
     rows = load(paths)
     col1 = PS.COL_RES if mr else PS.COL_1D
     res = []
@@ -67,30 +66,26 @@ def main(out, paths, mr):
         res.append((lab, g, a, t, p, stars))
         print(f"{one:34s} 2D {t[0]:.3f} ± {t[1]:.3f}   1D avg {a[0]:.3f} ± {a[1]:.3f}   p {p:.2g}   "
               + (("2D lower " if t[0] < a[0] else "2D higher ") + "*" * stars if stars else "not significant"))
-    fig, axes = plt.subplots(1, len(res), figsize=(PS.TEXTWIDTH, 1.95), gridspec_kw=dict(wspace=0.42))
-    for ax, (lab, g, a, t, p, stars) in zip(axes, res):
+    plt.rcParams.update({"font.size": 14, "axes.titlesize": 15, "axes.labelsize": 14, "xtick.labelsize": 12.5,
+                         "ytick.labelsize": 12.5, "legend.fontsize": 13.5})
+    fig, axes = plt.subplots(1, len(res), figsize=(3.2 * len(res), 3.3), squeeze=False)
+    for ax, (lab, g, a, t, p, stars) in zip(axes[0], res):
         m1, s1 = [m for m, _ in g], [s for _, s in g]
-        ax.fill_between(RHOS, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col1, alpha=0.25, lw=0)
-        ax.plot(RHOS, m1, "-o", color=col1, lw=1.2, ms=2.5, label=r"1D, assumed $\rho$")
-        ax.axhline(a[0], color=col1, lw=1.0, ls=(0, (3, 1.5)), label=r"1D, average over $\rho\in[0,1]$")
-        ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.25, lw=0)
+        ax.plot(RHOS, m1, "-o", ms=3, color=col1, label="1D, assumed ρ")
+        ax.fill_between(RHOS, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col1, alpha=0.2, lw=0)
+        ax.axhline(a[0], color=col1, ls="--", lw=1.2, label="1D, average over ρ ∈ [0, 1]")
         ax.axhline(t[0], color=PS.COL_2D, lw=1.6, label="2D")
-        if stars:                                                # on the 1D average, as the paper's stars on the 1D bar
-            ax.text(1.0, a[0], "$^{" + "*" * stars + "}$", ha="right", va="bottom", fontsize=PS.LABEL)
-        ax.set_title(lab.replace("\n", " ").replace("Causal- PFN-C", "CausalPFN-C"), pad=3)
-        ax.set_xlim(-0.03, 1.03)
-        ax.set_xticks([0, 0.5, 1])
-        ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(PS.fmt))
-        PS.frame(ax)
-        ax.tick_params(axis="y", length=2, width=0.5, pad=1.5)
-        ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(nbins=3, steps=[1, 2, 5]))   # few round ticks
-        ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(PS.fmt))
-    axes[0].set_ylabel("Mean squared error")
-    fig.supxlabel(r"assumed $\rho$ of 1D", fontsize=PS.LABEL, y=0.08)
-    h, l = axes[0].get_legend_handles_labels()
-    fig.legend(h, l, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.13), handlelength=1.8,
-               columnspacing=1.2)
-    fig.subplots_adjust(left=0.085, right=0.99, top=0.88, bottom=0.31)
+        ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.15, lw=0)
+        if stars:
+            ax.text(0.97, 0.95, "*" * stars, transform=ax.transAxes, ha="right", va="top", fontsize=17)
+        ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
+        ax.set_title(lab)
+        ax.set_xlabel("assumed ρ (1D)")
+    axes[0][0].set_ylabel("MSE")
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=3, frameon=False, bbox_to_anchor=(0.5, -0.04))
+    fig.suptitle("Twins (jittered, averaged over w = 0.1, 0.25, 0.5), d = 10", y=0.99)
+    fig.tight_layout(rect=(0, 0.1, 1, 0.95))
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
     print(f"wrote {out}.pdf/.png")
