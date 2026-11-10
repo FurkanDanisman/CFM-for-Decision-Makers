@@ -1,7 +1,8 @@
 """Jittered Twins: 2D (conditioned on the known twin) against 1D conditioned through a Gaussian copula at every rho of
 the analyst's range [0, 1] (step 0.1), and against the 1D average over that range; MSE and IS, averaged over
 w = 0.1, 0.25, 0.5.
-python plot_twins_rho_grid.py OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D runs)
+python plot_twins_rho_grid.py [--mr] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+runs; --mr: the 1D baselines at matched resolution)
 
 Averages: over w, a model's mean is the average of its per-w means and its SE is bounded by the average of its per-w
 SEs; over the rho grid, the same (the average of the 11 rho means, SE bounded by the average of their SEs). Both bounds
@@ -97,7 +98,7 @@ def main(out, paths):
                     ax.text(0.97, 0.95, "*" * r["stars"], transform=ax.transAxes, ha="right", va="top", fontsize=14)
                 ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
                 if i == 0:
-                    ax.set_title(one)
+                    ax.set_title(one.replace(" (matched resolution)", "\n(1D at matched resolution)"))
                 if j == 0:
                     ax.set_ylabel(mlabel)
                 if i == 1:
@@ -112,4 +113,8 @@ def main(out, paths):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2:])
+    if sys.argv[1] == "--mr":
+        PAIRS[:] = [(f"{one} (matched resolution)", two) for one, two in PAIRS]
+        main(sys.argv[2], sys.argv[3:])
+    else:
+        main(sys.argv[1], sys.argv[2:])

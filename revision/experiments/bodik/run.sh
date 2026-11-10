@@ -255,9 +255,11 @@ cells() {
     twins)                                          # his d = 10 and d = 1 (d = 71 is not reported)
       for d in 10 1; do echo "twins/d$d twins/d$d"; done ;;
     deq_all) PART=twins_deq cells; PART=twinsind_deq cells ;;   # both, for the fast models (one job)
-    twins_deq|twinsind_deq)                         # dequantized context (twins) / no-dependence control (twinsind)
-      K="${PART%_deq}"; W="0.1 0.25 0.5"; [ "$K" = twinsind ] && W="0 0.1 0.25 0.5"
-      for d in 10 1; do for w in $W; do
+    twins_deq*|twinsind_deq*)                       # dequantized context (twins) / no-dependence control (twinsind)
+      B="${PART%%:*}"; K="${B%_deq}"; W="0.1 0.25 0.5"; [ "$K" = twinsind ] && W="0 0.1 0.25 0.5"; DS="10 1"
+      IFS=: read -r _ WW DX <<< "$PART"                # optional subset: twins_deq:<w>[:<d>], e.g. twins_deq:0.25:10
+      [ -n "$WW" ] && W="$WW"; [ -n "$DX" ] && DS="$DX"
+      for d in $DS; do for w in $W; do
         case "$MODEL" in
           uwyk*|graph2d) echo "${K}_sub_deq$w/d$d ${K}_sub_deq$w/d$d" ;;
           *)             echo "${K}_full_deq$w/d$d ${K}_full_deq$w/d$d" ;;

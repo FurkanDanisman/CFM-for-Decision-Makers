@@ -35,7 +35,11 @@ from bodik_cf import _map                                       # noqa: E402
 MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "full"),
           ("CausalPFN-C", "cpfn1d", None, "full"), ("CausalPFN-C 2D", "cpfn2d", None, "full"),
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
-          ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub")]
+          ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub"),
+          ("Do-PFN (matched resolution)", "dopfn1d_mr", None, "full"),
+          ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None, "full"),
+          ("UWYK No-Anc (matched resolution)", "uwyk1d_mr", "noanc", "sub"),
+          ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub")]
 ONLY = [m for m in (sys.argv[3] if len(sys.argv) > 3 else "all").split(",") if m not in ("", "all")]  # dump dirs
 VONLY = [v for v in (sys.argv[4] if len(sys.argv) > 4 else "all").split(",") if v not in ("", "all")]  # twins0.1, twinsind
 if ONLY:                                                        # a token is a dump dir, or dir:tag (uwyk1d:noanc)
