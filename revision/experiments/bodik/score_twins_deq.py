@@ -1,7 +1,8 @@
 """Dequantized Twins (both twins jittered, correlated so the cross-world correlation is kept; make_worlds.twins_deq)
 and the no-dependence control, scored like Table 2 on the jittered (continuous) outcomes.
 python score_twins_deq.py DATA_ROOT OUT_PREFIX [MODELS: dump dirs, e.g. dopfn1d,dopfn2d | all] [VARIANTS: e.g. twins0.1,twinsind | all]
-    [grid | nogrid: the 1D copula at rho = 0, 0.1, ..., 1 instead of -0.5, 0.5, 1, est] [D: covariate sets, e.g. 10]
+    [grid | range | nogrid: the 1D copula at rho = 0, 0.1, ..., 1 (grid), or over RANGES[w] (range), instead of
+     -0.5, 0.5, 1, est; grid and range add the prediction averaged over their rhos] [D: covariate sets, e.g. 10]
 
 Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covariate set (d = 10, 1) and model:
   mse          (predicted mean - the other twin's jittered outcome)^2. 2D: the joint conditioned on the known twin's
@@ -53,6 +54,18 @@ COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned
 GRID = len(sys.argv) > 5 and sys.argv[5] == "grid"              # the analyst's range rho in [0, 1], step 0.1, and
 if GRID:                                                        # one row more: the prediction averaged over it
     COP_RHOS = tuple(k / 10 for k in range(11))
+RANGE = len(sys.argv) > 5 and sys.argv[5] == "range"            # per w, the range of rho compatible with the observed
+RANGES = {"0.1": (-4, 8), "0.25": (-7, 9), "0.5": (-9, 10)}     # data (one twin + covariates; Frechet bounds of the
+                                                                # factual-only marginals, median family, d = 10 and 1),
+                                                                # in tenths; + the prediction averaged over it
+
+
+def rhos_for(w):
+    """the assumed rho of the 1D rows for jitter w"""
+    if RANGE:
+        lo, hi = RANGES[w]
+        return tuple(k / 10 for k in range(lo, hi + 1))
+    return COP_RHOS
 ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (the jittered pairs keep it)
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
 if VONLY:
@@ -127,7 +140,7 @@ def copula_1d_avg(f, tag, t, yf, y, rhos):
     return out
 
 
-def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
+def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None, avg_rhos=COP_RHOS):
     """rho: condition through a Gaussian copula with this rho on the model's marginals (2D: its joint's marginals,
     i.e. its learned dependence replaced by rho)"""
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
@@ -136,7 +149,7 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
     if rho == "avg":                                             # 1D prediction averaged over the rho grid
-        return k, copula_1d_avg(f, tag, t, yf, y, [r for r in COP_RHOS if r != "est"])
+        return k, copula_1d_avg(f, tag, t, yf, y, [r for r in avg_rhos if r != "est"])
     if rho is not None:
         return k, copula_1d(f, tag, t, yf, y, rho, from_2d=is2d)
     if not is2d or ld_off:
@@ -204,11 +217,11 @@ def main(D, out):
                 rows = [(label, False, None)] + ([(label + " (ρ = 0)", True, None),
                                                    (label + " copula ρ=est", False, ESTIMATED[d])] if is2d else
                          [(label + f" copula ρ={'est' if r == 'est' else r}", False, ESTIMATED[d] if r == "est" else r)
-                          for r in COP_RHOS] + ([(label + " copula ρ=avg", False, "avg")] if GRID else []))
+                          for r in rhos_for(w)] + ([(label + " copula ρ=avg", False, "avg")] if GRID or RANGE else []))
                 for lab, ld_off, rho in rows:
                     got = []
                     for f in files:
-                        got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off, rho=rho))
+                        got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off, rho=rho, avg_rhos=rhos_for(w)))
                     m, se = agg(got, sub)
                     r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m[0]), mse_se=float(se[0]),
                              IS=float(m[1]), IS_se=float(se[1]))

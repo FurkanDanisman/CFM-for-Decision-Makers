@@ -70,7 +70,7 @@ if [ "$STEP" = score_twins_deq ]; then
   export PYTHONPATH="$REPO/benchmarks:$REPO/benchmarks/uwyk_table1/shims${PYTHONPATH:+:$PYTHONPATH}"
   O="$REPO/revision/results/d262t1"; mkdir -p "$O"
   M="${2:-all}"; V="${3:-all}"; G="${4:-nogrid}"; DD="${5:-10,1}"; echo "models: $M  variants: $V  $G  d=$DD"
-  N="$(echo "$M" | tr ,: _-)_$(echo "$V" | tr , _)$([ "$G" = grid ] && echo _grid)$([ -n "${5:-}" ] && echo "_d$(echo "$DD" | tr , _)")"
+  N="$(echo "$M" | tr ,: _-)_$(echo "$V" | tr , _)$([ "$G" != nogrid ] && echo "_$G")$([ -n "${5:-}" ] && echo "_d$(echo "$DD" | tr , _)")"
   python -u "$HERE/score_twins_deq.py" "$D" "$O/bodik_twins_deq_$N" "$M" "$V" "$G" "$DD"
   exit $?
 fi
