@@ -1,8 +1,8 @@
 """Jittered Twins, d = 10, MSE: 2D (conditioned on the known twin) against 1D conditioned through a Gaussian copula at
 every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average over that range; averaged over
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
-model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange); stars when 2D and the 1D
-average differ significantly.
+model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
+against the 1D average is printed, not drawn.
 python plot_twins_rho_grid.py [--mr] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs; --mr: the 1D baselines at matched resolution)
 
@@ -76,8 +76,6 @@ def main(out, paths, mr):
         ax.axhline(a[0], color=col1, ls="--", lw=1.2, label="1D, average over ρ ∈ [0, 1]")
         ax.axhline(t[0], color=PS.COL_2D, lw=1.6, label="2D")
         ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.15, lw=0)
-        if stars:
-            ax.text(0.97, 0.95, "*" * stars, transform=ax.transAxes, ha="right", va="top", fontsize=17)
         ax.set_xticks([0, 0.5, 1]); ax.set_xticklabels(["0", "0.5", "1"])
         ax.set_title(lab)
         ax.set_xlabel("ρ")
