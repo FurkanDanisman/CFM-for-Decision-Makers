@@ -3,7 +3,8 @@
 covariates (the three most frequent per pair of X1, X2, X3), plus the whole sample -- on the binary Twins outcomes and
 on the jittered ones (make_worlds._corr_jitter: the jitter of covariate set d is calibrated on the first d
 covariates; d = 10 and 1, w = 0.1, 0.25, 0.5), on the same families. 95% bootstrap interval of the binary value (2000
-resamples of the group's families). The range row: min-max over the groups with at least 100 deaths.
+resamples of the group's families). Following Bodik et al. fully: every group is kept; the summary rows are over the
+groups in which the binary correlation is defined (a group without deaths has none).
 python twins_rho_bodik_stat.py OUT_PREFIX     -> OUT_PREFIX.csv, OUT_PREFIX.md"""
 import csv
 import os
@@ -16,7 +17,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import make_worlds as MW                                          # noqa: E402
 
-MIN_DEATHS = 100
 z = np.load(os.path.join(HERE, "bodik_twins.npz"))
 Xa, y0, y1 = z["X"].astype(float), z["Y0"].astype(float), z["Y1"].astype(float)
 rng = np.random.default_rng(0)
@@ -49,12 +49,12 @@ for name, s in groups:
     recs.append(dict(group=name, families=int(s.size), deaths=int(y0[s].sum() + y1[s].sum()), ci_lo=lo, ci_hi=hi,
                      **dict(zip(names, vals)),
                      inside_ci=(all(lo <= v <= hi for v in vals[1:]) if not np.isnan(lo) else "")))
-ok = [r for r in recs if r["deaths"] >= MIN_DEATHS]
+ok = [r for r in recs if r["group"] != "whole sample" and r["binary"] == r["binary"]]
 rng_row = {n: (min(r[n] for r in ok), max(r[n] for r in ok)) for n in names}
 out = sys.argv[1]
 with open(out + ".csv", "w", newline="") as fh:
     wr = csv.DictWriter(fh, fieldnames=list(recs[0])); wr.writeheader(); wr.writerows(recs)
-    wr.writerow(dict(group=f"range (groups with >= {MIN_DEATHS} deaths)",
+    wr.writerow(dict(group="range (groups with a defined correlation)",
                      **{n: f"{a:.3f}-{b:.3f}" for n, (a, b) in rng_row.items()}))
 f = lambda v: "--" if v != v else f"{v:.3f}"
 with open(out + ".md", "w") as fh:
@@ -65,6 +65,6 @@ with open(out + ".md", "w") as fh:
     for r in recs:
         fh.write(f"| {r['group']} | {r['families']} | {r['deaths']} | {f(r['binary'])} ({f(r['ci_lo'])}–{f(r['ci_hi'])}) | "
                  + " | ".join(f(r[n]) for n in names[1:]) + f" | {r['inside_ci']} |\n")
-    fh.write(f"| **Range** (groups with ≥ {MIN_DEATHS} deaths) | | | " + " | ".join(
+    fh.write("| **Range** (groups with a defined correlation) | | | " + " | ".join(
         f"{a:.3f}–{b:.3f}" for a, b in rng_row.values()) + " | |\n")
 print(open(out + ".md").read())

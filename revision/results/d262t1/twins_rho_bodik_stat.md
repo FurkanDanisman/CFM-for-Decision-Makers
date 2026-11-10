@@ -5,7 +5,8 @@ Justification of the Twins jittering: the cross-world correlation statistic of B
 covariates (the three most frequent per pair of X1, X2, X3), plus the whole sample -- on the binary Twins outcomes and
 on the jittered ones (make_worlds._corr_jitter: the jitter of covariate set d is calibrated on the first d
 covariates; d = 10 and 1, w = 0.1, 0.25, 0.5), on the same families. 95% bootstrap interval of the binary value (2000
-resamples of the group's families). The range row: min-max over the groups with at least 100 deaths.
+resamples of the group's families). Following Bodik et al. fully: every group is kept; the summary rows are over the
+groups in which the binary correlation is defined (a group without deaths has none).
 
 | Group | Families | Deaths | Binary (95% CI) | d=10 w=0.1 | d=10 w=0.25 | d=10 w=0.5 | d=1 w=0.1 | d=1 w=0.25 | d=1 w=0.5 | All jittered inside CI |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -19,4 +20,4 @@ resamples of the group's families). The range row: min-max over the groups with 
 | X2=0, X3=0 | 4734 | 1170 | 0.573 (0.538–0.608) | 0.575 | 0.586 | 0.600 | 0.575 | 0.573 | 0.598 | True |
 | X2=0, X3=1 | 3279 | 1593 | 0.703 (0.676–0.731) | 0.701 | 0.700 | 0.678 | 0.704 | 0.701 | 0.691 | True |
 | X2=1, X3=0 | 2298 | 636 | 0.607 (0.559–0.653) | 0.607 | 0.605 | 0.625 | 0.602 | 0.622 | 0.638 | True |
-| **Range** (groups with ≥ 100 deaths) | | | 0.573–0.703 | 0.575–0.701 | 0.586–0.700 | 0.600–0.678 | 0.575–0.704 | 0.573–0.701 | 0.598–0.691 | |
+| **Range** (groups with a defined correlation) | | | 0.241–0.703 | 0.277–0.701 | 0.368–0.700 | 0.481–0.678 | 0.291–0.704 | 0.277–0.701 | 0.385–0.691 | |
