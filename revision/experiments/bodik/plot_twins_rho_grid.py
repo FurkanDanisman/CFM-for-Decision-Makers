@@ -3,8 +3,8 @@ every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average o
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
-python plot_twins_rho_grid.py [--mr] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
-runs; --mr: the 1D baselines at matched resolution)
+python plot_twins_rho_grid.py [--mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+runs; --mr / --ml: the 1D baselines at matched resolution (green) / matched label (purple))
 
 Averages: over w, a model's mean is the average of its per-w means and its SE is bounded by the average of its per-w
 SEs; over the rho grid, the same (the average of the 11 rho means, SE bounded by the average of their SEs). Both bounds
@@ -50,12 +50,13 @@ def over_w(rows, model):
     return mean([float(r["mse"]) for r in c]), mean([float(r["mse_se"]) for r in c])
 
 
-def main(out, paths, mr):
+def main(out, paths, abl):
     rows = load(paths)
-    col1 = PS.COL_RES if mr else PS.COL_1D
+    col1 = {"mr": PS.COL_RES, "ml": PS.COL_LAB}.get(abl, PS.COL_1D)
+    suffix = {"mr": " (matched resolution)", "ml": " (matched label)"}.get(abl, "")
     res = []
     for one, two, lab in FAM:
-        one = f"{one} (matched resolution)" if mr else one
+        one = one + suffix
         t = over_w(rows, two)
         g = [over_w(rows, f"{one} copula ρ={r}") for r in RHOS]
         if t is None or any(x is None for x in g):
@@ -87,6 +88,6 @@ def main(out, paths, mr):
 
 
 if __name__ == "__main__":
-    mr = sys.argv[1] == "--mr"
-    a = sys.argv[2:] if mr else sys.argv[1:]
-    main(a[0], a[1:], mr)
+    abl = sys.argv[1][2:] if sys.argv[1] in ("--mr", "--ml") else None
+    a = sys.argv[2:] if abl else sys.argv[1:]
+    main(a[0], a[1:], abl)

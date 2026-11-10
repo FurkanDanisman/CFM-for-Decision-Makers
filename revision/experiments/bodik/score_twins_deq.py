@@ -39,7 +39,11 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("Do-PFN (matched resolution)", "dopfn1d_mr", None, "full"),
           ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None, "full"),
           ("UWYK No-Anc (matched resolution)", "uwyk1d_mr", "noanc", "sub"),
-          ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub")]
+          ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub"),
+          ("Do-PFN (matched label)", "dopfn1d_ml", None, "full"),
+          ("CausalPFN-C (matched label)", "cpfn1d_ml", None, "full"),
+          ("UWYK No-Anc (matched label)", "uwyk1d_ml", "noanc", "sub"),
+          ("UWYK Anc (matched label)", "uwyk1d_ml", "v3a", "sub")]
 ONLY = [m for m in (sys.argv[3] if len(sys.argv) > 3 else "all").split(",") if m not in ("", "all")]  # dump dirs
 VONLY = [v for v in (sys.argv[4] if len(sys.argv) > 4 else "all").split(",") if v not in ("", "all")]  # twins0.1, twinsind
 if ONLY:                                                        # a token is a dump dir, or dir:tag (uwyk1d:noanc)
