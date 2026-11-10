@@ -25,6 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import score_twins_bodik as S                                   # noqa: E402
 import bodik_cf_readouts as R                                   # noqa: E402
+from twins_copula_cond import marginal                          # noqa: E402  (both arms' marginals, raw units)
+from scipy.stats import norm                                    # noqa: E402
 from bodik_cf import _map                                       # noqa: E402
 
 MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "full"),
@@ -34,6 +36,8 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
 ONLY = [m for m in os.environ.get("DEQ_ONLY", "").split(",") if m]   # dump dirs to score (empty: all models)
 if ONLY:
     MODELS = [m for m in MODELS if m[1] in ONLY]
+COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned through a Gaussian copula
+ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (the jittered pairs keep it)
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
 
 
@@ -45,12 +49,46 @@ def score(E, W, T, y):
     return np.stack([(m - y) ** 2, IS], 1)
 
 
-def per_query(D, part, f, tag, is2d, d, ld_off=False):
+def copula_1d(f, tag, t, yf, y, rho):
+    """1D baseline conditioned on the known twin's VALUE through a Gaussian copula with correlation rho:
+    z_f = Phi^{-1}(F_f(y_f)) under the baseline's marginal of the known twin (within-bin linear CDF); the other
+    twin's latent is N(rho z_f, 1 - rho^2), mapped through its marginal: bin masses H(b_j) - H(b_{j-1}),
+    b_j = Phi^{-1}(F_c(e_j)), H(b) = Phi((b - rho z_f) / s); tails H(b_0), 1 - H(b_K) (half-normal shapes kept)."""
+    z = np.load(f, allow_pickle=True)
+    M = {a: marginal(z, tag, a) for a in (0, 1)}
+    K = M[0][1].shape[1]
+    E, W, T = np.empty((t.size, K + 1)), np.empty((t.size, K)), np.empty((t.size, 4))
+    s = np.sqrt(max(1 - rho ** 2, 1e-6))
+    for arm_f in (0, 1):
+        sel = np.flatnonzero(t == arm_f)
+        if sel.size == 0:
+            continue
+        Ef, Wf, Tf = M[arm_f][0], M[arm_f][1][sel], M[arm_f][2][sel]
+        Ec, Wc, Tc = M[1 - arm_f][0], M[1 - arm_f][1][sel], M[1 - arm_f][2][sel]
+        Ff = Tf[:, :1] + np.concatenate([np.zeros((sel.size, 1)), np.cumsum(Wf, 1)], 1)
+        v = yf[sel]
+        i = np.clip(np.searchsorted(Ef, v, side="right") - 1, 0, K - 1)
+        fr = np.clip((v - Ef[i]) / (Ef[i + 1] - Ef[i]), 0, 1)
+        r_ = np.arange(sel.size)
+        u = Ff[r_, i] + Wf[r_, i] * fr
+        u = np.where(v < Ef[0], Tf[:, 0] / 2, np.where(v > Ef[-1], 1 - Tf[:, 2] / 2, u))
+        zf = norm.ppf(np.clip(u, 1e-9, 1 - 1e-9))
+        Fc = Tc[:, :1] + np.concatenate([np.zeros((sel.size, 1)), np.cumsum(Wc, 1)], 1)
+        b = norm.ppf(np.clip(Fc, 1e-12, 1 - 1e-12))
+        H = norm.cdf((b - rho * zf[:, None]) / s)
+        E[sel], W[sel] = Ec, np.diff(H, axis=1)
+        T[sel] = np.stack([H[:, 0], Tc[:, 1], 1 - H[:, -1], Tc[:, 3]], 1)
+    return score(E, W, T, y)
+
+
+def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
     z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
     t = np.rint(z["t_test"]).astype(int)
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
+    if rho is not None:
+        return k, copula_1d(f, tag, t, yf, y, rho)
     if not is2d or ld_off:
         E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
         return k, score(E, W, T, y)
@@ -113,11 +151,13 @@ def main(D, out):
                 if not files:
                     print("missing", pname, label, d, flush=True); continue
                 is2d = "2D" in label
-                rows = [(label, False)] + ([(label + " (ρ = 0)", True)] if is2d else [])
-                for lab, ld_off in rows:
+                rows = [(label, False, None)] + ([(label + " (ρ = 0)", True, None)] if is2d else
+                         [(label + f" copula ρ={'est' if r == 'est' else r}", False, ESTIMATED[d] if r == "est" else r)
+                          for r in COP_RHOS])
+                for lab, ld_off, rho in rows:
                     got = []
                     for f in files:
-                        got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off))
+                        got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off, rho=rho))
                     m, se = agg(got, sub)
                     r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m[0]), mse_se=float(se[0]),
                              IS=float(m[1]), IS_se=float(se[1]))
