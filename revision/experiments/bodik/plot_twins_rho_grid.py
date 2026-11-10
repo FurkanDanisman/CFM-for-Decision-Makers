@@ -100,7 +100,7 @@ RANGES = {"0.1": (-4, 8), "0.25": (-7, 9), "0.5": (-9, 10)}     # = score_twins_
 
 def main_range(out, paths, series):
     """the observed-data range of rho (score_twins_deq ... range): the 1D curve over the rho common to every w,
-    its average MSE over each w's own range (dashed) and the MSE of its prediction averaged over that range (dotted),
+    its average MSE over each w's own range (dashed),
     each averaged over w; 2D (orange)"""
     rows = load(paths)
     common = [k / 10 for k in range(max(r[0] for r in RANGES.values()), min(r[1] for r in RANGES.values()) + 1)]
@@ -131,7 +131,6 @@ def main_range(out, paths, series):
             ax.plot(common, m1, "-o", ms=6, lw=2.4, color=col)
             ax.fill_between(common, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col, alpha=0.2, lw=0)
             ax.axhline(avg_s, color=col, ls="--", lw=2.2)
-            ax.axhline(avg_p, color=col, ls=":", lw=2.6)
         ax.axhline(t[0], color=PS.COL_2D, lw=3.0)
         ax.axhspan(t[0] - t[1], t[0] + t[1], color=PS.COL_2D, alpha=0.15, lw=0)
         ax.set_xticks([-0.4, 0, 0.4, 0.8]); ax.set_xticklabels(["-0.4", "0", "0.4", "0.8"])

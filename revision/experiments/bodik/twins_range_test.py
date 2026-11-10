@@ -43,7 +43,7 @@ def hochberg(p):
     return out
 
 
-for summary in ("avg of scores", "avg prediction"):
+for summary in ("avg of scores",):                             # the averaged prediction is not reported
     print(f"\n== 1D summarised as: {summary} over the observed-data range of rho; MSE averaged over w")
     for one, two in FAM:
         tests = []
