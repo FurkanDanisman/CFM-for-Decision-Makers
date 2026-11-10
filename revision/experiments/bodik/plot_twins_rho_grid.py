@@ -3,7 +3,7 @@ every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average o
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
-python plot_twins_rho_grid.py [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+python plot_twins_rho_grid.py [--is] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs). By default every 1D baseline found is drawn: full resolution (blue), matched resolution (green), matched label
 (purple); --full / --mr / --ml: that one only)
 
@@ -31,6 +31,7 @@ FAM = [("Do-PFN", "Do-PFN 2D", "Do-PFN"), ("UWYK No-Anc", "UWYK 2D No-Anc", "UWY
 RHOS = [k / 10 for k in range(11)]
 WS = ("0.1", "0.25", "0.5")
 D = "d=10"
+METRIC = "mse"                                                   # --is: the interval score instead
 mean = lambda x: sum(x) / len(x)
 
 
@@ -48,7 +49,7 @@ def over_w(rows, model):
     c = [rows.get((w, D, model)) for w in WS]
     if any(r is None for r in c):
         return None
-    return mean([float(r["mse"]) for r in c]), mean([float(r["mse_se"]) for r in c])
+    return mean([float(r[METRIC]) for r in c]), mean([float(r[METRIC + "_se"]) for r in c])
 
 
 SERIES = [("", PS.COL_1D), (" (matched resolution)", PS.COL_RES), (" (matched label)", PS.COL_LAB)]
@@ -87,7 +88,7 @@ def main(out, paths, series):
         ax.set_xticks([0, 0.5, 1]); ax.set_xticklabels(["0", "0.5", "1"])
         ax.set_title(lab)
         ax.set_xlabel("ρ")
-    axes[0][0].set_ylabel("MSE")
+    axes[0][0].set_ylabel("MSE" if METRIC == "mse" else "Interval score")
     fig.tight_layout()
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
@@ -95,6 +96,9 @@ def main(out, paths, series):
 
 
 if __name__ == "__main__":
-    abl = sys.argv[1][2:] if sys.argv[1] in ("--full", "--mr", "--ml") else None   # one baseline only; default: all
-    a = sys.argv[2:] if abl else sys.argv[1:]
+    argv = sys.argv[1:]
+    if argv[0] == "--is":
+        METRIC = "IS"; argv = argv[1:]
+    abl = argv[0][2:] if argv[0] in ("--full", "--mr", "--ml") else None   # one baseline only; default: all
+    a = argv[1:] if abl else argv
     main(a[0], a[1:], {"full": SERIES[0:1], "mr": SERIES[1:2], "ml": SERIES[2:3]}.get(abl, SERIES))
