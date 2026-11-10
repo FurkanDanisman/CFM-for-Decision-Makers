@@ -1,6 +1,6 @@
 """Dequantized Twins (both twins jittered, correlated so the cross-world correlation is kept; make_worlds.twins_deq)
 and the no-dependence control, scored like Table 2 on the jittered (continuous) outcomes.
-python score_twins_deq.py DATA_ROOT OUT_PREFIX
+python score_twins_deq.py DATA_ROOT OUT_PREFIX [MODELS, comma-separated dump dirs]
 
 Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covariate set (d = 10, 1) and model:
   mse          (predicted mean - the other twin's jittered outcome)^2. 2D: the joint conditioned on the known twin's
@@ -35,7 +35,7 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("CausalPFN-C", "cpfn1d", None, "full"), ("CausalPFN-C 2D", "cpfn2d", None, "full"),
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
           ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub")]
-ONLY = [m for m in os.environ.get("DEQ_ONLY", "").split(",") if m]   # dump dirs to score (empty: all models)
+ONLY = [m for m in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if m]   # dump dirs to score (none: all)
 if ONLY:
     MODELS = [m for m in MODELS if m[1] in ONLY]
 COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned through a Gaussian copula
