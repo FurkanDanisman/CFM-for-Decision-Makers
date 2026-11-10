@@ -147,9 +147,8 @@ def main_range_perw(out, paths, series):
     """one column per w, one row per family: the 1D curve over that w's own range of rho (+- SE band), its average over
     the range (dashed), and 2D at that w (orange, +- SE band)"""
     rows = load(paths)
-    plt.rcParams.update({"font.size": 14, "axes.titlesize": 15, "axes.labelsize": 14, "xtick.labelsize": 12.5,
-                         "ytick.labelsize": 12.5})
-    fig, axes = plt.subplots(len(FAM), len(WS), figsize=(3.4 * len(WS), 2.8 * len(FAM)), squeeze=False)
+    PS.apply()                                                    # the paper's fonts (STIX) at the printed sizes
+    fig, axes = plt.subplots(len(FAM), len(WS), figsize=(PS.TEXTWIDTH, 1.55 * len(FAM) + 0.45), squeeze=False)
     for i, w in enumerate(WS):
         lo, hi = RANGES[w]
         rh = [k / 10 for k in range(lo, hi + 1)]
@@ -161,22 +160,24 @@ def main_range_perw(out, paths, series):
                 if any(x is None for x in g):
                     continue
                 m1, s1 = [float(x[METRIC]) for x in g], [float(x[METRIC + "_se"]) for x in g]
-                ax.plot(rh, m1, "-o", ms=4, lw=2.0, color=col)
+                ax.plot(rh, m1, "-o", ms=2.6, lw=1.2, color=col)
                 ax.fill_between(rh, [x - e for x, e in zip(m1, s1)], [x + e for x, e in zip(m1, s1)], color=col, alpha=0.2, lw=0)
-                ax.axhline(mean(m1), color=col, ls="--", lw=2.0)
+                ax.axhline(mean(m1), color=col, ls="--", lw=1.1)
             if t is not None:
-                ax.axhline(float(t[METRIC]), color=PS.COL_2D, lw=3.0)
+                ax.axhline(float(t[METRIC]), color=PS.COL_2D, lw=1.8)
                 e = float(t[METRIC + "_se"])
                 ax.axhspan(float(t[METRIC]) - e, float(t[METRIC]) + e, color=PS.COL_2D, alpha=0.15, lw=0)
             ax.set_xlim(-1.02, 1.02)
-            ax.set_xticks([-1, -0.5, 0, 0.5, 1]); ax.set_xticklabels(["-1", "-0.5", "0", "0.5", "1"])
+            ax.set_xticks([-1, 0, 1]); ax.set_xticklabels(["-1", "0", "1"])
+            ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(nbins=3, steps=[1, 2, 2.5, 5]))
+            ax.tick_params(length=2, width=0.5, pad=1.5)
             if j == 0:
                 ax.set_title(f"w = {w}")
             if j == len(FAM) - 1:
                 ax.set_xlabel("ρ")
             if i == 0:
                 ax.set_ylabel(f"{lab}\nMSE" if METRIC == "mse" else f"{lab}\nInterval score")
-    fig.tight_layout()
+    fig.tight_layout(h_pad=0.4, w_pad=0.6)
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
     print(f"wrote {out}.pdf/.png")
