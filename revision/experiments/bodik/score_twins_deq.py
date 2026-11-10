@@ -49,13 +49,24 @@ def score(E, W, T, y):
     return np.stack([(m - y) ** 2, IS], 1)
 
 
-def copula_1d(f, tag, t, yf, y, rho):
+def marginals_2d(z, tag):
+    """the 2D model's own marginals of both arms from its joint (raw units, no tails)"""
+    key = f"p_joint_scaled_{tag}" if tag and f"p_joint_scaled_{tag}" in z.files else "p_joint_scaled"
+    J = np.asarray(z[key], np.float64)
+    J = J / J.sum((1, 2), keepdims=True)
+    es = np.asarray(z["edges"], np.float64).reshape(-1)
+    n = J.shape[0]
+    T = np.zeros((n, 4)) + [0, 1, 0, 1]
+    return {a: (es * _map(z, a)[0] + _map(z, a)[1], J.sum(2 if a == 0 else 1), T) for a in (0, 1)}
+
+
+def copula_1d(f, tag, t, yf, y, rho, from_2d=False):
     """1D baseline conditioned on the known twin's VALUE through a Gaussian copula with correlation rho:
     z_f = Phi^{-1}(F_f(y_f)) under the baseline's marginal of the known twin (within-bin linear CDF); the other
     twin's latent is N(rho z_f, 1 - rho^2), mapped through its marginal: bin masses H(b_j) - H(b_{j-1}),
     b_j = Phi^{-1}(F_c(e_j)), H(b) = Phi((b - rho z_f) / s); tails H(b_0), 1 - H(b_K) (half-normal shapes kept)."""
     z = np.load(f, allow_pickle=True)
-    M = {a: marginal(z, tag, a) for a in (0, 1)}
+    M = marginals_2d(z, tag) if from_2d else {a: marginal(z, tag, a) for a in (0, 1)}
     K = M[0][1].shape[1]
     E, W, T = np.empty((t.size, K + 1)), np.empty((t.size, K)), np.empty((t.size, 4))
     s = np.sqrt(max(1 - rho ** 2, 1e-6))
@@ -82,13 +93,15 @@ def copula_1d(f, tag, t, yf, y, rho):
 
 
 def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
+    """rho: condition through a Gaussian copula with this rho on the model's marginals (2D: its joint's marginals,
+    i.e. its learned dependence replaced by rho)"""
     k = int(re.search(r"r(\d+)\.npz$", f).group(1))
     z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
     t = np.rint(z["t_test"]).astype(int)
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
     if rho is not None:
-        return k, copula_1d(f, tag, t, yf, y, rho)
+        return k, copula_1d(f, tag, t, yf, y, rho, from_2d=is2d)
     if not is2d or ld_off:
         E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
         return k, score(E, W, T, y)
@@ -151,7 +164,8 @@ def main(D, out):
                 if not files:
                     print("missing", pname, label, d, flush=True); continue
                 is2d = "2D" in label
-                rows = [(label, False, None)] + ([(label + " (ρ = 0)", True, None)] if is2d else
+                rows = [(label, False, None)] + ([(label + " (ρ = 0)", True, None),
+                                                   (label + " copula ρ=est", False, ESTIMATED[d])] if is2d else
                          [(label + f" copula ρ={'est' if r == 'est' else r}", False, ESTIMATED[d] if r == "est" else r)
                           for r in COP_RHOS])
                 for lab, ld_off, rho in rows:
@@ -161,7 +175,7 @@ def main(D, out):
                     m, se = agg(got, sub)
                     r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m[0]), mse_se=float(se[0]),
                              IS=float(m[1]), IS_se=float(se[1]))
-                    if is2d and not ld_off:
+                    if is2d and not ld_off and rho is None:
                         r["rho_pred"] = float(np.median(np.concatenate([rho_pred(f, tag) for f in files])))
                     t = np.load(os.path.join(D, pname, f"d{d}", "truths", "r000.npz"))
                     r["rho_true"] = float(np.corrcoef(t["y0"], t["y1"])[0, 1])
