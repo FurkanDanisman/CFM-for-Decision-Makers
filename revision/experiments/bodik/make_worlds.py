@@ -155,8 +155,14 @@ def _corr_jitter(X, a0, a1, w, seed):
     cross-fitted gradient boosting on X), equals that of the binary pair. Returns (u0, u1, copula corr, target rho)."""
     from scipy.optimize import brentq
     from scipy.stats import norm
-    sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "benchmarks", "rho"))
-    from rho_cf import _oof
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.model_selection import KFold
+
+    def _oof(X, y, folds, seed):                                  # = benchmarks/rho/rho_cf.py, the tab:rho-all estimator
+        pred = np.empty_like(y)
+        for tr, te in KFold(folds, shuffle=True, random_state=seed).split(X):
+            pred[te] = HistGradientBoostingRegressor(random_state=seed).fit(X[tr], y[tr]).predict(X[te])
+        return pred
     r0, r1 = a0 - _oof(X, a0, 5, 0), a1 - _oof(X, a1, 5, 0)
     target = np.corrcoef(r0, r1)[0, 1]
     g = np.random.default_rng(seed)
