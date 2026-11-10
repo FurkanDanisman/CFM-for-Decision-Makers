@@ -27,12 +27,13 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("Do-PFN (matched resolution)", "dopfn1d_mr", None, "full"),
           ("CausalPFN-C", "cpfn1d", None, "full"), ("CausalPFN-C 2D", "cpfn2d", None, "full"),
           ("CausalPFN-C (matched resolution)", "cpfn1d_mr", None, "full"),
+          ("CausalPFN-C 2D (std 3)", "cpfn2d_s3", None, "full"),      # Twins check: outcome spread to sigma = 3
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
           ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub"),
           ("UWYK No-Anc (matched resolution)", "uwyk1d_mr", "noanc", "sub"),
           ("UWYK Anc (matched resolution)", "uwyk1d_mr", "v3a", "sub"),
           # the 2D models with their learned dependence switched off (rho = 0): their own marginal of the other twin
-          ("Do-PFN 2D (ρ = 0)", "dopfn2d", None, "full"), ("CausalPFN-C 2D (ρ = 0)", "cpfn2d", None, "full"),
+          ("Do-PFN 2D (ρ = 0)", "dopfn2d", None, "full"), ("CausalPFN-C 2D (ρ = 0)", "cpfn2d", None, "full"), ("CausalPFN-C 2D (std 3, ρ = 0)", "cpfn2d_s3", None, "full"),
           ("UWYK 2D No-Anc (ρ = 0)", "graph2d", "noanc", "sub"), ("UWYK 2D Anc (ρ = 0)", "graph2d", "v3a", "sub")]
 NB = 6                                                           # query blocks per context
 

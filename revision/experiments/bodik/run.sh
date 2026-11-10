@@ -162,7 +162,7 @@ fi
 
 # ---- eval
 MODEL="${2:?model}"; PARTS="${3:-all}"; [ "$PARTS" = all ] && PARTS="ihdp_a twins ihdp_b"
-case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d|dopfn1d_mr|dopfn1d_ml|uwyk1d_mr|uwyk1d_ml|cpfn1d_mr|cpfn1d_ml|cpfn_v0|uwyk_bin) ;;
+case "$MODEL" in dopfn1d|dopfn2d|uwyk1d|graph2d|cpfn1d|cpfn2d|cpfn2d_s3|dopfn1d_mr|dopfn1d_ml|uwyk1d_mr|uwyk1d_ml|cpfn1d_mr|cpfn1d_ml|cpfn_v0|uwyk_bin) ;;
   *) echo "FATAL: unknown model $MODEL"; exit 1 ;; esac
 AUR="$KIT/from_aurora"; D262="$KIT/checkpoints_dopfn_repro_262k"
 export CAUSALPFN="$KIT/external/causalpfn" DOPFN_ROOT="$KIT/external/dopfn"
@@ -220,6 +220,10 @@ run_model() {   # run_model <outdir>   (dataset CMECH_n5 read from $UWYK_FIG34_D
     cpfn2d)
       python -u "$REPO/realcause_eval/Table1/cpfn2d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
         --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" --std-mode pooled ;;
+    cpfn2d_s3)                                     # Twins check: same model, outcome spread to sigma = 3 on its [-10, 10] grid
+      python -u "$REPO/realcause_eval/Table1/cpfn2d.py" --dataset CMECH_n5 --outdir "$OUTD" --density-dump 1 \
+        --ckpt "$CK/cpfn2d_j32_eta0_y01_step50000.pt" --repo "$REPO" --causalpfn "$CAUSALPFN" \
+        --std-mode std_target --std-target 3.0 ;;
   esac || echo "WARN: $MODEL $OUTD failed"
 }
 
