@@ -1,6 +1,6 @@
 """Dequantized Twins (both twins jittered, correlated so the cross-world correlation is kept; make_worlds.twins_deq)
 and the no-dependence control, scored like Table 2 on the jittered (continuous) outcomes.
-python score_twins_deq.py DATA_ROOT OUT_PREFIX [MODELS, comma-separated dump dirs]
+python score_twins_deq.py DATA_ROOT OUT_PREFIX [MODELS: dump dirs, e.g. dopfn1d,dopfn2d | all] [VARIANTS: e.g. twins0.1,twinsind | all]
 
 Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covariate set (d = 10, 1) and model:
   mse          (predicted mean - the other twin's jittered outcome)^2. 2D: the joint conditioned on the known twin's
@@ -35,12 +35,15 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("CausalPFN-C", "cpfn1d", None, "full"), ("CausalPFN-C 2D", "cpfn2d", None, "full"),
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
           ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub")]
-ONLY = [m for m in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if m]   # dump dirs to score (none: all)
+ONLY = [m for m in (sys.argv[3] if len(sys.argv) > 3 else "all").split(",") if m not in ("", "all")]  # dump dirs
+VONLY = [v for v in (sys.argv[4] if len(sys.argv) > 4 else "all").split(",") if v not in ("", "all")]  # twins0.1, twinsind
 if ONLY:
     MODELS = [m for m in MODELS if m[1] in ONLY]
 COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned through a Gaussian copula
 ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (the jittered pairs keep it)
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
+if VONLY:
+    VARIANTS = [(k, w) for k, w in VARIANTS if k in VONLY or f"{k}{w}" in VONLY]
 
 
 def score(E, W, T, y, yf):
