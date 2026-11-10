@@ -9,6 +9,8 @@ Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covari
                prediction is the histogram's mean (bodik_cf_readouts.mean_hist), the Table 2 read-out.
   IS           interval score at alpha = 0.05 of the same histogram's 95% interval (bodik_cf_readouts.hist_interval:
                2.5% / 97.5% points on bin edges, the paper's read-out) against the other twin's jittered outcome
+  breakdown    printed under each row: IS = width + miss penalty, coverage, the IS with the interval points interpolated
+               inside the bins (no edge snapping), and the miss rate when the known twin died / survived
   rho_pred     2D only: correlation of the predicted joint (raw bin centres), median over queries
   rho_true     correlation of the two twins' binary outcomes in the variant's truths
 Aggregation as score_twins_bodik (all families: SE over families; UWYK: per context draw, SE over draws).
@@ -41,12 +43,20 @@ ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (t
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
 
 
-def score(E, W, T, y):
-    """per query: squared error of the mean, interval score of the 95% interval"""
+def score(E, W, T, y, yf):
+    """per query: squared error of the mean, interval score of the 95% interval; then the breakdown of the IS:
+    width, miss penalty, covered, IS with the 2.5% / 97.5% points interpolated inside the bins (no edge snapping),
+    and the miss and its group indicator for known twin died / survived (y_f >= 1/2 / < 1/2)"""
     m = R.mean_hist(E, W, T)
     L, U = R.hist_interval(E, W, T)
-    IS = (U - L) + (2 / R.A) * np.maximum(0, L - y) + (2 / R.A) * np.maximum(0, y - U)
-    return np.stack([(m - y) ** 2, IS], 1)
+    pen = (2 / R.A) * np.maximum(0, L - y) + (2 / R.A) * np.maximum(0, y - U)
+    F = np.concatenate([T[:, :1], T[:, :1] + np.cumsum(W, 1)], 1)
+    Li = np.array([np.interp(R.A / 2, F[i], E[i]) for i in range(y.size)])
+    Ui = np.array([np.interp(1 - R.A / 2, F[i], E[i]) for i in range(y.size)])
+    ISi = (Ui - Li) + (2 / R.A) * np.maximum(0, Li - y) + (2 / R.A) * np.maximum(0, y - Ui)
+    miss, died = (y < L - 1e-9) | (y > U + 1e-9), yf >= 0.5
+    return np.stack([(m - y) ** 2, U - L + pen, U - L, pen, ~miss, ISi, miss & died, died, miss & ~died, ~died],
+                    1).astype(float)
 
 
 def marginals_2d(z, tag):
@@ -89,7 +99,7 @@ def copula_1d(f, tag, t, yf, y, rho, from_2d=False):
         H = norm.cdf((b - rho * zf[:, None]) / s)
         E[sel], W[sel] = Ec, np.diff(H, axis=1)
         T[sel] = np.stack([H[:, 0], Tc[:, 1], 1 - H[:, -1], Tc[:, 3]], 1)
-    return score(E, W, T, y)
+    return score(E, W, T, y, yf)
 
 
 def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
@@ -104,7 +114,7 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
         return k, copula_1d(f, tag, t, yf, y, rho, from_2d=is2d)
     if not is2d or ld_off:
         E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
-        return k, score(E, W, T, y)
+        return k, score(E, W, T, y, yf)
     with np.load(f, allow_pickle=True) as zz:
         key = f"p_joint_scaled_{tag}" if tag and f"p_joint_scaled_{tag}" in zz.files else "p_joint_scaled"
         J = np.asarray(zz[key], np.float64)
@@ -122,7 +132,7 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
         w_ = M[np.arange(sel.size), kb, :]
         W[sel] = w_ / np.maximum(w_.sum(1, keepdims=True), 1e-300)
         E[sel] = e[1 - arm_f]
-    return k, score(E, W, np.zeros((t.size, 4)) + [0, 1, 0, 1], y)
+    return k, score(E, W, np.zeros((t.size, 4)) + [0, 1, 0, 1], y, yf)
 
 
 def rho_pred(f, tag):
@@ -183,6 +193,9 @@ def main(D, out):
                     print(f"{kind:8s} w={w:4s} d={d:2d} {lab:26s} MSE {m[0]:.4f} ± {se[0]:.4f}  IS {m[1]:.3f} ± {se[1]:.3f}"
                           + (f"  rho_pred {r['rho_pred']:.3f}" if "rho_pred" in r else "")
                           + f"  rho_true {r['rho_true']:.3f}", flush=True)
+                    print(f"{'':44s}IS = width {m[2]:.3f} + miss penalty {m[3]:.3f}; coverage {m[4]:.3f};"
+                          f" IS interpolated {m[5]:.3f}; miss rate | known died {m[6] / m[7]:.3f},"
+                          f" | known survived {m[8] / m[9]:.3f}", flush=True)
     keys = ["variant", "w", "setting", "model", "mse", "mse_se", "IS", "IS_se", "rho_pred", "rho_true"]
     with open(out + ".csv", "w", newline="") as fh:
         wr = csv.DictWriter(fh, fieldnames=keys); wr.writeheader(); wr.writerows(recs)
