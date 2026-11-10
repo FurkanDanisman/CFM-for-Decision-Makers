@@ -122,12 +122,14 @@ def twins_bodik(out, d=10, n_sub=10, block=2000):
 DEQ_W = (0.1, 0.25, 0.5)
 
 
-def _write_bodik(out, kind, tag, X, T, y0, y1, y_ctx, n_sub=10, block=2000):
+def _write_bodik(out, kind, tag, X, T, y0, y1, y_ctx, extra, n_sub=10, block=2000):
     """twins_bodik's two layouts: <kind>_full_<tag> (context = all families) and <kind>_sub_<tag> (1000 families,
-    n_sub draws); every family queried; truths = the BINARY outcomes; the context carries y_ctx."""
+    n_sub draws); every family queried; truths y0, y1 (the outcomes the models are scored on) plus `extra`
+    (per-family arrays, e.g. the binary outcomes); the context carries y_ctx."""
     allq = np.arange(T.size)
     blocks = [allq[s:s + block] for s in range(0, T.size, block)]
-    tr = lambda q: {"delta_shared": (y1 - y0)[q], "cate": (y1 - y0)[q], "y0": y0[q], "y1": y1[q], "t_test": T[q]}
+    tr = lambda q: {"delta_shared": (y1 - y0)[q], "cate": (y1 - y0)[q], "y0": y0[q], "y1": y1[q], "t_test": T[q],
+                    **{k: v[q] for k, v in extra.items()}}
     d = X.shape[1]
     root = os.path.join(out, f"{kind}_full_{tag}", f"d{d}")
     for k, q in enumerate(blocks):
@@ -147,13 +149,40 @@ def _write_bodik(out, kind, tag, X, T, y0, y1, y_ctx, n_sub=10, block=2000):
     print(f"{kind} {tag} d{d}: full + {n_sub} draws of {TW_CTX}, {len(blocks)} query blocks", flush=True)
 
 
+def _corr_jitter(X, a0, a1, w, seed):
+    """Uniform(-w, w) jitter for both twins of a family, correlated (Gaussian copula) so that the cross-world
+    correlation of the jittered pair, estimated as in tab:rho-all (benchmarks/rho/rho_cf.py: residuals of a 5-fold
+    cross-fitted gradient boosting on X), equals that of the binary pair. Returns (u0, u1, copula corr, target rho)."""
+    from scipy.optimize import brentq
+    from scipy.stats import norm
+    sys.path.insert(0, os.path.join(HERE, "..", "..", "..", "benchmarks", "rho"))
+    from rho_cf import _oof
+    r0, r1 = a0 - _oof(X, a0, 5, 0), a1 - _oof(X, a1, 5, 0)
+    target = np.corrcoef(r0, r1)[0, 1]
+    g = np.random.default_rng(seed)
+    e0, e1 = g.standard_normal(a0.size), g.standard_normal(a0.size)
+
+    def jit(c):
+        return w * (2 * norm.cdf(e0) - 1), w * (2 * norm.cdf(c * e0 + np.sqrt(1 - c * c) * e1) - 1)
+
+    def gap(c):
+        u0, u1 = jit(c)
+        return np.corrcoef(r0 + u0, r1 + u1)[0, 1] - target
+    c = brentq(gap, -0.999, 0.999) if gap(-0.999) < 0 < gap(0.999) else 0.0
+    u0, u1 = jit(c)
+    return u0, u1, c, target
+
+
 def twins_deq(out, d):
-    """The binary outcome dequantized for the context only: y + U(-w, w), w < 1/2, so the threshold 1/2 recovers it
-    exactly; truths and scoring stay binary.
+    """Dequantized Twins: both twins' binary outcomes get a Uniform(-w, w) jitter (w <= 1/2, so the threshold 1/2
+    recovers the binary outcome), correlated across the twins so that the cross-world correlation given the d
+    covariates stays that of the binary data (_corr_jitter). The context carries the factual twin's jittered
+    outcome; the truths are the jittered pair (y0, y1), with the binary pair kept as y0_bin, y1_bin.
       twins_{full,sub}_deq<w>     Twins (Bodik's setup), w in DEQ_W
-      twinsind_{full,sub}_deq<w>  control with NO cross-world dependence: the same covariates and treatment, each twin's outcome
-                       redrawn independently from P(Y_t = 1 | x) (a logistic fit of that twin's outcome on the 10
-                       covariates), w in (0,) + DEQ_W (w = 0: binary, as given to the models in Table 2)"""
+      twinsind_{full,sub}_deq<w>  control with NO cross-world dependence: the same covariates and treatment, each
+                       twin's outcome redrawn independently from P(Y_t = 1 | x) (a logistic fit of that twin's outcome
+                       on the 10 covariates); its twins are independent by construction, so their jitter is too;
+                       w in (0,) + DEQ_W (w = 0: binary)"""
     from sklearn.linear_model import LogisticRegression
     z = np.load(os.path.join(HERE, "bodik_twins.npz"))
     Xa, T = z["X"].astype(np.float64), z["T"].astype(np.float64)
@@ -164,10 +193,18 @@ def twins_deq(out, d):
     i0, i1 = (rng.random(T.size) < p[0]).astype(np.float64), (rng.random(T.size) < p[1]).astype(np.float64)
     X = Xa[:, :d]
     for kind, (a0, a1), widths in (("twins", (y0, y1), DEQ_W), ("twinsind", (i0, i1), (0.0,) + DEQ_W)):
-        yf = np.where(T == 1, a1, a0)
         for w in widths:
-            u = np.random.default_rng([SEED, 8, int(round(w * 1000))]).uniform(-w, w, T.size)
-            _write_bodik(out, kind, f"deq{w:g}", X, T, a0, a1, yf + u)
+            if w > 0 and kind == "twins":
+                u0, u1, c, tgt = _corr_jitter(X, a0, a1, w, [SEED, 9, d, int(round(w * 1000))])
+                print(f"{kind} d={d} w={w:g}: target rho {tgt:.3f}, jitter copula corr {c:.3f}", flush=True)
+            elif w > 0:                                          # control: the twins are independent by construction,
+                g = np.random.default_rng([SEED, 9, d, int(round(w * 1000))])   # so the jitter is independent too
+                u0, u1 = g.uniform(-w, w, T.size), g.uniform(-w, w, T.size)
+            else:
+                u0 = u1 = np.zeros(T.size)
+            j0, j1 = a0 + u0, a1 + u1
+            _write_bodik(out, kind, f"deq{w:g}", X, T, j0, j1, np.where(T == 1, j1, j0),
+                         {"y0_bin": a0, "y1_bin": a1})
     print(f"control: corr(Y0, Y1) {np.corrcoef(i0, i1)[0, 1]:.3f} (Twins {np.corrcoef(y0, y1)[0, 1]:.3f}); "
           f"mortality {i0.mean():.3f}/{i1.mean():.3f} (Twins {y0.mean():.3f}/{y1.mean():.3f})", flush=True)
 

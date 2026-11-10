@@ -1,9 +1,12 @@
-"""Twins with the context outcome dequantized (y + U(-w, w)), and the no-dependence control, scored like Table 2.
+"""Dequantized Twins (both twins jittered, correlated so the cross-world correlation is kept; make_worlds.twins_deq)
+and the no-dependence control, scored like Table 2 on the jittered (continuous) outcomes.
 python score_twins_deq.py DATA_ROOT OUT_PREFIX
 
 Per variant (twins: w = 0.1, 0.25, 0.5; twinsind: w = 0, 0.1, 0.25, 0.5), covariate set (d = 10, 1) and model:
-  mse          score_twins_bodik.per_query (the Table 2 read-out: the known twin's binary outcome conditions the 2D
-               joint; 1D uses the other arm's marginal); 2D also with the dependence off (rho = 0)
+  mse          (predicted mean - the other twin's jittered outcome)^2. 2D: the joint conditioned on the known twin's
+               jittered outcome (the bin of the known arm that holds it; outside the grid, the end bin); 1D and
+               2D with the dependence off (rho = 0): the other arm's marginal (bodik_cf_readouts.cond_hist). The
+               prediction is the histogram's mean (bodik_cf_readouts.mean_hist), the Table 2 read-out.
   rho_pred     2D only: correlation of the predicted joint (raw bin centres), median over queries
   rho_true     correlation of the two twins' binary outcomes in the variant's truths
 Aggregation as score_twins_bodik (all families: SE over families; UWYK: per context draw, SE over draws).
@@ -19,6 +22,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import score_twins_bodik as S                                   # noqa: E402
+import bodik_cf_readouts as R                                   # noqa: E402
 from bodik_cf import _map                                       # noqa: E402
 
 MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "full"),
@@ -26,6 +30,36 @@ MODELS = [("Do-PFN", "dopfn1d", None, "full"), ("Do-PFN 2D", "dopfn2d", None, "f
           ("UWYK No-Anc", "uwyk1d", "noanc", "sub"), ("UWYK Anc", "uwyk1d", "v3a", "sub"),
           ("UWYK 2D No-Anc", "graph2d", "noanc", "sub"), ("UWYK 2D Anc", "graph2d", "v3a", "sub")]
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
+
+
+def per_query(D, part, f, tag, is2d, d, ld_off=False):
+    k = int(re.search(r"r(\d+)\.npz$", f).group(1))
+    z = np.load(os.path.join(D, part, f"d{d}", "truths", f"r{k:03d}.npz"))
+    t = np.rint(z["t_test"]).astype(int)
+    y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
+    yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
+    if not is2d or ld_off:
+        E, W, T, _ = R.cond_hist(f, tag, t, yf, ld_off=ld_off)
+        return k, (R.mean_hist(E, W, T) - y) ** 2
+    with np.load(f, allow_pickle=True) as zz:
+        key = f"p_joint_scaled_{tag}" if tag and f"p_joint_scaled_{tag}" in zz.files else "p_joint_scaled"
+        J = np.asarray(zz[key], np.float64)
+        es = np.asarray(zz["edges"], np.float64).reshape(-1)
+        e = {a: es * _map(zz, a)[0] + _map(zz, a)[1] for a in (0, 1)}
+    J = J / J.sum((1, 2), keepdims=True)
+    K = J.shape[-1]
+    mean = np.empty(t.size)
+    for arm_f in (0, 1):
+        sel = np.flatnonzero(t == arm_f)
+        if sel.size == 0:
+            continue
+        kb = np.clip(np.searchsorted(e[arm_f], yf[sel], side="right") - 1, 0, K - 1)
+        M = J[sel] if arm_f == 0 else np.transpose(J[sel], (0, 2, 1))       # [q, known bin, other bin]
+        W = M[np.arange(sel.size), kb, :]
+        W = W / np.maximum(W.sum(1, keepdims=True), 1e-300)
+        eo = e[1 - arm_f]
+        mean[sel] = W @ (0.5 * (eo[:-1] + eo[1:]))
+    return k, (mean - y) ** 2
 
 
 def rho_pred(f, tag):
@@ -70,8 +104,7 @@ def main(D, out):
                 for lab, ld_off in rows:
                     got = []
                     for f in files:
-                        k, V = S.per_query(D, pname, f, tag, is2d, d, ld_off=ld_off)
-                        got.append((k, V[:, 0]))
+                        got.append(per_query(D, pname, f, tag, is2d, d, ld_off=ld_off))
                     m, se = agg(got, sub)
                     r = dict(variant=kind, w=w, setting=f"d={d}", model=lab, mse=float(m), mse_se=float(se))
                     if is2d and not ld_off:
