@@ -50,7 +50,8 @@ if ONLY:                                                        # a token is a d
     MODELS = [m for m in MODELS if m[1] in ONLY or f"{m[1]}:{m[2]}" in ONLY]
 DS = tuple(int(x) for x in sys.argv[6].split(",")) if len(sys.argv) > 6 else (10, 1)   # covariate sets
 COP_RHOS = (-0.5, 0.5, 1.0, "est")                              # 1D conditioned through a Gaussian copula
-if len(sys.argv) > 5 and sys.argv[5] == "grid":                 # (argv[5] = nogrid: the default rhos)                 # the analyst's range rho in [0, 1], step 0.1
+GRID = len(sys.argv) > 5 and sys.argv[5] == "grid"              # the analyst's range rho in [0, 1], step 0.1, and
+if GRID:                                                        # one row more: the prediction averaged over it
     COP_RHOS = tuple(k / 10 for k in range(11))
 ESTIMATED = {1: 0.649, 10: 0.636}                               # tab:rho-all (the jittered pairs keep it)
 VARIANTS = [("twins", w) for w in ("0.1", "0.25", "0.5")] + [("twinsind", w) for w in ("0", "0.1", "0.25", "0.5")]
@@ -85,7 +86,7 @@ def marginals_2d(z, tag):
     return {a: (es * _map(z, a)[0] + _map(z, a)[1], J.sum(2 if a == 0 else 1), T) for a in (0, 1)}
 
 
-def copula_1d(f, tag, t, yf, y, rho, from_2d=False):
+def copula_1d(f, tag, t, yf, y, rho, from_2d=False, hist=False):
     """1D baseline conditioned on the known twin's VALUE through a Gaussian copula with correlation rho:
     z_f = Phi^{-1}(F_f(y_f)) under the baseline's marginal of the known twin (within-bin linear CDF); the other
     twin's latent is N(rho z_f, 1 - rho^2), mapped through its marginal: bin masses H(b_j) - H(b_{j-1}),
@@ -114,7 +115,16 @@ def copula_1d(f, tag, t, yf, y, rho, from_2d=False):
         H = norm.cdf((b - rho * zf[:, None]) / s)
         E[sel], W[sel] = Ec, np.diff(H, axis=1)
         T[sel] = np.stack([H[:, 0], Tc[:, 1], 1 - H[:, -1], Tc[:, 3]], 1)
-    return score(E, W, T, y, yf)
+    return (E, W, T) if hist else score(E, W, T, y, yf)
+
+
+def copula_1d_avg(f, tag, t, yf, y, rhos):
+    """the 1D prediction averaged over the assumed rho: per query, the mean of the predicted means at every rho in
+    rhos; returns the score() columns with only the squared error filled (the averaged prediction has no interval)"""
+    m = np.mean([R.mean_hist(*copula_1d(f, tag, t, yf, y, r, hist=True)) for r in rhos], axis=0)
+    out = np.full((y.size, 10), np.nan)
+    out[:, 0] = (m - y) ** 2
+    return out
 
 
 def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
@@ -125,6 +135,8 @@ def per_query(D, part, f, tag, is2d, d, ld_off=False, rho=None):
     t = np.rint(z["t_test"]).astype(int)
     y0, y1 = z["y0"].astype(float), z["y1"].astype(float)
     yf, y = np.where(t == 1, y1, y0), np.where(t == 1, y0, y1)
+    if rho == "avg":                                             # 1D prediction averaged over the rho grid
+        return k, copula_1d_avg(f, tag, t, yf, y, [r for r in COP_RHOS if r != "est"])
     if rho is not None:
         return k, copula_1d(f, tag, t, yf, y, rho, from_2d=is2d)
     if not is2d or ld_off:
@@ -192,7 +204,7 @@ def main(D, out):
                 rows = [(label, False, None)] + ([(label + " (ρ = 0)", True, None),
                                                    (label + " copula ρ=est", False, ESTIMATED[d])] if is2d else
                          [(label + f" copula ρ={'est' if r == 'est' else r}", False, ESTIMATED[d] if r == "est" else r)
-                          for r in COP_RHOS])
+                          for r in COP_RHOS] + ([(label + " copula ρ=avg", False, "avg")] if GRID else []))
                 for lab, ld_off, rho in rows:
                     got = []
                     for f in files:
