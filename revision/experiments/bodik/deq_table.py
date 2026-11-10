@@ -51,7 +51,7 @@ def cell(w, d, model, metric):
 
 
 for metric in ("mse", "IS"):
-    for avg in (False, True):
+    for avg in (True,):                                    # averaged over w only
         lines, tests = [], {}
         for one, two in PAIRS:
             for w in (("avg",) if avg else WS):
