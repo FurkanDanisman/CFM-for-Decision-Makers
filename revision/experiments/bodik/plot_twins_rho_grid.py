@@ -3,7 +3,7 @@ every rho of the analyst's range [0, 1] (step 0.1), and against the 1D average o
 w = 0.1, 0.25, 0.5. One panel per family: the 1D MSE over the assumed rho (+- SE band), its average (dashed) and the 2D
 model (+- SE band); the paper's colours (1D blue, green at matched resolution; 2D orange). The significance of 2D
 against the 1D average is printed, not drawn.
-python plot_twins_rho_grid.py [--d1] [--is] [--no1] [--range | --range-perw] [--full | --mr | --ml] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
+python plot_twins_rho_grid.py [--d1] [--is] [--no1] [--range | --range-perw] [--full | --mr | --ml | --abl] OUT_PREFIX CSV [CSV ...]   (the score_twins_deq CSVs: the 1D grid runs and the 2D
 runs). By default every 1D baseline found is drawn: full resolution (blue), matched resolution (green), matched label
 (purple); --full / --mr / --ml: that one only)
 
@@ -194,6 +194,6 @@ if __name__ == "__main__":
     perw = argv[0] == "--range-perw"                              # one row per w
     if rng_mode:
         argv = argv[1:]
-    abl = argv[0][2:] if argv[0] in ("--full", "--mr", "--ml") else None   # one baseline only; default: all
+    abl = argv[0][2:] if argv[0] in ("--full", "--mr", "--ml", "--abl") else None   # --abl: both ablations; default: all
     a = argv[1:] if abl else argv
-    (main_range_perw if perw else main_range if rng_mode else main)(a[0], a[1:], {"full": SERIES[0:1], "mr": SERIES[1:2], "ml": SERIES[2:3]}.get(abl, SERIES))
+    (main_range_perw if perw else main_range if rng_mode else main)(a[0], a[1:], {"full": SERIES[0:1], "mr": SERIES[1:2], "ml": SERIES[2:3], "abl": SERIES[1:3]}.get(abl, SERIES))
