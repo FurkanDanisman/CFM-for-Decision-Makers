@@ -12,7 +12,8 @@ Q_s(u) = theta + s (Q(u) - theta).
   numbering its realizations among those that have queries of that subset. Each dump index is mapped back
   to its source realization (benchmarks/uwyk_fig34_dataset.py, the loader the harnesses used), and the
   two subsets of a realization are joined, so the ATE is over all of its queries (as --subset total).
---pool K: also pool the groups by their K-th path component (e.g. the case-study case).
+--pool K: also pool the groups by their K-th path component (e.g. the case-study case); the pooled lines
+  carry the mean interval score (alpha), which is on the outcome scale, so it is not pooled across pools.
 """
 import argparse, glob, os, re, sys
 import numpy as np
@@ -90,7 +91,13 @@ def realization(fs):
         return None
     Q = np.mean(q, axis=0); t = float(np.mean(th)); tr = float(np.mean(yt))
     ql, qh = np.interp(lo_u, U, Q), np.interp(hi_u, U, Q)
-    return ql <= tr <= qh, t + a.s * (ql - t) <= tr <= t + a.s * (qh - t), qh - ql
+    sl, sh = t + a.s * (ql - t), t + a.s * (qh - t)
+    return ql <= tr <= qh, sl <= tr <= sh, qh - ql, iscore(ql, qh, tr), iscore(sl, sh, tr)
+
+
+def iscore(l, u, y):
+    """interval score at level alpha: width + (2/alpha) x the distance by which y falls outside"""
+    return (u - l) + 2 / a.alpha * (max(l - y, 0.0) + max(y - u, 0.0))
 
 
 se = lambda c: np.sqrt(c.mean() * (1 - c.mean()) / c.size)
@@ -99,16 +106,19 @@ for g in sorted(groups):
     res = [r for r in (realization(fs) for fs in groups[g].values()) if r is not None]
     if not res:
         print(f"  {g}: no usable dumps"); continue
-    c1, cs, w = map(np.asarray, zip(*res))
+    c1, cs, w, i1, i_s = map(np.asarray, zip(*res))
     allr.append((c1, cs))
     if a.pool is not None:
-        pools.setdefault(g.split(os.sep)[a.pool], []).append((c1, cs))
+        pools.setdefault(g.split(os.sep)[a.pool], []).append((c1, cs, i1, i_s))
     if not a.quiet:
         print(f"  {g}: n={c1.size}  coverage s=1 {c1.mean():.3f}  s={a.s:g} {cs.mean():.3f}"
-              f"   median width s=1 {np.median(w):.4g}  s={a.s:g} {a.s * np.median(w):.4g}")
+              f"   median width s=1 {np.median(w):.4g}  s={a.s:g} {a.s * np.median(w):.4g}"
+              f"   IS s=1 {i1.mean():.4g}  s={a.s:g} {i_s.mean():.4g}")
+sem = lambda x: x.std(ddof=1) / np.sqrt(x.size) if x.size > 1 else 0.0
 for k, v in sorted(pools.items()):
-    c1, cs = np.concatenate([x[0] for x in v]), np.concatenate([x[1] for x in v])
-    print(f"  [{k}] n={c1.size}  coverage s=1 {c1.mean():.3f} +- {se(c1):.3f}   s={a.s:g} {cs.mean():.3f} +- {se(cs):.3f}")
+    c1, cs, i1, i_s = (np.concatenate([x[j] for x in v]) for j in range(4))
+    print(f"  [{k}] n={c1.size}  coverage s=1 {c1.mean():.3f} +- {se(c1):.3f}   s={a.s:g} {cs.mean():.3f} +- {se(cs):.3f}"
+          f"   IS s=1 {i1.mean():.4g} +- {sem(i1):.2g}   s={a.s:g} {i_s.mean():.4g} +- {sem(i_s):.2g}")
 if allr:
     c1, cs = np.concatenate([x[0] for x in allr]), np.concatenate([x[1] for x in allr])
     print(f"  pooled: n={c1.size}  coverage s=1 {c1.mean():.3f} +- {se(c1):.3f}   s={a.s:g} {cs.mean():.3f} +- {se(cs):.3f}")

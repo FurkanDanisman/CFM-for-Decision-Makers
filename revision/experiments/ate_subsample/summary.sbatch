@@ -6,6 +6,11 @@
 #SBATCH --mem=2G
 # Final step of submit_all.sh: every result of the OT ATE coverage check in one file.
 OUT="$SCRATCH/ate_all_results.txt"
+KIT="${KIT:-$PWD}"; source "$KIT/venv/bin/activate"
+# recompute the in-prior summaries from the saved shards, so every model carries the interval score
+for d in "$SCRATCH"/ate_bary/*/; do
+  ls "$d"shard*.npz >/dev/null 2>&1 && python "$KIT/R-PFN/revision/experiments/ate_subsample/conformal_bary.py" "$d" > "$d/coverage.txt"
+done
 {
   echo "OT ATE density coverage, $(date '+%F %T')"
   echo; echo "===== In-prior (500 datasets per model; s = split-conformal scale) ====="

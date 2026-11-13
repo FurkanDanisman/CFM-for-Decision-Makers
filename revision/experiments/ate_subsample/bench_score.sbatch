@@ -17,7 +17,7 @@ source "$KIT/venv/bin/activate"
 export PYTHONUNBUFFERED=1 ATOM_GRID_MAX=4096
 BENCH="${ATE_BENCH:?ATE_BENCH = rc | cs | cm}"
 case "$BENCH" in
-  rc) D="${ATE_RC_DUMPS:-$SCRATCH/ate_rc_dumps}"; OPT=() ;;
+  rc) D="${ATE_RC_DUMPS:-$SCRATCH/ate_rc_dumps}"; OPT=(--pool 1) ;;           # <inner model>/<DATASET>
   cs) D="${ATE_CS_DUMPS:-$SCRATCH/ate_cs_dumps}"; OPT=(--pool 4) ;;            # shift/d/ctx/model/CASE
   cm) D="${ATE_CM_DUMPS:-$SCRATCH/ate_cm_dumps}"; OPT=(--pool 2 --cmech-data "$SCRATCH/cmech_data_v2") ;;
   *) echo "unknown bench $BENCH"; exit 1 ;;
