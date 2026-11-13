@@ -21,8 +21,9 @@
 #   done
 set -uo pipefail
 mkdir -p logs_ate
-KIT="${KIT:-$PWD}"; REPO="$KIT/R-PFN"; CK="$REPO/Required_checkpoints"
-MODEL="${ATE_MODEL:?ATE_MODEL = dopfn_native | dopfn_joint2d_262k | cpfn1d | cpfn2d | uwyk1d | graph2d}"
+KIT="${KIT:-$PWD}"; REPO="$KIT/R-PFN"; CK="$REPO/Required_checkpoints"; FC="$KIT/final_checkpoints_paper"
+MODEL="${ATE_MODEL:?ATE_MODEL required}"
+T0="${ATE_T0:-$(date +%s)}"   # job start, shared by the steps of one job
 BENCH="${ATE_BENCH:?ATE_BENCH = cs | cm}"
 ENVS=(DENSITY_DUMP=1 DEPLOY_ROOT="$KIT")
 case "$MODEL" in
@@ -32,22 +33,31 @@ case "$MODEL" in
   cpfn2d)             IDX=5; ENVS+=(CKPT_CPFN2D="$CK/cpfn2d_j32_eta0_y01_step50000.pt") ;;
   uwyk1d)             IDX=2 ;;                  # published UWYK, its dump script's own settings
   graph2d)            IDX=3 ;;                  # UWYK 2D, graph2d_step_50000 (the script's default)
+  # matched-resolution / matched-label ablations: the checkpoints and settings of E2_in_prior/eval_e2.sbatch
+  dopfn1d_mr)         IDX=0; ENVS+=(DOPFN_CKPT="$FC/dopfn1d_J10_step262144.pt" DOPFN_SOFTMAX_TEMP=0) ;;
+  dopfn1d_ml)         IDX=0; ENVS+=(DOPFN_CKPT="$FC/dopfn1d_botharms_step262144.pt" DOPFN_SOFTMAX_TEMP=0) ;;
+  cpfn1d_mr)          IDX=4; ENVS+=(CKPT_CPFN1D="$FC/cpfnC_mr_1d_j32_step50000.pt") ;;
+  cpfn1d_ml)          IDX=4; ENVS+=(CKPT_CPFN1D="$FC/cpfnC_ml_1d_botharms_step50000.pt") ;;
+  uwyk1d_mr)          IDX=2; ENVS+=(CKPT="$FC/uwyk_mr_D_j32_step50000.pt" CONFIG="$FC/uwyk_mr_D_j32_config.yaml" UWYK_T_ENCODING=target) ;;
+  uwyk1d_ml)          IDX=2; ENVS+=(CKPT="$FC/uwyk_ml_C_botharms_step50000.pt" CONFIG="$FC/uwyk_ml_C_botharms_config.yaml" UWYK_T_ENCODING=binary) ;;
   *) echo "unknown model $MODEL"; exit 1 ;;
 esac
 run_cell () {   # $1 = marker name, rest = env assignments; runs $INNER once
   local mk="$ROOT/$1.done"; shift
   [ -f "$mk" ] && { echo "skip $(basename "$mk" .done) (done)"; return; }
-  [ "$SECONDS" -gt 9600 ] && { echo "[$(date '+%F %T')] stopping before the time limit; resubmit to continue"; exit 0; }
+  [ $(( $(date +%s) - T0 )) -gt 9600 ] && { echo "[$(date '+%F %T')] stopping before the time limit; resubmit to continue"; exit 0; }
   echo "===== [$(date '+%F %T')] $MODEL $(basename "$mk" .done)"
   env "${ENVS[@]}" "$@" bash "$INNER" && touch "$mk" || echo "  CELL FAILED $(basename "$mk" .done)"
 }
 if [ "$BENCH" = cs ]; then
-  SHIFT="${ATE_SHIFT:?ATE_SHIFT = 0 | +2 | -2}"
+  SHIFTS="${ATE_SHIFT:?ATE_SHIFT = 0 | +2 | -2 | all}"; [ "$SHIFTS" = all ] && SHIFTS="0 +2 -2"
   INNER="$REPO/benchmarks/cluster/submit_cs_dvar_density.sbatch"
   ROOT="${ATE_CS_DUMPS:-$SCRATCH/ate_cs_dumps}/$MODEL"; mkdir -p "$ROOT"
   LABELS=(d2 d3 d5 d10 d20 d30 d40 d50)
-  for c in 2 3 4 5 6 7; do
-    run_cell "shift${SHIFT}_${LABELS[$c]}" OUT_ROOT="$ROOT" SHIFT="$SHIFT" SLURM_ARRAY_TASK_ID=$(( IDX * 8 + c ))
+  for SHIFT in $SHIFTS; do
+    for c in 2 3 4 5 6 7; do
+      run_cell "shift${SHIFT}_${LABELS[$c]}" OUT_ROOT="$ROOT" SHIFT="$SHIFT" SLURM_ARRAY_TASK_ID=$(( IDX * 8 + c ))
+    done
   done
 else
   INNER="$REPO/benchmarks/cluster/submit_cmech_pehe_1d_vs_2d.sbatch"
