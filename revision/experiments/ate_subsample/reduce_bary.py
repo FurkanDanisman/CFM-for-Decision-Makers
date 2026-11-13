@@ -1,5 +1,5 @@
 """Reduce one shard of harness dumps to the OT (2-Wasserstein barycenter) ATE density of each dataset.
-python reduce_bary.py DUMP_DIR OUT_NPZ
+python reduce_bary.py DUMP_DIR OUT_NPZ [TAG]   (TAG: density tag of multi-mode dumps, UWYK noanc | v3a)
 
 Per dump (one dataset): the per-query ITE densities (cate_density_metrics._query_pmfs, as score_shard.py),
 each turned into a quantile function on the grid U (CDF linear between atoms, mass of an atom centred on
@@ -24,9 +24,10 @@ def quantiles(atoms, p):
 
 
 dump_dir, out = sys.argv[1], sys.argv[2]
+tag = sys.argv[3] if len(sys.argv) > 3 else None
 idx, theta, truth, Q = [], [], [], []
 for f in sorted(glob.glob(os.path.join(dump_dir, "*r[0-9][0-9][0-9].npz"))):
-    got = _query_pmfs(f)
+    got = _query_pmfs(f, tag)
     if got is None:
         continue
     atoms, pmfs, y = got

@@ -19,7 +19,7 @@ set -uo pipefail
 mkdir -p logs_ate
 KIT="${KIT:-$PWD}"; REPO="$KIT/R-PFN"; CK="$REPO/Required_checkpoints"
 INNER="$REPO/benchmarks/cluster/submit_realcause_density_unified.sbatch"
-MODEL="${ATE_MODEL:?ATE_MODEL = dopfn_native | dopfn_joint2d_262k | cpfn1d | cpfn2d}"
+MODEL="${ATE_MODEL:?ATE_MODEL = dopfn_native | dopfn_joint2d_262k | cpfn1d | cpfn2d | uwyk1d | graph2d}"
 ROOT="${ATE_RC_DUMPS:-$SCRATCH/ate_rc_dumps}/$MODEL"; mkdir -p "$ROOT"
 ENVS=(OUT_ROOT="$ROOT" DENSITY_DUMP=1 DEPLOY_ROOT="$KIT")
 case "$MODEL" in
@@ -27,6 +27,8 @@ case "$MODEL" in
   dopfn_joint2d_262k) IDX=0; ENVS+=(DOPFN_CKPT="$CK/dopfn_repro_joint2d_step262144.pt" DOPFN_SOFTMAX_TEMP=0) ;;
   cpfn1d)             IDX=4; ENVS+=(CKPT_CPFN1D="$CK/cpfn1d_j1024_headrand_step_50000.pt") ;;
   cpfn2d)             IDX=5; ENVS+=(CKPT_CPFN2D="$CK/cpfn2d_j32_eta0_y01_step50000.pt") ;;
+  uwyk1d)             IDX=2 ;;                  # published UWYK, its dump script's own settings
+  graph2d)            IDX=3 ;;                  # UWYK 2D, graph2d_step_50000 (the script's default)
   *) echo "unknown model $MODEL"; exit 1 ;;
 esac
 SETS=(IHDP ACIC CPS PSID PSID_bal)

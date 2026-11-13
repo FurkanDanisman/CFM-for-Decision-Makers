@@ -1,7 +1,7 @@
 """Coverage of the OT ATE density on the benchmarks: the barycenter as is (s = 1) and scaled by the
 in-prior split-conformal s (conformal_bary.py, "s on all 500 datasets").
 python bench_bary_coverage.py --root DIR --s S [--label NAME] [--alpha 0.05] [--pool K] [--quiet]
-                              [--cmech-data DATA_ROOT] [--list]
+                              [--cmech-data DATA_ROOT] [--tag TAG] [--list]
 
 Walks DIR for harness dumps (*r###.npz) and groups them by directory (one benchmark cell). Per
 realization: the barycenter of the per-query ITE densities (each query's quantile function on its own
@@ -25,6 +25,7 @@ ap.add_argument("--root", required=True); ap.add_argument("--s", type=float, def
 ap.add_argument("--label", default=""); ap.add_argument("--alpha", type=float, default=0.05)
 ap.add_argument("--pool", type=int, default=None); ap.add_argument("--quiet", action="store_true")
 ap.add_argument("--cmech-data", default=None); ap.add_argument("--list", action="store_true")
+ap.add_argument("--tag", default=None, help="density tag of multi-mode dumps (UWYK: noanc | v3a)")
 a = ap.parse_args()
 files = sorted(glob.glob(os.path.join(a.root, "**", "*r[0-9][0-9][0-9].npz"), recursive=True))
 ridx = lambda f: int(re.search(r"r(\d+)\.npz$", f).group(1))
@@ -78,7 +79,7 @@ def quantiles(atoms, p):
 def realization(fs):
     q, th, yt = [], [], []
     for f in fs:
-        got = _query_pmfs(f)
+        got = _query_pmfs(f, a.tag)
         if got is None:
             return None                                         # a missing part would change the query set
         atoms, pmfs, y = got
