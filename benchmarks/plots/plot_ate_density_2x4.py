@@ -80,7 +80,7 @@ def _find(root, models, dataset, r):
     return None
 
 
-def _panel(ax, path, source, tag, colour, bary, n_bg, label):
+def _panel(ax, path, source, tag, colour, bary, n_bg, label, scale=None):
     if path is None:
         ax.text(0.5, 0.5, "no dump", ha="center", va="center",
                 transform=ax.transAxes, fontsize=9, color="0.5")
@@ -111,6 +111,12 @@ def _panel(ax, path, source, tag, colour, bary, n_bg, label):
     s = p_ate.sum() * dt
     if s > 0:
         p_ate = p_ate / s
+    if scale is not None:                                       # the ATE density: rescale around its mean by s
+        mu = float((tau * p_ate).sum() * dt)                   # (Section 3.2), density f(mu + (x - mu) / s) / s
+        p_ate = np.interp(mu + (tau - mu) / scale, tau, p_ate, left=0.0, right=0.0) / scale
+        s = p_ate.sum() * dt
+        if s > 0:
+            p_ate = p_ate / s
     ax.plot(tau, p_ate, color=colour, lw=2.0, zorder=3)
 
     true_ate = float(np.asarray(true_cate).mean())
@@ -132,6 +138,21 @@ def _panel(ax, path, source, tag, colour, bary, n_bg, label):
     return min(lo, true_ate), max(hi, true_ate)
 
 
+# the in-prior variant whose s scales each panel: (single-outcome at rho = 0, 2D)
+SCALE_VARIANT = {"Do-PFN": ("dopfn_native-rho0", "dopfn_joint2d_262k"),
+                 "UWYK No-Anc": ("uwyk1d-noanc-rho0", "graph2d-noanc"),
+                 "UWYK Anc": ("uwyk1d-v3a-rho0", "graph2d-v3a"),
+                 "CausalPFN-C": ("cpfn1d-rho0", "cpfn2d")}
+
+
+def _scale(d, lab, row):
+    import re
+    txt = open(os.path.join(d, SCALE_VARIANT[lab][row], "coverage.txt")).read()
+    s = float(re.search(r"s on all \d+ datasets: ([0-9.]+)", txt).group(1))
+    print(f"{lab}{' 2D' if row else ''}: s = {s}")
+    return s
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="OUT_ROOT of submit_rc_density")
@@ -147,6 +168,9 @@ def main():
                     help="let each panel autoscale (not recommended: it makes a narrow "
                          "and a wide density look alike)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--scale-dir", default=None,
+                    help="in-prior results (ate_subsample/run_ate_bary.sbatch): rescale each bold curve by the model's "
+                         "conformal s, read from <dir>/<variant>/coverage.txt (single-outcome models at rho = 0)")
     ap.add_argument("--paper", action="store_true",
                     help="the paper's figure style (revision/paper/paper_style.py): text width, STIX fonts, "
                          "1D blue / 2D orange, dotted frame; also writes a .pdf next to --out")
@@ -168,8 +192,9 @@ def main():
                 (m2, t2, "joint", C_2D, " 2D"))):
             ax = axes[ri][ci]
             path = _find(a.root, m, a.dataset, a.realization)
+            scale = _scale(a.scale_dir, lab, ri) if a.scale_dir else None
             sp = _panel(ax, path, src, tg, colour, bary, a.n_background,
-                        lab + suffix)
+                        lab + suffix, scale)
             if sp is not None:
                 spans.append(sp)
             if a.paper:

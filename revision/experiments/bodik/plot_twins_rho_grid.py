@@ -176,8 +176,12 @@ def main_range_perw(out, paths, series):
             if j == len(FAM) - 1:
                 ax.set_xlabel("ρ")
             if i == 0:
-                ax.set_ylabel(f"{lab}\nMSE" if METRIC == "mse" else f"{lab}\nInterval score")
+                ax.set_ylabel("MSE" if METRIC == "mse" else "Interval score")
     fig.tight_layout(h_pad=0.4, w_pad=0.6)
+    fig.subplots_adjust(left=fig.subplotpars.left + 0.035)          # room for the model names, as the paper's figures
+    for j, (_, _, lab) in enumerate(FAM):                         # bold, rotated model name per row
+        pos = axes[j][0].get_position()
+        fig.text(0.005, (pos.y0 + pos.y1) / 2, lab, rotation=90, ha="left", va="center", fontweight="bold")
     for ext in ("pdf", "png"):
         fig.savefig(f"{out}.{ext}", dpi=300, bbox_inches="tight", pad_inches=0.02)
     print(f"wrote {out}.pdf/.png")
