@@ -1,0 +1,280 @@
+cpfn1d: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.086e+07
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 4.959e+06   s per fold 0.092, 0.098, 0.098, 0.095, 0.098
+  s on all 500 datasets: 0.097   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.086e+07 median 9.998   calibrated (held-out folds) mean 4.959e+06 median 1.117
+cpfn1d_ml-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.218e+07
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 5.548e+06   s per fold 0.106, 0.106, 0.118, 0.107, 0.106
+  s on all 500 datasets: 0.107   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.218e+07 median 8.173   calibrated (held-out folds) mean 5.548e+06 median 1.081
+cpfn1d_ml-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.485e+07
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 4.366e+06   s per fold 0.084, 0.080, 0.094, 0.094, 0.085
+  s on all 500 datasets: 0.085   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.485e+07 median 10.19   calibrated (held-out folds) mean 4.366e+06 median 1.122
+cpfn1d_ml-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.982 +- 0.006   mean width 4.922e+07
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 3.14e+07   s per fold 0.559, 0.638, 0.559, 0.559, 0.605
+  s on all 500 datasets: 0.584   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 4.922e+07 median 4.284   calibrated (held-out folds) mean 3.14e+07 median 2.567
+cpfn1d_ml-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.74e+07
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 4.107e+06   s per fold 0.075, 0.072, 0.080, 0.080, 0.076
+  s on all 500 datasets: 0.076   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.74e+07 median 12.56   calibrated (held-out folds) mean 4.107e+06 median 1.094
+cpfn1d_mr-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 7.66e+07
+  calibrated s, 5-fold: coverage 0.946 +- 0.010   mean width 6.684e+06   s per fold 0.088, 0.087, 0.091, 0.091, 0.088
+  s on all 500 datasets: 0.090   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 7.66e+07 median 11.87   calibrated (held-out folds) mean 6.684e+06 median 1.11
+cpfn1d_mr-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 7.676e+07
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 5.593e+06   s per fold 0.075, 0.073, 0.079, 0.081, 0.075
+  s on all 500 datasets: 0.075   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 7.676e+07 median 14.66   calibrated (held-out folds) mean 5.593e+06 median 1.179
+cpfn1d_mr-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 7.646e+07
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 1.01e+07   s per fold 0.124, 0.132, 0.127, 0.127, 0.127
+  s on all 500 datasets: 0.127   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 7.646e+07 median 8.762   calibrated (held-out folds) mean 1.01e+07 median 1.22
+cpfn1d_mr-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 7.69e+07
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 5.294e+06   s per fold 0.071, 0.069, 0.072, 0.072, 0.069
+  s on all 500 datasets: 0.071   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 7.69e+07 median 16.98   calibrated (held-out folds) mean 5.294e+06 median 1.257
+cpfn1d-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 4.886e+07
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 5.958e+06   s per fold 0.120, 0.122, 0.122, 0.116, 0.122
+  s on all 500 datasets: 0.121   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 4.886e+07 median 8.763   calibrated (held-out folds) mean 5.958e+06 median 1.078
+cpfn1d-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.086e+07
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 4.959e+06   s per fold 0.092, 0.098, 0.098, 0.095, 0.098
+  s on all 500 datasets: 0.097   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.086e+07 median 9.998   calibrated (held-out folds) mean 4.959e+06 median 1.117
+cpfn1d-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.966 +- 0.008   mean width 4.679e+07
+  calibrated s, 5-fold: coverage 0.946 +- 0.010   mean width 3.73e+07   s per fold 0.689, 0.798, 0.751, 0.765, 0.761
+  s on all 500 datasets: 0.761   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 4.679e+07 median 4.82   calibrated (held-out folds) mean 3.73e+07 median 3.612
+cpfn1d-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 5.277e+07
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 4.594e+06   s per fold 0.081, 0.087, 0.087, 0.081, 0.087
+  s on all 500 datasets: 0.084   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 5.277e+07 median 11.28   calibrated (held-out folds) mean 4.594e+06 median 1.156
+cpfn2d: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.996 +- 0.003   mean width 1.155e+08
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 1.609e+07   s per fold 0.140, 0.139, 0.130, 0.143, 0.143
+  s on all 500 datasets: 0.140   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 1.155e+08 median 13.78   calibrated (held-out folds) mean 1.609e+07 median 2.133
+dopfn1d_ml-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.930 +- 0.011   mean width 1.419
+  calibrated s, 5-fold: coverage 0.940 +- 0.011   mean width 2.288   s per fold 1.986, 1.018, 1.297, 2.414, 1.980
+  s on all 500 datasets: 1.956   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 6.878 median 0.5298   calibrated (held-out folds) mean 7.433 median 0.8625
+dopfn1d_ml-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.936 +- 0.011   mean width 1.619
+  calibrated s, 5-fold: coverage 0.938 +- 0.011   mean width 2.37   s per fold 1.955, 0.968, 1.038, 2.077, 1.811
+  s on all 500 datasets: 1.736   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 6.889 median 0.6657   calibrated (held-out folds) mean 7.586 median 0.9511
+dopfn1d_ml-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.870 +- 0.015   mean width 1.495
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 3.921   s per fold 3.440, 1.806, 2.113, 3.960, 2.944
+  s on all 500 datasets: 2.403   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 7.109 median 0.4941   calibrated (held-out folds) mean 8.77 median 1.18
+dopfn1d_ml-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.940 +- 0.011   mean width 1.779
+  calibrated s, 5-fold: coverage 0.938 +- 0.011   mean width 2.426   s per fold 1.697, 0.889, 1.036, 2.039, 1.667
+  s on all 500 datasets: 1.603   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 6.998 median 0.7735   calibrated (held-out folds) mean 7.777 median 1.032
+dopfn1d_mr-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.810 +- 0.018   mean width 9.093
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 175.2   s per fold 22.428, 14.932, 18.221, 24.190, 19.868
+  s on all 500 datasets: 19.103   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 36.98 median 9.279   calibrated (held-out folds) mean 182.8 median 126.2
+dopfn1d_mr-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.784 +- 0.018   mean width 8.148
+  calibrated s, 5-fold: coverage 0.956 +- 0.009   mean width 240   s per fold 30.383, 24.722, 27.925, 35.923, 29.745
+  s on all 500 datasets: 28.126   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 43.74 median 10.33   calibrated (held-out folds) mean 246.1 median 151.5
+dopfn1d_mr-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.774 +- 0.019   mean width 7.058
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 203.9   s per fold 30.383, 22.499, 27.924, 35.923, 29.745
+  s on all 500 datasets: 28.126   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 41.72 median 8.579   calibrated (held-out folds) mean 210.2 median 167.4
+dopfn1d_mr-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.824 +- 0.017   mean width 10.67
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 205.6   s per fold 21.281, 15.268, 18.244, 24.192, 19.868
+  s on all 500 datasets: 19.090   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 38.03 median 10.74   calibrated (held-out folds) mean 213.1 median 139.8
+dopfn_joint2d_262k: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.954 +- 0.009   mean width 2.301
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 2.232   s per fold 1.075, 0.996, 0.859, 1.058, 0.830
+  s on all 500 datasets: 0.888   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 3.597 median 0.6639   calibrated (held-out folds) mean 3.613 median 0.6319
+dopfn_native: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.972 +- 0.007   mean width 2.674
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 2.156   s per fold 0.790, 0.811, 0.795, 0.764, 0.900
+  s on all 500 datasets: 0.795   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 4.621 median 0.5461   calibrated (held-out folds) mean 6 median 0.4523
+dopfn_native-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.964 +- 0.008   mean width 8.012
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 7.04   s per fold 0.882, 0.900, 0.900, 0.823, 0.900
+  s on all 500 datasets: 0.882   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 10.12 median 0.6194   calibrated (held-out folds) mean 9.585 median 0.5659
+dopfn_native-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.972 +- 0.007   mean width 2.674
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 2.156   s per fold 0.790, 0.811, 0.795, 0.764, 0.900
+  s on all 500 datasets: 0.795   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 4.621 median 0.5461   calibrated (held-out folds) mean 6 median 0.4523
+dopfn_native-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.916 +- 0.012   mean width 11.95
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 18.67   s per fold 1.690, 1.602, 1.476, 1.292, 1.566
+  s on all 500 datasets: 1.476   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 14.54 median 1.007   calibrated (held-out folds) mean 20.14 median 1.292
+dopfn_native-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.974 +- 0.007   mean width 5.053
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 3.759   s per fold 0.719, 0.769, 0.734, 0.709, 0.781
+  s on all 500 datasets: 0.734   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 6.906 median 0.7721   calibrated (held-out folds) mean 8.052 median 0.5822
+graph2d-noanc: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 1.000 +- 0.000   mean width 18.73
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 7.169   s per fold 0.391, 0.392, 0.394, 0.341, 0.388
+  s on all 500 datasets: 0.388   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 18.73 median 0.9036   calibrated (held-out folds) mean 13.03 median 0.3706
+graph2d-v3a: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.992 +- 0.004   mean width 13.35
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 5.551   s per fold 0.417, 0.421, 0.431, 0.402, 0.402
+  s on all 500 datasets: 0.417   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 13.38 median 0.6713   calibrated (held-out folds) mean 29.52 median 0.3
+uwyk1d_ml-noanc-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.892 +- 0.014   mean width 10.44
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 17.77   s per fold 1.847, 1.704, 1.433, 1.357, 1.704
+  s on all 500 datasets: 1.562   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 73.74 median 0.8663   calibrated (held-out folds) mean 68.3 median 1.209
+uwyk1d_ml-noanc-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.936 +- 0.011   mean width 12.78
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 16.19   s per fold 1.364, 1.267, 1.078, 1.078, 1.267
+  s on all 500 datasets: 1.135   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 66.55 median 1.002   calibrated (held-out folds) mean 66.59 median 1.227
+uwyk1d_ml-noanc-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.522 +- 0.022   mean width 1.906
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 53.7   s per fold 29.091, 28.228, 29.091, 23.130, 29.091
+  s on all 500 datasets: 26.713   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 106.6 median 0.5212   calibrated (held-out folds) mean 101.1 median 2.931
+uwyk1d_ml-noanc-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.950 +- 0.010   mean width 13.98
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 15.09   s per fold 1.123, 1.089, 0.949, 0.949, 1.089
+  s on all 500 datasets: 1.089   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 65.29 median 1.19   calibrated (held-out folds) mean 65.54 median 1.232
+uwyk1d_ml-v3a-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.894 +- 0.014   mean width 10.96
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 18.07   s per fold 1.740, 1.658, 1.411, 1.403, 1.538
+  s on all 500 datasets: 1.525   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 73.69 median 0.8729   calibrated (held-out folds) mean 67.89 median 1.209
+uwyk1d_ml-v3a-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.938 +- 0.011   mean width 13.33
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 16.07   s per fold 1.265, 1.203, 1.096, 1.089, 1.185
+  s on all 500 datasets: 1.112   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 65.82 median 1.055   calibrated (held-out folds) mean 65.88 median 1.22
+uwyk1d_ml-v3a-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.450 +- 0.022   mean width 1.346
+  calibrated s, 5-fold: coverage 0.956 +- 0.009   mean width 36.73   s per fold 27.505, 28.664, 27.421, 25.176, 27.505
+  s on all 500 datasets: 27.421   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 109.3 median 0.432   calibrated (held-out folds) mean 76.28 median 1.091
+uwyk1d_ml-v3a-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.952 +- 0.010   mean width 14.57
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 15.07   s per fold 1.161, 1.004, 0.939, 0.896, 1.004
+  s on all 500 datasets: 0.961   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 64.49 median 1.183   calibrated (held-out folds) mean 64.8 median 1.247
+uwyk1d_mr-noanc-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.930 +- 0.011   mean width 10.68
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 13.93   s per fold 1.309, 1.307, 1.309, 1.274, 1.307
+  s on all 500 datasets: 1.307   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 59.87 median 0.8661   calibrated (held-out folds) mean 61.79 median 1.064
+uwyk1d_mr-noanc-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.940 +- 0.011   mean width 12.39
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 13.99   s per fold 1.254, 1.080, 1.080, 1.059, 1.082
+  s on all 500 datasets: 1.080   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 61.28 median 0.969   calibrated (held-out folds) mean 61.82 median 1.141
+uwyk1d_mr-noanc-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.856 +- 0.016   mean width 8.042
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 19.09   s per fold 2.404, 2.404, 2.404, 2.107, 2.404
+  s on all 500 datasets: 2.331   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 60.64 median 0.6105   calibrated (held-out folds) mean 64.1 median 1.199
+uwyk1d_mr-noanc-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.948 +- 0.010   mean width 13.33
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 13.73   s per fold 1.107, 1.009, 0.952, 0.952, 1.016
+  s on all 500 datasets: 1.009   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 62.03 median 1.098   calibrated (held-out folds) mean 62.01 median 1.153
+uwyk1d_mr-v3a-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.970 +- 0.008   mean width 10.48
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 8.282   s per fold 0.793, 0.793, 0.784, 0.777, 0.784
+  s on all 500 datasets: 0.784   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 55.77 median 0.852   calibrated (held-out folds) mean 55.04 median 0.6861
+uwyk1d_mr-v3a-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.974 +- 0.007   mean width 12.14
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 8.144   s per fold 0.671, 0.671, 0.669, 0.669, 0.669
+  s on all 500 datasets: 0.669   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 57.12 median 0.9993   calibrated (held-out folds) mean 55.53 median 0.7117
+uwyk1d_mr-v3a-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.944 +- 0.010   mean width 6.2
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 6.798   s per fold 1.066, 1.165, 1.259, 0.936, 1.081
+  s on all 500 datasets: 1.080   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 52.93 median 0.6638   calibrated (held-out folds) mean 53.57 median 0.7171
+uwyk1d_mr-v3a-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.982 +- 0.006   mean width 13.08
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 7.906   s per fold 0.605, 0.605, 0.605, 0.597, 0.603
+  s on all 500 datasets: 0.603   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 57.76 median 1.116   calibrated (held-out folds) mean 55.8 median 0.7083
+uwyk1d-noanc: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.934 +- 0.011   mean width 17.88
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 23.08   s per fold 1.337, 1.258, 1.439, 1.258, 1.245
+  s on all 500 datasets: 1.258   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 79.4 median 1.221   calibrated (held-out folds) mean 80.06 median 1.576
+uwyk1d-noanc-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.906 +- 0.013   mean width 14.54
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 25.08   s per fold 1.817, 1.702, 1.817, 1.621, 1.636
+  s on all 500 datasets: 1.702   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 80.91 median 0.9874   calibrated (held-out folds) mean 82.12 median 1.558
+uwyk1d-noanc-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.934 +- 0.011   mean width 17.88
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 23.08   s per fold 1.337, 1.258, 1.439, 1.258, 1.245
+  s on all 500 datasets: 1.258   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 79.4 median 1.221   calibrated (held-out folds) mean 80.06 median 1.576
+uwyk1d-noanc-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.570 +- 0.022   mean width 4.999
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 63.24   s per fold 12.637, 12.637, 14.056, 12.321, 12.416
+  s on all 500 datasets: 12.637   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 104.3 median 0.348   calibrated (held-out folds) mean 121.8 median 1.087
+uwyk1d-noanc-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.940 +- 0.011   mean width 19.47
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 21.73   s per fold 1.131, 1.108, 1.198, 1.108, 1.061
+  s on all 500 datasets: 1.108   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 78.52 median 1.428   calibrated (held-out folds) mean 78.78 median 1.559
+uwyk1d-v3a: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.974 +- 0.007   mean width 18.96
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 11.48   s per fold 0.620, 0.574, 0.673, 0.673, 0.560
+  s on all 500 datasets: 0.584   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 70.27 median 1.287   calibrated (held-out folds) mean 71.61 median 0.8393
+uwyk1d-v3a-rho0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.962 +- 0.009   mean width 15.47
+  calibrated s, 5-fold: coverage 0.952 +- 0.010   mean width 11.89   s per fold 0.775, 0.760, 0.843, 0.831, 0.679
+  s on all 500 datasets: 0.770   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 70.84 median 1.01   calibrated (held-out folds) mean 71.66 median 0.7921
+uwyk1d-v3a-rho0: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.974 +- 0.007   mean width 18.96
+  calibrated s, 5-fold: coverage 0.950 +- 0.010   mean width 11.48   s per fold 0.620, 0.574, 0.673, 0.673, 0.560
+  s on all 500 datasets: 0.584   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 70.27 median 1.287   calibrated (held-out folds) mean 71.61 median 0.8393
+uwyk1d-v3a-rho1: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.794 +- 0.018   mean width 7.012
+  calibrated s, 5-fold: coverage 0.948 +- 0.010   mean width 22.79   s per fold 2.995, 3.362, 3.895, 3.345, 3.362
+  s on all 500 datasets: 3.362   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 76.3 median 0.2382   calibrated (held-out folds) mean 66.29 median 0.5989
+uwyk1d-v3a-rhom0.5: 500 datasets, 95% intervals
+  barycenter (s = 1):   coverage 0.978 +- 0.007   mean width 20.59
+  calibrated s, 5-fold: coverage 0.954 +- 0.009   mean width 11.08   s per fold 0.551, 0.525, 0.562, 0.562, 0.494
+  s on all 500 datasets: 0.525   (width relative to the barycenter = s)
+  interval score (95%): barycenter mean 68.96 median 1.482   calibrated (held-out folds) mean 71.14 median 0.8427
