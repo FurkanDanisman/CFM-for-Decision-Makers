@@ -48,7 +48,9 @@ S = {v: s_of(vname(*v)) for v in VARS}
 for v, s in S.items():
     print(f"{vname(*v)}: s = {s}")
 
-files = sorted(glob.glob(os.path.join(a.root, "**", "*r[0-9][0-9][0-9].npz"), recursive=True))
+# realization number: three digits, except the CausalPFN-C RealCause harnesses, which write ACIC_r00..ACIC_r09
+files = sorted(f for f in glob.glob(os.path.join(a.root, "**", "*r[0-9][0-9]*.npz"), recursive=True)
+               if re.search(r"r\d{2,3}\.npz$", f))
 ridx = lambda f: int(re.search(r"r(\d+)\.npz$", f).group(1))
 real = {}                                                         # (cell, realization key) -> [files]
 need = {}

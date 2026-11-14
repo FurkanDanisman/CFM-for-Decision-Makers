@@ -28,7 +28,9 @@ ap.add_argument("--pool", type=int, default=None); ap.add_argument("--quiet", ac
 ap.add_argument("--cmech-data", default=None); ap.add_argument("--list", action="store_true")
 ap.add_argument("--tag", default=None, help="density tag of multi-mode dumps (UWYK: noanc | v3a)")
 a = ap.parse_args()
-files = sorted(glob.glob(os.path.join(a.root, "**", "*r[0-9][0-9][0-9].npz"), recursive=True))
+# realization number: three digits, except the CausalPFN-C RealCause harnesses, which write ACIC_r00..ACIC_r09
+files = sorted(f for f in glob.glob(os.path.join(a.root, "**", "*r[0-9][0-9]*.npz"), recursive=True)
+               if re.search(r"r\d{2,3}\.npz$", f))
 ridx = lambda f: int(re.search(r"r(\d+)\.npz$", f).group(1))
 
 # groups: {group: {realization key: [files]}}

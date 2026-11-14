@@ -79,7 +79,34 @@ def save(fig, name):
     print("wrote", name)
 
 
-exec(compile(ast.Module([_fn], []), "appendix_plots.figure", "exec"))
+class _PSNan:
+    """paper_style for the borrowed figure(): a missing cell (nan, CausalPFN-C ACIC on RealCause) leaves its panel
+    empty and is left out of the row's geometric mean"""
+    def __getattr__(self, k):
+        return getattr(PS, k)
+
+    @staticmethod
+    def gmean_se(V, E, sig=None):
+        V, E = np.asarray(V, float), np.asarray(E, float)
+        g, se = [], []
+        for v, e in zip(V, E):
+            ok = np.isfinite(v)
+            a, b = PS.gmean_se(v[ok][None], e[ok][None], None if sig is None else np.asarray(sig, float)[ok])
+            g.append(a[0]); se.append(b[0])
+        return np.array(g), np.array(se)
+
+    @staticmethod
+    def hbars(ax, vals, errs, colors, **kw):
+        if not np.isfinite(np.asarray(vals, float)).any():
+            y = np.arange(len(vals))[::-1]
+            ax.set_xticks([]); ax.set_ylim(-0.6, len(vals) - 0.4); PS.frame(ax)
+            return y
+        return PS.hbars(ax, vals, errs, colors, **kw)
+
+
+_ns = dict(globals(), PS=_PSNan())
+exec(compile(ast.Module([_fn], []), "appendix_plots.figure", "exec"), _ns)
+figure = _ns["figure"]
 
 
 def THREE(top):
@@ -148,11 +175,10 @@ for key, b, fname, names in BENCH:
         for lab, one, two, fk in FAM:
             Vr, Er = rows_of(df, key, abl_name(fk, which), two)
             rows.append((f"{FAMROW[lab]}\n({short})", Vr, Er))
-    if all(np.isfinite(V_).all() for _, V_, _ in rows):
-        figure(rows, names, RHOLAB, [PS.COL_1D] * 4 + [PS.COL_2D], f"ate_coupling_abl_{b}", "Interval Score",
-               row_h=0.82, sep=4, row_colors=[[PS.COL_RES] * 4 + [PS.COL_2D]] * 4 + [[PS.COL_LAB] * 4 + [PS.COL_2D]] * 4)
-    else:
-        print(b, "ablation figure skipped: missing cells",
-              [r[0].replace("\n", " ") for r in rows if not np.isfinite(r[1]).all()])
+    miss = [r[0].replace("\n", " ") for r in rows if not np.isfinite(r[1]).all()]
+    if miss:
+        print(b, "ablation figure: missing cells left empty for", miss)
+    figure(rows, names, RHOLAB, [PS.COL_1D] * 4 + [PS.COL_2D], f"ate_coupling_abl_{b}", "Interval Score",
+           row_h=0.82, sep=4, row_colors=[[PS.COL_RES] * 4 + [PS.COL_2D]] * 4 + [[PS.COL_LAB] * 4 + [PS.COL_2D]] * 4)
 open(os.path.join(OUT, "ate_coverage.txt"), "w").write("\n".join(cov_lines) + "\n")
 print("wrote ate_coverage.txt")
