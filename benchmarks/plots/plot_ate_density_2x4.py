@@ -189,7 +189,7 @@ def main():
     for ci, (lab, m1, t1, m2, t2) in enumerate(PAIRS):
         for ri, (m, tg, src, colour, suffix) in enumerate((
                 (m1, t1, "marginals", C_1D, ""),
-                (m2, t2, "joint", C_2D, " 2D"))):
+                (m2, t2, "joint", C_2D, " JT"))):
             ax = axes[ri][ci]
             path = _find(a.root, m, a.dataset, a.realization)
             scale = _scale(a.scale_dir, lab, ri) if a.scale_dir else None
